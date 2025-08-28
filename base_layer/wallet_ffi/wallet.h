@@ -48,8 +48,6 @@ struct CompressedKey_RistrettoPublicKey;
 
 struct EmojiSet;
 
-struct FeePerGramStat;
-
 struct FeePerGramStatsResponse;
 
 struct InboundTransaction;
@@ -193,7 +191,7 @@ typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
 
-typedef struct FeePerGramStat TariFeePerGramStat;
+typedef FeePerGramStat TariFeePerGramStat;
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 

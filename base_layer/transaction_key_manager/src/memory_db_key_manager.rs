@@ -42,7 +42,7 @@ fn random_string(len: usize) -> String {
         .collect()
 }
 
-pub fn create_memory_db_key_manager_with_range_proof_size(
+pub async fn create_memory_db_key_manager_with_range_proof_size(
     size: usize,
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
     let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))
@@ -60,9 +60,10 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
         factory,
         Arc::new(WalletType::default()),
     )
+    .await
 }
 
-pub fn create_memory_db_key_manager_from_seed(
+pub async fn create_memory_db_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
@@ -82,8 +83,9 @@ pub fn create_memory_db_key_manager_from_seed(
         factory,
         Arc::new(WalletType::default()),
     )
+    .await
 }
 
-pub fn create_memory_db_key_manager() -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
-    create_memory_db_key_manager_with_range_proof_size(64)
+pub async fn create_memory_db_key_manager() -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
+    create_memory_db_key_manager_with_range_proof_size(64).await
 }

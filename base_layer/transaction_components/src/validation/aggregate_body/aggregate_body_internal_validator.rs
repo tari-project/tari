@@ -41,7 +41,6 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
     transaction_components::{
         transaction_output::batch_verify_range_proofs,
         KernelSum,
@@ -65,6 +64,7 @@ use crate::{
         },
         AggregatedBodyValidationError,
     },
+    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
@@ -527,8 +527,8 @@ mod test {
 
     use super::*;
     use crate::{
+        key_manager::create_memory_key_manager,
         test_helpers,
-        test_helpers::create_memory_key_manager,
         transaction_components::{covenants::Covenant, KernelFeatures, OutputFeatures, TransactionInputVersion},
     };
 
@@ -592,7 +592,7 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &key_manager,
@@ -654,7 +654,7 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let key_manager = create_memory_key_manager().unwrap();
+            let key_manager = create_memory_key_manager().await.unwrap();
             let mut outputs = Vec::new();
             for _ in 0..10 {
                 let (o, _, _) = test_helpers::create_utxo(

@@ -52,17 +52,17 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 
 use crate::{
     key_manager::error::{KeyManagerServiceError, KeyManagerStorageError},
-    tari_amount::MicroMinotari,
     transaction_components::{
-        memo_field::MemoField,
         EncryptedData,
         KernelFeatures,
+        MemoField,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
+    MicroMinotari,
 };
 
 #[repr(u8)]
@@ -513,24 +513,25 @@ pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
 }
 
 /// This trait defines the required behaviour that a storage backend must provide for the Key Manager service.
-pub trait TransactionKeyManagerBackend: Send + Sync + Clone {
+#[async_trait::async_trait]
+pub trait TransactionKeyManagerBackend: Clone + Send + Sync {
     /// This will retrieve the key manager specified by the branch string, None is returned if the key manager is not
     /// found for the branch.
-    fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError>;
+    async fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError>;
     /// This will add an additional branch for the key manager to track.
-    fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError>;
+    async fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError>;
     /// This will increase the key index of the specified branch, and returns an error if the branch does not exist.
-    fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError>;
+    async fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError>;
     /// This method will set the currently stored key index for the key manager.
-    fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError>;
+    async fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError>;
     /// This method will import a new public private key pair into the database
-    fn insert_imported_key(
+    async fn insert_imported_key(
         &self,
         public_key: CompressedPublicKey,
         private_key: PrivateKey,
     ) -> Result<(), KeyManagerStorageError>;
     /// This method will retrieve  public private key pair from the database
-    fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError>;
+    async fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager for the branch

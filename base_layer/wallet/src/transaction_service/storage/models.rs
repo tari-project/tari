@@ -33,15 +33,17 @@ use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_core::transactions::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_transaction_components::{
     consensus::ConsensusConstants,
     fee::Fee,
-    tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, Transaction},
+    transaction_components::{MemoField, Transaction},
+    MicroMinotari,
 };
 
-use crate::transaction_service::error::TransactionStorageError;
+use crate::{
+    legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
+    transaction_service::error::TransactionStorageError,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
@@ -679,15 +681,15 @@ mod test {
     use tari_script::TariScript;
     use tari_transaction_components::{
         consensus::ConsensusManager,
-        tari_amount::MicroMinotari,
         transaction_components::{
             covenants::Covenant,
-            memo_field::MemoField,
             EncryptedData,
+            MemoField,
             OutputFeatures,
             Transaction,
             TransactionOutput,
         },
+        MicroMinotari,
     };
 
     use super::*;

@@ -29,17 +29,17 @@ use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrp
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray},
     AuxChainHashes,
 };
 use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
     generate_coinbase,
+    key_manager::{create_memory_key_manager, MemoryKeyManager},
     tari_proof_of_work::Difficulty,
-    transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
+    transaction_components::{CoinBaseExtra, MemoField, TransactionKernel, TransactionOutput},
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -56,20 +56,20 @@ pub(crate) struct BlockTemplateManager<'a> {
     config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeGrpcClient,
     p2pool_client: Option<ShaP2PoolGrpcClient>,
-    key_manager: MemoryDbKeyManager,
+    key_manager: MemoryKeyManager,
     wallet_payment_address: TariAddress,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
 }
 
 impl<'a> BlockTemplateManager<'a> {
-    pub fn try_create(
+    pub async fn try_create(
         base_node_client: &'a mut BaseNodeGrpcClient,
         p2pool_client: Option<ShaP2PoolGrpcClient>,
         config: Arc<MergeMiningProxyConfig>,
-        consensus_manager: BaseConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateManager<'a>, MmProxyError> {
-        let key_manager = create_memory_db_key_manager()?;
+        let key_manager = create_memory_key_manager().await?;
         Ok(Self {
             config,
             base_node_client,

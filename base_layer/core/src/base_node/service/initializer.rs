@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
+use tari_node_components::blocks::NewBlock;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
@@ -49,9 +50,8 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
     },
-    blocks::NewBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::Mempool,
     proof_of_work::randomx_factory::RandomXFactory,
     proto as shared_protos,
@@ -66,7 +66,7 @@ pub struct BaseNodeServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     blockchain_db: AsyncBlockchainDb<T>,
     mempool: Mempool,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     service_request_timeout: Duration,
     randomx_factory: RandomXFactory,
     base_node_config: BaseNodeStateMachineConfig,
@@ -80,7 +80,7 @@ where T: BlockchainBackend
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
         blockchain_db: AsyncBlockchainDb<T>,
         mempool: Mempool,
-        consensus_manager: BaseConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
         service_request_timeout: Duration,
         randomx_factory: RandomXFactory,
         base_node_config: BaseNodeStateMachineConfig,

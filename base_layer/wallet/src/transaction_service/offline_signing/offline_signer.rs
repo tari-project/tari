@@ -21,107 +21,58 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::str::FromStr;
 
-use log::*;
-use tari_common_types::{
-    tari_address::{TariAddress, TariAddressFeatures},
-    transaction::TxId,
-    types::CompressedPublicKey,
-};
-use tari_script::push_pubkey_script;
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
-    transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
-        OutputFeatures,
-    },
+    transaction_components::{memo_field::MemoField, OutputFeatures},
+    MicroMinotari,
+    TransactionBuilder,
 };
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::UtxoSelectionCriteria,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        offline_signing::{
-            marshal_output_pair::MarshalOutputPair,
-            models::{
-                get_supported_version,
-                OneSidedTransactionInfo,
-                PaymentRecipient,
-                PrepareOneSidedTransactionForSigningResult,
-                SignedOneSidedTransactionResult,
-                TransactionMetadata,
-            },
-            one_sided_signer::OneSidedSigner,
+use crate::transaction_service::{
+    error::TransactionServiceError,
+    offline_signing::{
+        marshal_output_pair::MarshalOutputPair,
+        models::{
+            get_supported_version,
+            OneSidedTransactionInfo,
+            PaymentRecipient,
+            PrepareOneSidedTransactionForSigningResult,
+            SignedOneSidedTransactionResult,
+            TransactionMetadata,
         },
-        service::TransactionServiceResources,
-        storage::database::TransactionBackend,
+        one_sided_signer::OneSidedSigner,
     },
 };
-const LOG_TARGET: &str = "wallet::transaction_service::offline_signing::offline_signer";
 
-pub struct OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface> {
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
+pub struct OfflineSigner<TKeyManagerInterface> {
+    key_manager: TKeyManagerInterface,
 }
 
-impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
-    OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface>
-where
-    TBackend: TransactionBackend + 'static,
-    TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+impl<TKeyManagerInterface> OfflineSigner<TKeyManagerInterface>
+where TKeyManagerInterface: TransactionKeyManagerInterface
 {
-    pub fn new(resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>) -> Self {
-        OfflineSigner { resources }
+    pub fn new(key_manager: TKeyManagerInterface) -> Self {
+        OfflineSigner { key_manager }
     }
 
     pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
+        tx_id: TxId,
+        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         dest_address: TariAddress,
         amount: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
-        mut payment_id: MemoField,
+        payment_id: MemoField,
+        sender_address: TariAddress,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
-        debug!(target: LOG_TARGET, "Locking one sided transaction to {dest_address} with {amount}");
-        let tx_id = TxId::new_random();
-
-        // let override the payment_id if the address says we should
-        if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
-            payment_id = MemoField::open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
-        }
-        let payment_id = payment_id
-            .clone()
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                true,
-                fee_per_gram,
-                if dest_address == self.resources.one_sided_tari_address ||
-                    dest_address == self.resources.interactive_tari_address
-                {
-                    Some(TxType::PaymentToSelf)
-                } else {
-                    Some(TxType::PaymentToOther)
-                },
-            )
-            .unwrap_or(payment_id);
-
-        let script = push_pubkey_script(&Default::default());
-        // Prepare sender part of the transaction
-        let tx_builder = self
-            .resources
-            .output_manager_service
-            .prepare_transaction_to_send(
-                tx_id,
+        // we do this to ensure the fee is calculated correctly
+        tx_builder
+            .add_stealth_recipient(
+                dest_address.clone(),
                 amount,
-                selection_criteria,
                 output_features.clone(),
-                fee_per_gram,
-                script,
-                Covenant::default(),
+                payment_id.clone(),
             )
             .await?;
 
@@ -132,29 +83,35 @@ where
                 .make_key_id_export_safe(&input.output.script_key_id)
                 .await
                 .map_err(TransactionServiceError::NotSupported)?;
-            inputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, input).await?);
+            inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
         let mut outputs = Vec::new();
-        for output_pair in tx_builder.recipient_outputs() {
-            let mut output = output_pair.output.clone();
+        for output_pair in tx_builder.custom_outputs() {
+            let mut output = output_pair.clone();
             output.output.script_key_id = self
                 .make_key_id_export_safe(&output.output.script_key_id)
                 .await
                 .map_err(TransactionServiceError::NotSupported)?;
-            outputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, output).await?);
+            outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
-        let change_output = match tx_builder.get_pre_build_change_output().await? {
-            Some(mut change_output) => {
+        let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
+            (fee, Some(mut change_output)) => {
                 change_output.output.script_key_id = self
                     .make_key_id_export_safe(&change_output.output.script_key_id)
                     .await
                     .map_err(TransactionServiceError::NotSupported)?;
-                Some(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, change_output).await?)
+                (
+                    fee,
+                    Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
+                )
             },
-            None => None,
+            (fee, None) => (fee, None),
         };
-        let metadata = TransactionMetadata::default();
+        let metadata = TransactionMetadata {
+            fee,
+            ..Default::default()
+        };
         let info = OneSidedTransactionInfo {
             payment_id,
             recipient: PaymentRecipient {
@@ -166,14 +123,8 @@ where
             inputs,
             outputs,
             metadata,
-            sender_address: self.resources.one_sided_tari_address.clone(),
+            sender_address,
         };
-
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id, None)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         Ok(PrepareOneSidedTransactionForSigningResult {
             version: get_supported_version(),
@@ -186,7 +137,7 @@ where
         &self,
         request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
-        let signer = OneSidedSigner::new(&self.resources.transaction_key_manager_service);
+        let signer = OneSidedSigner::new(&self.key_manager);
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
         Ok(SignedOneSidedTransactionResult {
@@ -198,8 +149,7 @@ where
 
     async fn make_key_id_export_safe(&self, key_id: &TariKeyId) -> Result<TariKeyId, String> {
         if *key_id ==
-            self.resources
-                .transaction_key_manager_service
+            self.key_manager
                 .get_spend_key()
                 .await
                 .map_err(|err| err.to_string())?
@@ -208,8 +158,7 @@ where
             return Ok(key_id.clone());
         }
         if *key_id ==
-            self.resources
-                .transaction_key_manager_service
+            self.key_manager
                 .get_view_key()
                 .await
                 .map_err(|err| err.to_string())?
@@ -227,8 +176,7 @@ where
             TariKeyId::Derived { key } => {
                 let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
                 let public_key = self
-                    .resources
-                    .transaction_key_manager_service
+                    .key_manager
                     .get_public_key_at_key_id(&inner_key)
                     .await
                     .map_err(|err| err.to_string())?;
@@ -242,8 +190,7 @@ where
             },
             TariKeyId::Managed { .. } => {
                 let key = self
-                    .resources
-                    .transaction_key_manager_service
+                    .key_manager
                     .get_public_key_at_key_id(key_id)
                     .await
                     .map_err(|err| err.to_string())?;

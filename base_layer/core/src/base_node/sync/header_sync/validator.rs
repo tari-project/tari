@@ -24,15 +24,16 @@ use std::cmp::Ordering;
 use log::*;
 use primitive_types::U512;
 use tari_common_types::types::{FixedHash, HashOutput};
+use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError};
 use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     base_node::sync::{header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS, BlockHeaderSyncError},
-    blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
+    blocks::{BlockHeaderAccumulatedData, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
         header::HeaderFullValidator,
@@ -50,7 +51,7 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 pub struct BlockHeaderSyncValidator<B> {
     db: AsyncBlockchainDb<B>,
     state: Option<State>,
-    consensus_rules: BaseConsensusManager,
+    consensus_rules: BaseNodeConsensusManager,
     validator: HeaderFullValidator,
 }
 
@@ -68,7 +69,7 @@ struct State {
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn new(
         db: AsyncBlockchainDb<B>,
-        consensus_rules: BaseConsensusManager,
+        consensus_rules: BaseNodeConsensusManager,
         randomx_factory: RandomXFactory,
     ) -> Self {
         let difficulty_calculator = DifficultyCalculator::new(consensus_rules.clone(), randomx_factory);
@@ -296,17 +297,14 @@ mod test {
     use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
-    use crate::{
-        blocks::BlockHeader,
-        test_helpers::blockchain::{create_new_blockchain, TempDatabase},
-    };
+    use crate::test_helpers::blockchain::{create_new_blockchain, TempDatabase};
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,
         AsyncBlockchainDb<TempDatabase>,
-        BaseConsensusManager,
+        BaseNodeConsensusManager,
     ) {
-        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let randomx_factory = RandomXFactory::default();
         let db = create_new_blockchain();
         (

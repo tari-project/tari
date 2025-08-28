@@ -41,10 +41,10 @@ use tari_transaction_components::{
     key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
-        memo_field::MemoField,
         one_sided::public_key_to_output_encryption_key,
         CoinBaseExtra,
         KernelFeatures,
+        MemoField,
         OutputFeatures,
         OutputFeaturesVersion,
         OutputType,
@@ -813,7 +813,7 @@ pub async fn create_pre_mine_genesis_block_info(
         for key in public_keys {
             total_script_key = total_script_key + key.to_public_key().map_err(|e| e.to_string())?;
         }
-        let key_manager = create_memory_db_key_manager().map_err(|e| e.to_string())?;
+        let key_manager = create_memory_db_key_manager().await.map_err(|e| e.to_string())?;
         let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
             .map_err(|e| e.to_string())?;
         let view_key_id = key_manager
@@ -943,7 +943,7 @@ mod test {
             ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
-        consensus::BaseConsensusManager,
+        consensus::BaseNodeConsensusManager,
     };
 
     async fn genesis_block_test_info(
@@ -1469,7 +1469,7 @@ mod test {
         //                                                          | 15000 -> | (180) |
 
         let network = Network::MainNet;
-        let consensus_manager = BaseConsensusManager::builder(network)
+        let consensus_manager = BaseNodeConsensusManager::builder(network)
             .build()
             .map_err(|e| e.to_string())
             .unwrap();

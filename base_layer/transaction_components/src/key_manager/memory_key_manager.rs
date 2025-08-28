@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    mem::size_of,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, mem::size_of, sync::Arc};
 
 use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
@@ -33,6 +29,7 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::WalletType,
 };
+use tokio::sync::RwLock;
 use zeroize::Zeroizing;
 
 use crate::{
@@ -46,15 +43,15 @@ use crate::{
 };
 pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 
-pub fn create_memory_key_manager_with_range_proof_size(
+pub async fn create_memory_key_manager_with_range_proof_size(
     size: usize,
 ) -> Result<MemoryKeyManager, KeyManagerServiceError> {
     let cipher = CipherSeed::new();
 
-    create_memory_key_manager_from_seed(cipher, size)
+    create_memory_key_manager_from_seed(cipher, size).await
 }
 
-pub fn create_memory_key_manager_from_seed(
+pub async fn create_memory_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
 ) -> Result<MemoryKeyManager, KeyManagerServiceError> {
@@ -65,11 +62,11 @@ pub fn create_memory_key_manager_from_seed(
     let factory = CryptoFactories::new(rangeproof_size);
 
     let backend = MemoryKeyManagerBackend::new();
-    TransactionKeyManagerWrapper::new(cipher, backend, factory, Arc::new(WalletType::default()))
+    TransactionKeyManagerWrapper::new(cipher, backend, factory, Arc::new(WalletType::default())).await
 }
 
-pub fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {
-    create_memory_key_manager_with_range_proof_size(64)
+pub async fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {
+    create_memory_key_manager_with_range_proof_size(64).await
 }
 
 #[derive(Clone, Debug, Default)]
@@ -87,29 +84,21 @@ impl MemoryKeyManagerBackend {
     }
 }
 
+#[async_trait::async_trait]
 impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
-    fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
-        let key_manager_states = self
-            .key_manger_states
-            .read()
-            .map_err(|_| KeyManagerStorageError::StorageError("Poisoned lock".to_string()))?;
+    async fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+        let key_manager_states = self.key_manger_states.read().await;
         Ok(key_manager_states.get(branch).cloned())
     }
 
-    fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
-        let mut key_manager_states = self
-            .key_manger_states
-            .write()
-            .map_err(|_| KeyManagerStorageError::StorageError("Poisoned lock".to_string()))?;
+    async fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
+        let mut key_manager_states = self.key_manger_states.write().await;
         key_manager_states.insert(key_manager.branch_seed.clone(), key_manager);
         Ok(())
     }
 
-    fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
-        let mut key_manager_states = self
-            .key_manger_states
-            .write()
-            .map_err(|_| KeyManagerStorageError::StorageError("Poisoned lock".to_string()))?;
+    async fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
+        let mut key_manager_states = self.key_manger_states.write().await;
         if let Some(key_manager) = key_manager_states.get_mut(branch) {
             key_manager.primary_key_index += 1;
             Ok(())
@@ -118,11 +107,8 @@ impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
         }
     }
 
-    fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
-        let mut key_manager_states = self
-            .key_manger_states
-            .write()
-            .map_err(|_| KeyManagerStorageError::StorageError("Poisoned lock".to_string()))?;
+    async fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
+        let mut key_manager_states = self.key_manger_states.write().await;
         if let Some(key_manager) = key_manager_states.get_mut(branch) {
             key_manager.primary_key_index = index;
             Ok(())
@@ -131,15 +117,12 @@ impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
         }
     }
 
-    fn insert_imported_key(
+    async fn insert_imported_key(
         &self,
         public_key: CompressedPublicKey,
         private_key: PrivateKey,
     ) -> Result<(), KeyManagerStorageError> {
-        let mut private_keys = self
-            .private_keys
-            .write()
-            .map_err(|_| KeyManagerStorageError::StorageError("Poisoned lock".to_string()))?;
+        let mut private_keys = self.private_keys.write().await;
         if private_keys.contains_key(&public_key) {
             return Err(KeyManagerStorageError::StorageError("Already exists".to_string()));
         }
@@ -147,11 +130,8 @@ impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
         Ok(())
     }
 
-    fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
-        let private_keys = self
-            .private_keys
-            .read()
-            .map_err(|_| KeyManagerStorageError::StorageError("Poisoned lock".to_string()))?;
+    async fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
+        let private_keys = self.private_keys.read().await;
         if let Some(private_key) = private_keys.get(public_key) {
             Ok(private_key.clone())
         } else {

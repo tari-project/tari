@@ -35,7 +35,7 @@ mod benches {
     use criterion::{criterion_group, Criterion};
     use tari_common::configuration::Network;
     use tari_core::{
-        consensus::BaseConsensusManager,
+        consensus::BaseNodeConsensusManager,
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
         validation::transaction::TransactionFullValidator,
@@ -55,7 +55,7 @@ mod benches {
         num_outputs: usize,
         features: OutputFeatures,
     ) -> std::io::Result<Vec<Arc<Transaction>>> {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let mut txs = Vec::new();
         for _ in 0..num_txs {
             let (tx, _, _) =
@@ -68,7 +68,7 @@ mod benches {
     pub fn mempool_perf_test(c: &mut Criterion) {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
-        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_new_blockchain();
 
         let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());

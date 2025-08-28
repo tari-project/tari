@@ -62,13 +62,7 @@ use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{uT, MicroMinotari, T},
     test_helpers::{create_wallet_output_with_data, TestParams},
-    transaction_components::{
-        covenants::Covenant,
-        memo_field::MemoField,
-        OutputFeatures,
-        TransactionOutput,
-        WalletOutput,
-    },
+    transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},
     weight::TransactionWeight,
 };
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
@@ -122,7 +116,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
 
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
 
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -188,7 +182,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let connectivity = WalletConnectivityHandle::new(MockHttpClientFactory::default());
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
     let one_sided_message_watch = Watch::new("unset".to_string());
@@ -2005,7 +1999,7 @@ async fn scan_for_recovery_test() {
 
     let mut non_recoverable_wallet_outputs = Vec::new();
     // we need to create a new key_manager to make the outputs non recoverable
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_input(
             &mut OsRng,
@@ -2078,7 +2072,7 @@ async fn recovered_output_key_not_in_keychain() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
     // we need to create a new key manager here as we dont want the input be recoverable from oms key chain
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000u64),

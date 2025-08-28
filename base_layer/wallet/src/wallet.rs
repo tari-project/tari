@@ -81,7 +81,6 @@ use tari_transaction_components::{
         TransactionKeyManagerInitializer,
         TransactionKeyManagerInterface,
     },
-    tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -89,6 +88,7 @@ use tari_transaction_components::{
         OutputFeatures,
         UnblindedOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use url::Url;
@@ -224,7 +224,6 @@ where
                 THttpClientFactory,
             >::new(
                 config.transaction_service_config.clone(),
-                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 config.network,

@@ -41,5 +41,3 @@ pub use test_helpers_functions::{
     TransactionSchema,
     UtxoTestParams,
 };
-pub mod memory_key_manager;
-pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};

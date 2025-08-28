@@ -31,9 +31,9 @@ use tari_core::{
         comms_interface::BlockEvent,
         state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
     },
-    blocks::{ChainBlock, NewBlock},
+    blocks::ChainBlock,
     chain_storage::BlockchainDatabaseConfig,
-    consensus::{BaseConsensusManager, BaseConsensusManagerBuilder},
+    consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::TxStorageResponse,
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
@@ -43,6 +43,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
+use tari_node_components::blocks::NewBlock;
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     consensus::NetworkConsensus,
@@ -76,7 +77,7 @@ use crate::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn propagate_and_forward_many_valid_blocks() {
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     // Alice will propagate a number of block hashes to bob, bob will receive it, request the full block, verify and
     // then propagate the hash to carol and dan. Dan and Carol will also try to propagate the block hashes to each
     // other, but the block should not be re-requested. These duplicate blocks will be discarded and wont be
@@ -98,7 +99,7 @@ async fn propagate_and_forward_many_valid_blocks() {
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&key_manager
     ).await;
 
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build()
@@ -238,10 +239,10 @@ async fn propagate_and_forward_invalid_block_hash() {
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (block0, genesis_coinbase) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build()
@@ -368,11 +369,11 @@ async fn propagate_and_forward_invalid_block() {
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
     let dan_node_identity = random_node_identity();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let network = Network::LocalNet;
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (block0, _) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build()
@@ -517,7 +518,7 @@ async fn propagate_and_forward_invalid_block() {
 async fn local_get_metadata() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let (mut node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
@@ -541,10 +542,10 @@ async fn local_get_metadata() {
 async fn local_get_new_block_template_and_get_new_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &key_manager).await;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build()
@@ -584,10 +585,10 @@ async fn local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &key_manager).await;
-    let rules = BaseConsensusManagerBuilder::new(network)
+    let rules = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build()
@@ -670,10 +671,10 @@ async fn local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &key_manager).await;
-    let rules = BaseConsensusManagerBuilder::new(network)
+    let rules = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build()
@@ -750,7 +751,7 @@ async fn local_get_new_block_with_combined_transaction() {
 async fn local_submit_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let (mut node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;

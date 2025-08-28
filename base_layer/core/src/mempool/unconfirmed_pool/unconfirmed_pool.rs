@@ -28,24 +28,21 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
+    MicroMinotari,
 };
 use tokio::time::Instant;
 
-use crate::{
-    blocks::Block,
-    mempool::{
-        priority::{FeePriority, PrioritizedTransaction},
-        shrink_hashmap::shrink_hashmap,
-        unconfirmed_pool::UnconfirmedPoolError,
-        FeePerGramStat,
-        MempoolError,
-    },
+use crate::mempool::{
+    priority::{FeePriority, PrioritizedTransaction},
+    shrink_hashmap::shrink_hashmap,
+    unconfirmed_pool::UnconfirmedPoolError,
+    MempoolError,
 };
-
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 pub type TransactionKey = usize;
@@ -865,22 +862,22 @@ mod test {
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
         fee::Fee,
-        tari_amount::MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_builder::TransactionBuilder,
         tx,
         weight::TransactionWeight,
+        MicroMinotari,
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
-        consensus::BaseConsensusManagerBuilder,
+        consensus::BaseNodeConsensusManagerBuilder,
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
     };
     #[tokio::test]
     async fn test_find_duplicate_input() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(5000), fee: MicroMinotari(5), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -909,7 +906,7 @@ mod test {
 
     #[tokio::test]
     async fn test_insert_and_retrieve_highest_priority_txs() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -972,7 +969,7 @@ mod test {
 
     #[tokio::test]
     async fn test_double_spend_inputs() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let (tx1, _, _) = tx!(MicroMinotari(5_000), fee: MicroMinotari(10), inputs: 1, outputs: 1, &key_manager)
             .expect("Failed to get tx");
         const INPUT_AMOUNT: MicroMinotari = MicroMinotari(5_000);
@@ -1051,9 +1048,9 @@ mod test {
 
     #[tokio::test]
     async fn test_remove_reorg_txs() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let network = Network::LocalNet;
-        let consensus = BaseConsensusManagerBuilder::new(network).build().unwrap();
+        let consensus = BaseNodeConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(10_000), fee: MicroMinotari(5), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -1123,7 +1120,7 @@ mod test {
 
     #[tokio::test]
     async fn test_discard_double_spend_txs() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let consensus = create_consensus_rules();
         let tx1 = Arc::new(
             tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs:2, outputs:1, &key_manager)
@@ -1198,7 +1195,7 @@ mod test {
 
     #[tokio::test]
     async fn test_multiple_transactions_with_same_outputs_in_mempool() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
             .expect("Failed to get tx");
         let (tx2, _, _) = tx!(MicroMinotari(250_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
@@ -1301,7 +1298,7 @@ mod test {
 
         #[tokio::test]
         async fn it_compiles_correct_stats_for_single_block() {
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_db_key_manager().await.unwrap();
             let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(5), inputs:5, outputs:1, &key_manager)
                 .expect("Failed to get tx");
             let (tx2, _, _) = tx!(MicroMinotari(250_000), fee: MicroMinotari(5), inputs:5, outputs:5, &key_manager)
@@ -1331,7 +1328,7 @@ mod test {
 
         #[tokio::test]
         async fn it_compiles_correct_stats_for_multiple_blocks() {
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_db_key_manager().await.unwrap();
             let expected_stats = [
                 FeePerGramStat {
                     order: 0,

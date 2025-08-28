@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "5.0.0-pre.5"
+version = "5.0.0-pre.8"
 edition = "2018"
 
 [dependencies]
@@ -12,6 +12,7 @@ tari_core = { path = "../../base_layer/core", default-features = false }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_transaction_components = { workspace = true}
+tari_node_components = { workspace = true }
 
 tari_transaction_key_manager = { workspace = true}
 tari_max_size = { path = "../../infrastructure/max_size" }
@@ -24,7 +25,7 @@ tari_utilities = { version = "0.8" }
 base64 = "0.13.0"
 borsh = "1.5.7"
 bufstream = "0.1"
-chrono = { version = "0.4.39", default-features = false }
+chrono = { version = "0.4", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam = "0.8"
 crossterm = { version = "0.28" }
@@ -55,7 +56,7 @@ tonic = { version = "0.13.1", features = ["tls-ring", "tls-native-roots"] }
 
 [dev-dependencies]
 prost-types = "0.13.3"
-chrono = { version = "0.4.39", default-features = false }
+chrono = { version = "0.4", default-features = false }
 config = "0.14.0"
 
 [package.metadata.cargo-machete]

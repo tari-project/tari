@@ -48,7 +48,7 @@ use tokio::{
 };
 
 use crate::{
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
@@ -58,7 +58,7 @@ use crate::{
 };
 
 pub async fn create_transactions(n: usize) -> Vec<Transaction> {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let mut transactions = Vec::new();
     for _i in 0..n {
         let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default(), &key_manager)
@@ -72,7 +72,7 @@ pub async fn create_transactions(n: usize) -> Vec<Transaction> {
 async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool = Mempool::new(
         Default::default(),
-        BaseConsensusManager::builder(Network::LocalNet).build().unwrap(),
+        BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
         Box::new(MockValidator::new(true)),
     );
 

@@ -55,38 +55,41 @@ where T: TransactionKeyManagerBackend + 'static
 
     /// Retrieves the key manager state of the provided branch
     /// Returns None if the request branch does not exist.
-    pub fn get_key_manager_state(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
-        self.db.get_key_manager(branch)
+    pub async fn get_key_manager_state(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+        self.db.get_key_manager(branch).await
     }
 
     /// Saves the specified key manager state to the backend database.
-    pub fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), KeyManagerStorageError> {
-        self.db.add_key_manager(state)
+    pub async fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), KeyManagerStorageError> {
+        self.db.add_key_manager(state).await
     }
 
     /// Increment the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
-    pub fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
-        self.db.increment_key_index(branch)
+    pub async fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
+        self.db.increment_key_index(branch).await
     }
 
     /// Sets the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
-    pub fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
-        self.db.set_key_index(branch, index)
+    pub async fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
+        self.db.set_key_index(branch, index).await
     }
 
     /// This will import and save a private public key combo
-    pub fn insert_imported_key(
+    pub async fn insert_imported_key(
         &self,
         public_key: CompressedPublicKey,
         private_key: PrivateKey,
     ) -> Result<(), KeyManagerStorageError> {
-        self.db.insert_imported_key(public_key, private_key)
+        self.db.insert_imported_key(public_key, private_key).await
     }
 
     /// This will get the private key associated with the public key
-    pub fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
-        self.db.get_imported_key(public_key)
+    pub async fn get_imported_key(
+        &self,
+        public_key: &CompressedPublicKey,
+    ) -> Result<PrivateKey, KeyManagerStorageError> {
+        self.db.get_imported_key(public_key).await
     }
 }

@@ -27,12 +27,12 @@ use std::{
 };
 
 use tari_common_types::types::PrivateKey;
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_utilities::ByteArray;
 
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse},
-    blocks::{Block, BlockHeader},
     proto,
 };
 

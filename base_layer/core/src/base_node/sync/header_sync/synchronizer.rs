@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -35,6 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError},
     PeerConnection,
 };
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 
@@ -48,10 +48,10 @@ use crate::{
         BlockchainSyncConfig,
         SyncPeer,
     },
-    blocks::{BlockHeader, ChainBlock, ChainHeader},
+    blocks::{ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     common::rolling_avg::RollingAverageTime,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
@@ -78,7 +78,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
-        consensus_rules: BaseConsensusManager,
+        consensus_rules: BaseNodeConsensusManager,
         connectivity: ConnectivityRequester,
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,

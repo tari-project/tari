@@ -36,8 +36,9 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_core::{blocks::Block, consensus::BaseConsensusManager};
+use tari_core::consensus::BaseNodeConsensusManager;
 use tari_crypto::keys::SecretKey;
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{Transaction, WalletOutput},
@@ -71,6 +72,7 @@ pub enum TariWorldError {
 }
 
 #[derive(cucumber::World)]
+#[world(init = Self::new)]
 pub struct TariWorld {
     pub current_scenario_name: Option<String>,
     pub current_feature_name: Option<String>,
@@ -102,50 +104,8 @@ pub struct TariWorld {
     pub wallet_private_key: PrivateKey,
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
-    pub consensus_manager: BaseConsensusManager,
+    pub consensus_manager: BaseNodeConsensusManager,
     pub assigned_ports: IndexMap<u64, u64>,
-}
-
-impl Default for TariWorld {
-    fn default() -> Self {
-        println!("\nWorld initialized - remove this line when called!\n");
-        let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let default_payment_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&wallet_private_key),
-            CompressedPublicKey::from_secret_key(&wallet_private_key),
-            Network::LocalNet,
-        )
-        .unwrap();
-        Self {
-            current_scenario_name: None,
-            current_feature_name: None,
-            current_base_dir: None,
-            base_nodes: Default::default(),
-            blocks: Default::default(),
-            miners: Default::default(),
-            ffi_wallets: Default::default(),
-            wallets: Default::default(),
-            balance: Default::default(),
-            view_and_spend_keys: Default::default(),
-            merge_mining_proxies: Default::default(),
-            transactions: Default::default(),
-            wallet_addresses: Default::default(),
-            utxos: Default::default(),
-            output_hash: None,
-            pre_image: None,
-            wallet_connected_to_base_node: Default::default(),
-            seed_nodes: vec![],
-            wallet_tx_ids: Default::default(),
-            errors: Default::default(),
-            last_imported_tx_ids: vec![],
-            last_merge_miner_response: Default::default(),
-            key_manager: create_memory_db_key_manager().unwrap(),
-            wallet_private_key,
-            default_payment_address,
-            consensus_manager: BaseConsensusManager::builder(Network::LocalNet).build().unwrap(),
-            assigned_ports: Default::default(),
-        }
-    }
 }
 
 impl Debug for TariWorld {
@@ -178,6 +138,46 @@ pub enum NodeClient {
 }
 
 impl TariWorld {
+    pub async fn new() -> Self {
+        println!("\nWorld initialized - remove this line when called!\n");
+        let wallet_private_key = PrivateKey::random(&mut OsRng);
+        let default_payment_address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&wallet_private_key),
+            CompressedPublicKey::from_secret_key(&wallet_private_key),
+            Network::LocalNet,
+        )
+        .unwrap();
+        Self {
+            current_scenario_name: None,
+            current_feature_name: None,
+            current_base_dir: None,
+            base_nodes: Default::default(),
+            blocks: Default::default(),
+            miners: Default::default(),
+            ffi_wallets: Default::default(),
+            wallets: Default::default(),
+            balance: Default::default(),
+            view_and_spend_keys: Default::default(),
+            merge_mining_proxies: Default::default(),
+            transactions: Default::default(),
+            wallet_addresses: Default::default(),
+            utxos: Default::default(),
+            output_hash: None,
+            pre_image: None,
+            wallet_connected_to_base_node: Default::default(),
+            seed_nodes: vec![],
+            wallet_tx_ids: Default::default(),
+            errors: Default::default(),
+            last_imported_tx_ids: vec![],
+            last_merge_miner_response: Default::default(),
+            key_manager: create_memory_db_key_manager().await.unwrap(),
+            wallet_private_key,
+            default_payment_address,
+            consensus_manager: BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
+            assigned_ports: Default::default(),
+        }
+    }
+
     pub async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,

@@ -41,7 +41,7 @@ use tari_common_types::{
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::OutputFeatures};
+use tari_transaction_components::{transaction_components::OutputFeatures, MicroMinotari};
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{hex::Hex, ByteArray};
 
@@ -53,7 +53,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
@@ -382,7 +382,7 @@ pub async fn test_must_include_filter() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);
     let db = OutputManagerDatabase::new(backend);
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
 
     // Create test outputs with specific values
     let mut outputs = Vec::new();
@@ -464,7 +464,7 @@ pub async fn test_raw_custom_queries_regression() {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
@@ -649,7 +649,7 @@ pub async fn test_short_term_encumberance() {
     let db = OutputManagerDatabase::new(backend);
 
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     for i in 0..5 {
         let kmo = make_input(
             &mut OsRng,
@@ -710,7 +710,7 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
@@ -758,7 +758,7 @@ pub async fn test_mark_as_unmined() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),

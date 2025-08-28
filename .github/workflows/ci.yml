@@ -114,6 +114,62 @@ jobs:
               cargo ledger build "${ledger_target}" -- --locked
           done
 
+  wasm-build-tests:
+    name: wasm build tests
+
+    runs-on: [ubuntu-latest]
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v5
+
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+
+      - name: caching
+        if: startsWith(runner.environment,'self-hosted')
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # Use a "small" suffix to use the build caches where possible, but build caches won't use this
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
+
+      - name: wasm build tests
+        shell: bash
+        run: |
+          wasm-pack build base_layer/node_components --target web
+          wasm-pack build base_layer/common_types --target web
+          wasm-pack build base_layer/transaction_components --target web
+
   build-stable:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.

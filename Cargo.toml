@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.0.0-pre.5"
+version = "5.0.0-pre.8"
 edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
@@ -10,6 +10,7 @@ members = [
     "base_layer/core",
     "base_layer/common_types",
     "base_layer/transaction_components",
+    "base_layer/node_components",
     "base_layer/mmr",
     "base_layer/p2p",
     "base_layer/service_framework",
@@ -61,6 +62,7 @@ tari_crypto = { version = "0.22.1" }
 tari_features = { path = "common/tari_features" }
 tari_hashing = { path = "hashing" }
 tari_libtor = { path = "infrastructure/libtor" }
+tari_node_components = { path = "base_layer/node_components" }
 tari_metrics = { path = "infrastructure/metrics" }
 tari_mmr = { path = "base_layer/mmr" }
 tari_max_size = { path = "infrastructure/max_size" }

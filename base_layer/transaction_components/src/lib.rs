@@ -16,12 +16,15 @@ pub mod consensus;
 pub mod fee;
 pub mod key_manager;
 pub mod tari_amount;
+pub use tari_amount::MicroMinotari;
 pub mod tari_proof_of_work;
 pub mod test_helpers;
 pub mod transaction_builder;
 pub mod transaction_components;
 pub mod validation;
 pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
+
+pub mod rpc;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

@@ -45,7 +45,7 @@ use tari_core::{
         BlockchainDatabaseConfig,
         Validators,
     },
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
@@ -78,7 +78,7 @@ pub async fn run_recovery(
     readiness_handler: ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
-    let rules = BaseConsensusManager::builder(node_config.network)
+    let rules = BaseNodeConsensusManager::builder(node_config.network)
         .build()
         .map_err(|e| {
             error!(target: LOG_TARGET, "Error configuring consensus manager: {e}");
@@ -153,10 +153,12 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
     readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
-    let rules = BaseConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
-        error!(target: LOG_TARGET, "Error creating consensus manager: {e}");
-        anyhow!("Error creating consensus manager: {e}")
-    })?;
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+        .build()
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Error creating consensus manager: {e}");
+            anyhow!("Error creating consensus manager: {e}")
+        })?;
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),

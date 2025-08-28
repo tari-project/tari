@@ -31,7 +31,7 @@ use tari_common_types::{
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{memo_field::MemoField, WalletOutput},
+    transaction_components::{MemoField, WalletOutput},
 };
 
 use crate::output_manager_service::{

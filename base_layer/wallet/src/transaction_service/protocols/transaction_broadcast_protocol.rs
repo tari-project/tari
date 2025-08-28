@@ -31,8 +31,11 @@ use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::CompressedSignature,
 };
-use tari_core::base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason};
-use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, transaction_components::Transaction};
+use tari_transaction_components::{
+    key_manager::TransactionKeyManagerInterface,
+    rpc::models::{TxLocation, TxSubmissionRejectionReason},
+    transaction_components::Transaction,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
 

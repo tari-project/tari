@@ -22,11 +22,10 @@
 
 use tari_common_types::types::CompressedSignature;
 use tari_service_framework::{reply_channel::TrySenderService, Service};
-use tari_transaction_components::transaction_components::Transaction;
+use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 
 use crate::mempool::{
     service::{MempoolRequest, MempoolResponse},
-    FeePerGramStat,
     MempoolServiceError,
     StateResponse,
     StatsResponse,

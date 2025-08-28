@@ -160,8 +160,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     MemoryDbKeyManager,
     OutputManagerSqliteDatabase,
 ) {
-    let (publisher, subscription_factory) = pubsub_connector(100);
-    let subscription_factory = Arc::new(subscription_factory);
+    let (publisher, _) = pubsub_connector(100);
     let (comms, dht) = setup_comms_services(
         node_identity.clone(),
         peers,
@@ -234,7 +233,6 @@ async fn setup_transaction_service<P: AsRef<Path>>(
                 num_confirmations_required: 0,
                 ..Default::default()
             },
-            subscription_factory,
             ts_backend,
             node_identity.clone(),
             Network::LocalNet,
@@ -310,7 +308,7 @@ async fn setup_transaction_service_no_comms(
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);
     let transaction_service_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-    let (base_node_response_message_channel, base_node_response_receiver) = mpsc::channel(20);
+    let (base_node_response_message_channel, _) = mpsc::channel(20);
 
     task::spawn(mock_outbound_service.run());
 
@@ -348,7 +346,7 @@ async fn setup_transaction_service_no_comms(
 
     let ts_service_db = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection));
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -401,7 +399,6 @@ async fn setup_transaction_service_no_comms(
         ts_db.clone(),
         wallet_db.clone(),
         ts_request_receiver,
-        base_node_response_receiver,
         output_manager_service_handle.clone(),
         key_manager.clone(),
         outbound_message_requester,

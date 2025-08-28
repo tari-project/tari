@@ -6,23 +6,23 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
-use tari_core::{
-    base_node::rpc::models::{
-        self,
-        BlockHeader,
-        GetUtxosDeletedInfoResponse,
-        GetUtxosMinedInfoResponse,
-        SyncUtxosByBlockResponse,
-        TipInfoResponse,
-        TxQueryResponse,
-        TxSubmissionResponse,
-    },
-    mempool::FeePerGramStat,
-};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    rpc::{
+        models,
+        models::{
+            BlockHeader,
+            FeePerGramStat,
+            GetUtxosDeletedInfoResponse,
+            GetUtxosMinedInfoResponse,
+            SyncUtxosByBlockResponse,
+            TipInfoResponse,
+            TxQueryResponse,
+            TxSubmissionResponse,
+        },
+    },
     transaction_components::{Transaction, TransactionOutput},
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::{mpsc, RwLock};
@@ -211,7 +211,10 @@ impl BaseNodeWalletClient for Client {
         }
     }
 
-    async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, anyhow::Error> {
+    async fn get_utxos_by_block(
+        &self,
+        header_hash: Vec<u8>,
+    ) -> Result<tari_transaction_components::rpc::models::GetUtxosByBlockResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(
             target: LOG_TARGET,

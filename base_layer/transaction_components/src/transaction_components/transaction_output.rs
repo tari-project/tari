@@ -57,7 +57,6 @@ use super::TransactionOutputVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     helpers::borsh::SerializedSize,
-    tari_amount::MicroMinotari,
     transaction_components,
     transaction_components::{
         covenants::Covenant,
@@ -69,6 +68,7 @@ use crate::{
         TransactionInput,
         WalletOutput,
     },
+    MicroMinotari,
 };
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -587,15 +587,16 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         crypto_factories::CryptoFactories,
-        key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinotari,
-        test_helpers::{create_memory_key_manager, TestParams, UtxoTestParams},
+        key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
+        MicroMinotari,
     };
+
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroMinotari(10);
@@ -622,7 +623,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroMinotari(10);
@@ -642,7 +643,7 @@ mod test {
     #[tokio::test]
     async fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
@@ -680,7 +681,7 @@ mod test {
 
     #[tokio::test]
     async fn it_does_batch_verify_with_mixed_range_proof_types() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         let test_params = TestParams::new(&key_manager).await;
 
@@ -728,7 +729,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_revealed_value_proofs_are_blocked() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let test_params = TestParams::new(&key_manager).await;
         assert!(create_output(
             &test_params,
@@ -760,7 +761,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [

@@ -24,16 +24,15 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
-use tari_transaction_components::transaction_components::Transaction;
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 use tokio::task;
 
 use crate::{
-    blocks::Block,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
-        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
@@ -54,7 +53,11 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: BaseConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: BaseNodeConsensusManager,
+        validator: Box<dyn TransactionValidator>,
+    ) -> Self {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
         }

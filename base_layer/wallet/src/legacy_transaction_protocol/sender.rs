@@ -34,7 +34,7 @@ use tari_transaction_components::{
     tari_amount::*,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
+        MemoField,
         OutputFeatures,
         Transaction,
         TransactionKernelVersion,
@@ -44,7 +44,7 @@ use tari_transaction_components::{
     },
 };
 
-use crate::transactions::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
+use crate::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

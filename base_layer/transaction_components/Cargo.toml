@@ -29,7 +29,7 @@ borsh = { version = "1.5.7", features = ["derive"] }
 
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
-chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 
 derivative = "2.2.0"
 decimal-rs = "0.1.42"
@@ -46,6 +46,7 @@ tokio = { version = "1.44", features = ["sync"] }
 log = "0.4"
 rand = "0.8"
 serde_repr = "0.1.8"
+serde_valid = "1.0.5"
 strum = "0.22"
 strum_macros = "0.22"
 tari_crypto = { workspace = true, features = ["borsh"] }
@@ -54,10 +55,15 @@ thiserror = "1.0.26"
 serde = { version = "1.0.106", features = ["derive"] }
 blake2 = "0.10"
 zeroize = "1"
+
+utoipa = "5.3.1"
 wasm-bindgen = { version = "0.2.100", optional = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+
 [dev-dependencies]
-chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 tari_test_utils = { workspace = true }
 hex = "0.4"
 toml = "0.5.8"

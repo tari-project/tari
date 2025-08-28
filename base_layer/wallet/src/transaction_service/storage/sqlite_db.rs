@@ -56,7 +56,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
+use tari_transaction_components::{transaction_components::MemoField, MicroMinotari};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -2603,15 +2603,10 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{CompressedPublicKey, CompressedSignature, PrivateKey},
     };
-    use tari_core::transactions::legacy_transaction_protocol::{
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::script;
     use tari_test_utils::random::string;
     use tari_transaction_components::{
-        tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_builder::TransactionBuilder,
         transaction_components::{
@@ -2619,11 +2614,13 @@ mod test {
             OutputFeatures,
             Transaction,
         },
+        MicroMinotari,
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;
     use tempfile::tempdir;
 
     use crate::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         test_utils::create_consensus_constants,
         transaction_service::storage::{
@@ -2643,7 +2640,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
