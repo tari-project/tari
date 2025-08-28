@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::proof_of_work::PowAlgorithm;
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Job {

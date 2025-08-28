@@ -9,7 +9,6 @@ pub(crate) struct MultiVersionStratumStreamAdapter {}
 
 impl StratumStreamAdapter for MultiVersionStratumStreamAdapter {
     fn try_convert(line: String) -> anyhow::Result<StratumRequest> {
-        dbg!("converting line: {}", &line);
         // Try NiceHash style first
         if let Ok(request) = NiceHashStyleStatumStreamAdapter::try_convert(line.clone()) {
             Ok(request)

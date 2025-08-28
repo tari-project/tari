@@ -67,7 +67,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::crypto_factories::CryptoFactories;
+use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
 
 use crate::{
     config::{StratumServerConfig, WalletHttpServiceConfig},
@@ -253,7 +253,7 @@ where B: BlockchainBackend + 'static
         wallet_query_service_config: &WalletHttpServiceConfig,
         stratum_config: &StratumServerConfig,
         shutdown_signal: ShutdownSignal,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();

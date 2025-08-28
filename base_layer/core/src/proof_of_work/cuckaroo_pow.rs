@@ -267,7 +267,6 @@ fn generate_edges(
 
         // Use false here, to match original cuckaroo
         let edge = siphash_block(siphash_keys, *nonces.get(i).expect("Already checked"), 21);
-        dbg!(edge);
         let u = edge & node_mask;
         let v = (edge >> 32) & node_mask;
 

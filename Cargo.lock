@@ -8372,6 +8372,7 @@ dependencies = [
  "io-uring",
  "libc",
  "mio 1.0.3",
+ "parking_lot 0.12.3",
  "pin-project-lite",
  "signal-hook-registry",
  "slab",

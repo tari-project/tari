@@ -3,7 +3,7 @@ use std::{marker::PhantomData, time::Duration};
 use anyhow::Error;
 use log::{debug, info, warn};
 use serde::Serialize;
-use tari_core::{base_node::LocalNodeCommsInterface, consensus::ConsensusManager};
+use tari_core::{base_node::LocalNodeCommsInterface, consensus::BaseConsensusManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -37,7 +37,7 @@ impl TariStratumServer {
     pub async fn start(
         &self,
         shutdown: ShutdownSignal,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         local_node: LocalNodeCommsInterface,
     ) -> Result<(), Error> {
         let mem_repo = MemoryJobRepository::default();

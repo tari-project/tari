@@ -3,7 +3,7 @@ use std::{str::FromStr, vec};
 use async_trait::async_trait;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::proof_of_work::PowAlgorithm;
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
 use crate::stratum::{
     block_template_repository::{BlockTemplate, BlockTemplateRepository},

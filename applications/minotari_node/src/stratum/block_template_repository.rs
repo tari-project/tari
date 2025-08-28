@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use dashmap::DashMap;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use minotari_app_grpc::tari_rpc::{MinerData, PowAlgo};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -19,24 +19,26 @@ use tari_comms::types::CompressedSignature;
 use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::Block,
-    consensus::ConsensusManager,
-    proof_of_work::{cuckaroo_pow::pack_nonces, PowAlgorithm},
-    transactions::{
-        generate_coinbase_with_wallet_output,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            KernelBuilder,
-            RangeProofType,
-            TransactionKernel,
-            TransactionKernelVersion,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    },
+    consensus::BaseConsensusManager,
+    proof_of_work::cuckaroo_pow::pack_nonces,
     validation::tari_rx_vm_key_height,
 };
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    generate_coinbase_with_wallet_output,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    tari_amount::MicroMinotari,
+    tari_proof_of_work::PowAlgorithm,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        KernelBuilder,
+        RangeProofType,
+        TransactionKernel,
+        TransactionKernelVersion,
+    },
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tokio::select;
 
 use crate::stratum::SubmitJobQueueReceiver;
@@ -63,12 +65,12 @@ pub trait BlockTemplateRepository {
 #[derive(Clone)]
 pub struct DefaultBlockTemplateRepository {
     node_service: LocalNodeCommsInterface,
-    consensus_rules: tari_core::consensus::ConsensusManager,
+    consensus_rules: BaseConsensusManager,
     block_templates: Arc<DashMap<Vec<u8>, Block>>,
 }
 
 impl DefaultBlockTemplateRepository {
-    pub fn new(node_service: LocalNodeCommsInterface, consensus_rules: ConsensusManager) -> Self {
+    pub fn new(node_service: LocalNodeCommsInterface, consensus_rules: BaseConsensusManager) -> Self {
         Self {
             node_service,
             consensus_rules,
@@ -97,6 +99,7 @@ impl DefaultBlockTemplateRepository {
                             debug!(target: LOG_TARGET, "Found block template for job ID: {}", job.job_id);
 
                             let mut block = block.clone();
+                            info!(target: LOG_TARGET, "Submitting block at height: {} for job ID: {} algo: {}", block.header.height, job.job_id, job.pow_algo);
                             match job.pow_algo {
                               PowAlgorithm::RandomXT => {
                                 block.header.nonce = job.nonce;
@@ -107,8 +110,12 @@ impl DefaultBlockTemplateRepository {
                               PowAlgorithm::Cuckaroo => {
                                 block.header.nonce = job.nonce;
                                 block.header.pow.pow_algo = PowAlgorithm::Cuckaroo;
+                                info!(target: LOG_TARGET, "Packing nonces for Cuckaroo job ID: {} with nonces: {:?}", job.job_id, job.cuckaroo_nonces);
                                 block.header.pow.pow_data = match pack_nonces(&job.cuckaroo_nonces, 29).try_into() {
-                                  Ok(r) => r,
+                                  Ok(r) => {
+                                    info!(target: LOG_TARGET, "Packed nonces: {}", hex::encode(&r));
+                                    r
+                                },
                                   Err(e) => {
                                     warn!(target: LOG_TARGET, "Failed to pack nonces: {}", e);
                                     let _ = responder.send(Err(format!("Failed to pack nonces: {}", e)));
@@ -123,6 +130,7 @@ impl DefaultBlockTemplateRepository {
                                 continue;
                               }
                             }
+
                             let res = node_service
                                 .submit_block(block)
                                 .await
@@ -224,7 +232,7 @@ impl DefaultBlockTemplateRepository {
                 .excess
                 .to_commitment()
                 .map_err(|e| anyhow!("Failed to get commitment: {}", e))?;
-        let (spending_key_id, nonce) = (wallet_output.spending_key_id, new_nonce.key_id);
+        let (spending_key_id, nonce) = (wallet_output.commitment_mask_key_id, new_nonce.key_id);
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
             coinbase_kernel.fee,
