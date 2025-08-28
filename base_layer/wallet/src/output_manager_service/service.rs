@@ -875,7 +875,6 @@ where
 
     /// Prepare a Sender Transaction Protocol for the amount and fee_per_gram specified. If required a change output
     /// will be produced.
-    #[allow(clippy::too_many_lines)]
     pub async fn prepare_transaction_to_send(
         &mut self,
         tx_id: TxId,
