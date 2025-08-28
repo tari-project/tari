@@ -3819,18 +3819,18 @@ mod test {
         let fork_root = main_chain.get("B3").unwrap().clone();
         assert!(banked_headers
             .iter()
-            .all(|h| test.db.fetch_block_by_hash(h.hash().clone(), false).unwrap().is_some()));
+            .all(|h| test.db.fetch_block_by_hash(*h.hash(), false).unwrap().is_some()));
         test.db.rewind_to_height(fork_root.height()).unwrap();
         test.db.cleanup_all_orphans().unwrap();
         assert!(banked_headers
             .iter()
-            .all(|h| test.db.fetch_block_by_hash(h.hash().clone(), false).unwrap().is_none()));
+            .all(|h| test.db.fetch_block_by_hash(*h.hash(), false).unwrap().is_none()));
 
         // 5. Add banked headers back in (headers only)
         test.db.insert_valid_headers(banked_headers.clone()).unwrap();
         assert!(banked_headers
             .iter()
-            .all(|h| test.db.fetch_header_by_block_hash(h.hash().clone()).unwrap().is_some()));
+            .all(|h| test.db.fetch_header_by_block_hash(*h.hash()).unwrap().is_some()));
 
         // 6. Create a new block that builds on the fork root (propagated block)
         let (_, reorg_chain) = create_chained_blocks(&test.db, block_specs!(["newB->GB"]), fork_root).await;
@@ -3844,7 +3844,7 @@ mod test {
         assert!(test.db.fetch_block_by_hash(new_block.hash(), false).unwrap().is_some());
         assert!(banked_headers
             .iter()
-            .all(|h| test.db.fetch_header_by_block_hash(h.hash().clone()).unwrap().is_none()));
+            .all(|h| test.db.fetch_header_by_block_hash(*h.hash()).unwrap().is_none()));
     }
 
     #[ignore]
