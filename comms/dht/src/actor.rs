@@ -778,7 +778,7 @@ impl DhtActor {
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<NodeId>, DhtActorError> {
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.

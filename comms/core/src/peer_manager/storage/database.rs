@@ -1120,7 +1120,7 @@ impl PeerDatabaseSql {
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
         let protocols_prefixes = transport_protocols
@@ -1130,7 +1130,7 @@ impl PeerDatabaseSql {
         let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
             None;
 
-        for prefix in protocols_prefixes.iter() {
+        for prefix in &protocols_prefixes {
             let like_pattern = format!("{}%", prefix);
             let condition = multi_addresses::address.like(like_pattern);
 
@@ -1411,7 +1411,7 @@ impl PeerDatabaseSql {
         at_least_one_external_addresses: bool,
         n: Option<usize>,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<String>, StorageError> {
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
 
@@ -1422,7 +1422,7 @@ impl PeerDatabaseSql {
         let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
             None;
 
-        for prefix in protocols_prefixes.iter() {
+        for prefix in &protocols_prefixes {
             let like_pattern = format!("{}%", prefix);
             let condition = multi_addresses::address.like(like_pattern);
 
@@ -1518,7 +1518,7 @@ impl PeerDatabaseSql {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1574,7 +1574,7 @@ impl PeerDatabaseSql {
         peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         external_addresses_only: bool,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1608,7 +1608,7 @@ impl PeerDatabaseSql {
         n: usize,
         exclude_node_ids: &[NodeId],
         peer_flags: Option<PeerFlags>,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1624,7 +1624,7 @@ impl PeerDatabaseSql {
         let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
             None;
 
-        for prefix in protocols_prefixes.iter() {
+        for prefix in &protocols_prefixes {
             let like_pattern = format!("{}%", prefix);
             let condition = multi_addresses::address.like(like_pattern);
 
@@ -2105,7 +2105,7 @@ mod tests {
         assert_eq!(nodes_with_all_addresses.len(), 40);
 
         let nodes_with_onion_addresses = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, false, &vec![TransportProtocol::Onion])
+            .get_n_random_active_peers(100, &[], None, None, None, false, &[TransportProtocol::Onion])
             .unwrap();
         assert!(nodes_with_onion_addresses.is_empty());
 
@@ -2122,7 +2122,7 @@ mod tests {
         let onion_peer = create_test_peer_with_onion_address(false, PeerFeatures::COMMUNICATION_NODE);
         peers_db.add_or_update_peer(onion_peer).unwrap();
         let node_with_onion_addresses = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, false, &vec![TransportProtocol::Onion])
+            .get_n_random_active_peers(100, &[], None, None, None, false, &[TransportProtocol::Onion])
             .unwrap();
         assert_eq!(node_with_onion_addresses.len(), 1);
     }
@@ -2251,7 +2251,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2267,7 +2267,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2283,7 +2283,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2300,7 +2300,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2340,7 +2340,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 12);
@@ -2357,7 +2357,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 4);
@@ -2375,7 +2375,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes[0].flags, PeerFlags::SEED);
@@ -2392,7 +2392,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 8);
@@ -2410,7 +2410,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes[0].flags, PeerFlags::NONE);
@@ -2596,7 +2596,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2632,7 +2632,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2671,7 +2671,7 @@ mod tests {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2947,7 +2947,7 @@ mod tests {
 
         // Assert that retrieved peers have internal and external addresses
         let nodes_with_all_addresses = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, false, &vec![])
+            .get_n_random_active_peers(100, &[], None, None, None, false, &[])
             .unwrap();
         assert_eq!(nodes_with_all_addresses.len(), 40);
         // - Has external address
@@ -2970,7 +2970,7 @@ mod tests {
 
         // Assert that retrieved peers have external addresses only
         let nodes_with_external_addresses_only = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, true, &vec![])
+            .get_n_random_active_peers(100, &[], None, None, None, true, &[])
             .unwrap();
         assert_eq!(nodes_with_external_addresses_only.len(), 40);
         // - Has external address only

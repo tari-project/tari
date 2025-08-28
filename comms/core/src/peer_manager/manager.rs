@@ -152,7 +152,7 @@ impl PeerManager {
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
             .get_available_dial_candidates(exclude_node_ids, limit, transport_protocols)
@@ -170,7 +170,7 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.discovery_syncing(
             n,
@@ -234,7 +234,7 @@ impl PeerManager {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.closest_n_active_peers(
             region_node_id,
@@ -265,7 +265,7 @@ impl PeerManager {
         n: usize,
         excluded: &[NodeId],
         flags: Option<PeerFlags>,
-        transport_protocols: &Vec<TransportProtocol>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
             .random_peers(n, excluded, flags, transport_protocols)
@@ -434,7 +434,7 @@ fn random_onion3_host() -> String {
 
     const LEN: usize = 56;
     // RFC4648 base32 alphabet as used by onion v3 (lowercase).
-    const B32: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
+    const B32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
 
     let mut rng = rand::thread_rng();
     let dist = Uniform::from(0..B32.len());
@@ -444,7 +444,7 @@ fn random_onion3_host() -> String {
         use rand::Rng;
 
         let idx = rng.sample(dist);
-        s.push(B32[idx] as char);
+        s.push(*B32.get(idx).expect("Index out of bounds") as char);
     }
     s
 }
@@ -680,7 +680,7 @@ mod test {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .await
             .unwrap();
@@ -717,7 +717,7 @@ mod test {
                 true,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .await
             .unwrap();
@@ -938,7 +938,7 @@ mod test {
                             false,
                             None,
                             false,
-                            &vec![],
+                            &[],
                         )
                         .await
                         .unwrap();
@@ -975,7 +975,7 @@ mod test {
                 false,
                 None,
                 false,
-                &vec![],
+                &[],
             )
             .await
             .unwrap();

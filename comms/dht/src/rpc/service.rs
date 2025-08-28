@@ -167,7 +167,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
                 true,
                 None,
                 true,
-                &vec![],
+                &[],
             )
             .await
             .map_err(RpcError::from)?;
@@ -209,7 +209,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
 
         let peers = self
             .peer_manager
-            .discovery_syncing(message.n as usize, &excluded_peers, features, true, &vec![])
+            .discovery_syncing(message.n as usize, &excluded_peers, features, true, &[])
             .await
             .map_err(RpcError::from)?;
 
