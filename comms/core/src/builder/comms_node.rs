@@ -160,6 +160,7 @@ impl UnspawnedCommsNode {
             connection_manager: connection_manager_requester.clone(),
             node_identity: node_identity.clone(),
             peer_manager: peer_manager.clone(),
+            transport_protocols: transport.supported_protocols(),
             shutdown_signal: shutdown_signal.clone(),
         };
 

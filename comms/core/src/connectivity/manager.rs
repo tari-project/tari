@@ -55,6 +55,7 @@ use crate::{
         ConnectionManagerRequester,
     },
     peer_manager::NodeId,
+    types::TransportProtocol,
     utils::datetime::format_duration,
     Minimized,
     NodeIdentity,
@@ -89,6 +90,7 @@ pub struct ConnectivityManager {
     pub peer_manager: Arc<PeerManager>,
     pub node_identity: Arc<NodeIdentity>,
     pub shutdown_signal: ShutdownSignal,
+    pub transport_protocols: Vec<TransportProtocol>,
 }
 
 impl ConnectivityManager {
@@ -98,6 +100,7 @@ impl ConnectivityManager {
             self.connection_manager.clone(),
             self.peer_manager.clone(),
             self.node_identity.clone(),
+            self.transport_protocols.clone(),
         );
 
         ConnectivityManagerActor {

@@ -29,8 +29,15 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        peer::Peer, peer_id::PeerId, peer_storage_sql::PeerStorageSql, NodeDistance, NodeId, PeerFeatures, PeerFlags,
-        PeerManagerError, ThisPeerIdentity,
+        peer::Peer,
+        peer_id::PeerId,
+        peer_storage_sql::PeerStorageSql,
+        NodeDistance,
+        NodeId,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
+        ThisPeerIdentity,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
@@ -139,15 +146,16 @@ impl PeerManager {
         self.peer_storage_sql.all(features)
     }
 
-    /// Get available dial candidates that are communication nodes, not banned, not deleted,
+    /// Get available dial candidates that are communication nodes, not banned, not deleted, reachable
     /// and not in the excluded node IDs list
     pub async fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
-            .get_available_dial_candidates(exclude_node_ids, limit)
+            .get_available_dial_candidates(exclude_node_ids, limit, transport_protocols)
     }
 
     /// Return "good" peers for syncing

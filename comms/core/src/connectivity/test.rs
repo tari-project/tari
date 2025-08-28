@@ -45,6 +45,7 @@ use crate::{
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
         node_identity::{build_many_node_identities, build_node_identity},
     },
+    types::TransportProtocol,
     Minimized,
     NodeIdentity,
     PeerManager,
@@ -78,6 +79,7 @@ fn setup_connectivity_manager(
         node_identity: node_identity.clone(),
         connection_manager: cm_requester,
         peer_manager: peer_manager.clone(),
+        transport_protocols: TransportProtocol::get_all(),
         shutdown_signal: shutdown.to_signal(),
     }
     .spawn();

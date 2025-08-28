@@ -31,7 +31,11 @@ use crate::{
         database::{PeerDatabaseSql, ThisPeerIdentity},
         peer::Peer,
         peer_id::PeerId,
-        NodeDistance, NodeId, PeerFeatures, PeerFlags, PeerManagerError,
+        NodeDistance,
+        NodeId,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
@@ -220,14 +224,17 @@ impl PeerStorageSql {
             .get_n_not_banned_or_deleted_peers(PEER_MANAGER_SYNC_PEERS)?)
     }
 
-    /// Get available dial candidates that are communication nodes, not banned, not deleted,
+    /// Get available dial candidates that are communication nodes, not banned, not deleted, reachable,
     /// and not in the excluded node IDs list
     pub fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.get_available_dial_candidates(exclude_node_ids, limit)?)
+        Ok(self
+            .peer_db
+            .get_available_dial_candidates(exclude_node_ids, limit, transport_protocols)?)
     }
 
     /// Compile a list of closest `n` active peers

@@ -609,7 +609,7 @@ where
             .into_iter()
             .filter(|protocol| *protocol != TransportProtocol::Ipv6 || !exclude_ipv6)
             .collect();
-        debug!(target: LOG_TARGET, "[DEBUG] Supported transport protocols: {:?}", supported_transport_protocols);
+        trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
         let addresses = dial_state
             .peer()
@@ -623,7 +623,6 @@ where
             })
             .cloned()
             .collect::<Vec<_>>();
-        debug!(target: LOG_TARGET, "[DEBUG] Addresses to dial: {:?}", addresses);
 
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
