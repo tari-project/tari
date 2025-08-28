@@ -97,6 +97,7 @@ config = { version = "0.14.0" }
 tempfile = "3.1.0"
 quickcheck = "1.0"
 serial_test = "0.5"
+env_logger = "0.7.1"
 
 [build-dependencies]
 tari_common = { workspace = true, features = ["build"] }

@@ -2366,7 +2366,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
-    // Mote: This will also remove ay surplus headers (i.e. headers that are not linked to any blocks)
+    // Note: This will also remove ay surplus headers (i.e. headers that are not linked to any blocks)
     let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
     let num_removed_blocks = removed_blocks.len();
 
@@ -3789,6 +3789,65 @@ mod test {
 
         assert_added_hashes_eq(&result[4], vec!["C2", "D2"], &blocks);
         assert_target_difficulties_eq(&result[4], vec![19, 24]);
+    }
+
+    #[tokio::test]
+    async fn test_handle_possible_reorg_banked_headers_not_aligned_with_propagated_block() {
+        // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
+        // 1. Setup test harness and blockchain
+        let test = TestHarness::setup();
+
+        // 2. Create a chain: B1 -> B2 -> B3 -> H4 -> H5 (full blocks)
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(
+                ["B1->GB"],
+                ["B2->B1"],
+                ["B3->B2"],
+                ["H4->B3"],
+                ["H5->H4"],
+                ["H6->H5"],
+                ["H7->H6"]
+            ),
+        )
+        .await;
+
+        // 3. Collect headers to "bank" (H4, H5, H6, H7)
+        let banked_headers: Vec<_> = ["H4".to_string(), "H5".to_string(), "H6".to_string(), "H7".to_string()]
+            .iter()
+            .map(|n| main_chain.get(&n.clone()).unwrap().to_chain_header())
+            .collect();
+
+        // 4. Rewind to height 3 (removes H4, H5, H6, H7)
+        let fork_root = main_chain.get("B3").unwrap().clone();
+        assert!(banked_headers
+            .iter()
+            .all(|h| test.db.fetch_block_by_hash(h.hash().clone(), false).unwrap().is_some()));
+        test.db.rewind_to_height(fork_root.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        assert!(banked_headers
+            .iter()
+            .all(|h| test.db.fetch_block_by_hash(h.hash().clone(), false).unwrap().is_none()));
+
+        // 5. Add banked headers back in (headers only)
+        test.db.insert_valid_headers(banked_headers.clone()).unwrap();
+        assert!(banked_headers
+            .iter()
+            .all(|h| test.db.fetch_header_by_block_hash(h.hash().clone()).unwrap().is_some()));
+
+        // 6. Create a new block that builds on the fork root (propagated block)
+        let (_, reorg_chain) = create_chained_blocks(&test.db, block_specs!(["newB->GB"]), fork_root).await;
+        let new_block = reorg_chain.get("newB").unwrap().clone().to_arc_block();
+
+        // 7/ Reorg the blockchain to add the new block back in
+        let result = test.handle_possible_reorg(new_block.clone());
+
+        // 8. Assert that the new propagated block is in the db and banked headers are removed
+        assert!(result.is_ok());
+        assert!(test.db.fetch_block_by_hash(new_block.hash(), false).unwrap().is_some());
+        assert!(banked_headers
+            .iter()
+            .all(|h| test.db.fetch_header_by_block_hash(h.hash().clone()).unwrap().is_none()));
     }
 
     #[ignore]
