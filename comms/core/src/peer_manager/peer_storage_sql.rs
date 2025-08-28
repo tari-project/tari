@@ -31,11 +31,7 @@ use crate::{
         database::{PeerDatabaseSql, ThisPeerIdentity},
         peer::Peer,
         peer_id::PeerId,
-        NodeDistance,
-        NodeId,
-        PeerFeatures,
-        PeerFlags,
-        PeerManagerError,
+        NodeDistance, NodeId, PeerFeatures, PeerFlags, PeerManagerError,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
@@ -277,7 +273,7 @@ impl PeerStorageSql {
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self
             .peer_db
-            .get_n_random_peers_by_transport_protocols(n, exclude_peers, flags, transport_protocols)?)
+            .get_n_random_peers(n, exclude_peers, flags, transport_protocols)?)
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.

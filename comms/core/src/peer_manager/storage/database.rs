@@ -28,10 +28,7 @@ use diesel::{
     self,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
-    ExpressionMethods,
-    QueryDsl,
-    RunQueryDsl,
-    SqliteConnection,
+    ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection,
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use log::{trace, warn};
@@ -45,12 +42,7 @@ use crate::{
         generate_peer_id_as_i64,
         peer_id::peer_id_from_i64,
         storage::schema::{multi_addresses, node_identity, peers},
-        NodeDistance,
-        NodeId,
-        Peer,
-        PeerFeatures,
-        PeerFlags,
-        PeerId,
+        NodeDistance, NodeId, Peer, PeerFeatures, PeerFlags, PeerId,
     },
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
@@ -107,10 +99,10 @@ impl PeerDatabaseSql {
                 )));
             }
             if !node_identity_indexes.is_empty() {
-                if self.this_peer_identity.public_key.to_hex() ==
-                    node_identity_indexes.first().expect("already checked").public_key &&
-                    self.this_peer_identity.node_id.to_hex() ==
-                        node_identity_indexes.first().expect("already checked").node_id
+                if self.this_peer_identity.public_key.to_hex()
+                    == node_identity_indexes.first().expect("already checked").public_key
+                    && self.this_peer_identity.node_id.to_hex()
+                        == node_identity_indexes.first().expect("already checked").node_id
                 {
                     return Ok(());
                 } else {
@@ -1582,7 +1574,7 @@ impl PeerDatabaseSql {
 
     /// Get a random set of `n` peers from the database that are not banned and not deleted and have at least one
     /// external address
-    pub fn get_n_random_peers_by_transport_protocols(
+    pub fn get_n_random_peers(
         &self,
         n: usize,
         exclude_node_ids: &[NodeId],
@@ -1950,18 +1942,14 @@ mod tests {
     use crate::{
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
-            create_test_peer,
-            create_test_peer_add_internal_addresses,
-            create_test_peer_internal_addresses_only,
+            create_test_peer, create_test_peer_add_internal_addresses, create_test_peer_internal_addresses_only,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
+            manager::create_test_peer_with_onion_address,
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
                 schema::{multi_addresses, peers},
             },
-            NodeId,
-            Peer,
-            PeerFeatures,
-            PeerFlags,
+            NodeId, Peer, PeerFeatures, PeerFlags,
         },
         protocol::ProtocolId,
         types::{CommsPublicKey, TransportProtocol},
@@ -2055,6 +2043,54 @@ mod tests {
         // Verify that the addresses can be retrieved from the db by node_id
         let addresses_from_db = peers_db.get_addresses(&new_peer.node_id).unwrap();
         assert_eq!(addresses_from_db, new_peer.addresses);
+    }
+
+    #[test]
+    fn test_filtering_peers_by_transport_protocols() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+        let transport_protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6];
+
+        // Create new node and wallet peers with internal and external addresses
+        for _i in 0..20 {
+            let peer = create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_NODE);
+            peers_db.add_or_update_peer(peer).unwrap();
+            let peer = create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_CLIENT);
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        assert_eq!(peers_db.size(), 40);
+
+        // Assert that retrieved peers have internal and external addresses
+        let nodes_with_all_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false, &transport_protocols)
+            .unwrap();
+        assert_eq!(nodes_with_all_addresses.len(), 40);
+
+        let nodes_with_onion_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false, &vec![TransportProtocol::Onion])
+            .unwrap();
+        assert!(nodes_with_onion_addresses.is_empty());
+
+        // - Has external address
+        assert!(nodes_with_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
+        // - Has internal address
+        assert!(nodes_with_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+
+        // Add peer with onion addresses only
+        let onion_peer = create_test_peer_with_onion_address(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(onion_peer).unwrap();
+        let node_with_onion_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false, &vec![TransportProtocol::Onion])
+            .unwrap();
+        assert_eq!(node_with_onion_addresses.len(), 1);
     }
 
     #[ignore]
@@ -2347,33 +2383,33 @@ mod tests {
 
         // All peers as random
         let random_peers = peers_db
-            .get_n_random_peers_by_transport_protocols(12, &[], None, &transport_protocols)
+            .get_n_random_peers(12, &[], None, &transport_protocols)
             .unwrap();
         assert_eq!(random_peers.len(), 12);
 
         // All seed peers only as random
         let random_peers = peers_db
-            .get_n_random_peers_by_transport_protocols(12, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .get_n_random_peers(12, &[], Some(PeerFlags::SEED), &transport_protocols)
             .unwrap();
         assert_eq!(random_peers.len(), 4);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::SEED));
 
         // One seed peer as random
         let random_peers = peers_db
-            .get_n_random_peers_by_transport_protocols(1, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .get_n_random_peers(1, &[], Some(PeerFlags::SEED), &transport_protocols)
             .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::SEED);
 
         // All normal peers only as random
         let random_peers = peers_db
-            .get_n_random_peers_by_transport_protocols(12, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .get_n_random_peers(12, &[], Some(PeerFlags::NONE), &transport_protocols)
             .unwrap();
         assert_eq!(random_peers.len(), 8);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::NONE));
 
         // One normal peer as random
         let random_peers = peers_db
-            .get_n_random_peers_by_transport_protocols(1, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .get_n_random_peers(1, &[], Some(PeerFlags::NONE), &transport_protocols)
             .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::NONE);
     }
@@ -2483,8 +2519,8 @@ mod tests {
             .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id));
 
         // Test 'set_last_seen'
-        let last_seen = chrono::Utc::now().naive_utc() -
-            chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
+        let last_seen = chrono::Utc::now().naive_utc()
+            - chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
         for address in node_peers[8].addresses.addresses() {
             peers_db
                 .set_last_seen(&node_peers[8].node_id, last_seen, address.address())
@@ -2545,8 +2581,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_nodes.len() - 1 {
             assert!(
-                closest_nodes[i].node_id.distance(&node_peers[5].node_id) <=
-                    closest_nodes[i + 1].node_id.distance(&node_peers[5].node_id)
+                closest_nodes[i].node_id.distance(&node_peers[5].node_id)
+                    <= closest_nodes[i + 1].node_id.distance(&node_peers[5].node_id)
             );
         }
 
@@ -2584,8 +2620,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
-                closest_peers[i].node_id.distance(&node_peers[5].node_id) <=
-                    closest_peers[i + 1].node_id.distance(&node_peers[5].node_id)
+                closest_peers[i].node_id.distance(&node_peers[5].node_id)
+                    <= closest_peers[i + 1].node_id.distance(&node_peers[5].node_id)
             );
         }
 
@@ -2620,8 +2656,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
-                closest_peers[i].node_id.distance(&wallet_peers[5].node_id) <=
-                    closest_peers[i + 1].node_id.distance(&wallet_peers[5].node_id)
+                closest_peers[i].node_id.distance(&wallet_peers[5].node_id)
+                    <= closest_peers[i + 1].node_id.distance(&wallet_peers[5].node_id)
             );
         }
 
@@ -2634,7 +2670,7 @@ mod tests {
 
         // Test 'random_peers_sqlite'
         let random_peers = peers_db
-            .get_n_random_peers_by_transport_protocols(5, &[node_peers[0].node_id.clone()], None, &transport_protocols)
+            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None, &transport_protocols)
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned

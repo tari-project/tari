@@ -29,15 +29,8 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        peer::Peer,
-        peer_id::PeerId,
-        peer_storage_sql::PeerStorageSql,
-        NodeDistance,
-        NodeId,
-        PeerFeatures,
-        PeerFlags,
-        PeerManagerError,
-        ThisPeerIdentity,
+        peer::Peer, peer_id::PeerId, peer_storage_sql::PeerStorageSql, NodeDistance, NodeId, PeerFeatures, PeerFlags,
+        PeerManagerError, ThisPeerIdentity,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
@@ -403,6 +396,71 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
             .parse::<Multiaddr>()
             .unwrap();
         net_addresses.add_address(&net_address, &PeerAddressSource::Config);
+    }
+
+    let mut peer = Peer::new(
+        pk,
+        node_id,
+        net_addresses,
+        PeerFlags::default(),
+        features,
+        Default::default(),
+        Default::default(),
+    );
+    if ban_flag {
+        peer.ban_for(Duration::from_secs(1000), "".to_string());
+    }
+
+    let good_addresses = peer.addresses.borrow_mut();
+    let good_address = good_addresses.addresses().first().unwrap().address().clone();
+    good_addresses.mark_last_seen_now(&good_address);
+
+    peer
+}
+
+/// Generate a random, syntactically valid Tor v3 onion hostname:
+///  - 56 chars, base32 alphabet [a-z2-7], lowercase.
+#[cfg(test)]
+fn random_onion3_host() -> String {
+    use rand::distributions::Uniform;
+
+    const LEN: usize = 56;
+    // RFC4648 base32 alphabet as used by onion v3 (lowercase).
+    const B32: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
+
+    let mut rng = rand::thread_rng();
+    let dist = Uniform::from(0..B32.len());
+
+    let mut s = String::with_capacity(LEN);
+    for _ in 0..LEN {
+        use rand::Rng;
+
+        let idx = rng.sample(dist);
+        s.push(B32[idx] as char);
+    }
+    s
+}
+
+#[cfg(test)]
+pub fn create_test_peer_with_onion_address(ban_flag: bool, features: PeerFeatures) -> Peer {
+    use std::borrow::BorrowMut;
+
+    use rand::{rngs::OsRng, Rng};
+
+    use crate::peer_manager::PeerFlags;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let node_id = NodeId::from_key(&pk);
+    let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
+
+    // Create 1 to 4 random onion addresses
+    for _i in 1..=rand::thread_rng().gen_range(1..4) {
+        use std::str::FromStr;
+
+        let host = random_onion3_host();
+        let port = rand::thread_rng().gen_range(1024..=65535);
+        let addr_str = format!("/onion3/{}:{}", host, port);
+        let maddr = Multiaddr::from_str(&addr_str).expect("valid onion3 multiaddr");
+        net_addresses.add_address(&maddr, &PeerAddressSource::Config);
     }
 
     let mut peer = Peer::new(
