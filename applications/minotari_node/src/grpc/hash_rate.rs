@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::VecDeque;
-use minotari_app_grpc::tari_rpc;
+use std::{cmp::max, collections::VecDeque};
 
+use minotari_app_grpc::tari_rpc;
 use tari_core::consensus::BaseNodeConsensusManager;
 use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
@@ -211,7 +211,7 @@ mod test {
         constants.set_pow_target_block_interval(PowAlgorithm::RandomXM, 100);
         constants.set_pow_target_block_interval(PowAlgorithm::RandomXT, 100);
         constants.set_pow_target_block_interval(PowAlgorithm::Cuckaroo, 100);
-        let consensus_manager = BaseConsensusManagerBuilder::new(Network::Esmeralda)
+        let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(constants)
             .build()
             .unwrap();
