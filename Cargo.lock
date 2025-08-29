@@ -7676,6 +7676,7 @@ dependencies = [
  "criterion 0.4.0",
  "digest",
  "dirs-next 1.0.2",
+ "env_logger 0.7.1",
  "fs2",
  "futures 0.3.31",
  "hex",
