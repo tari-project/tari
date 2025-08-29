@@ -1106,8 +1106,89 @@ service Wallet {
     option deprecated = true;
   }
 
-  // Get all completed transactions including cancelled ones, sorted by timestamp and paginated (streaming version)
-  // Recommended: Use this streaming version for better performance and progressive loading
+  // Streams previously completed wallet transactions to the client.
+  //
+  // The `GetAllCompletedTransactionsStream` RPC provides a paginated, filtered stream of previously completed transactions
+  // from the wallet database. Unlike real-time event streaming, this RPC allows clients to retrieve historical transaction
+  // data using offset, limit, and optional status-based filtering.
+  //
+  // This is ideal for applications that need to display a transaction history, perform analytics, or resume from a known offset.
+  //
+  // ### Request Parameters:
+  // - **offset** (uint64): The starting index in the list of completed transactions.
+  // - **limit** (uint64): Maximum number of transactions to return. Capped at 50 per request.
+  // - **status_bitflag** (uint64): Optional bitflag to filter transactions by status (e.g., mined, cancelled).
+  //
+  // ### Response Stream:
+  // - Each message in the response stream is a `GetCompletedTransactionsResponse` containing:
+  //   - **transaction**: A `TransactionInfo` object representing a completed wallet transaction.
+  //
+  // ### `TransactionInfo` Fields:
+  // - **tx_id** (uint64): Unique transaction identifier.
+  // - **source_address** (bytes): Sender address.
+  // - **dest_address** (bytes): Recipient address.
+  // - **status** (enum): Status of the transaction (`Completed`, `Mined`, `Cancelled`, etc.).
+  // - **direction** (enum): `"Inbound"` or `"Outbound"`.
+  // - **amount** (uint64): Transaction amount in microTari.
+  // - **fee** (uint64): Transaction fee in microTari.
+  // - **is_cancelled** (bool): Whether the transaction was cancelled.
+  // - **excess_sig** (bytes): Signature of the transaction kernel excess.
+  // - **timestamp** (uint64): UNIX timestamp of the transaction creation time.
+  // - **raw_payment_id** (bytes): Raw payment ID used in the transaction.
+  // - **user_payment_id** (bytes): User-visible payment ID, if applicable.
+  // - **mined_in_block_height** (uint64): Block height where the transaction was mined. Zero if not mined.
+  // - **input_commitments** (repeated bytes): Commitments for transaction inputs.
+  // - **output_commitments** (repeated bytes): Commitments for transaction outputs.
+  // - **payment_references_sent** (repeated bytes): Metadata references associated with sent outputs.
+  // - **payment_references_received** (repeated bytes): Metadata references associated with received outputs.
+  // - **payment_references_change** (repeated bytes): Metadata references associated with change outputs.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const call = client.getAllCompletedTransactionsStream({
+  //   offset: 0,
+  //   limit: 20,
+  //   status_bitflag: 0
+  // });
+  //
+  // call.on("data", (response) => {
+  //   console.log("Completed Transaction:", response.transaction);
+  // });
+  //
+  // call.on("end", () => {
+  //   console.log("Stream ended.");
+  // });
+  //
+  // call.on("error", (err) => {
+  //   console.error("Stream error:", err);
+  // });
+  // ```
+  //
+  // ### Sample JSON Streamed Response:
+  // ```json
+  // {
+  //   "transaction": {
+  //     "tx_id": 103248,
+  //     "source_address": "0xabc123...",
+  //     "dest_address": "0xdef456...",
+  //     "status": "Completed",
+  //     "direction": "Outbound",
+  //     "amount": 100000000,
+  //     "fee": 200000,
+  //     "is_cancelled": false,
+  //     "excess_sig": "0x...",
+  //     "timestamp": 1670000000,
+  //     "raw_payment_id": "0xdeadbeef...",
+  //     "user_payment_id": "0xdeadbeef...",
+  //     "mined_in_block_height": 202000,
+  //     "input_commitments": ["0x...", "0x..."],
+  //     "output_commitments": ["0x...", "0x..."],
+  //     "payment_references_sent": ["0x...", "0x..."],
+  //     "payment_references_received": [],
+  //     "payment_references_change": []
+  //   }
+  // }
+  // ```
   rpc GetAllCompletedTransactionsStream(GetAllCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
 
   // Gets transaction information by payment reference (PayRef)

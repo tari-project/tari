@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-rc.0](https://github.com/tari-project/tari/compare/v5.0.0-pre.8...v5.0.0-rc.0) (2025-08-29)
+
+
+### Bug Fixes
+
+* ffi build .h file ([#7452](https://github.com/tari-project/tari/issues/7452)) ([e534e12](https://github.com/tari-project/tari/commit/e534e12dda904981b94fc6466a46fd6e892723c9))
+* unwrap when sending readiness status ([#7449](https://github.com/tari-project/tari/issues/7449)) ([1d28d2b](https://github.com/tari-project/tari/commit/1d28d2bebb1d8a3f99c49f107e462d4a15ff59a9))
+
 ## [5.0.0-pre.8](https://github.com/tari-project/tari/compare/v5.0.0-pre.7...v5.0.0-pre.8) (2025-08-27)
 
 

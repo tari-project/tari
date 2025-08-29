@@ -58,7 +58,7 @@ impl ReadinessStatusHandler {
             status: Some(ReadinessStatusEnum::State(status_state.into())),
             timestamp: Utc::now().timestamp_millis() as u64,
         };
-        self.readiness_tx.send(status).unwrap();
+        let _unused = self.readiness_tx.send(status);
     }
 }
 
