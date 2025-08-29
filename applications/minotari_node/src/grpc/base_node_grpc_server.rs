@@ -531,7 +531,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
-                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                const MULTIPLIER: u64 = 10_000;
+                let estimated_hash_rate_scaled = target_difficulty
+                    .as_u64()
+                    .saturating_mul(MULTIPLIER)
+                    .checked_div(target_time)
+                    .unwrap_or(0);
+                let estimated_hash_rate = tari_rpc::DecimalValue {
+                    units: i64::try_from(estimated_hash_rate_scaled / MULTIPLIER).unwrap_or(i64::MAX),
+                    nanos: i32::try_from(estimated_hash_rate_scaled % MULTIPLIER).unwrap_or(i32::MAX),
+                };
                 self.data_cache
                     .set_cuckaroo_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
@@ -562,12 +571,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         trace!(
             target: LOG_TARGET,
-            "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
+            "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}.{}",
             metadata.best_block_height(),
             sha3x_estimated_hash_rate,
             monero_randomx_estimated_hash_rate,
             tari_randomx_estimated_hash_rate,
-            cuckaroo_estimated_hash_rate,
+            cuckaroo_estimated_hash_rate.units,
+            cuckaroo_estimated_hash_rate.nanos,
         );
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
@@ -578,7 +588,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             sha3x_estimated_hash_rate,
             monero_randomx_estimated_hash_rate,
             tari_randomx_estimated_hash_rate,
-            cuckaroo_estimated_hash_rate,
+            cuckaroo_estimated_hash_rate: Some(cuckaroo_estimated_hash_rate),
             num_connections: connected_peers.len() as u64,
             liveness_results: liveness,
             readiness_status: Some(ReadinessStatus {
