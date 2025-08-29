@@ -27,6 +27,10 @@ use tari_core::consensus::BaseNodeConsensusManager;
 use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
 const HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
+// Number of nanos in one unit number
+pub const NANOS_PER_UNIT: u64 = 1_000_000_000;
+// Maximum number of nanos we choose to represented in a decimal
+pub const MAX_NANOS_PER_DECIMAL: u32 = 999_999_999;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
@@ -94,10 +98,14 @@ impl HashRateMovingAverage {
         self.average / self.scaling
     }
 
-    pub fn average_as_decimal(&self) -> tari_rpc::DecimalValue {
-        tari_rpc::DecimalValue {
-            units: i64::try_from(self.average / self.scaling).unwrap_or(i64::MAX),
-            nanos: i32::try_from(self.average % self.scaling).unwrap_or(i32::MAX),
+    pub fn u_decimal_average(&self) -> tari_rpc::UDecimalValue {
+        HashRateMovingAverage::average_as_u_decimal(self.average, self.scaling)
+    }
+
+    pub fn average_as_u_decimal(average: u64, scaling: u64) -> tari_rpc::UDecimalValue {
+        tari_rpc::UDecimalValue {
+            units: average / scaling,
+            nanos: u32::try_from((average % scaling) * NANOS_PER_UNIT / scaling).unwrap_or(MAX_NANOS_PER_DECIMAL),
         }
     }
 }
@@ -239,17 +247,82 @@ mod test {
         assert_eq!(c29_hash_rate_ma.average(), 0);
 
         // Check decimal output
-        let decimal = sha_hash_rate_ma.average_as_decimal();
+        let decimal = sha_hash_rate_ma.u_decimal_average();
         assert_eq!(decimal.units, 516);
         assert_eq!(decimal.nanos, 0);
-        let decimal = rxm_hash_rate_ma.average_as_decimal();
+        let decimal = rxm_hash_rate_ma.u_decimal_average();
         assert_eq!(decimal.units, 51);
         assert_eq!(decimal.nanos, 0);
-        let decimal = rxt_hash_rate_ma.average_as_decimal();
+        let decimal = rxt_hash_rate_ma.u_decimal_average();
         assert_eq!(decimal.units, 5);
-        assert_eq!(decimal.nanos, 17);
-        let decimal = c29_hash_rate_ma.average_as_decimal();
+        assert_eq!(decimal.nanos, 170000000);
+        let decimal = c29_hash_rate_ma.u_decimal_average();
         assert_eq!(decimal.units, 0);
-        assert_eq!(decimal.nanos, 616);
+        assert_eq!(decimal.nanos, 61600000);
+    }
+
+    #[test]
+    fn conversion_to_average_as_u_decimal_is_applied_correctly() {
+        use super::HashRateMovingAverage;
+
+        // Case 1: average = 0, scaling = 1
+        let dec = HashRateMovingAverage::average_as_u_decimal(0, 1);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 0);
+
+        // Case 2: average = scaling (should be 1 unit, 0 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(10_000, 10_000);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 0);
+
+        // Case 3: average = half scaling (should be 0 units, 500_000_000 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(5_000, 10_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 500_000_000);
+
+        // Case 4: average = scaling + half scaling (should be 1 unit, 500_000_000 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(15_000, 10_000);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 500_000_000);
+
+        // Case 5: average = scaling - 1 (should be 0 units, 900_000_000 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(9_000, 10_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 900_000_000);
+
+        // Case 6: average = u64::MAX, scaling = u64::MAX (should be 1 unit, 0 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(u64::MAX, u64::MAX);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 0);
+
+        // Case 7a: average = 12_345, scaling = 10_000 (should be 1 unit, 234_500_000 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(12_345, 10_000);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 234_500_000);
+
+        // Case 7b: average = 12_345, scaling = 1_000_000 (should be 1 unit, 12_345_000 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(12_345, 1_000_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 12_345_000);
+
+        // Case 7c: average = 12_345, scaling = 100_000_000_000 (should be 1 unit, 123 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(12_345, 100_000_000_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 123);
+
+        // Case 8: average = 1, scaling = 10_000 (should be 0 units, 100_000 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(1, 10_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 100_000);
+
+        // Case 9: average = 0, scaling = 10_000 (should be 0 units, 0 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(0, 10_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 0);
+
+        // Case 10: average = 4, scaling = 3 (should be 1 units, 333_333_333 nanos)
+        let dec = HashRateMovingAverage::average_as_u_decimal(4, 3);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 333_333_333);
     }
 }

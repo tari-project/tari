@@ -298,7 +298,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut tari_randomx_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone(), None);
         let mut cuckaroo_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone(), Some(10_000));
+            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone(), Some(100_000));
 
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
@@ -375,7 +375,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let block = block.unwrap();
                     let coinbases = block.block().body.get_coinbase_outputs();
 
-                    let cuckaroo_estimated_hash_rate_decimal = cuckaroo_hash_rate_moving_average.average_as_decimal();
+                    let cuckaroo_estimated_hash_rate_decimal = cuckaroo_hash_rate_moving_average.u_decimal_average();
                     trace!(
                         target: LOG_TARGET,
                         "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}.{}",
@@ -531,16 +531,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
-                const MULTIPLIER: u64 = 10_000;
+                const MULTIPLIER: u64 = 100_000;
                 let estimated_hash_rate_scaled = target_difficulty
                     .as_u64()
                     .saturating_mul(MULTIPLIER)
                     .checked_div(target_time)
                     .unwrap_or(0);
-                let estimated_hash_rate = tari_rpc::DecimalValue {
-                    units: i64::try_from(estimated_hash_rate_scaled / MULTIPLIER).unwrap_or(i64::MAX),
-                    nanos: i32::try_from(estimated_hash_rate_scaled % MULTIPLIER).unwrap_or(i32::MAX),
-                };
+                let estimated_hash_rate =
+                    HashRateMovingAverage::average_as_u_decimal(estimated_hash_rate_scaled, MULTIPLIER);
                 self.data_cache
                     .set_cuckaroo_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;

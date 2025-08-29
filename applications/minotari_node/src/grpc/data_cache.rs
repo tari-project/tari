@@ -56,7 +56,7 @@ impl DataCache {
         }
     }
 
-    pub async fn get_cuckaroo_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<tari_rpc::DecimalValue> {
+    pub async fn get_cuckaroo_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<tari_rpc::UDecimalValue> {
         let res = &self.inner_data_cache.read().await.cuckaroo_estimated_hash_rate;
         if res.tip == *current_tip {
             Some(res.data)
@@ -84,7 +84,7 @@ impl DataCache {
             DataCacheData::new(hash_rate, current_tip);
     }
 
-    pub async fn set_cuckaroo_estimated_hash_rate(&self, hash_rate: tari_rpc::DecimalValue, current_tip: FixedHash) {
+    pub async fn set_cuckaroo_estimated_hash_rate(&self, hash_rate: tari_rpc::UDecimalValue, current_tip: FixedHash) {
         self.inner_data_cache.write().await.cuckaroo_estimated_hash_rate = DataCacheData::new(hash_rate, current_tip);
     }
 
@@ -161,7 +161,7 @@ struct InnerDataCache {
     pub monero_randomx_estimated_hash_rate: DataCacheData<u64>,
     pub tari_randomx_estimated_hash_rate: DataCacheData<u64>,
     pub sha3x_estimated_hash_rate: DataCacheData<u64>,
-    pub cuckaroo_estimated_hash_rate: DataCacheData<tari_rpc::DecimalValue>,
+    pub cuckaroo_estimated_hash_rate: DataCacheData<tari_rpc::UDecimalValue>,
     pub sha3x_new_block_template: DataCacheData<NewBlockTemplate>,
     pub cuckaroo_new_block_template: DataCacheData<NewBlockTemplate>,
     pub monero_randomx_new_block_template: DataCacheData<NewBlockTemplate>,
@@ -173,7 +173,7 @@ impl Default for InnerDataCache {
             monero_randomx_estimated_hash_rate: DataCacheData::new_empty(0),
             tari_randomx_estimated_hash_rate: DataCacheData::new_empty(0),
             sha3x_estimated_hash_rate: DataCacheData::new_empty(0),
-            cuckaroo_estimated_hash_rate: DataCacheData::new_empty(tari_rpc::DecimalValue { units: 0, nanos: 0 }),
+            cuckaroo_estimated_hash_rate: DataCacheData::new_empty(tari_rpc::UDecimalValue { units: 0, nanos: 0 }),
             sha3x_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
             monero_randomx_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
             cuckaroo_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
