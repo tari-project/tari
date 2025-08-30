@@ -242,12 +242,14 @@ message NetworkDifficultyResponse {
     repeated  bytes coinbase_extras = 9;
 }
 
-// Example: 12345.6789 -> { units = 12345, nanos = 678900000 }
+// Unsigned decimal value, examples:
+//   12345.6789 -> { units = 12345, nanos = 678900000 }
+//   12345.0006789 -> { units = 12345, nanos = 678900 }
 message UDecimalValue {
   // Whole units part of the amount
-  int64 units = 1;
-  // Nano units of the amount (10^-9) - Must be same sign as units
-  sfixed32 nanos = 2;
+  uint64 units = 1;
+  // Nano units of the amount (10^-9)
+  fixed32 nanos = 2;
 }
 ```
 

@@ -97,12 +97,13 @@ use crate::{
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         data_cache::DataCache,
-        hash_rate::HashRateMovingAverage,
+        hash_rate::{display_u_decimal_value, HashRateMovingAverage},
         helpers::{mean, median},
     },
     grpc_method::GrpcMethod,
     BaseNodeConfig,
 };
+
 const LOG_TARGET: &str = "minotari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
 const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
@@ -378,13 +379,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let cuckaroo_estimated_hash_rate_decimal = cuckaroo_hash_rate_moving_average.u_decimal_average();
                     trace!(
                         target: LOG_TARGET,
-                        "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}.{}",
+                        "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
                         current_height,
                         sha3x_estimated_hash_rate,
                         monero_randomx_estimated_hash_rate,
                         tari_randomx_estimated_hash_rate,
-                        cuckaroo_estimated_hash_rate_decimal.units,
-                        cuckaroo_estimated_hash_rate_decimal.nanos,
+                        display_u_decimal_value(&cuckaroo_estimated_hash_rate_decimal),
                     );
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
@@ -569,13 +569,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         trace!(
             target: LOG_TARGET,
-            "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}.{}",
+            "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
             metadata.best_block_height(),
             sha3x_estimated_hash_rate,
             monero_randomx_estimated_hash_rate,
             tari_randomx_estimated_hash_rate,
-            cuckaroo_estimated_hash_rate.units,
-            cuckaroo_estimated_hash_rate.nanos,
+            display_u_decimal_value(&cuckaroo_estimated_hash_rate),
         );
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
