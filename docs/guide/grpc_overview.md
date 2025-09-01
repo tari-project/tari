@@ -675,8 +675,8 @@ message SendShaAtomicSwapResponse {
 ```protobuf
 message NetworkStatusResponse {
     ConnectivityStatus status = 1;  // INITIALIZING, ONLINE, DEGRADED, OFFLINE
-    uint64 avg_latency_ms = 2;      // Average latency
-    uint64 num_node_connections = 3; // Active connections
+    uint32 avg_latency_ms = 2;      // Average latency
+    uint32 num_node_connections = 3; // Active connections
 }
 ```
 
@@ -700,10 +700,6 @@ message HttpPeer {
   uint64 last_latency = 2;
   // Online status of the peer
   bool is_online = 3;
-  // The node_id of the peer
-  string node_id = 4;
-  // The public key of the peer
-  string public_key = 5;
 }
 ```
 
