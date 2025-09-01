@@ -28,7 +28,10 @@ use diesel::{
     self,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
-    ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection,
+    ExpressionMethods,
+    QueryDsl,
+    RunQueryDsl,
+    SqliteConnection,
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use log::{trace, warn};
@@ -42,7 +45,12 @@ use crate::{
         generate_peer_id_as_i64,
         peer_id::peer_id_from_i64,
         storage::schema::{multi_addresses, node_identity, peers},
-        NodeDistance, NodeId, Peer, PeerFeatures, PeerFlags, PeerId,
+        NodeDistance,
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerId,
     },
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
@@ -99,10 +107,10 @@ impl PeerDatabaseSql {
                 )));
             }
             if !node_identity_indexes.is_empty() {
-                if self.this_peer_identity.public_key.to_hex()
-                    == node_identity_indexes.first().expect("already checked").public_key
-                    && self.this_peer_identity.node_id.to_hex()
-                        == node_identity_indexes.first().expect("already checked").node_id
+                if self.this_peer_identity.public_key.to_hex() ==
+                    node_identity_indexes.first().expect("already checked").public_key &&
+                    self.this_peer_identity.node_id.to_hex() ==
+                        node_identity_indexes.first().expect("already checked").node_id
                 {
                     return Ok(());
                 } else {
@@ -1931,14 +1939,19 @@ mod tests {
     use crate::{
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
-            create_test_peer, create_test_peer_add_internal_addresses, create_test_peer_internal_addresses_only,
+            create_test_peer,
+            create_test_peer_add_internal_addresses,
+            create_test_peer_internal_addresses_only,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
             manager::create_test_peer_with_onion_address,
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
                 schema::{multi_addresses, peers},
             },
-            NodeId, Peer, PeerFeatures, PeerFlags,
+            NodeId,
+            Peer,
+            PeerFeatures,
+            PeerFlags,
         },
         protocol::ProtocolId,
         types::{CommsPublicKey, TransportProtocol},
@@ -2508,8 +2521,8 @@ mod tests {
             .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id));
 
         // Test 'set_last_seen'
-        let last_seen = chrono::Utc::now().naive_utc()
-            - chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
+        let last_seen = chrono::Utc::now().naive_utc() -
+            chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
         for address in node_peers[8].addresses.addresses() {
             peers_db
                 .set_last_seen(&node_peers[8].node_id, last_seen, address.address())
@@ -2570,8 +2583,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_nodes.len() - 1 {
             assert!(
-                closest_nodes[i].node_id.distance(&node_peers[5].node_id)
-                    <= closest_nodes[i + 1].node_id.distance(&node_peers[5].node_id)
+                closest_nodes[i].node_id.distance(&node_peers[5].node_id) <=
+                    closest_nodes[i + 1].node_id.distance(&node_peers[5].node_id)
             );
         }
 
@@ -2609,8 +2622,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
-                closest_peers[i].node_id.distance(&node_peers[5].node_id)
-                    <= closest_peers[i + 1].node_id.distance(&node_peers[5].node_id)
+                closest_peers[i].node_id.distance(&node_peers[5].node_id) <=
+                    closest_peers[i + 1].node_id.distance(&node_peers[5].node_id)
             );
         }
 
@@ -2645,8 +2658,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
-                closest_peers[i].node_id.distance(&wallet_peers[5].node_id)
-                    <= closest_peers[i + 1].node_id.distance(&wallet_peers[5].node_id)
+                closest_peers[i].node_id.distance(&wallet_peers[5].node_id) <=
+                    closest_peers[i + 1].node_id.distance(&wallet_peers[5].node_id)
             );
         }
 

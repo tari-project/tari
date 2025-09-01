@@ -44,21 +44,34 @@ use tari_comms::{
     multiaddr::multiaddr,
     peer_manager::{
         database::{PeerDatabaseSql, MIGRATIONS},
-        NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
     },
     pipeline,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        NodeNetworkInfo, ProtocolId,
+        NodeNetworkInfo,
+        ProtocolId,
     },
     tor::{self, HiddenServiceControllerError, TorIdentity},
     transports::{
-        predicate::FalsePredicate, HiddenServiceTransport, MemoryTransport, SocksConfig, SocksTransport,
+        predicate::FalsePredicate,
+        HiddenServiceTransport,
+        MemoryTransport,
+        SocksConfig,
+        SocksTransport,
         TcpWithTorTransport,
     },
     utils::cidr::parse_cidrs,
-    CommsBuilder, CommsBuilderError, CommsNode, PeerManager, UnspawnedCommsNode,
+    CommsBuilder,
+    CommsBuilderError,
+    CommsNode,
+    PeerManager,
+    UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -77,7 +90,9 @@ use crate::{
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
-    TransportConfig, MAJOR_NETWORK_VERSION, MINOR_NETWORK_VERSION,
+    TransportConfig,
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";

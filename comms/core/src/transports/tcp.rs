@@ -161,8 +161,7 @@ impl<F> TcpOutbound<F> {
 }
 
 impl<F> Future for TcpOutbound<F>
-where
-    F: Future<Output = io::Result<TcpStream>> + Unpin,
+where F: Future<Output = io::Result<TcpStream>> + Unpin
 {
     type Output = io::Result<TcpStream>;
 

@@ -603,7 +603,7 @@ where
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
         let supported_transport_protocols = transport.supported_protocols();
-        warn!(target: LOG_TARGET, "[DEBUG] Supported transport protocols: {:?}", supported_transport_protocols);
+        trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
         let addresses = dial_state
             .peer()
