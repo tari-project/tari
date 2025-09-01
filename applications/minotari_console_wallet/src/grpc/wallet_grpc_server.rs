@@ -139,7 +139,7 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
-use tari_crypto::hash_domain;
+use tari_hashing::WalletMessageSigningDomain;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
@@ -164,13 +164,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
-
-// Domain separator for signing arbitrary messages with a wallet secret key
-hash_domain!(
-    WalletMessageSigningDomain,
-    "com.tari.base_layer.wallet.message_signing",
-    1
-);
 
 async fn send_transaction_event(
     transaction_event: TransactionEvent,

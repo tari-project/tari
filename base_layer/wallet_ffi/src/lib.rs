@@ -100,7 +100,7 @@ use minotari_wallet::{
         },
     },
     utxo_scanner_service::RECOVERY_KEY,
-    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -138,6 +138,7 @@ use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{ByteArray, Hidden},
 };
+use tari_hashing::WalletMessageSigningDomain;
 use tari_p2p::auto_update::AutoUpdateConfig;
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;

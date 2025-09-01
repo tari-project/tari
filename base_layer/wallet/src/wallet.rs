@@ -46,7 +46,7 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsSecretKey, NodeIdentity};
-use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
+use tari_hashing::WalletMessageSigningDomain; signatures::SchnorrSignatureError};
 use tari_p2p::auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService};
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -105,12 +105,6 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet";
 
-// Domain separator for signing arbitrary messages with a wallet secret key
-hash_domain!(
-    WalletMessageSigningDomain,
-    "com.tari.base_layer.wallet.message_signing",
-    1
-);
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services

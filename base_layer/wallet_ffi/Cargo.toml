@@ -12,6 +12,7 @@ tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true, features = ["c_integration"] }
 tari_crypto = { workspace = true }
+tari_hashing = { workspace = true }
 tari_p2p = { workspace = true }
 tari_script = { workspace = true }
 tari_shutdown = { workspace = true }

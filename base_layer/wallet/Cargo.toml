@@ -26,6 +26,7 @@ tari_common_types = { workspace = true }
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_crypto = { workspace = true }
+tari_hashing = { workspace = true }
 tari_max_size = { workspace = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_script = { workspace = true }
