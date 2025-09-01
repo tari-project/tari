@@ -65,3 +65,9 @@ hash_domain!(
     "com.tari.base_layer.wallet.output_spending_keys",
     1
 );
+
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.base_layer.wallet.message_signing",
+    1
+);

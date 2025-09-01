@@ -54,7 +54,8 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::Dht;
-use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
+use tari_crypto::signatures::SchnorrSignatureError;
+use tari_hashing::WalletMessageSigningDomain;
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -122,13 +123,6 @@ use crate::{
 const LOG_TARGET: &str = "wallet";
 /// The minimum buffer size for the wallet pubsub_connector channel
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
-
-// Domain separator for signing arbitrary messages with a wallet secret key
-hash_domain!(
-    WalletMessageSigningDomain,
-    "com.tari.base_layer.wallet.message_signing",
-    1
-);
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
