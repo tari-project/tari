@@ -75,6 +75,34 @@ pub struct PeerDatabaseSql {
     this_peer_identity: ThisPeerIdentity,
 }
 
+/// Macro to build a filter expression for transport protocols
+/// This eliminates code duplication when filtering addresses by transport protocol prefixes
+/// We must use macro instead of function because it's used with different query context (different join tables) and
+/// BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> would not be valid here.
+/// With macro, we can use the same expression in different contexts without having to duplicate code.
+macro_rules! build_transport_protocol_filter {
+    ($transport_protocols:expr) => {{
+        let protocols_prefixes = $transport_protocols
+            .iter()
+            .map(|protocol| protocol.get_prefix())
+            .collect::<Vec<_>>();
+        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
+            None;
+
+        for prefix in &protocols_prefixes {
+            let like_pattern = format!("{}%", prefix);
+            let condition = multi_addresses::address.like(like_pattern);
+
+            addr_filter = match addr_filter {
+                None => Some(Box::new(condition)),
+                Some(existing) => Some(Box::new(existing.or(condition))),
+            };
+        }
+
+        addr_filter
+    }};
+}
+
 impl PeerDatabaseSql {
     /// Create a new peers database using the provided connection
     pub fn new(connection: DbConnection, this_peer: &Peer) -> Result<Self, StorageError> {
@@ -1123,22 +1151,7 @@ impl PeerDatabaseSql {
         transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        let protocols_prefixes = transport_protocols
-            .iter()
-            .map(|protocol| protocol.get_prefix())
-            .collect::<Vec<_>>();
-        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
-            None;
-
-        for prefix in &protocols_prefixes {
-            let like_pattern = format!("{}%", prefix);
-            let condition = multi_addresses::address.like(like_pattern);
-
-            addr_filter = match addr_filter {
-                None => Some(Box::new(condition)),
-                Some(existing) => Some(Box::new(existing.or(condition))),
-            };
-        }
+        let addr_filter = build_transport_protocol_filter!(transport_protocols);
 
         // Build base query filtering for communication nodes, not banned, not deleted
         let mut query = peers::table
@@ -1414,23 +1427,7 @@ impl PeerDatabaseSql {
         transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<String>, StorageError> {
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-
-        let protocols_prefixes = transport_protocols
-            .iter()
-            .map(|protocol| protocol.get_prefix())
-            .collect::<Vec<_>>();
-        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
-            None;
-
-        for prefix in &protocols_prefixes {
-            let like_pattern = format!("{}%", prefix);
-            let condition = multi_addresses::address.like(like_pattern);
-
-            addr_filter = match addr_filter {
-                None => Some(Box::new(condition)),
-                Some(existing) => Some(Box::new(existing.or(condition))),
-            };
-        }
+        let addr_filter = build_transport_protocol_filter!(transport_protocols);
 
         // Step 1: Retrieve relevant node_ids
         let mut query = peers::table
@@ -1616,23 +1613,7 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
         let exclude_node_ids = exclude_node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-
-        let protocols_prefixes = transport_protocols
-            .iter()
-            .map(|protocol| protocol.get_prefix())
-            .collect::<Vec<_>>();
-        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
-            None;
-
-        for prefix in &protocols_prefixes {
-            let like_pattern = format!("{}%", prefix);
-            let condition = multi_addresses::address.like(like_pattern);
-
-            addr_filter = match addr_filter {
-                None => Some(Box::new(condition)),
-                Some(existing) => Some(Box::new(existing.or(condition))),
-            };
-        }
+        let addr_filter = build_transport_protocol_filter!(transport_protocols);
 
         conn.transaction::<_, StorageError, _>(|conn| {
             // Step 1: Filtered, random and truncated list of node_ids

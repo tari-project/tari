@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::{CommsPublicKey, TransportProtocol},
+    types::CommsPublicKey,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -536,7 +536,6 @@ where
                         &current_transport,
                         config.network_info.network_wire_byte,
                         config.excluded_dial_addresses.clone(),
-                        config.exclude_ipv6
                     )
                     .await
                     {
@@ -599,17 +598,12 @@ where
         transport: &TTransport,
         network_byte: u8,
         excluded_dial_addresses: Vec<MultiaddrRange>,
-        exclude_ipv6: bool,
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
-        let supported_transport_protocols: Vec<TransportProtocol> = transport
-            .supported_protocols()
-            .into_iter()
-            .filter(|protocol| *protocol != TransportProtocol::Ipv6 || !exclude_ipv6)
-            .collect();
-        trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
+        let supported_transport_protocols = transport.supported_protocols();
+        warn!(target: LOG_TARGET, "[DEBUG] Supported transport protocols: {:?}", supported_transport_protocols);
 
         let addresses = dial_state
             .peer()
