@@ -48,9 +48,6 @@ pub struct Cli {
     /// Run in test profile mode
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
-    /// Enable gRPC
-    #[clap(long, env = "MINOTARI_NODE_ENABLE_GRPC", alias = "enable-grpc")]
-    pub grpc_enabled: bool,
     /// Enable mining
     #[clap(long, env = "MINOTARI_NODE_ENABLE_MINING", alias = "enable-mining")]
     pub mining_enabled: bool,
@@ -81,11 +78,7 @@ impl ConfigOverrideProvider for Cli {
             replace_or_add_override(&mut overrides, k, v);
         });
         // Logical overrides based on command-line flags
-        if self.grpc_enabled {
-            replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
-        }
         if self.mining_enabled {
-            replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
             replace_or_add_override(&mut overrides, "base_node.mining_enabled", "true");
         }
         if self.second_layer_grpc_enabled {
