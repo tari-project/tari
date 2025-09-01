@@ -97,7 +97,7 @@ use crate::{
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         data_cache::DataCache,
-        hash_rate::{display_u_decimal_value, HashRateMovingAverage},
+        hash_rate::{display_u_decimal_value, HashRateMovingAverage, NANOS_PER_UNIT},
         helpers::{mean, median},
     },
     grpc_method::GrpcMethod,
@@ -293,13 +293,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         ));
 
         let mut sha3x_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone(), None);
+            HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone(), false);
         let mut monero_randomx_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::RandomXM, self.consensus_rules.clone(), None);
+            HashRateMovingAverage::new(PowAlgorithm::RandomXM, self.consensus_rules.clone(), false);
         let mut tari_randomx_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone(), None);
+            HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone(), false);
         let mut cuckaroo_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone(), Some(100_000));
+            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone(), true);
 
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
@@ -531,14 +531,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
-                const MULTIPLIER: u64 = 100_000;
                 let estimated_hash_rate_scaled = target_difficulty
                     .as_u64()
-                    .saturating_mul(MULTIPLIER)
+                    .saturating_mul(NANOS_PER_UNIT) // We have to add scaling as this value can be < 1
                     .checked_div(target_time)
                     .unwrap_or(0);
-                let estimated_hash_rate =
-                    HashRateMovingAverage::average_as_u_decimal(estimated_hash_rate_scaled, MULTIPLIER);
+                let estimated_hash_rate = HashRateMovingAverage::average_as_u_decimal(estimated_hash_rate_scaled);
                 self.data_cache
                     .set_cuckaroo_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
