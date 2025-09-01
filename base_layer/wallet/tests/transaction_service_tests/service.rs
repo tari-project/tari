@@ -71,7 +71,7 @@ use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
-    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
     wallet_types::{ProvidedKeysWallet, WalletType},
 };
@@ -102,6 +102,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
         ConfidentialOutputHasher,
+        SecretTransactionKeyManagerInterface,
         TariKeyId,
         TransactionKeyManagerInitializer,
         TransactionKeyManagerInterface,
@@ -596,12 +597,13 @@ async fn single_transaction_burn_tari() {
     let recovery_key_id = TariKeyId::Imported {
         key: CompressedPublicKey::from_secret_key(&encryption_key),
     };
+    let recovery_key = key_manager_handle.get_private_key(&recovery_key_id).await.unwrap();
     let mut found_burned_output = false;
     for output in completed_tx.transaction.body.outputs() {
         if output.is_burned() {
             found_burned_output = true;
             match key_manager_handle
-                .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(&recovery_key_id))
+                .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(recovery_key.clone()))
                 .await
             {
                 Ok((_spending_key_id, value, _)) => {
@@ -1567,7 +1569,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         amount: 5000 * uT,
         fee: MicroMinotari::from(20),
         transaction: tx.clone(),
-        status: TransactionStatus::Completed,
+        status: LegacyTransactionStatus::Completed,
         timestamp: Utc::now(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
@@ -1588,13 +1590,13 @@ async fn broadcast_all_completed_transactions_on_startup() {
 
     let completed_tx2 = CompletedTransaction {
         tx_id: 2u64.into(),
-        status: TransactionStatus::MinedConfirmed,
+        status: LegacyTransactionStatus::MinedConfirmed,
         ..completed_tx1.clone()
     };
 
     let completed_tx3 = CompletedTransaction {
         tx_id: 3u64.into(),
-        status: TransactionStatus::Completed,
+        status: LegacyTransactionStatus::Completed,
         ..completed_tx1.clone()
     };
 
@@ -1715,7 +1717,7 @@ async fn test_update_faux_tx_on_oms_validation() {
         .import_utxo_with_status(
             MicroMinotari::from(10000),
             alice_address.clone(),
-            ImportStatus::Imported,
+            LegacyImportStatus::Imported,
             None,
             None,
             None,
@@ -1731,7 +1733,7 @@ async fn test_update_faux_tx_on_oms_validation() {
         .import_utxo_with_status(
             MicroMinotari::from(20000),
             alice_address.clone(),
-            ImportStatus::OneSidedUnconfirmed,
+            LegacyImportStatus::OneSidedUnconfirmed,
             None,
             None,
             None,
@@ -1747,7 +1749,7 @@ async fn test_update_faux_tx_on_oms_validation() {
         .import_utxo_with_status(
             MicroMinotari::from(30000),
             alice_address,
-            ImportStatus::OneSidedConfirmed,
+            LegacyImportStatus::OneSidedConfirmed,
             None,
             None,
             None,
@@ -1797,21 +1799,21 @@ async fn test_update_faux_tx_on_oms_validation() {
             .unwrap();
         if tx_id == tx_id_1 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::Imported);
+                assert_eq!(tx.status, LegacyTransactionStatus::Imported);
             } else {
                 panic!("Should find a complete Imported transaction");
             }
         }
         if tx_id == tx_id_2 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::OneSidedUnconfirmed);
+                assert_eq!(tx.status, LegacyTransactionStatus::OneSidedUnconfirmed);
             } else {
                 panic!("Should find a complete FauxUnconfirmed transaction");
             }
         }
         if tx_id == tx_id_3 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::OneSidedConfirmed);
+                assert_eq!(tx.status, LegacyTransactionStatus::OneSidedConfirmed);
             } else {
                 panic!("Should find a complete FauxConfirmed transaction");
             }
@@ -1836,13 +1838,17 @@ async fn test_update_faux_tx_on_oms_validation() {
                 .unwrap()
                 .unwrap();
             if let WalletTransaction::Completed(tx) = transaction {
-                if tx_id == tx_id_1 && tx.status == TransactionStatus::OneSidedUnconfirmed && !found_imported {
+                if tx_id == tx_id_1 && tx.status == LegacyTransactionStatus::OneSidedUnconfirmed && !found_imported {
                     found_imported = true;
                 }
-                if tx_id == tx_id_2 && tx.status == TransactionStatus::OneSidedUnconfirmed && !found_faux_unconfirmed {
+                if tx_id == tx_id_2 &&
+                    tx.status == LegacyTransactionStatus::OneSidedUnconfirmed &&
+                    !found_faux_unconfirmed
+                {
                     found_faux_unconfirmed = true;
                 }
-                if tx_id == tx_id_3 && tx.status == TransactionStatus::OneSidedConfirmed && !found_faux_confirmed {
+                if tx_id == tx_id_3 && tx.status == LegacyTransactionStatus::OneSidedConfirmed && !found_faux_confirmed
+                {
                     found_faux_confirmed = true;
                 }
             }
@@ -1897,7 +1903,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         .import_utxo_with_status(
             MicroMinotari::from(10000),
             alice_address.clone(),
-            ImportStatus::CoinbaseConfirmed,
+            LegacyImportStatus::CoinbaseConfirmed,
             None,
             None,
             None,
@@ -1913,7 +1919,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         .import_utxo_with_status(
             MicroMinotari::from(20000),
             alice_address.clone(),
-            ImportStatus::CoinbaseUnconfirmed,
+            LegacyImportStatus::CoinbaseUnconfirmed,
             None,
             None,
             None,
@@ -1929,7 +1935,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         .import_utxo_with_status(
             MicroMinotari::from(30000),
             alice_address,
-            ImportStatus::CoinbaseUnconfirmed,
+            LegacyImportStatus::CoinbaseUnconfirmed,
             None,
             None,
             None,
@@ -1989,21 +1995,21 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             .unwrap();
         if tx_id == tx_id_1 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::CoinbaseConfirmed);
+                assert_eq!(tx.status, LegacyTransactionStatus::CoinbaseConfirmed);
             } else {
                 panic!("Should find a complete Imported transaction");
             }
         }
         if tx_id == tx_id_2 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::CoinbaseUnconfirmed);
+                assert_eq!(tx.status, LegacyTransactionStatus::CoinbaseUnconfirmed);
             } else {
                 panic!("Should find a complete FauxUnconfirmed transaction");
             }
         }
         if tx_id == tx_id_3 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::CoinbaseUnconfirmed);
+                assert_eq!(tx.status, LegacyTransactionStatus::CoinbaseUnconfirmed);
             } else {
                 panic!("Should find a complete FauxConfirmed transaction");
             }
@@ -2028,13 +2034,19 @@ async fn test_update_coinbase_tx_on_oms_validation() {
                 .unwrap()
                 .unwrap();
             if let WalletTransaction::Completed(tx) = transaction {
-                if tx_id == tx_id_1 && tx.status == TransactionStatus::CoinbaseConfirmed && !coinbase_confirmed {
+                if tx_id == tx_id_1 && tx.status == LegacyTransactionStatus::CoinbaseConfirmed && !coinbase_confirmed {
                     coinbase_confirmed = true;
                 }
-                if tx_id == tx_id_2 && tx.status == TransactionStatus::CoinbaseUnconfirmed && !coinbase_unconfirmed {
+                if tx_id == tx_id_2 &&
+                    tx.status == LegacyTransactionStatus::CoinbaseUnconfirmed &&
+                    !coinbase_unconfirmed
+                {
                     coinbase_unconfirmed = true;
                 }
-                if tx_id == tx_id_3 && tx.status == TransactionStatus::CoinbaseNotInBlockChain && !coinbase_unmined {
+                if tx_id == tx_id_3 &&
+                    tx.status == LegacyTransactionStatus::CoinbaseNotInBlockChain &&
+                    !coinbase_unmined
+                {
                     coinbase_unmined = true;
                 }
             }
@@ -2069,7 +2081,7 @@ fn create_mock_completed_transaction(
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         ),
-        status: TransactionStatus::Completed,
+        status: LegacyTransactionStatus::Completed,
         timestamp: Utc::now(),
         cancelled: None,
         direction,

@@ -20,8 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    io,
+};
 
+use borsh::{BorshDeserialize, BorshSerialize};
+use integer_encoding::{VarIntReader, VarIntWriter};
 use log::debug;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -1334,6 +1339,36 @@ impl Display for MemoField {
             ),
             InnerMemoField::Raw(bytes) => write!(f, "Raw({})", bytes.to_hex()),
         }
+    }
+}
+
+impl BorshSerialize for MemoField {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        let bytes = self.to_bytes();
+        writer.write_varint(bytes.len())?;
+        for b in &bytes {
+            BorshSerialize::serialize(&b, writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for MemoField {
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
+        if len > MAX_ENCRYPTED_DATA_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than bytes".to_string(),
+            ));
+        }
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(u8::deserialize_reader(reader)?);
+        }
+        let memo = MemoField::from_bytes(data.as_slice());
+        Ok(memo)
     }
 }
 

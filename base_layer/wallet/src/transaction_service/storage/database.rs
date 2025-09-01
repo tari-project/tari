@@ -30,7 +30,7 @@ use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
@@ -134,7 +134,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         must_be_confirmed: bool,
-        status: &TransactionStatus,
+        status: &LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -547,7 +547,7 @@ where T: TransactionBackend + 'static
         let t = match self.db.fetch(&DbKey::CompletedTransaction(tx_id)) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::CompletedTransaction(pt))) => {
-                if pt.status == TransactionStatus::Completed && pt.status == TransactionStatus::Broadcast {
+                if pt.status == LegacyTransactionStatus::Completed && pt.status == LegacyTransactionStatus::Broadcast {
                     Ok(pt)
                 } else {
                     Err(TransactionStorageError::ValueNotFound(key))
@@ -781,7 +781,7 @@ where T: TransactionBackend + 'static
         amount: MicroMinotari,
         source_address: TariAddress,
         destination_address: TariAddress,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
@@ -846,7 +846,7 @@ where T: TransactionBackend + 'static
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         must_be_confirmed: bool,
-        status: &TransactionStatus,
+        status: &LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,

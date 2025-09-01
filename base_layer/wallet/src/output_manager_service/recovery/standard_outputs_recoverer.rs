@@ -97,12 +97,12 @@ where
                 continue;
             }
 
-            let (spending_key, committed_value, payment_id) = match self.attempt_output_recovery(&output).await? {
+            let (commitment_mask, committed_value, payment_id) = match self.attempt_output_recovery(&output).await? {
                 Some(recovered) => recovered,
                 None => continue,
             };
             let (input_data, script_key) = match self
-                .find_script_key(&output.script, &spending_key, known_script_index, &known_scripts)
+                .find_script_key(&output.script, &commitment_mask, known_script_index, &known_scripts)
                 .await?
             {
                 Some((input_data, script_key)) => (input_data, script_key),
@@ -113,7 +113,7 @@ where
             let uo = WalletOutput::new_with_rangeproof(
                 output.version,
                 committed_value,
-                spending_key,
+                commitment_mask,
                 output.features,
                 output.script,
                 input_data,

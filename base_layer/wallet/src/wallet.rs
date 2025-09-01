@@ -34,7 +34,7 @@ use tari_common_types::{
         seed_words::SeedWords,
     },
     tari_address::{TariAddress, TariAddressFeatures},
-    transaction::{ImportStatus, TxId},
+    transaction::{LegacyImportStatus, TxId},
     types::{
         ComAndPubSignature,
         CompressedCommitment,
@@ -425,7 +425,7 @@ where
             .import_utxo_with_status(
                 value,
                 source_address,
-                ImportStatus::Imported,
+                LegacyImportStatus::Imported,
                 None,
                 None,
                 None,

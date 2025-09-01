@@ -35,7 +35,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
-        transaction::{TransactionDirection, TransactionStatus},
+        transaction::{LegacyTransactionStatus, TransactionDirection},
         types::{CompressedPublicKey, PrivateKey},
     };
     use tari_crypto::keys::SecretKey;
@@ -289,7 +289,7 @@ mod test {
             source_address,
             22 * uT,
             rtp,
-            TransactionStatus::Pending,
+            LegacyTransactionStatus::Pending,
             MemoField::open_from_string("1", TxType::PaymentToOther),
             Utc::now(),
         );
@@ -321,7 +321,7 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::Completed,
+            LegacyTransactionStatus::Completed,
             Utc::now(),
             TransactionDirection::Inbound,
             None,
@@ -345,7 +345,7 @@ mod test {
             22 * uT,
             23 * uT,
             stp,
-            TransactionStatus::Pending,
+            LegacyTransactionStatus::Pending,
             MemoField::open_from_string("3", TxType::PaymentToOther),
             Utc::now(),
             false,
@@ -395,7 +395,7 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::OneSidedUnconfirmed,
+            LegacyTransactionStatus::OneSidedUnconfirmed,
             Utc::now(),
             TransactionDirection::Inbound,
             Some(2),
@@ -431,7 +431,7 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::OneSidedConfirmed,
+            LegacyTransactionStatus::OneSidedConfirmed,
             Utc::now(),
             TransactionDirection::Inbound,
             Some(5),

@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_common_types::transaction::{LegacyTransactionStatus, TransactionDirection, TxId};
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::ByteArray;
@@ -87,10 +87,10 @@ impl From<TransactionDirection> for grpc::TransactionDirection {
     }
 }
 
-impl From<TransactionStatus> for grpc::TransactionStatus {
-    fn from(status: TransactionStatus) -> Self {
+impl From<LegacyTransactionStatus> for grpc::TransactionStatus {
+    fn from(status: LegacyTransactionStatus) -> Self {
         #[allow(clippy::enum_glob_use)]
-        use TransactionStatus::*;
+        use LegacyTransactionStatus::*;
         match status {
             Completed => grpc::TransactionStatus::Completed,
             Broadcast => grpc::TransactionStatus::Broadcast,

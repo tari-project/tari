@@ -13,7 +13,7 @@ use thiserror::Error;
 pub use crate::tx_id::TxId;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TransactionStatus {
+pub enum LegacyTransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
     Completed = 0,
     /// This transaction has been broadcast to the base layer network and is currently in one or more base node
@@ -47,79 +47,81 @@ pub enum TransactionStatus {
     CoinbaseNotInBlockChain = 13,
 }
 
-impl TransactionStatus {
+impl LegacyTransactionStatus {
     pub fn is_imported_from_chain(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::Imported | TransactionStatus::OneSidedUnconfirmed | TransactionStatus::OneSidedConfirmed
+            LegacyTransactionStatus::Imported |
+                LegacyTransactionStatus::OneSidedUnconfirmed |
+                LegacyTransactionStatus::OneSidedConfirmed
         )
     }
 
     pub fn is_coinbase(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::CoinbaseUnconfirmed |
-                TransactionStatus::CoinbaseConfirmed |
-                TransactionStatus::CoinbaseNotInBlockChain
+            LegacyTransactionStatus::CoinbaseUnconfirmed |
+                LegacyTransactionStatus::CoinbaseConfirmed |
+                LegacyTransactionStatus::CoinbaseNotInBlockChain
         )
     }
 
     pub fn is_confirmed(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::OneSidedConfirmed |
-                TransactionStatus::CoinbaseConfirmed |
-                TransactionStatus::MinedConfirmed
+            LegacyTransactionStatus::OneSidedConfirmed |
+                LegacyTransactionStatus::CoinbaseConfirmed |
+                LegacyTransactionStatus::MinedConfirmed
         )
     }
 
     pub fn is_mined(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::MinedUnconfirmed |
-                TransactionStatus::MinedConfirmed |
-                TransactionStatus::CoinbaseConfirmed |
-                TransactionStatus::CoinbaseUnconfirmed |
-                TransactionStatus::OneSidedConfirmed |
-                TransactionStatus::OneSidedUnconfirmed
+            LegacyTransactionStatus::MinedUnconfirmed |
+                LegacyTransactionStatus::MinedConfirmed |
+                LegacyTransactionStatus::CoinbaseConfirmed |
+                LegacyTransactionStatus::CoinbaseUnconfirmed |
+                LegacyTransactionStatus::OneSidedConfirmed |
+                LegacyTransactionStatus::OneSidedUnconfirmed
         )
     }
 
     pub fn mined_confirm(&self) -> Self {
         match self {
-            TransactionStatus::Completed |
-            TransactionStatus::Broadcast |
-            TransactionStatus::Pending |
-            TransactionStatus::Coinbase |
-            TransactionStatus::Rejected |
-            TransactionStatus::Queued |
-            TransactionStatus::MinedUnconfirmed |
-            TransactionStatus::MinedConfirmed => TransactionStatus::MinedConfirmed,
-            TransactionStatus::Imported |
-            TransactionStatus::OneSidedUnconfirmed |
-            TransactionStatus::OneSidedConfirmed => TransactionStatus::OneSidedConfirmed,
-            TransactionStatus::CoinbaseNotInBlockChain |
-            TransactionStatus::CoinbaseConfirmed |
-            TransactionStatus::CoinbaseUnconfirmed => TransactionStatus::CoinbaseConfirmed,
+            LegacyTransactionStatus::Completed |
+            LegacyTransactionStatus::Broadcast |
+            LegacyTransactionStatus::Pending |
+            LegacyTransactionStatus::Coinbase |
+            LegacyTransactionStatus::Rejected |
+            LegacyTransactionStatus::Queued |
+            LegacyTransactionStatus::MinedUnconfirmed |
+            LegacyTransactionStatus::MinedConfirmed => LegacyTransactionStatus::MinedConfirmed,
+            LegacyTransactionStatus::Imported |
+            LegacyTransactionStatus::OneSidedUnconfirmed |
+            LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::OneSidedConfirmed,
+            LegacyTransactionStatus::CoinbaseNotInBlockChain |
+            LegacyTransactionStatus::CoinbaseConfirmed |
+            LegacyTransactionStatus::CoinbaseUnconfirmed => LegacyTransactionStatus::CoinbaseConfirmed,
         }
     }
 
     pub fn mined_unconfirm(&self) -> Self {
         match self {
-            TransactionStatus::Completed |
-            TransactionStatus::Broadcast |
-            TransactionStatus::Pending |
-            TransactionStatus::Coinbase |
-            TransactionStatus::Rejected |
-            TransactionStatus::Queued |
-            TransactionStatus::MinedUnconfirmed |
-            TransactionStatus::MinedConfirmed => TransactionStatus::MinedUnconfirmed,
-            TransactionStatus::Imported |
-            TransactionStatus::OneSidedUnconfirmed |
-            TransactionStatus::OneSidedConfirmed => TransactionStatus::OneSidedUnconfirmed,
-            TransactionStatus::CoinbaseConfirmed |
-            TransactionStatus::CoinbaseUnconfirmed |
-            TransactionStatus::CoinbaseNotInBlockChain => TransactionStatus::CoinbaseUnconfirmed,
+            LegacyTransactionStatus::Completed |
+            LegacyTransactionStatus::Broadcast |
+            LegacyTransactionStatus::Pending |
+            LegacyTransactionStatus::Coinbase |
+            LegacyTransactionStatus::Rejected |
+            LegacyTransactionStatus::Queued |
+            LegacyTransactionStatus::MinedUnconfirmed |
+            LegacyTransactionStatus::MinedConfirmed => LegacyTransactionStatus::MinedUnconfirmed,
+            LegacyTransactionStatus::Imported |
+            LegacyTransactionStatus::OneSidedUnconfirmed |
+            LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::OneSidedUnconfirmed,
+            LegacyTransactionStatus::CoinbaseConfirmed |
+            LegacyTransactionStatus::CoinbaseUnconfirmed |
+            LegacyTransactionStatus::CoinbaseNotInBlockChain => LegacyTransactionStatus::CoinbaseUnconfirmed,
         }
     }
 }
@@ -130,54 +132,83 @@ pub struct TransactionConversionError {
     pub code: i32,
 }
 
-impl TryFrom<i32> for TransactionStatus {
+impl TryFrom<i32> for LegacyTransactionStatus {
     type Error = TransactionConversionError;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(TransactionStatus::Completed),
-            1 => Ok(TransactionStatus::Broadcast),
-            2 => Ok(TransactionStatus::MinedUnconfirmed),
-            3 => Ok(TransactionStatus::Imported),
-            4 => Ok(TransactionStatus::Pending),
-            5 => Ok(TransactionStatus::Coinbase),
-            6 => Ok(TransactionStatus::MinedConfirmed),
-            7 => Ok(TransactionStatus::Rejected),
-            8 => Ok(TransactionStatus::OneSidedUnconfirmed),
-            9 => Ok(TransactionStatus::OneSidedConfirmed),
-            10 => Ok(TransactionStatus::Queued),
-            11 => Ok(TransactionStatus::CoinbaseUnconfirmed),
-            12 => Ok(TransactionStatus::CoinbaseConfirmed),
-            13 => Ok(TransactionStatus::CoinbaseNotInBlockChain),
+            0 => Ok(LegacyTransactionStatus::Completed),
+            1 => Ok(LegacyTransactionStatus::Broadcast),
+            2 => Ok(LegacyTransactionStatus::MinedUnconfirmed),
+            3 => Ok(LegacyTransactionStatus::Imported),
+            4 => Ok(LegacyTransactionStatus::Pending),
+            5 => Ok(LegacyTransactionStatus::Coinbase),
+            6 => Ok(LegacyTransactionStatus::MinedConfirmed),
+            7 => Ok(LegacyTransactionStatus::Rejected),
+            8 => Ok(LegacyTransactionStatus::OneSidedUnconfirmed),
+            9 => Ok(LegacyTransactionStatus::OneSidedConfirmed),
+            10 => Ok(LegacyTransactionStatus::Queued),
+            11 => Ok(LegacyTransactionStatus::CoinbaseUnconfirmed),
+            12 => Ok(LegacyTransactionStatus::CoinbaseConfirmed),
+            13 => Ok(LegacyTransactionStatus::CoinbaseNotInBlockChain),
             code => Err(TransactionConversionError { code }),
         }
     }
 }
 
-impl Display for TransactionStatus {
+impl Display for LegacyTransactionStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         // No struct or tuple variants
         match self {
-            TransactionStatus::Completed => write!(f, "Completed"),
-            TransactionStatus::Broadcast => write!(f, "Broadcast"),
-            TransactionStatus::MinedUnconfirmed => write!(f, "Mined Unconfirmed"),
-            TransactionStatus::MinedConfirmed => write!(f, "Mined Confirmed"),
-            TransactionStatus::Imported => write!(f, "Imported"),
-            TransactionStatus::Pending => write!(f, "Pending"),
-            TransactionStatus::Coinbase => write!(f, "Coinbase"),
-            TransactionStatus::Rejected => write!(f, "Rejected"),
-            TransactionStatus::OneSidedUnconfirmed => write!(f, "One-Sided Unconfirmed"),
-            TransactionStatus::OneSidedConfirmed => write!(f, "One-Sided Confirmed"),
-            TransactionStatus::CoinbaseUnconfirmed => write!(f, "Coinbase Unconfirmed"),
-            TransactionStatus::CoinbaseConfirmed => write!(f, "Coinbase Confirmed"),
-            TransactionStatus::CoinbaseNotInBlockChain => write!(f, "Coinbase not mined"),
-            TransactionStatus::Queued => write!(f, "Queued"),
+            LegacyTransactionStatus::Completed => write!(f, "Completed"),
+            LegacyTransactionStatus::Broadcast => write!(f, "Broadcast"),
+            LegacyTransactionStatus::MinedUnconfirmed => write!(f, "Mined Unconfirmed"),
+            LegacyTransactionStatus::MinedConfirmed => write!(f, "Mined Confirmed"),
+            LegacyTransactionStatus::Imported => write!(f, "Imported"),
+            LegacyTransactionStatus::Pending => write!(f, "Pending"),
+            LegacyTransactionStatus::Coinbase => write!(f, "Coinbase"),
+            LegacyTransactionStatus::Rejected => write!(f, "Rejected"),
+            LegacyTransactionStatus::OneSidedUnconfirmed => write!(f, "One-Sided Unconfirmed"),
+            LegacyTransactionStatus::OneSidedConfirmed => write!(f, "One-Sided Confirmed"),
+            LegacyTransactionStatus::CoinbaseUnconfirmed => write!(f, "Coinbase Unconfirmed"),
+            LegacyTransactionStatus::CoinbaseConfirmed => write!(f, "Coinbase Confirmed"),
+            LegacyTransactionStatus::CoinbaseNotInBlockChain => write!(f, "Coinbase not mined"),
+            LegacyTransactionStatus::Queued => write!(f, "Queued"),
         }
     }
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransactionStatus {
+    /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
+    #[default]
+    Completed = 0,
+    /// This transaction has been broadcast to the base layer network and is currently in one or more base node
+    /// mempools.
+    Broadcast = 1,
+    /// This transaction has been mined and included in a block.
+    MinedUnconfirmed = 2,
+    /// This transaction is mined and confirmed at the current base node's height
+    MinedConfirmed = 3,
+    /// This transaction was Rejected by the mempool
+    Rejected = 4,
+}
+
+impl TransactionStatus {
+    pub fn is_confirmed(&self) -> bool {
+        matches!(self, TransactionStatus::MinedConfirmed)
+    }
+
+    pub fn is_mined(&self) -> bool {
+        matches!(
+            self,
+            TransactionStatus::MinedUnconfirmed | TransactionStatus::MinedConfirmed
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ImportStatus {
+pub enum LegacyImportStatus {
     /// Special case where we import a tx received from broadcast
     Broadcast,
     /// This transaction import status is used when importing a spendable UTXO
@@ -192,46 +223,46 @@ pub enum ImportStatus {
     CoinbaseConfirmed,
 }
 
-impl TryFrom<ImportStatus> for TransactionStatus {
+impl TryFrom<LegacyImportStatus> for LegacyTransactionStatus {
     type Error = TransactionConversionError;
 
-    fn try_from(value: ImportStatus) -> Result<Self, Self::Error> {
+    fn try_from(value: LegacyImportStatus) -> Result<Self, Self::Error> {
         match value {
-            ImportStatus::Broadcast => Ok(TransactionStatus::Broadcast),
-            ImportStatus::Imported => Ok(TransactionStatus::Imported),
-            ImportStatus::OneSidedUnconfirmed => Ok(TransactionStatus::OneSidedUnconfirmed),
-            ImportStatus::OneSidedConfirmed => Ok(TransactionStatus::OneSidedConfirmed),
-            ImportStatus::CoinbaseUnconfirmed => Ok(TransactionStatus::CoinbaseUnconfirmed),
-            ImportStatus::CoinbaseConfirmed => Ok(TransactionStatus::CoinbaseConfirmed),
+            LegacyImportStatus::Broadcast => Ok(LegacyTransactionStatus::Broadcast),
+            LegacyImportStatus::Imported => Ok(LegacyTransactionStatus::Imported),
+            LegacyImportStatus::OneSidedUnconfirmed => Ok(LegacyTransactionStatus::OneSidedUnconfirmed),
+            LegacyImportStatus::OneSidedConfirmed => Ok(LegacyTransactionStatus::OneSidedConfirmed),
+            LegacyImportStatus::CoinbaseUnconfirmed => Ok(LegacyTransactionStatus::CoinbaseUnconfirmed),
+            LegacyImportStatus::CoinbaseConfirmed => Ok(LegacyTransactionStatus::CoinbaseConfirmed),
         }
     }
 }
 
-impl TryFrom<TransactionStatus> for ImportStatus {
+impl TryFrom<LegacyTransactionStatus> for LegacyImportStatus {
     type Error = TransactionConversionError;
 
-    fn try_from(value: TransactionStatus) -> Result<Self, Self::Error> {
+    fn try_from(value: LegacyTransactionStatus) -> Result<Self, Self::Error> {
         match value {
-            TransactionStatus::Broadcast => Ok(ImportStatus::Broadcast),
-            TransactionStatus::Imported => Ok(ImportStatus::Imported),
-            TransactionStatus::OneSidedUnconfirmed => Ok(ImportStatus::OneSidedUnconfirmed),
-            TransactionStatus::OneSidedConfirmed => Ok(ImportStatus::OneSidedConfirmed),
-            TransactionStatus::CoinbaseUnconfirmed => Ok(ImportStatus::CoinbaseUnconfirmed),
-            TransactionStatus::CoinbaseConfirmed => Ok(ImportStatus::CoinbaseConfirmed),
+            LegacyTransactionStatus::Broadcast => Ok(LegacyImportStatus::Broadcast),
+            LegacyTransactionStatus::Imported => Ok(LegacyImportStatus::Imported),
+            LegacyTransactionStatus::OneSidedUnconfirmed => Ok(LegacyImportStatus::OneSidedUnconfirmed),
+            LegacyTransactionStatus::OneSidedConfirmed => Ok(LegacyImportStatus::OneSidedConfirmed),
+            LegacyTransactionStatus::CoinbaseUnconfirmed => Ok(LegacyImportStatus::CoinbaseUnconfirmed),
+            LegacyTransactionStatus::CoinbaseConfirmed => Ok(LegacyImportStatus::CoinbaseConfirmed),
             _ => Err(TransactionConversionError { code: i32::MAX }),
         }
     }
 }
 
-impl fmt::Display for ImportStatus {
+impl fmt::Display for LegacyImportStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            ImportStatus::Broadcast => write!(f, "Broadcast"),
-            ImportStatus::Imported => write!(f, "Imported"),
-            ImportStatus::OneSidedUnconfirmed => write!(f, "OneSidedUnconfirmed"),
-            ImportStatus::OneSidedConfirmed => write!(f, "OneSidedConfirmed"),
-            ImportStatus::CoinbaseUnconfirmed => write!(f, "CoinbaseUnconfirmed"),
-            ImportStatus::CoinbaseConfirmed => write!(f, "CoinbaseConfirmed"),
+            LegacyImportStatus::Broadcast => write!(f, "Broadcast"),
+            LegacyImportStatus::Imported => write!(f, "Imported"),
+            LegacyImportStatus::OneSidedUnconfirmed => write!(f, "OneSidedUnconfirmed"),
+            LegacyImportStatus::OneSidedConfirmed => write!(f, "OneSidedConfirmed"),
+            LegacyImportStatus::CoinbaseUnconfirmed => write!(f, "CoinbaseUnconfirmed"),
+            LegacyImportStatus::CoinbaseConfirmed => write!(f, "CoinbaseConfirmed"),
         }
     }
 }

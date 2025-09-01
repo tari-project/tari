@@ -397,7 +397,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key: Option<PrivateKey>,
     ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError>;
 
     async fn is_this_output_ours(

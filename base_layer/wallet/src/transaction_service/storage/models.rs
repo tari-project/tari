@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     payment_reference::{generate_payment_reference, PaymentReference},
     tari_address::TariAddress,
-    transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TransactionConversionError, TransactionDirection, TxId},
     types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
@@ -51,7 +51,7 @@ pub struct InboundTransaction {
     pub source_address: TariAddress,
     pub amount: MicroMinotari,
     pub receiver_protocol: ReceiverTransactionProtocol,
-    pub status: TransactionStatus,
+    pub status: LegacyTransactionStatus,
     pub payment_id: MemoField,
     pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
@@ -68,7 +68,7 @@ impl InboundTransaction {
         source_address: TariAddress,
         amount: MicroMinotari,
         receiver_protocol: ReceiverTransactionProtocol,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         payment_id: MemoField,
         timestamp: DateTime<Utc>,
     ) -> Self {
@@ -96,7 +96,7 @@ pub struct OutboundTransaction {
     pub amount: MicroMinotari,
     pub fee: MicroMinotari,
     pub sender_protocol: SenderTransactionProtocol,
-    pub status: TransactionStatus,
+    pub status: LegacyTransactionStatus,
     pub payment_id: MemoField,
     pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
@@ -114,7 +114,7 @@ impl OutboundTransaction {
         amount: MicroMinotari,
         fee: MicroMinotari,
         sender_protocol: SenderTransactionProtocol,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         payment_id: MemoField,
         timestamp: DateTime<Utc>,
         direct_send_success: bool,
@@ -142,7 +142,7 @@ impl OutboundTransaction {
         amount: MicroMinotari,
         fee: MicroMinotari,
         sender_protocol: SenderTransactionProtocol,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         payment_id: MemoField,
         timestamp: DateTime<Utc>,
         direct_send_success: bool,
@@ -174,7 +174,7 @@ pub struct CompletedTransaction {
     pub amount: MicroMinotari,
     pub fee: MicroMinotari,
     pub transaction: Transaction,
-    pub status: TransactionStatus,
+    pub status: LegacyTransactionStatus,
     pub timestamp: DateTime<Utc>,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
@@ -201,14 +201,14 @@ impl CompletedTransaction {
         amount: MicroMinotari,
         fee: MicroMinotari,
         transaction: Transaction,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         timestamp: DateTime<Utc>,
         direction: TransactionDirection,
         mined_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         payment_id: MemoField,
     ) -> Result<Self, TransactionStorageError> {
-        if status == TransactionStatus::Coinbase {
+        if status == LegacyTransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
         }
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
@@ -372,7 +372,7 @@ impl CompletedTransaction {
         amount: MicroMinotari,
         fee: MicroMinotari,
         transaction: Transaction,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         timestamp: DateTime<Utc>,
         direction: TransactionDirection,
         mined_height: Option<u64>,
@@ -382,7 +382,7 @@ impl CompletedTransaction {
         received_output_hashes: Vec<FixedHash>,
         change_output_hashes: Vec<FixedHash>,
     ) -> Result<Self, TransactionStorageError> {
-        if status == TransactionStatus::Coinbase {
+        if status == LegacyTransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
         }
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
@@ -602,7 +602,7 @@ impl WalletTransaction {
         }
     }
 
-    pub fn status(&self) -> TransactionStatus {
+    pub fn status(&self) -> LegacyTransactionStatus {
         match self {
             WalletTransaction::PendingInbound(tx) => tx.status,
             WalletTransaction::PendingOutbound(tx) => tx.status,
@@ -675,7 +675,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
-        transaction::{TransactionDirection, TransactionStatus, TxId},
+        transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
         types::{CompressedSignature, PrivateKey, RangeProof},
     };
     use tari_script::TariScript;
@@ -728,7 +728,7 @@ mod test {
             amount: MicroMinotari::from(1000),
             fee: MicroMinotari::from(100),
             transaction,
-            status: TransactionStatus::Completed,
+            status: LegacyTransactionStatus::Completed,
             timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Outbound,

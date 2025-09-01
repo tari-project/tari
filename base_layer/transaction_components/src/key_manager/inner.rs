@@ -139,6 +139,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(km)
     }
 
+    pub fn master_seed(&self) -> &CipherSeed {
+        &self.master_seed
+    }
+
     async fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
         for branch in TransactionKeyManagerBranch::iter() {
             self.add_key_manager_branch(&branch.get_branch_key()).await?;
@@ -1540,10 +1544,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key: Option<PrivateKey>,
     ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError> {
-        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            self.get_private_key(key_id).await?
+        let recovery_key = if let Some(key) = custom_recovery_key {
+            key
         } else {
             self.get_private_view_key().await?
         };
