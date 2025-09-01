@@ -100,6 +100,7 @@ pub enum OutputManagerRequest {
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
         payment_id: MemoField,
+        minimum_value_promise: MicroMinotari,
     },
     CreatePayToSelfWithOutputs {
         outputs: Vec<WalletOutputBuilder>,
@@ -916,6 +917,7 @@ where KM: TransactionKeyManagerInterface
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
         payment_id: MemoField,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         match self
             .handle
@@ -927,6 +929,7 @@ where KM: TransactionKeyManagerInterface
                 fee_per_gram,
                 lock_height,
                 payment_id,
+                minimum_value_promise,
             })
             .await??
         {

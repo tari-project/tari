@@ -370,6 +370,7 @@ where
                 fee_per_gram,
                 lock_height,
                 payment_id,
+                minimum_value_promise,
             } => self
                 .create_pay_to_self_transaction(
                     tx_id,
@@ -379,6 +380,7 @@ where
                     fee_per_gram,
                     lock_height,
                     payment_id,
+                    minimum_value_promise,
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -1638,6 +1640,7 @@ where
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
         payment_id: MemoField,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         let covenant = Covenant::default();
 
@@ -1691,6 +1694,7 @@ where
                 covenant,
                 payment_id,
                 input_selection.as_final_fee(),
+                minimum_value_promise,
             )
             .await?;
 
@@ -2165,6 +2169,7 @@ where
                     Covenant::default(),
                     MemoField::open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit),
                     fee,
+                    MicroMinotari::zero(),
                 )
                 .await?;
 
@@ -2325,6 +2330,7 @@ where
                     Covenant::default(),
                     payment_id.clone(),
                     final_fee,
+                    MicroMinotari::zero(),
                 )
                 .await?;
 
@@ -2399,6 +2405,7 @@ where
         covenant: Covenant,
         payment_id: MemoField,
         fee: MicroMinotari,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
             .resources
@@ -2420,7 +2427,6 @@ where
             .key_manager
             .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount.as_u64(), payment_id.clone())
             .await?;
-        let minimum_value_promise = MicroMinotari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
             &script,
@@ -2548,6 +2554,7 @@ where
                 Covenant::default(),
                 payment_id.clone(),
                 fee,
+                MicroMinotari::zero(),
             )
             .await?;
 
