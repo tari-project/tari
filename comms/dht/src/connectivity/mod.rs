@@ -985,7 +985,6 @@ impl DhtConnectivity {
                 exclude_if_all_address_failed,
                 exclusion_distance,
                 true,
-                &self.config.transport_protocols,
             )
             .await?;
 

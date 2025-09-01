@@ -468,6 +468,7 @@ mod test {
             PeerFlags,
         },
         test_utils::mocks::create_connectivity_mock,
+        types::TransportProtocol,
     };
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
@@ -491,7 +492,7 @@ mod test {
     pub fn build_peer_manager() -> Arc<PeerManager> {
         let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
-        Arc::new(PeerManager::new(peers_db).unwrap())
+        Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap())
     }
 
     #[tokio::test]

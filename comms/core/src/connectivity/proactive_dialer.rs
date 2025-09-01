@@ -32,7 +32,6 @@ use super::{
 use crate::{
     connection_manager::ConnectionManagerRequester,
     peer_manager::{NodeId, Peer, PeerManager},
-    types::TransportProtocol,
 };
 
 const LOG_TARGET: &str = "comms::connectivity::proactive_dialer";
@@ -44,7 +43,6 @@ pub struct ProactiveDialer {
     connection_manager: ConnectionManagerRequester,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<crate::NodeIdentity>,
-    transport_protocols: Vec<TransportProtocol>,
 }
 
 impl ProactiveDialer {
@@ -53,14 +51,12 @@ impl ProactiveDialer {
         connection_manager: ConnectionManagerRequester,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<crate::NodeIdentity>,
-        transport_protocols: Vec<TransportProtocol>,
     ) -> Self {
         Self {
             config,
             connection_manager,
             peer_manager,
             node_identity,
-            transport_protocols,
         }
     }
 
@@ -204,7 +200,7 @@ impl ProactiveDialer {
         // Get available dial candidates using SQL-based filtering
         let candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed, Some(count * 3), &self.transport_protocols)
+            .get_available_dial_candidates(&managed, Some(count * 3))
             .await?;
 
         // Apply health-based filtering and ranking

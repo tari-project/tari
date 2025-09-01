@@ -64,7 +64,6 @@ async fn select_peers_for_discovery_round(
                     true,
                     None,
                     true,
-                    transport_protocols,
                 )
                 .await?
         },

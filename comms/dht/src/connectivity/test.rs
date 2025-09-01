@@ -109,7 +109,6 @@ async fn initialize() {
     let peers = repeat_with(|| create_good_standing_peer(&make_node_identity()))
         .take(10)
         .collect();
-    let transport_protocols = config.transport_protocols.clone();
     let (dht_connectivity, _, connectivity, peer_manager, node_identity, _shutdown) =
         setup(config, make_node_identity(), peers).await;
     dht_connectivity.spawn();
@@ -124,7 +123,6 @@ async fn initialize() {
             true,
             None,
             false,
-            &transport_protocols,
         )
         .await
         .unwrap()

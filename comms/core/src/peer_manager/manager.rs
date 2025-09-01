@@ -48,14 +48,21 @@ use crate::{
 pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
     peer_storage_sql: PeerStorageSql,
+    transport_protocols: Vec<TransportProtocol>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
+    pub fn new(
+        database: CommsDatabase,
+        transport_protocols: Vec<TransportProtocol>,
+    ) -> Result<PeerManager, PeerManagerError> {
         let peer_storage_sql = PeerStorageSql::new_indexed(database)?;
 
-        Ok(Self { peer_storage_sql })
+        Ok(Self {
+            peer_storage_sql,
+            transport_protocols,
+        })
     }
 
     /// Get this peer's identity
@@ -152,10 +159,9 @@ impl PeerManager {
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
-            .get_available_dial_candidates(exclude_node_ids, limit, transport_protocols)
+            .get_available_dial_candidates(exclude_node_ids, limit, &self.transport_protocols)
     }
 
     /// Return "good" peers for syncing
@@ -170,14 +176,13 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.discovery_syncing(
             n,
             excluded_peers,
             features,
             external_addresses_only,
-            transport_protocols,
+            &self.transport_protocols,
         )
     }
 
@@ -234,7 +239,6 @@ impl PeerManager {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.closest_n_active_peers(
             region_node_id,
@@ -246,7 +250,7 @@ impl PeerManager {
             exclude_if_all_address_failed,
             exclusion_distance,
             external_addresses_only,
-            transport_protocols,
+            &self.transport_protocols,
         )
     }
 
@@ -612,7 +616,7 @@ mod test {
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
         )
         .unwrap();
-        PeerManager::new(peers_db).unwrap()
+        PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap()
     }
 
     #[tokio::test]
@@ -680,7 +684,6 @@ mod test {
                 true,
                 None,
                 false,
-                &[],
             )
             .await
             .unwrap();
@@ -717,7 +720,6 @@ mod test {
                 true,
                 None,
                 false,
-                &[],
             )
             .await
             .unwrap();
@@ -938,7 +940,6 @@ mod test {
                             false,
                             None,
                             false,
-                            &[],
                         )
                         .await
                         .unwrap();
@@ -975,7 +976,6 @@ mod test {
                 false,
                 None,
                 false,
-                &[],
             )
             .await
             .unwrap();

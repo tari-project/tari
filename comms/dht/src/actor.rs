@@ -38,7 +38,7 @@ use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
-    types::{CommsPublicKey, TransportProtocol},
+    types::CommsPublicKey,
     PeerConnection,
 };
 use tari_shutdown::ShutdownSignal;
@@ -778,7 +778,6 @@ impl DhtActor {
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<NodeId>, DhtActorError> {
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
@@ -799,7 +798,6 @@ impl DhtActor {
                 true,
                 None,
                 true,
-                transport_protocols,
             )
             .await?;
         debug!(
@@ -847,7 +845,6 @@ impl DhtActor {
                 n,
                 &excluded,
                 PeerFeatures::MESSAGE_PROPAGATION,
-                &config.transport_protocols,
             )
             .await?;
 

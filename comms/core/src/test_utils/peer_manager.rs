@@ -34,9 +34,11 @@ use crate::{
 
 #[cfg(test)]
 pub fn build_peer_manager(this_peer: &Peer) -> Result<Arc<PeerManager>, PeerManagerError> {
+    use crate::types::TransportProtocol;
+
     let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS)?;
     let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
-    Ok(Arc::new(PeerManager::new(peers_db)?))
+    Ok(Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all())?))
 }
 
 #[cfg(not(test))]
@@ -49,7 +51,10 @@ mod not_test {
     use tari_common_sqlite::connection::DbConnectionUrl;
 
     use super::*;
-    use crate::peer_manager::{Peer, PeerManagerError};
+    use crate::{
+        peer_manager::{Peer, PeerManagerError},
+        types::TransportProtocol,
+    };
 
     pub fn build_peer_manager<P: AsRef<Path>>(
         data_path: P,
@@ -62,7 +67,7 @@ mod not_test {
         let database_url = DbConnectionUrl::File(peer_database_name);
         let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
         let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
-        Ok(Arc::new(PeerManager::new(peers_db)?))
+        Ok(Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all())?))
     }
 }
 

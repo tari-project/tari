@@ -333,6 +333,7 @@ async fn configure_comms_and_dht(
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
+        .with_transport_protocols(config.transport.transport_type.get_supported_protocols())
         .with_peer_storage(peer_database)
         .with_excluded_dial_addresses(config.dht.excluded_dial_addresses.clone().into_vec().clone());
 
