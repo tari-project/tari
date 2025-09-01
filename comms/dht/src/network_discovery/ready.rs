@@ -44,7 +44,6 @@ async fn select_peers_for_discovery_round(
     excluded_peers: &[tari_comms::peer_manager::NodeId],
     config: &DhtConfig,
 ) -> Result<Vec<tari_comms::peer_manager::NodeId>, NetworkDiscoveryError> {
-    let transport_protocols = &config.transport_protocols;
     let peers_to_request_from: Vec<Peer> = match last_round_info {
         Some(stats) if stats.has_new_peers() => {
             debug!(
@@ -82,7 +81,6 @@ async fn select_peers_for_discovery_round(
                     config.network_discovery.max_sync_peers,
                     excluded_peers,
                     Some(PeerFlags::NONE),
-                    transport_protocols,
                 )
                 .await?
         },

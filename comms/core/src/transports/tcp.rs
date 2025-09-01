@@ -72,13 +72,15 @@ impl TcpTransport {
     /// Create a new TcpTransport
     pub fn new() -> Self {
         let mut supported_protocols = vec![TransportProtocol::Ipv4];
-        // check if this machine has ipv6 address. If not it's means that we can't use ipv6
+        // Gate IPv6 on runtime capability
         if supports_ipv6() {
             supported_protocols.push(TransportProtocol::Ipv6);
         }
         Self {
+            ttl: None,
+            nodelay: None,
+            dns_resolver: Arc::new(SystemDnsResolver),
             supported_protocols,
-            ..Default::default()
         }
     }
 
@@ -110,12 +112,7 @@ impl TcpTransport {
 
 impl Default for TcpTransport {
     fn default() -> Self {
-        Self {
-            ttl: None,
-            nodelay: None,
-            dns_resolver: Arc::new(SystemDnsResolver),
-            supported_protocols: vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
-        }
+        Self::new()
     }
 }
 
@@ -164,7 +161,8 @@ impl<F> TcpOutbound<F> {
 }
 
 impl<F> Future for TcpOutbound<F>
-where F: Future<Output = io::Result<TcpStream>> + Unpin
+where
+    F: Future<Output = io::Result<TcpStream>> + Unpin,
 {
     type Output = io::Result<TcpStream>;
 

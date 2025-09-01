@@ -25,7 +25,7 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_common_sqlite::connection::DbConnectionUrl;
-use tari_comms::{connectivity::ConnectivityRequester, types::TransportProtocol, NodeIdentity, PeerManager};
+use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
@@ -135,12 +135,6 @@ impl DhtBuilder {
     /// Enables automatically sending a join/announce message when connected to enough peers on the network.
     pub fn enable_auto_join(&mut self) -> &mut Self {
         self.config.auto_join = true;
-        self
-    }
-
-    /// Transport protocols to use for communication. Used to filter out unreachable peers.
-    pub fn with_transport_protocols(&mut self, protocols: Vec<TransportProtocol>) -> &mut Self {
-        self.config.transport_protocols = protocols;
         self
     }
 

@@ -269,10 +269,9 @@ impl PeerManager {
         n: usize,
         excluded: &[NodeId],
         flags: Option<PeerFlags>,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
-            .random_peers(n, excluded, flags, transport_protocols)
+            .random_peers(n, excluded, flags, &self.transport_protocols)
     }
 
     /// Calculate the region threshold for a given number of peers and features
@@ -625,7 +624,6 @@ mod test {
         // Create peer manager with random peers
         let peer_manager = create_peer_manager();
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
-        let transport_protocols = TransportProtocol::get_all();
         // Create 20 peers were the 1st and last one is bad
         assert!(peer_manager
             .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
@@ -746,14 +744,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager
-            .random_peers(10, &[], None, &transport_protocols)
-            .await
-            .unwrap();
-        let identities2 = peer_manager
-            .random_peers(10, &[], None, &transport_protocols)
-            .await
-            .unwrap();
+        let identities1 = peer_manager.random_peers(10, &[], None).await.unwrap();
+        let identities2 = peer_manager.random_peers(10, &[], None).await.unwrap();
         assert_ne!(identities1, identities2);
     }
 

@@ -28,10 +28,7 @@ use diesel::{
     self,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
-    ExpressionMethods,
-    QueryDsl,
-    RunQueryDsl,
-    SqliteConnection,
+    ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection,
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use log::{trace, warn};
@@ -45,12 +42,7 @@ use crate::{
         generate_peer_id_as_i64,
         peer_id::peer_id_from_i64,
         storage::schema::{multi_addresses, node_identity, peers},
-        NodeDistance,
-        NodeId,
-        Peer,
-        PeerFeatures,
-        PeerFlags,
-        PeerId,
+        NodeDistance, NodeId, Peer, PeerFeatures, PeerFlags, PeerId,
     },
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
@@ -73,34 +65,6 @@ pub struct ThisPeerIdentity {
 pub struct PeerDatabaseSql {
     connection: DbConnection,
     this_peer_identity: ThisPeerIdentity,
-}
-
-/// Macro to build a filter expression for transport protocols
-/// This eliminates code duplication when filtering addresses by transport protocol prefixes
-/// We must use macro instead of function because it's used with different query context (different join tables) and
-/// BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> would not be valid here.
-/// With macro, we can use the same expression in different contexts without having to duplicate code.
-macro_rules! build_transport_protocol_filter {
-    ($transport_protocols:expr) => {{
-        let protocols_prefixes = $transport_protocols
-            .iter()
-            .map(|protocol| protocol.get_prefix())
-            .collect::<Vec<_>>();
-        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
-            None;
-
-        for prefix in &protocols_prefixes {
-            let like_pattern = format!("{}%", prefix);
-            let condition = multi_addresses::address.like(like_pattern);
-
-            addr_filter = match addr_filter {
-                None => Some(Box::new(condition)),
-                Some(existing) => Some(Box::new(existing.or(condition))),
-            };
-        }
-
-        addr_filter
-    }};
 }
 
 impl PeerDatabaseSql {
@@ -135,10 +99,10 @@ impl PeerDatabaseSql {
                 )));
             }
             if !node_identity_indexes.is_empty() {
-                if self.this_peer_identity.public_key.to_hex() ==
-                    node_identity_indexes.first().expect("already checked").public_key &&
-                    self.this_peer_identity.node_id.to_hex() ==
-                        node_identity_indexes.first().expect("already checked").node_id
+                if self.this_peer_identity.public_key.to_hex()
+                    == node_identity_indexes.first().expect("already checked").public_key
+                    && self.this_peer_identity.node_id.to_hex()
+                        == node_identity_indexes.first().expect("already checked").node_id
                 {
                     return Ok(());
                 } else {
@@ -1151,7 +1115,7 @@ impl PeerDatabaseSql {
         transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        let addr_filter = build_transport_protocol_filter!(transport_protocols);
+        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
         // Build base query filtering for communication nodes, not banned, not deleted
         let mut query = peers::table
@@ -1168,8 +1132,8 @@ impl PeerDatabaseSql {
             )))
             .into_boxed();
 
-        if let Some(filter_expr) = addr_filter {
-            query = query.filter(filter_expr);
+        if let Some(filter_sql) = addr_filter_sql {
+            query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
         }
 
         // Exclude connected peers if provided
@@ -1427,7 +1391,7 @@ impl PeerDatabaseSql {
         transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<String>, StorageError> {
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-        let addr_filter = build_transport_protocol_filter!(transport_protocols);
+        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
         // Step 1: Retrieve relevant node_ids
         let mut query = peers::table
@@ -1446,8 +1410,8 @@ impl PeerDatabaseSql {
             query = query.filter(peers::flags.eq(flags.to_i32()));
         }
 
-        if let Some(filter_expr) = addr_filter {
-            query = query.filter(filter_expr);
+        if let Some(filter_sql) = addr_filter_sql {
+            query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
         }
 
         if exclude_if_all_address_failed {
@@ -1613,7 +1577,7 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
         let exclude_node_ids = exclude_node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-        let addr_filter = build_transport_protocol_filter!(transport_protocols);
+        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
         conn.transaction::<_, StorageError, _>(|conn| {
             // Step 1: Filtered, random and truncated list of node_ids
@@ -1641,8 +1605,8 @@ impl PeerDatabaseSql {
                 query = query.filter(peers::flags.eq(flags.to_i32()));
             }
 
-            if let Some(filter_expr) = addr_filter {
-                query = query.filter(filter_expr);
+            if let Some(filter_sql) = addr_filter_sql {
+                query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
             }
 
             let node_ids: Vec<String> = query.load::<String>(conn)?;
@@ -1682,6 +1646,21 @@ impl PeerDatabaseSql {
     /// Get the size of the peer database
     pub fn size(&self) -> usize {
         self.get_peer_indexes().unwrap_or_default().len()
+    }
+
+    /// Builds an OR-ed SQL clause like:
+    /// "multi_addresses.address LIKE '/ip4%' OR multi_addresses.address LIKE '/ip6%'"
+    fn build_addr_filter_sql(transport_protocols: &[TransportProtocol]) -> Option<String> {
+        if transport_protocols.is_empty() {
+            return None;
+        }
+
+        let conditions: Vec<String> = transport_protocols
+            .iter()
+            .map(|protocol| format!("multi_addresses.address LIKE '{}%'", sql_escape(protocol.get_prefix())))
+            .collect();
+
+        Some(conditions.join(" OR "))
     }
 }
 
@@ -1952,19 +1931,14 @@ mod tests {
     use crate::{
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
-            create_test_peer,
-            create_test_peer_add_internal_addresses,
-            create_test_peer_internal_addresses_only,
+            create_test_peer, create_test_peer_add_internal_addresses, create_test_peer_internal_addresses_only,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
             manager::create_test_peer_with_onion_address,
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
                 schema::{multi_addresses, peers},
             },
-            NodeId,
-            Peer,
-            PeerFeatures,
-            PeerFlags,
+            NodeId, Peer, PeerFeatures, PeerFlags,
         },
         protocol::ProtocolId,
         types::{CommsPublicKey, TransportProtocol},
@@ -2534,8 +2508,8 @@ mod tests {
             .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id));
 
         // Test 'set_last_seen'
-        let last_seen = chrono::Utc::now().naive_utc() -
-            chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
+        let last_seen = chrono::Utc::now().naive_utc()
+            - chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
         for address in node_peers[8].addresses.addresses() {
             peers_db
                 .set_last_seen(&node_peers[8].node_id, last_seen, address.address())
@@ -2596,8 +2570,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_nodes.len() - 1 {
             assert!(
-                closest_nodes[i].node_id.distance(&node_peers[5].node_id) <=
-                    closest_nodes[i + 1].node_id.distance(&node_peers[5].node_id)
+                closest_nodes[i].node_id.distance(&node_peers[5].node_id)
+                    <= closest_nodes[i + 1].node_id.distance(&node_peers[5].node_id)
             );
         }
 
@@ -2635,8 +2609,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
-                closest_peers[i].node_id.distance(&node_peers[5].node_id) <=
-                    closest_peers[i + 1].node_id.distance(&node_peers[5].node_id)
+                closest_peers[i].node_id.distance(&node_peers[5].node_id)
+                    <= closest_peers[i + 1].node_id.distance(&node_peers[5].node_id)
             );
         }
 
@@ -2671,8 +2645,8 @@ mod tests {
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
-                closest_peers[i].node_id.distance(&wallet_peers[5].node_id) <=
-                    closest_peers[i + 1].node_id.distance(&wallet_peers[5].node_id)
+                closest_peers[i].node_id.distance(&wallet_peers[5].node_id)
+                    <= closest_peers[i + 1].node_id.distance(&wallet_peers[5].node_id)
             );
         }
 
