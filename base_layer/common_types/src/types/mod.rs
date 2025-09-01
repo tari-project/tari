@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+use tari_hashing::BulletRangeProofHashDomain;
 mod bullet_rangeproofs;
 mod fixed_hash;
 use blake2::Blake2b;
@@ -27,7 +27,6 @@ pub use bullet_rangeproofs::BulletRangeProof;
 use digest::consts::{U32, U64};
 use tari_crypto::{
     compressed_key::CompressedKey,
-    hasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, CompressedPedersenCommitment},
@@ -89,24 +88,9 @@ pub type CommsDHKE = DiffieHellmanSharedSecret<RistrettoPublicKey>;
 
 use tari_crypto::{
     dhke::DiffieHellmanSharedSecret,
-    hash_domain,
     hashing::DomainSeparatedHasher,
     ristretto::{pedersen::PedersenCommitment, RistrettoSchnorr},
 };
-
-hasher!(
-    Blake2b<U64>,
-    WalletHasher,
-    "com.tari.base_layer.wallet",
-    1,
-    wallet_hasher
-);
-
-hash_domain!(
-    BulletRangeProofHashDomain,
-    "com.tari.base_layer.common_types.bullet_rangeproofs",
-    1
-);
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;
 
