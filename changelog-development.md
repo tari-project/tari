@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0](https://github.com/tari-project/tari/compare/v5.0.0-rc.0...v5.0.0) (2025-09-01)
+
+
+### Features
+
+* improve header sync ([#7421](https://github.com/tari-project/tari/issues/7421)) ([84c81d1](https://github.com/tari-project/tari/commit/84c81d129edc8d90adeec2eed2e207a61b44bef4))
+* update cuckaroo pow info for grpc methods ([#7443](https://github.com/tari-project/tari/issues/7443)) ([daa43e4](https://github.com/tari-project/tari/commit/daa43e4e215115aed5252697bc1f9107409a8264))
+
+
+### Bug Fixes
+
+* grpc server not respecting base_node.grpc_enabled flag ([#7456](https://github.com/tari-project/tari/issues/7456)) ([e1a9631](https://github.com/tari-project/tari/commit/e1a9631c3a5f65ea2fab7a47f37825a1ef5aeb5a))
+* set validator registration value to 1000uT ([#7457](https://github.com/tari-project/tari/issues/7457)) ([ba8d0cb](https://github.com/tari-project/tari/commit/ba8d0cb100e9cab23effb89ef6ea7b4245ce3521))
+
 ## [5.0.0-rc.0](https://github.com/tari-project/tari/compare/v5.0.0-pre.8...v5.0.0-rc.0) (2025-08-29)
 
 
