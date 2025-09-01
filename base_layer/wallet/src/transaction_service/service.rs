@@ -2099,6 +2099,9 @@ where
                 fee_per_gram,
                 None,
                 payment_id.clone(),
+                // Set minimum value promise to the amount provided. VN Reg outputs are required by validation to use
+                // this.
+                amount,
             )
             .await?;
 
@@ -2183,6 +2186,7 @@ where
                 fee_per_gram,
                 None,
                 payment_id.clone(),
+                MicroMinotari::zero(),
             )
             .await?;
 
@@ -2257,6 +2261,7 @@ where
                 fee_per_gram,
                 None,
                 payment_id.clone(),
+                MicroMinotari::zero(),
             )
             .await?;
 
@@ -2371,6 +2376,7 @@ where
                 fee_per_gram,
                 None,
                 payment_id.clone(),
+                MicroMinotari::zero(),
             )
             .await?;
         let template_output = transaction
