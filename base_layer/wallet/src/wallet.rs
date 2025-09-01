@@ -46,7 +46,8 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsSecretKey, NodeIdentity};
-use tari_hashing::WalletMessageSigningDomain; signatures::SchnorrSignatureError};
+use tari_crypto::signatures::SchnorrSignatureError;
+use tari_hashing::WalletMessageSigningDomain;
 use tari_p2p::auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService};
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -104,7 +105,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
-
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
