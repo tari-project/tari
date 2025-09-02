@@ -84,7 +84,7 @@ impl<B: Backend> App<B> {
             .await
             .map_err(WalletError::KeyManagerServiceError)?;
         let wallet_id = WalletIdentity::new(
-            wallet.comms.node_identity(),
+            wallet.node_identity.clone(),
             wallet_address_interactive,
             wallet_address_one_sided,
         );

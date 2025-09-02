@@ -35,9 +35,9 @@ use super::ffi::{
     Callbacks,
     CompletedTransactions,
     FeePerGramStats,
+    FfiConnectivityStatus,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKeys,
     WalletAddress,
 };
 use crate::{
@@ -60,7 +60,7 @@ impl WalletFFI {
         let id = get_port(world, 18000..18499).unwrap().to_string();
         let base_dir_path = base_dir.join("ffi_wallets").join(format!("{name}_id_{id}"));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
-        let comms_config = ffi::CommsConfig::create(base_dir);
+        let comms_config = ffi::WalletDbConfig::create(base_dir);
         let log_path: String = base_dir_path
             .join("logs")
             .join("ffi_wallet.log")
@@ -99,8 +99,8 @@ impl WalletFFI {
         self.wallet.lock().unwrap().get_address()
     }
 
-    pub fn connected_public_keys(&self) -> PublicKeys {
-        self.wallet.lock().unwrap().connected_public_keys()
+    pub fn get_connectivity_status(&self) -> (FfiConnectivityStatus, u64) {
+        self.get_counters().get_connectivity_status()
     }
 
     pub fn get_balance(&self) -> Balance {
@@ -151,7 +151,7 @@ impl WalletFFI {
 
     pub fn restart(&mut self) {
         self.wallet.lock().unwrap().destroy();
-        let comms_config = ffi::CommsConfig::create(self.base_dir.as_os_str().to_str().unwrap().into());
+        let comms_config = ffi::WalletDbConfig::create(self.base_dir.as_os_str().to_str().unwrap().into());
         self.wallet = ffi::Wallet::create(comms_config, self.log_path.clone(), null());
     }
 

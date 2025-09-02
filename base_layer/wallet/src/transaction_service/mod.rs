@@ -26,7 +26,6 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
-use tari_comms_dht::Dht;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -156,7 +155,6 @@ where
         let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
-            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
@@ -170,7 +168,6 @@ where
                 receiver,
                 output_manager_service,
                 core_key_manager_service,
-                outbound_message_service,
                 connectivity,
                 publisher,
                 node_identity,

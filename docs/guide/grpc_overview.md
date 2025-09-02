@@ -674,17 +674,34 @@ message SendShaAtomicSwapResponse {
 **Response**: `NetworkStatusResponse`
 ```protobuf
 message NetworkStatusResponse {
-    ConnectivityStatus status = 1;  // ONLINE, DEGRADED, OFFLINE
-    uint64 avg_latency_ms = 2;      // Average latency
-    uint64 num_node_connections = 3; // Active connections
+    ConnectivityStatus status = 1;  // INITIALIZING, ONLINE, DEGRADED, OFFLINE
+    uint32 avg_latency_ms = 2;      // Average latency
+    uint32 num_node_connections = 3; // Active connections
 }
 ```
 
 #### ListConnectedPeers
-**Purpose**: Lists currently connected peers.
+**Purpose**: Lists currently connected peers (_Note: For a base node only_).
 
 **Request**: `Empty`
 **Response**: `ListConnectedPeersResponse`
+
+#### GetConnectedHttpPeer
+**Purpose**: Lists currently connected HTTP base node (_Note: For a wallet only_).
+
+**Request**: `Empty`
+**Response**: `GetConnectedHttpPeerResponse`
+```protobuf
+// The HttpPeer message represents a connected HTTP peer in the wallet.
+message HttpPeer {
+  // The connection URL
+  string url = 1;
+  // The latency of the last request to this peer in ms
+  uint64 last_latency = 2;
+  // Online status of the peer
+  bool is_online = 3;
+}
+```
 
 ### Validation Methods
 
@@ -959,9 +976,10 @@ enum TransactionStatus {
 #### Network Connectivity
 ```protobuf
 enum ConnectivityStatus {
-    ONLINE = 0;     // Fully connected
-    DEGRADED = 1;   // Limited connectivity
-    OFFLINE = 2;    // No connectivity
+    INITIALIZING = 0; // Busy initializing
+    ONLINE = 1;       // Fully connected
+    DEGRADED = 2;     // Limited connectivity
+    OFFLINE = 3;      // No connectivity
 }
 ```
 

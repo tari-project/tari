@@ -127,8 +127,7 @@ TariWallet* wallet_create(
     void (*callback_txo_validation_complete)(uint64_t, uint64_t),
     void (*callback_balance_updated)(Balance*),
     void (*callback_transaction_validation_complete)(uint64_t, uint8_t),
-    void (*callback_saf_messages_received)(),
-    void (*callback_connectivity_status)(uint64_t),
+    void (*callback_connectivity_status)(uint64_t, uint64_t),
     bool* recovery_in_progress,             // Output: recovery status
     int* error_out                          // Error output
 );

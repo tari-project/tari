@@ -20,21 +20,16 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, str::FromStr, thread, time::Duration};
+use std::{path::PathBuf, str::FromStr, thread};
 
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_console_wallet::{run_wallet_with_cli, Cli};
 use minotari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use tari_common::{
-    configuration::{CommonConfig, MultiaddrList},
-    network_check::set_network_if_choice_valid,
-};
-use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_common::{configuration::CommonConfig, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::DhtConfig;
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
 use tonic::transport::Channel;
@@ -47,7 +42,6 @@ pub struct WalletProcess {
     pub grpc_port: u64,
     pub kill_signal: Shutdown,
     pub name: String,
-    pub port: u64,
     pub temp_dir_path: PathBuf,
     pub base_node_name: Option<String>,
     pub peer_seeds: Vec<String>,
@@ -75,22 +69,19 @@ pub async fn spawn_wallet(
     }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
-    let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
-    let mut wallet_config: WalletConfig;
+    let wallet_config: WalletConfig;
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
         if wallet_ps.is_running() {
             panic!("Wallet {wallet_name} is already running");
         }
-        port = wallet_ps.port;
         grpc_port = wallet_ps.grpc_port;
         temp_dir_path = wallet_ps.temp_dir_path.clone();
         wallet_config = wallet_ps.config.clone();
     } else {
         // each spawned wallet will use different ports
-        port = get_port(world, 18000..18499).unwrap();
         grpc_port = get_port(world, 18500..18999).unwrap();
 
         temp_dir_path = world
@@ -101,9 +92,6 @@ pub async fn spawn_wallet(
             .join(format!("{}_grpc_port_{}", wallet_name.clone(), grpc_port));
 
         wallet_config = WalletConfig::default();
-        wallet_config
-            .base_node_service_config
-            .base_node_monitor_max_refresh_interval = Duration::from_secs(5);
     };
 
     let peer_addresses = get_peer_addresses(world, &peer_seeds).await;
@@ -134,32 +122,14 @@ pub async fn spawn_wallet(
 
         eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
 
-        wallet_app_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
         wallet_app_config.wallet.network = Network::LocalNet;
         wallet_app_config.wallet.password = Some("test".into());
         wallet_app_config.wallet.grpc_enabled = true;
         wallet_app_config.wallet.grpc_address =
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{grpc_port}")).unwrap());
         wallet_app_config.wallet.db_file = PathBuf::from("console_wallet.db");
-        wallet_app_config
-            .wallet
-            .base_node_service_config
-            .base_node_monitor_max_refresh_interval = Duration::from_secs(15);
-        wallet_app_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
-        wallet_app_config.wallet.p2p.transport.tcp.listener_address =
-            Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{port}")).unwrap();
         wallet_app_config.wallet.http_server_url = format!("http://127.0.0.1:{http_port}");
         wallet_app_config.wallet.fallback_http_server_url = format!("http://127.0.0.1:{http_port}");
-        wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![wallet_app_config
-            .wallet
-            .p2p
-            .transport
-            .tcp
-            .listener_address
-            .clone()]);
-        wallet_app_config.wallet.p2p.dht = DhtConfig::default_local_test();
-        wallet_app_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{port}-dht.sqlite"));
-        wallet_app_config.wallet.p2p.allow_test_addresses = true;
         if let Some(mech) = routing_mechanism {
             wallet_app_config
                 .wallet
@@ -186,7 +156,6 @@ pub async fn spawn_wallet(
         }
     });
 
-    wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 
     let wallet_addr = format!("http://127.0.0.1:{grpc_port}");
@@ -208,7 +177,6 @@ pub async fn spawn_wallet(
     world.wallets.insert(wallet_name.clone(), WalletProcess {
         config: wallet_config,
         name: wallet_name.clone(),
-        port,
         grpc_port,
         temp_dir_path: temp_dir,
         base_node_name,

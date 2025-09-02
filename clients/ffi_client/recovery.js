@@ -46,7 +46,7 @@ try {
 
 
   console.log("Create Comms config...");
-  let comms = lib.comms_config_create(
+  let comms = lib.wallet_db_config_create(
     "/ip4/0.0.0.0/tcp/9838",
     tor,
     "wallet.dat",
@@ -116,12 +116,8 @@ try {
   const txValidation = ffi.Callback("void", [u64, u8], function (i, j) {
     console.log("txValidation: ", i, j);
   });
-  // callback_saf_messages_received: unsafe extern "C" fn(),
-  const safsReceived = ffi.Callback("void", [], function () {
-    console.log("safsReceived");
-  });
   // callback_connectivity_status: unsafe extern "C" fn(),
-  const connectivityStatus = ffi.Callback("void", [u64], function () {
+  const connectivityStatus = ffi.Callback("void", [u64, u64], function () {
     console.log("connectivityStatus");
   });
 
@@ -163,7 +159,6 @@ try {
     txoValidation,
     balanceUpdated,
     txValidation,
-    safsReceived,
     connectivityStatus,
     recoveryInProgress,
     err

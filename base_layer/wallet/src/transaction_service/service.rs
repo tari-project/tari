@@ -56,7 +56,6 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
-use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
@@ -184,7 +183,6 @@ where
         >,
         output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
         core_key_manager_service: TKeyManagerInterface,
-        outbound_message_service: OutboundMessageRequester,
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
@@ -219,7 +217,6 @@ where
             db: db.clone(),
             output_manager_service,
             transaction_key_manager_service: core_key_manager_service,
-            outbound_message_service,
             connectivity,
             event_publisher: event_publisher.clone(),
             interactive_tari_address,
@@ -936,7 +933,7 @@ where
         count: u64,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) {
-        let mut connectivity = self.resources.connectivity.clone();
+        let connectivity = self.resources.connectivity.clone();
 
         let query_base_node_fut = async move {
             let client = connectivity.obtain_base_node_wallet_rpc_client().await;
@@ -3350,7 +3347,6 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     pub transaction_key_manager_service: TKeyManagerInterface,
-    pub outbound_message_service: OutboundMessageRequester,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
     pub interactive_tari_address: TariAddress,

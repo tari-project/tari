@@ -30,7 +30,6 @@ use minotari_console_wallet::{
     BurnMinotariArgs,
     CliCommands,
     CoinSplitArgs,
-    DiscoverPeerArgs,
     ExportUtxosArgs,
     ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
@@ -205,29 +204,6 @@ async fn export_utxos(world: &mut TariWorld, wallet: String) {
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
 
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
-}
-
-#[when(expr = "I discover peer {word} on wallet {word} via command line")]
-async fn discover_peer(world: &mut TariWorld, node: String, wallet: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut cli = get_default_cli();
-
-    let mut node_client = world.get_node_client(&node).await.unwrap();
-    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
-
-    let args = DiscoverPeerArgs {
-        dest_public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
-    };
-
-    cli.command2 = Some(CliCommands::DiscoverPeer(args));
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
-    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 }
 

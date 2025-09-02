@@ -26,6 +26,7 @@ use rand::Rng;
 
 pub mod base_node_process;
 pub mod ffi;
+pub use ffi::FfiConnectivityStatus;
 pub mod merge_mining_proxy;
 pub mod miner;
 pub mod transaction;
