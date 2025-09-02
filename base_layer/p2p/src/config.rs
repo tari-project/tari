@@ -27,14 +27,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{
-        deserialize_dns_name_server_list,
-        serializers,
-        DnsNameServerList,
-        MultiaddrList,
-        Network,
-        StringList,
-    },
+    configuration::{serializers, MultiaddrList, Network, StringList},
     SubConfigPath,
 };
 use tari_common_sqlite::connection::DbConnectionUrl;

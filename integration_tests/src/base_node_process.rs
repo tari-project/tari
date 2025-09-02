@@ -163,7 +163,6 @@ pub async fn spawn_base_node_with_config(
             metrics: MetricsConfig::default(),
             peer_seeds: PeerSeedsConfig {
                 peer_seeds: peer_addresses.into(),
-                dns_seeds_use_dnssec: false,
                 ..Default::default()
             },
         };
