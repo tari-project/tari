@@ -51,6 +51,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             BlockchainDatabaseConfig::default(),
         ])
@@ -305,6 +306,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Carol is a pruned node
             BlockchainDatabaseConfig {
@@ -313,6 +315,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Bob is an archival node
             BlockchainDatabaseConfig::default(),
@@ -684,6 +687,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Carol is a pruned node
             BlockchainDatabaseConfig {
@@ -692,6 +696,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Bob is an archival node
             BlockchainDatabaseConfig::default(),

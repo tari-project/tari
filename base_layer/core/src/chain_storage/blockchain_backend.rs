@@ -91,6 +91,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Fetch all bad blocks
     fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError>;
 
+    /// clears all bad blocks
+    fn clear_all_bad_blocks(&mut self) -> Result<(), ChainStorageError>;
+
     /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
     /// is in
     fn fetch_kernel_by_excess_sig(

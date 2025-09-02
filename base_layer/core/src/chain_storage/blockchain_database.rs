@@ -144,6 +144,7 @@ pub struct BlockchainDatabaseConfig {
     pub pruning_interval: u64,
     pub track_reorgs: bool,
     pub cleanup_orphans_at_startup: bool,
+    pub clear_bad_blocks_at_startup: bool,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -154,6 +155,7 @@ impl Default for BlockchainDatabaseConfig {
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             track_reorgs: false,
             cleanup_orphans_at_startup: false,
+            clear_bad_blocks_at_startup: true,
         }
     }
 }
@@ -347,6 +349,16 @@ where B: BlockchainBackend
                 Err(e) => warn!(
                     target: LOG_TARGET,
                     "Orphan database could not be cleaned out at startup: ({e:?})."
+                ),
+            }
+        }
+
+        if config.clear_bad_blocks_at_startup {
+            match self.clear_all_bad_blocks() {
+                Ok(_) => info!(target: LOG_TARGET, "Bad blocks cleaned out at startup.",),
+                Err(e) => warn!(
+                    target: LOG_TARGET,
+                    "Bad blocks could not be cleaned out at startup: ({e:?})."
                 ),
             }
         }
@@ -731,6 +743,11 @@ where B: BlockchainBackend
     pub fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_bad_blocks()
+    }
+
+    pub fn clear_all_bad_blocks(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        db.clear_all_bad_blocks()
     }
 
     pub fn fetch_outputs_in_block_with_spend_state(
