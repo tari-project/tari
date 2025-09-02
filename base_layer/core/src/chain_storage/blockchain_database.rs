@@ -351,6 +351,14 @@ where B: BlockchainBackend
             }
         }
 
+        match self.clear_all_blocks() {
+            Ok(_) => info!(target: LOG_TARGET, "Bad blocks cleaned out at startup.",),
+            Err(e) => warn!(
+                target: LOG_TARGET,
+                "Bad blocks could not be cleaned out at startup: ({e:?})."
+            ),
+        }
+
         let pruning_horizon = self.get_chain_metadata()?.pruning_horizon();
         if config.pruning_horizon != pruning_horizon {
             debug!(
@@ -731,6 +739,11 @@ where B: BlockchainBackend
     pub fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_bad_blocks()
+    }
+
+    pub fn clear_all_blocks(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        db.clear_all_bad_blocks()
     }
 
     pub fn fetch_outputs_in_block_with_spend_state(
