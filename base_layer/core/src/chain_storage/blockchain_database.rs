@@ -354,7 +354,7 @@ where B: BlockchainBackend
         }
 
         if config.clear_bad_blocks_at_startup {
-            match self.clear_all_blocks() {
+            match self.clear_all_bad_blocks() {
                 Ok(_) => info!(target: LOG_TARGET, "Bad blocks cleaned out at startup.",),
                 Err(e) => warn!(
                     target: LOG_TARGET,
@@ -745,7 +745,7 @@ where B: BlockchainBackend
         db.fetch_bad_blocks()
     }
 
-    pub fn clear_all_blocks(&self) -> Result<(), ChainStorageError> {
+    pub fn clear_all_bad_blocks(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         db.clear_all_bad_blocks()
     }
