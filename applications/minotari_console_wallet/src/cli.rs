@@ -158,7 +158,6 @@ pub enum CliCommands {
     UserPayForFee(UserPayForFeeArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
-    DiscoverPeer(DiscoverPeerArgs),
     Whois(WhoisArgs),
     ExportUtxos(ExportUtxosArgs),
     ExportTx(ExportTxArgs),
@@ -179,11 +178,6 @@ pub enum CliCommands {
     PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
     SignOneSidedTransaction(SignOneSidedTransactionArgs),
     BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct DiscoverPeerArgs {
-    pub dest_public_key: UniPublicKey,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -457,8 +457,6 @@ mod test {
 
             whois 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
 
-            discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
-
             burn-minotari --payment-id Ups_these_funds_will_be_burned! 100T
 
             pre-mine-spend-get-output-status
@@ -501,7 +499,6 @@ mod test {
         let mut pre_mine_spend_input_output_sigs = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
-        let mut discover_peer = false;
         let mut export_tx = false;
         let mut import_tx = false;
         let mut whois = false;
@@ -518,7 +515,6 @@ mod test {
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
-                CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
                 CliCommands::ImportPaperWallet(_) => {},
@@ -563,7 +559,6 @@ mod test {
                 pre_mine_spend_input_output_sigs &&
                 make_it_rain &&
                 coin_split &&
-                discover_peer &&
                 whois &&
                 export_tx &&
                 import_tx

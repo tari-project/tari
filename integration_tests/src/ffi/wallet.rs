@@ -42,13 +42,12 @@ use super::{
         TariWallet,
     },
     Balance,
-    CommsConfig,
     CompletedTransactions,
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKeys,
     WalletAddress,
+    WalletDbConfig,
 };
 use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
 
@@ -137,14 +136,10 @@ extern "C" fn callback_transaction_validation_complete(
     callbacks.on_transaction_validation_complete(request_key, validation_results);
     // println!("callback_transaction_validation_complete");
 }
-extern "C" fn callback_saf_messages_received(_context: *mut c_void) {
+
+extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64, latency: u64) {
     let callbacks = Callbacks::instance();
-    callbacks.on_saf_messages_received();
-    // println!("callback_saf_messages_received");
-}
-extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64) {
-    let callbacks = Callbacks::instance();
-    callbacks.on_connectivity_status(status);
+    callbacks.on_connectivity_status(status, latency);
     // println!("callback_connectivity_status");
 }
 
@@ -181,7 +176,11 @@ impl Drop for Wallet {
 
 impl Wallet {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn create(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
+    pub fn create(
+        wallet_db_config: WalletDbConfig,
+        log_path: String,
+        seed_words_ptr: *const c_void,
+    ) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
@@ -189,7 +188,7 @@ impl Wallet {
         unsafe {
             ptr = wallet_create(
                 void_ptr,
-                comms_config.get_ptr(),
+                wallet_db_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 11,
                 50,
@@ -198,9 +197,6 @@ impl Wallet {
                 ptr::null(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
-                CString::new("").unwrap().into_raw(),
-                ptr::null(),
-                false,
                 CString::new("").unwrap().into_raw(),
                 0,
                 callback_received_transaction,
@@ -216,7 +212,6 @@ impl Wallet {
                 callback_txo_validation_complete,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
-                callback_saf_messages_received,
                 callback_connectivity_status,
                 callback_wallet_scanned_height,
                 callback_base_node_state,
@@ -261,19 +256,6 @@ impl Wallet {
             }
         }
         WalletAddress::from_ptr(ptr)
-    }
-
-    pub fn connected_public_keys(&self) -> PublicKeys {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::comms_list_connected_public_keys(self.ptr, &mut error);
-            if error > 0 {
-                println!("comms_list_connected_public_keys error {error}");
-                panic!("comms_list_connected_public_keys error");
-            }
-        }
-        PublicKeys::from_ptr(ptr)
     }
 
     pub fn get_balance(&self) -> Balance {

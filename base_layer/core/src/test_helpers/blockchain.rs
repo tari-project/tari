@@ -282,6 +282,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_bad_blocks()
     }
 
+    fn clear_all_bad_blocks(&mut self) -> Result<(), ChainStorageError> {
+        self.db.as_mut().unwrap().clear_all_bad_blocks()
+    }
+
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &CompressedSignature,

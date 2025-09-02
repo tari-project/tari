@@ -74,15 +74,6 @@ Feature: Wallet FFI
         Then I retrieve the mnemonic word list for KOREAN
         Then I retrieve the mnemonic word list for SPANISH
 
-#    Scenario: As a client I want to set the base node
-#        Given I have a base node BASE1
-#        And I have a base node BASE2
-#        Given I have a ffi wallet FFI_WALLET connected to base node BASE1
-#        Then I wait for ffi wallet FFI_WALLET to connect to BASE1
-#        Given I set base node BASE2 for ffi wallet FFI_WALLET
-#        Then I wait for ffi wallet FFI_WALLET to connect to BASE2
-#        And I stop ffi wallet FFI_WALLET
-
 #    Scenario: As a client I want to cancel a transaction
 #        Given I have a base node BASE
 #        When I have wallet SENDER connected to base node BASE

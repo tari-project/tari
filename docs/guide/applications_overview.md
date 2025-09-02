@@ -89,6 +89,7 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.storage.pruning_interval=<blocks>` - Pruning interval (default: 50)
 - `base_node.storage.track_reorgs=<bool>` - Record reorgs for list-reorgs command
 - `base_node.storage.cleanup_orphans_at_startup=<bool>` - Clean orphans on startup
+- `base_node.storage.clear_bad_blocks_at_startup=<bool>` - Clean bad blocks on startup
 
 **Mempool Configuration**:
 - `base_node.mempool.unconfirmed_pool.storage_capacity=<num>` - Max unconfirmed TXs (default: 40,000)

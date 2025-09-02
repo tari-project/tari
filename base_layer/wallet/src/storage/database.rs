@@ -31,7 +31,6 @@ use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::Ciphe
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
-    tor::TorIdentity,
 };
 use tari_utilities::SafePassword;
 
@@ -79,7 +78,6 @@ pub enum DbKey {
     CommsAddress,
     CommsFeatures,
     CommsIdentitySignature,
-    TorId,
     BaseNodeChainMetadata,
     ClientKey(String),
     MasterSeed,
@@ -99,7 +97,6 @@ impl DbKey {
             DbKey::MasterSeed => "MasterSeed".to_string(),
             DbKey::CommsAddress => "CommsAddress".to_string(),
             DbKey::CommsFeatures => "NodeFeatures".to_string(),
-            DbKey::TorId => "TorId".to_string(),
             DbKey::ClientKey(k) => format!("ClientKey.{k}"),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
             DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
@@ -119,7 +116,6 @@ pub enum DbValue {
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
-    TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
     BaseNodeChainMetadata(ChainMetadata),
@@ -137,7 +133,6 @@ pub enum DbValue {
 #[derive(Clone)]
 pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
-    TorId(TorIdentity),
     BaseNodeChainMetadata(ChainMetadata),
     MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
@@ -187,21 +182,6 @@ where T: WalletBackend + 'static
 
     pub fn clear_master_seed(&self) -> Result<(), WalletStorageError> {
         self.db.write(WriteOperation::Remove(DbKey::MasterSeed))?;
-        Ok(())
-    }
-
-    pub fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::TorId) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::TorId(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::TorId, other),
-            Err(e) => log_error(DbKey::TorId, e),
-        }?;
-        Ok(c)
-    }
-
-    pub fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
-        self.db.write(WriteOperation::Insert(DbKeyValuePair::TorId(id)))?;
         Ok(())
     }
 
@@ -404,7 +384,6 @@ impl Display for DbValue {
             DbValue::ValueCleared => f.write_str("ValueCleared"),
             DbValue::CommsFeatures(_) => f.write_str("Node features"),
             DbValue::CommsAddress(_) => f.write_str("Comms Address"),
-            DbValue::TorId(v) => f.write_str(&format!("Tor ID: {v}")),
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{v}")),
             DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {k:?}")),
             DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {s}")),

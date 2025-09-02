@@ -59,7 +59,8 @@ where D: serde::Deserializer<'de> {
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
     pub override_from: Option<String>,
-    /// The p2p config settings
+    /// DEPRECATED: The p2p config settings
+    #[serde(default)]
     pub p2p: P2pConfig,
     /// The transaction_service_config config settings
     #[serde(rename = "transactions")]
@@ -67,11 +68,12 @@ pub struct WalletConfig {
     /// The output_manager_service_config config settings
     #[serde(rename = "outputs")]
     pub output_manager_service_config: OutputManagerServiceConfig,
-    /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
+    /// DEPRECATED: The buffer size for the publish/subscribe connector channel, connecting comms messages to the
+    /// domain layer
     pub buffer_size: usize,
     /// Selected network
     pub network: Network,
-    /// The base_node_service_config config settings
+    /// DEPRECATED: The base_node_service_config config settings
     #[serde(rename = "base_node")]
     pub base_node_service_config: BaseNodeServiceConfig,
     /// The relative path to store persistent data
@@ -115,10 +117,10 @@ pub struct WalletConfig {
     pub fee_per_gram: u64,
     /// Number of required transaction confirmations used for UI purposes
     pub num_required_confirmations: u64,
-    /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
-    /// with the optional "libtor" feature flag.
+    /// DEPRECATED: Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet
+    /// DEPRECATED: was built with the optional "libtor" feature flag.
     pub use_libtor: bool,
-    /// A path to the file that stores the base node identity and secret key
+    /// DEPRECATED: A path to the file that stores the wallet identity and secret key
     pub identity_file: Option<PathBuf>,
     /// The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
     /// For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
@@ -137,11 +139,6 @@ pub struct WalletConfig {
 
 impl Default for WalletConfig {
     fn default() -> Self {
-        let p2p = P2pConfig {
-            datastore_path: PathBuf::from("peer_db/wallet"),
-            listener_self_liveness_check_interval: None,
-            ..Default::default()
-        };
         let port = wallet_http_service_default_port(Network::get_current());
         let http_server_url = Url::parse(format!("http://127.0.0.1:{port}").as_str())
             .expect("This should be a valid URL")
@@ -151,12 +148,12 @@ impl Default for WalletConfig {
             .to_string();
         Self {
             override_from: None,
-            p2p,
+            p2p: P2pConfig { ..Default::default() }, // DEPRECATED
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
-            buffer_size: 50_000,
+            buffer_size: 50_000, // DEPRECATED
             network: Default::default(),
-            base_node_service_config: Default::default(),
+            base_node_service_config: Default::default(), // DEPRECATED
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             config_dir: PathBuf::from_str("config/wallet").unwrap(),
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
@@ -175,8 +172,8 @@ impl Default for WalletConfig {
             recovery_retry_limit: 3,
             fee_per_gram: 5,
             num_required_confirmations: 3,
-            use_libtor: true,
-            identity_file: None,
+            use_libtor: true,    // DEPRECATED
+            identity_file: None, // DEPRECATED
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
             http_server_url,
@@ -203,7 +200,6 @@ impl WalletConfig {
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
         }
-        self.p2p.set_base_path(base_path);
     }
 }
 

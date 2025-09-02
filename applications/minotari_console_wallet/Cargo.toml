@@ -14,7 +14,6 @@ tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_transaction_components = { workspace = true }
 tari_comms = { workspace = true }
-tari_comms_dht = { workspace = true }
 tari_core = { workspace = true}
 tari_crypto = { workspace = true }
 tari_libtor = { workspace = true, optional = true }

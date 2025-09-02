@@ -20,51 +20,42 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr::null_mut;
+use std::{ffi::CString, ptr::null_mut};
 
 use libc::c_void;
 
-use super::{ffi_import, PublicKey};
+use super::ffi_import;
 
-pub struct PublicKeys {
+pub struct WalletDbConfig {
     ptr: *mut c_void,
 }
 
-impl Drop for PublicKeys {
+impl Drop for WalletDbConfig {
     fn drop(&mut self) {
-        unsafe { ffi_import::public_keys_destroy(self.ptr) };
+        unsafe { ffi_import::wallet_db_config_destroy(self.ptr) };
         self.ptr = null_mut();
     }
 }
 
-impl PublicKeys {
-    pub fn from_ptr(ptr: *mut c_void) -> Self {
-        Self { ptr }
-    }
-
-    pub fn get_length(&self) -> usize {
-        let mut error = 0;
-        let length;
-        unsafe {
-            length = ffi_import::public_keys_get_length(self.ptr, &mut error);
-            if error > 0 {
-                println!("public_keys_get_length error {error}");
-                panic!("public_keys_get_length error");
-            }
-        }
-        length as usize
-    }
-
-    pub fn get_public_key_at(&self, position: u32) -> PublicKey {
+impl WalletDbConfig {
+    pub fn create(base_dir: String) -> Self {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::public_keys_get_at(self.ptr, position, &mut error);
+            ptr = ffi_import::wallet_db_config_create(
+                CString::new("wallet.dat").unwrap().into_raw(),
+                CString::new(base_dir).unwrap().into_raw(),
+                &mut error,
+            );
             if error > 0 {
-                println!("public_keys_get_length error {error}");
-                panic!("public_keys_get_length error");
+                println!("comms config error {error}");
+                panic!("comms config error");
             }
         }
-        PublicKey::from_ptr(ptr)
+        Self { ptr }
+    }
+
+    pub fn get_ptr(&self) -> *mut c_void {
+        self.ptr
     }
 }

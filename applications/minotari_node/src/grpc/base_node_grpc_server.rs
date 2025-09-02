@@ -97,12 +97,13 @@ use crate::{
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         data_cache::DataCache,
-        hash_rate::HashRateMovingAverage,
+        hash_rate::{display_u_decimal_value, HashRateMovingAverage, NANOS_PER_UNIT},
         helpers::{mean, median},
     },
     grpc_method::GrpcMethod,
     BaseNodeConfig,
 };
+
 const LOG_TARGET: &str = "minotari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
 const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
@@ -292,13 +293,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         ));
 
         let mut sha3x_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone());
+            HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone(), false);
         let mut monero_randomx_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::RandomXM, self.consensus_rules.clone());
+            HashRateMovingAverage::new(PowAlgorithm::RandomXM, self.consensus_rules.clone(), false);
         let mut tari_randomx_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone());
+            HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone(), false);
         let mut cuckaroo_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone());
+            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone(), true);
 
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
@@ -348,9 +349,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let sha3x_estimated_hash_rate = sha3x_hash_rate_moving_average.average();
                     let monero_randomx_estimated_hash_rate = monero_randomx_hash_rate_moving_average.average();
                     let tari_randomx_estimated_hash_rate = tari_randomx_hash_rate_moving_average.average();
+                    let cuckaroo_estimated_hash_rate = cuckaroo_hash_rate_moving_average.average();
                     let estimated_hash_rate = sha3x_estimated_hash_rate
                         .saturating_add(monero_randomx_estimated_hash_rate)
-                        .saturating_add(tari_randomx_estimated_hash_rate);
+                        .saturating_add(tari_randomx_estimated_hash_rate)
+                        .saturating_add(cuckaroo_estimated_hash_rate);
 
                     let block = match handler.get_block(current_height, true).await {
                         Ok(block) => block,
@@ -373,12 +376,24 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let block = block.unwrap();
                     let coinbases = block.block().body.get_coinbase_outputs();
 
+                    let cuckaroo_estimated_hash_rate_decimal = cuckaroo_hash_rate_moving_average.u_decimal_average();
+                    trace!(
+                        target: LOG_TARGET,
+                        "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
+                        current_height,
+                        sha3x_estimated_hash_rate,
+                        monero_randomx_estimated_hash_rate,
+                        tari_randomx_estimated_hash_rate,
+                        display_u_decimal_value(&cuckaroo_estimated_hash_rate_decimal),
+                    );
+
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
                         sha3x_estimated_hash_rate,
                         tari_randomx_estimated_hash_rate,
                         monero_randomx_estimated_hash_rate,
+                        cuckaroo_estimated_hash_rate: Some(cuckaroo_estimated_hash_rate_decimal),
                         height: current_height,
                         timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),
@@ -431,12 +446,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Sha3x: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
@@ -457,12 +471,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::RandomXM)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Monero RandomX: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
@@ -484,18 +497,48 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::RandomXT)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Tari RandomX: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
                     .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                    .await;
+                estimated_hash_rate
+            },
+        };
+
+        let cuckaroo_estimated_hash_rate = match self
+            .data_cache
+            .get_cuckaroo_estimated_hash_rate(metadata.best_block_hash())
+            .await
+        {
+            Some(hash_rate) => hash_rate,
+            None => {
+                let target_difficulty = handler
+                    .get_target_difficulty_for_next_block(PowAlgorithm::Cuckaroo)
+                    .await
+                    .inspect_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not get target difficulty for Cuckaroo: {e}"
+                        );
+                    })
+                    .unwrap_or(Difficulty::min());
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
+                let estimated_hash_rate_scaled = target_difficulty
+                    .as_u64()
+                    .saturating_mul(NANOS_PER_UNIT) // We have to add scaling as this value can be < 1
+                    .checked_div(target_time)
+                    .unwrap_or(0);
+                let estimated_hash_rate = HashRateMovingAverage::average_as_u_decimal(estimated_hash_rate_scaled);
+                self.data_cache
+                    .set_cuckaroo_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
                 estimated_hash_rate
             },
@@ -522,6 +565,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             liveness.push(liveness_check);
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
+            metadata.best_block_height(),
+            sha3x_estimated_hash_rate,
+            monero_randomx_estimated_hash_rate,
+            tari_randomx_estimated_hash_rate,
+            display_u_decimal_value(&cuckaroo_estimated_hash_rate),
+        );
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
@@ -531,6 +583,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             sha3x_estimated_hash_rate,
             monero_randomx_estimated_hash_rate,
             tari_randomx_estimated_hash_rate,
+            cuckaroo_estimated_hash_rate: Some(cuckaroo_estimated_hash_rate),
             num_connections: connected_peers.len() as u64,
             liveness_results: liveness,
             readiness_status: Some(ReadinessStatus {

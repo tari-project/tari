@@ -829,7 +829,7 @@ impl AppStateInner {
     }
 
     pub fn get_shutdown_signal(&self) -> ShutdownSignal {
-        self.wallet.comms.shutdown_signal()
+        self.wallet.shutdown_signal.clone()
     }
 
     pub fn get_transaction_service_event_stream(&self) -> TransactionEventReceiver {
