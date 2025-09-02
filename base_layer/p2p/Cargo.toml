@@ -23,7 +23,7 @@ log = "0.4.6"
 pgp = { version = "0.14.2", optional = true }
 prost = "0.13.3"
 rand = "0.8"
-reqwest = { version = "0.11", optional = true, default-features = false }
+reqwest = { version = "0.11", optional = true, features = ["json"] }
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
@@ -52,7 +52,7 @@ tari_common = { workspace = true, features = ["build"] }
 
 [features]
 test-mocks = []
-auto-update = ["reqwest/default", "pgp", "semver"]
+auto-update = ["reqwest", "pgp", "semver"]
 
 [package.metadata.cargo-machete]
 ignored = []

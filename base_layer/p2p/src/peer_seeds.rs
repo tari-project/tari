@@ -27,9 +27,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
@@ -37,61 +35,6 @@ use tari_comms::{
     types::{CommsPublicKey, UncompressedCommsPublicKey},
 };
 use tari_utilities::hex::Hex;
-
-use super::dns::DnsClientError;
-use crate::dns::DnsClient;
-
-const LOG_TARGET: &str = "tari::p2p::dns::client";
-
-#[derive(Clone)]
-pub struct DnsSeedResolver {
-    client: DnsClient,
-}
-
-impl DnsSeedResolver {
-    /// Connect to DNS host with DNSSEC protection using default root DNSKEY public keys
-    /// obtained from root DNS.
-    ///
-    /// ## Arguments
-    /// -`name_server` - the DNS name server to use to resolve records
-    pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
-        let client = DnsClient::connect_secure(name_server)?;
-        Ok(Self { client })
-    }
-
-    /// Connect without DNSSEC protection
-    ///
-    /// ## Arguments
-    /// -`name_server` - the DNS name server to use to resolve records
-    pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
-        let client = DnsClient::connect(name_server)?;
-        Ok(Self { client })
-    }
-
-    /// Resolves DNS TXT records and parses them into [`SeedPeer`]s.
-    ///
-    /// Example TXT record:
-    /// ```text
-    /// 06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234
-    /// ```
-    pub async fn resolve(&mut self, addr: &str) -> Result<Vec<SeedPeer>, DnsClientError> {
-        let records = self.client.query_txt(addr).await?;
-        let peers = records
-            .into_iter()
-            .filter_map(|txt| {
-                txt.parse()
-                    .inspect_err(|err| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Failed to parse DNS seed peer string: {txt}. Error: {err}"
-                        );
-                    })
-                    .ok()
-            })
-            .collect();
-        Ok(peers)
-    }
-}
 
 /// Parsed information from a DNS seed record
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,19 +158,6 @@ mod test {
         fn it_errors_invalid_address() {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/invalid/tcp/8000";
             SeedPeer::from_str(sample).unwrap_err();
-        }
-    }
-
-    mod peer_seed_resolver {
-        use super::*;
-
-        #[tokio::test]
-        #[ignore = "Useful for developer testing but will fail unless the DNS has TXT records setup correctly."]
-        async fn it_returns_seeds_from_real_address() {
-            let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).unwrap();
-            let seeds = resolver.resolve("seeds.nextnet.tari.com").await.unwrap();
-            println!("{seeds:?}");
-            assert!(!seeds.is_empty());
         }
     }
 }

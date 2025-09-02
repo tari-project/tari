@@ -22,7 +22,6 @@
 
 use std::{
     path::{Path, PathBuf},
-    str::FromStr,
     time::Duration,
 };
 
@@ -31,7 +30,6 @@ use tari_common::{
     configuration::{
         deserialize_dns_name_server_list,
         serializers,
-        utils::serialize_string,
         DnsNameServerList,
         MultiaddrList,
         Network,
@@ -53,20 +51,9 @@ pub struct PeerSeedsConfig {
     /// Custom specified peer seed nodes
     #[serde(default)]
     pub peer_seeds: StringList,
-    /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
-    /// peer list.
+    /// Custom specified peer seed endpoints
     #[serde(default)]
-    pub dns_seeds: StringList,
-    /// DNS name server to use for DNS seeds.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_dns_name_server_list",
-        serialize_with = "serialize_string"
-    )]
-    pub dns_seed_name_servers: DnsNameServerList,
-    /// All DNS seed records must pass DNSSEC validation
-    #[serde(default)]
-    pub dns_seeds_use_dnssec: bool,
+    pub endpoints: StringList,
 }
 
 impl Default for PeerSeedsConfig {
@@ -74,30 +61,11 @@ impl Default for PeerSeedsConfig {
         Self {
             override_from: None,
             peer_seeds: StringList::default(),
-            dns_seeds: vec![
-                format!(
-                    "seeds.{}.tari.com",
-                    Network::get_current_or_user_setting_or_default().as_key_str()
-                ),
-                format!(
-                    "ip4.seeds.{}.tari.com",
-                    Network::get_current_or_user_setting_or_default().as_key_str()
-                ),
-                format!(
-                    "ip6.seeds.{}.tari.com",
-                    Network::get_current_or_user_setting_or_default().as_key_str()
-                ),
-                format!(
-                    "tor.seeds.{}.tari.com",
-                    Network::get_current_or_user_setting_or_default().as_key_str()
-                ),
-            ]
+            endpoints: vec![format!(
+                "https://cdn-universe.tari.com/tari-project/tari/{}/seednodes.json",
+                Network::get_current_or_user_setting_or_default().as_key_str()
+            )]
             .into(),
-            dns_seed_name_servers: DnsNameServerList::from_str(
-                "system, 1.1.1.1:853/cloudflare-dns.com, 8.8.8.8:853/dns.google, 9.9.9.9:853/dns.quad9.net",
-            )
-            .expect("string is valid"),
-            dns_seeds_use_dnssec: false,
         }
     }
 }
@@ -205,50 +173,26 @@ impl P2pConfig {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
-    use tari_common::DnsNameServer;
-
     use crate::PeerSeedsConfig;
-
-    #[test]
-    fn default_dns_seed_name_servers_test() {
-        let dns_seed_name_servers = PeerSeedsConfig::default().dns_seed_name_servers;
-        assert_eq!(dns_seed_name_servers.into_vec(), vec![
-            DnsNameServer::from_str("system").unwrap(),
-            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
-            DnsNameServer::from_str("8.8.8.8:853/dns.google").unwrap(),
-            DnsNameServer::from_str("9.9.9.9:853/dns.quad9.net").unwrap()
-        ]);
-    }
 
     #[test]
     fn it_deserializes_from_toml() {
         // No empty fields, no omitted fields
         let config_str = r#"
-            dns_seeds = ["seeds.esmeralda.tari.com"]
+            endpoints = ["https://cdn-universe.tari.com/tari-project/tari/esmeralda/seednodes.json"]
             peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
-            dns_seed_name_servers = ["1.1.1.1:853/cloudflare-dns.com"]
-            dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.dns_seeds.into_vec(), vec!["seeds.esmeralda.tari.com"]);
+        assert_eq!(config.endpoints.into_vec(), vec!["seeds.esmeralda.tari.com"]);
         assert_eq!(config.peer_seeds.into_vec(), vec![
             "20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/\
              e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"
         ]);
-        assert_eq!(
-            config.dns_seed_name_servers.to_string(),
-            "1.1.1.1:853/cloudflare-dns.com".to_string()
-        );
-        assert!(!config.dns_seeds_use_dnssec);
 
         // 'dns_seeds_name_server' parse error handled
         let config_str = r#"
-            dns_seeds = ["seeds.esmeralda.tari.com"]
-            peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
-            dns_seed_name_servers = "111"
-            #dns_seeds_use_dnssec = false
+            endpoints = ["seeds.esmeralda.tari.com"]
+            #peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
          "#;
         match toml::from_str::<PeerSeedsConfig>(config_str) {
             Ok(_) => panic!("Should fail"),
@@ -260,44 +204,20 @@ mod test {
 
         // Empty config list fields
         let config_str = r#"
-            dns_seeds = []
+            endpoints = []
             peer_seeds = []
-            dns_seed_name_servers = ["system", "1.1.1.1:853/cloudflare-dns.com"]
-            dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
+        assert_eq!(config.endpoints.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![
-            DnsNameServer::from_str("system").unwrap(),
-            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
-        ]);
-        assert!(!config.dns_seeds_use_dnssec);
 
         // Omitted config fields
         let config_str = r#"
-            #dns_seeds = []
+            #endpoints = []
             #peer_seeds = []
-            #dns_seed_name_servers = []
-            #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
+        assert_eq!(config.endpoints.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![]);
-        assert!(!config.dns_seeds_use_dnssec);
-
-        // System
-        let config_str = r#"
-            #dns_seeds = []
-            #peer_seeds = []
-            dns_seed_name_servers = "system"
-            #dns_seeds_use_dnssec = false
-         "#;
-        let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![DnsNameServer::from_str(
-            "system"
-        )
-        .unwrap(),]);
     }
 }

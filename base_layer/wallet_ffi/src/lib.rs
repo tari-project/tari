@@ -6314,7 +6314,7 @@ pub unsafe extern "C" fn wallet_create(
     let peer_seeds = PeerSeedsConfig {
         dns_seed_name_servers,
         dns_seeds_use_dnssec: use_dns_sec,
-        dns_seeds: StringList::from(vec![dns_seeds.to_string()]),
+        endpoints: StringList::from(vec![dns_seeds.to_string()]),
         peer_seeds: list_manual_seeds.into(),
         ..Default::default()
     };

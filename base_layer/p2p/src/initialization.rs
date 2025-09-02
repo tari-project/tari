@@ -28,12 +28,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::future;
 use log::*;
 use tari_common::{
-    configuration::{DnsNameServerList, Network},
+    configuration::Network,
     exit_codes::{ExitCode, ExitError},
-    DnsNameServer,
 };
 use tari_common_sqlite::{
     connection::{DbConnection, DbConnectionUrl},
@@ -88,8 +86,7 @@ use tower::ServiceBuilder;
 use crate::{
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     config::{P2pConfig, PeerSeedsConfig},
-    dns::DnsClientError,
-    peer_seeds::{DnsSeedResolver, SeedPeer},
+    peer_seeds::SeedPeer,
     transport::{TorTransportConfig, TransportType},
     TransportConfig,
     MAJOR_NETWORK_VERSION,
@@ -143,6 +140,19 @@ impl CommsInitializationError {
             _ => ExitError::new(ExitCode::NetworkError, self),
         }
     }
+}
+
+fn get_seed_peers_url(network: &Network) -> &'static str {
+    match network {
+        Network::MainNet => "https://cdn-universe.tari.com/tari-project/tari/mainnet/seednodes.json",
+        Network::Esmeralda => "https://cdn-universe.tari.com/tari-project/tari/esmeralda/seednodes.json",
+        _ => "https://cdn-universe.tari.com/tari-project/tari/esmeralda/seednodes.json",
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PeerSeed {
+    peer_seeds: Vec<String>,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -456,19 +466,17 @@ impl P2pInitializer {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
-        if config.dns_seeds.is_empty() {
+    async fn try_resolve_seeds(&self, config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
+        if config.endpoints.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
         }
 
         debug!(
             target: LOG_TARGET,
-            "Resolving DNS seeds (DNSSEC is enabled: {}, name servers: {}, addresses: {}) ...",
-            config.dns_seeds_use_dnssec,
-            config.dns_seed_name_servers,
+            "Resolving peer seeds (addresses: {}) ...",
             config
-                .dns_seeds
+                .endpoints
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<String>>()
@@ -476,80 +484,49 @@ impl P2pInitializer {
         );
         let start = Instant::now();
 
-        let resolver =
-            P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
-        let resolving = config.dns_seeds.iter().map(|addr| {
-            let mut resolver = resolver.clone();
-            async move {
-                let timer = Instant::now();
-                let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
-                    Ok(res) => res,
-                    Err(_) => {
-                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{addr}`");
-                        Err(DnsClientError::Timeout)
+        let url = get_seed_peers_url(&self.network);
+
+        let peers = match timeout(Duration::from_secs(10), reqwest::get(url)).await {
+            Ok(Ok(response)) => {
+                let peer_seed = match response.json::<PeerSeed>().await {
+                    Ok(json) => json,
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Failed to parse HTTP seed response as JSON: {err}");
+                        return Ok(Vec::new());
                     },
                 };
-                // let res = (resolver.resolve(addr).await, addr);
-                let res = (seeds_res, addr.clone());
-                info!(target: LOG_TARGET, "Resolved DNS seed `{}` in {:.0?}", addr, timer.elapsed());
-                res
-            }
-        });
 
-        let peers = future::join_all(resolving)
-            .await
-            .into_iter()
-            // Log and ignore errors
-            .filter_map(|(result, addr)| match result {
-                Ok(peers) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Found {} peer(s) from `{}` in {:.0?}",
-                        peers.len(),
-                        addr,
-                        start.elapsed()
-                    );
-                    Some(peers)
-                },
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
-                    None
-                },
-            })
-            .flatten()
-            .map(Into::into)
-            .collect::<Vec<_>>();
+                let parsed_peers: Vec<Peer> = peer_seed
+                    .peer_seeds
+                    .iter()
+                    .filter_map(|seed_str| match SeedPeer::from_str(seed_str) {
+                        Ok(seed_peer) => Some(Peer::from(seed_peer)),
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Failed to parse seed peer `{seed_str}`: {err}");
+                            None
+                        },
+                    })
+                    .collect();
+
+                info!(
+                    target: LOG_TARGET,
+                    "Found {} peer(s) from HTTP seed endpoint in {:.0?}",
+                    parsed_peers.len(),
+                    start.elapsed()
+                );
+                parsed_peers
+            },
+            Ok(Err(err)) => {
+                warn!(target: LOG_TARGET, "Failed to fetch HTTP seed peers: {err}");
+                Vec::new()
+            },
+            Err(_) => {
+                warn!(target: LOG_TARGET, "Timeout fetching HTTP seed peers");
+                Vec::new()
+            },
+        };
 
         Ok(peers)
-    }
-
-    async fn get_dns_seed_resolver(
-        dns_seeds_use_dnssec: bool,
-        dns_seed_name_servers: &DnsNameServerList,
-    ) -> Result<DnsSeedResolver, ServiceInitializationError> {
-        if dns_seed_name_servers.is_empty() {
-            return Err(ServiceInitializationError::from(DnsClientError::Connection(
-                "No DNS name servers configured!".to_string(),
-            )));
-        }
-        let mut dns_errors = Vec::new();
-        for dns in dns_seed_name_servers {
-            info!(target: LOG_TARGET, "Connecting to DNS name server: {dns}");
-            let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
-                (true, false) => DnsSeedResolver::connect_secure(dns.clone()),
-                (_, _) => DnsSeedResolver::connect(dns.clone()),
-            };
-            match res {
-                Ok(resolver) => return Ok(resolver),
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {err}");
-                    dns_errors.push(err.to_string())
-                },
-            }
-        }
-        Err(ServiceInitializationError::from(DnsClientError::Connection(format!(
-            "{dns_errors:?}"
-        ))))
     }
 }
 
@@ -589,7 +566,7 @@ impl ServiceInitializer for P2pInitializer {
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
 
-        let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
+        let peers = match self.try_resolve_seeds(&self.seed_config).await {
             Ok(peers) => peers,
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {err}");
