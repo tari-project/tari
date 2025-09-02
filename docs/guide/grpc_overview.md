@@ -181,7 +181,7 @@ message TipInfoResponse {
 **Request**: `NewBlockTemplateRequest`
 ```protobuf
 message NewBlockTemplateRequest {
-    PowAlgo algo = 1;        // POW_ALGOS_RANDOMXM, POW_ALGOS_SHA3X, POW_ALGOS_RANDOMXT
+    PowAlgo algo = 1;        // 0=POW_ALGOS_RANDOMXM, 1=POW_ALGOS_SHA3X, 2=POW_ALGOS_RANDOMXT, 3=POW_ALGOS_CUCKAROO
     uint64 max_weight = 2;   // Maximum block weight
 }
 ```
@@ -237,6 +237,19 @@ message NetworkDifficultyResponse {
     uint64 sha3x_estimated_hash_rate = 6;
     uint64 monero_randomx_estimated_hash_rate = 7;
     uint64 tari_randomx_estimated_hash_rate = 10;
+    UDecimalValue cuckaroo_estimated_hash_rate = 11;
+    uint64 num_coinbases = 8;
+    repeated  bytes coinbase_extras = 9;
+}
+
+// Unsigned decimal value, examples:
+//   12345.6789 -> { units = 12345, nanos = 678900000 }
+//   12345.0006789 -> { units = 12345, nanos = 678900 }
+message UDecimalValue {
+  // Whole units part of the amount
+  uint64 units = 1;
+  // Nano units of the amount (10^-9)
+  fixed32 nanos = 2;
 }
 ```
 
@@ -661,17 +674,34 @@ message SendShaAtomicSwapResponse {
 **Response**: `NetworkStatusResponse`
 ```protobuf
 message NetworkStatusResponse {
-    ConnectivityStatus status = 1;  // ONLINE, DEGRADED, OFFLINE
-    uint64 avg_latency_ms = 2;      // Average latency
-    uint64 num_node_connections = 3; // Active connections
+    ConnectivityStatus status = 1;  // INITIALIZING, ONLINE, DEGRADED, OFFLINE
+    uint32 avg_latency_ms = 2;      // Average latency
+    uint32 num_node_connections = 3; // Active connections
 }
 ```
 
 #### ListConnectedPeers
-**Purpose**: Lists currently connected peers.
+**Purpose**: Lists currently connected peers (_Note: For a base node only_).
 
 **Request**: `Empty`
 **Response**: `ListConnectedPeersResponse`
+
+#### GetConnectedHttpPeer
+**Purpose**: Lists currently connected HTTP base node (_Note: For a wallet only_).
+
+**Request**: `Empty`
+**Response**: `GetConnectedHttpPeerResponse`
+```protobuf
+// The HttpPeer message represents a connected HTTP peer in the wallet.
+message HttpPeer {
+  // The connection URL
+  string url = 1;
+  // The latency of the last request to this peer in ms
+  uint64 last_latency = 2;
+  // Online status of the peer
+  bool is_online = 3;
+}
+```
 
 ### Validation Methods
 
@@ -914,7 +944,7 @@ message ComAndPubSignature {
 ### Proof of Work
 ```protobuf
 message ProofOfWork {
-    uint64 pow_algo = 1;    // 0=Monero, 1=Sha3X, 2=RandomXT
+    uint64 pow_algo = 1;    // 0=Monero RandomX, 1=Sha3X, 2=Tari RandomX, 3=Cuckaroo
     bytes pow_data = 4;     // Algorithm-specific data
 }
 
@@ -922,6 +952,7 @@ enum PowAlgos {
     POW_ALGOS_RANDOMXM = 0;  // Monero RandomX
     POW_ALGOS_SHA3X = 1;     // SHA3X
     POW_ALGOS_RANDOMXT = 2;  // Tari RandomX
+    POW_ALGOS_CUCKAROO = 3;  // Cuckaroo
 }
 ```
 
@@ -945,9 +976,10 @@ enum TransactionStatus {
 #### Network Connectivity
 ```protobuf
 enum ConnectivityStatus {
-    ONLINE = 0;     // Fully connected
-    DEGRADED = 1;   // Limited connectivity
-    OFFLINE = 2;    // No connectivity
+    INITIALIZING = 0; // Busy initializing
+    ONLINE = 1;       // Fully connected
+    DEGRADED = 2;     // Limited connectivity
+    OFFLINE = 3;      // No connectivity
 }
 ```
 

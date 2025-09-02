@@ -58,7 +58,7 @@ impl ReadinessStatusHandler {
             status: Some(ReadinessStatusEnum::State(status_state.into())),
             timestamp: Utc::now().timestamp_millis() as u64,
         };
-        self.readiness_tx.send(status).unwrap();
+        let _unused = self.readiness_tx.send(status);
     }
 }
 
@@ -147,6 +147,7 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
             sha3x_estimated_hash_rate: 0,
             monero_randomx_estimated_hash_rate: 0,
             tari_randomx_estimated_hash_rate: 0,
+            cuckaroo_estimated_hash_rate: Some(tari_rpc::UDecimalValue { units: 0, nanos: 0 }),
             num_connections: 0,
             liveness_results: Vec::new(),
             readiness_status: status.into(),

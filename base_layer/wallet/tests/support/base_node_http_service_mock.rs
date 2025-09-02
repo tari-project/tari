@@ -52,6 +52,9 @@ struct State {
     utxos_by_block: HashMap<u64, UtxosByBlock>,
     blocks: HashMap<u64, tari_node_components::blocks::BlockHeader>,
     tip_info: Option<models::TipInfoResponse>,
+    online: bool,
+    http_address: Option<String>,
+    last_request_latency: Option<Duration>,
 }
 
 impl State {
@@ -65,6 +68,18 @@ impl State {
 
     fn set_tip_info(&mut self, tip_info: models::TipInfoResponse) {
         self.tip_info = Some(tip_info);
+    }
+
+    fn set_online_status(&mut self, is_online: bool) {
+        self.online = is_online;
+    }
+
+    fn set_http_address(&mut self, http_address: String) {
+        self.http_address = Some(http_address);
+    }
+
+    fn set_last_request_latency(&mut self, last_request_latency: Duration) {
+        self.last_request_latency = Some(last_request_latency);
     }
 }
 
@@ -95,20 +110,49 @@ impl HttpBaseNodeMock {
         state.set_tip_info(tip_info);
         Ok(())
     }
+
+    pub async fn set_online_status(&self, is_online: bool) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        state.set_online_status(is_online);
+        Ok(())
+    }
+
+    pub async fn set_http_address(&self, http_address: String) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        state.set_http_address(http_address);
+        Ok(())
+    }
+
+    pub async fn set_last_request_latency(&self, last_request_latency: Duration) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        state.set_last_request_latency(last_request_latency);
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl BaseNodeWalletClient for HttpBaseNodeMock {
-    async fn get_address(&self) -> std::string::String {
-        todo!()
+    async fn get_address(&self) -> String {
+        let state = self.state.read().await;
+        if let Some(http_address) = &state.http_address {
+            http_address.clone()
+        } else {
+            String::new()
+        }
     }
 
     async fn is_online(&self) -> bool {
-        todo!()
+        let state = self.state.read().await;
+        if state.tip_info.is_some() {
+            state.online
+        } else {
+            false
+        }
     }
 
     async fn get_last_request_latency(&self) -> Option<Duration> {
-        todo!()
+        let state = self.state.read().await;
+        state.last_request_latency
     }
 
     async fn get_utxos_mined_info(&self, _hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error> {

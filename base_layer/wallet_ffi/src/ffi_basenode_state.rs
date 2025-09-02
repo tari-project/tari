@@ -32,7 +32,7 @@ use crate::error::{InterfaceError, LibWalletError};
 pub struct TariBaseNodeState {
     /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
     pub best_block_height: u64,
-    /// The latency of the last connection to the base node in microseconds
+    /// The latency of the last connection to the base node in milliseconds
     pub latency: u64,
 }
 
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_ulonglong` - Latency value measured in microseconds.
+/// `c_ulonglong` - Latency value measured in milliseconds.
 ///
 /// # Safety
 /// None

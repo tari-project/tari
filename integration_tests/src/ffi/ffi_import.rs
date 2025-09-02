@@ -24,7 +24,7 @@ use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 
 pub type TariUtxo = c_void;
 pub type TariTransportConfig = c_void;
-pub type TariCommsConfig = c_void;
+pub type TariWalletDbConfig = c_void;
 pub type TariSeedWords = c_void;
 pub type TariPendingInboundTransaction = c_void;
 pub type TariCompletedTransaction = c_void;
@@ -348,13 +348,12 @@ extern "C" {
     pub fn pending_inbound_transaction_destroy(transaction: *mut TariPendingInboundTransaction);
     pub fn transaction_send_status_decode(status: *const TariTransactionSendStatus, error_out: *mut c_int) -> c_uint;
     pub fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus);
-    pub fn comms_config_create(
+    pub fn wallet_db_config_create(
         database_name: *const c_char,
         datastore_path: *const c_char,
         error_out: *mut c_int,
-    ) -> *mut TariCommsConfig;
-    pub fn comms_config_destroy(wc: *mut TariCommsConfig);
-    pub fn comms_list_connected_public_keys(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKeys;
+    ) -> *mut TariWalletDbConfig;
+    pub fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig);
     pub fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint;
     pub fn public_keys_get_at(
         public_keys: *const TariPublicKeys,
@@ -363,7 +362,7 @@ extern "C" {
     ) -> *mut TariPublicKey;
     pub fn wallet_create(
         context: *mut c_void,
-        config: *mut TariCommsConfig,
+        config: *mut TariWalletDbConfig,
         log_path: *const c_char,
         log_verbosity: c_int,
         num_rolling_log_files: c_uint,
@@ -372,9 +371,6 @@ extern "C" {
         seed_passphrase: *const c_char,
         seed_words: *const TariSeedWords,
         network_str: *const c_char,
-        dns_seeds_str: *const c_char,
-        dns_seed_name_servers_str: *const c_char,
-        use_dns_sec: bool,
         http_base_node: *const c_char,
         wallet_birthday_offset: c_int,
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
@@ -409,8 +405,7 @@ extern "C" {
         callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
         callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-        callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
-        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
         recovery_in_progress: *mut bool,

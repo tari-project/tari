@@ -20,17 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tokio::sync::watch;
 
 use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
 
+/// Sentinel used when the latency is unknown/unavailable.
+pub const UNKNOWN_LATENCY_MS: u64 = 0;
+/// Requests slower than this are considered degraded.
+pub const DEGRADED_LATENCY_THRESHOLD: Duration = Duration::from_secs(10);
+
 /// Connection status of the Base Node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum OnlineStatus {
-    Connecting = 0,
-    Online = 1,
-    Offline = 2,
+    Connecting,
+    Online { latency_ms: u64, url: String },
+    Offline,
+    Degraded { latency_ms: u64, url: String },
+}
+
+impl OnlineStatus {
+    pub fn as_u8(&self) -> u8 {
+        match self {
+            OnlineStatus::Connecting => 0,
+            OnlineStatus::Online { .. } => 1,
+            OnlineStatus::Offline => 2,
+            OnlineStatus::Degraded { .. } => 3,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -59,19 +78,47 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Self::BaseNodeClient {
+    async fn obtain_base_node_wallet_rpc_client(&self) -> Self::BaseNodeClient {
         self.client_factory.create_http_client()
     }
 
     async fn get_connectivity_status(&self) -> OnlineStatus {
-        if self.client_factory.create_http_client().is_online().await {
-            OnlineStatus::Online
+        let client = self.obtain_base_node_wallet_rpc_client().await;
+        let status = if client.is_online().await {
+            let url = client.get_address().await;
+            if let Some(latency) = client.get_last_request_latency().await {
+                let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+                if latency >= DEGRADED_LATENCY_THRESHOLD {
+                    OnlineStatus::Degraded { latency_ms, url }
+                } else {
+                    OnlineStatus::Online { latency_ms, url }
+                }
+            } else {
+                // Latency unavailable; report degraded with unknown latency sentinel.
+                OnlineStatus::Degraded {
+                    latency_ms: UNKNOWN_LATENCY_MS,
+                    url,
+                }
+            }
         } else {
             OnlineStatus::Offline
-        }
+        };
+        let _unused = self.online_status_watch.send(status.clone());
+
+        status
     }
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
         self.online_status_watch.subscribe()
+    }
+
+    async fn get_last_request_latency(&self) -> Option<Duration> {
+        let client = self.obtain_base_node_wallet_rpc_client().await;
+        client.get_last_request_latency().await
+    }
+
+    async fn get_address(&self) -> String {
+        let client = self.obtain_base_node_wallet_rpc_client().await;
+        client.get_address().await
     }
 }

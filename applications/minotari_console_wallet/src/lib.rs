@@ -38,7 +38,6 @@ pub use cli::{
     Cli,
     CliCommands,
     CoinSplitArgs,
-    DiscoverPeerArgs,
     ExportUtxosArgs,
     ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,

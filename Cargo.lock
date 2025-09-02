@@ -2240,9 +2240,9 @@ dependencies = [
 
 [[package]]
 name = "fallible-iterator"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 
 [[package]]
 name = "fallible-streaming-iterator"
@@ -2641,7 +2641,7 @@ dependencies = [
  "aho-corasick",
  "bstr",
  "log",
- "regex-automata 0.4.9",
+ "regex-automata",
  "regex-syntax 0.8.5",
 ]
 
@@ -2751,6 +2751,15 @@ name = "hashlink"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8094feaf31ff591f651a2664fb9cfd92bba7a60ce3197265e9482ebe753c8f7"
+dependencies = [
+ "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
  "hashbrown 0.14.5",
 ]
@@ -3387,7 +3396,7 @@ dependencies = [
  "globset",
  "log",
  "memchr",
- "regex-automata 0.4.9",
+ "regex-automata",
  "same-file",
  "walkdir",
  "winapi-util",
@@ -3834,9 +3843,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.25.2"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29f835d03d717946d28b1d1ed632eb6f0e24a299388ee623d0c23118d3e8a7fa"
+checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
  "pkg-config",
@@ -4052,11 +4061,11 @@ checksum = "ffbee8634e0d45d258acb448e7eaab3fce7a0a467395d4d9f228e3c1f01fb2e4"
 
 [[package]]
 name = "matchers"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
 dependencies = [
- "regex-automata 0.1.10",
+ "regex-automata",
 ]
 
 [[package]]
@@ -4162,7 +4171,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "argon2 0.4.1",
  "base64 0.13.1",
@@ -4192,7 +4201,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "clap 3.2.25",
  "dialoguer 0.10.4",
@@ -4214,7 +4223,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "blake2",
  "chrono",
@@ -4246,7 +4255,6 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_comms",
- "tari_comms_dht",
  "tari_core",
  "tari_crypto",
  "tari_features",
@@ -4269,14 +4277,14 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "bs58 0.5.1",
 ]
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "borsh",
  "dialoguer 0.11.0",
@@ -4297,7 +4305,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4343,7 +4351,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -4381,7 +4389,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4436,7 +4444,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_grpc_client"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "minotari_app_grpc",
  "tokio",
@@ -4444,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4461,7 +4469,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_utils"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "bytesize",
@@ -4479,7 +4487,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "argon2 0.4.1",
@@ -4515,6 +4523,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_hashing",
  "tari_max_size",
  "tari_node_components",
  "tari_p2p",
@@ -4536,7 +4545,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -4555,12 +4564,11 @@ dependencies = [
  "rand 0.8.5",
  "serde_json",
  "tari_common",
- "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
- "tari_comms_dht",
  "tari_crypto",
  "tari_features",
+ "tari_hashing",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
@@ -4826,12 +4834,11 @@ dependencies = [
 
 [[package]]
 name = "nu-ansi-term"
-version = "0.46.0"
+version = "0.50.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77a8165726e8236064dbb45459242600304b42a5ea24ee2948e18e023bf7ba84"
+checksum = "d4a28e057d01f97e61255210fcff094d74ed0466038633e95017f5beb68e4399"
 dependencies = [
- "overload",
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5093,12 +5100,6 @@ name = "os_str_bytes"
 version = "6.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
-
-[[package]]
-name = "overload"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p256"
@@ -6179,17 +6180,8 @@ checksum = "b544ef1b4eac5dc2db33ea63606ae9ffcfac26c1416a2806ae0bf5f56b201191"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-automata 0.4.9",
+ "regex-automata",
  "regex-syntax 0.8.5",
-]
-
-[[package]]
-name = "regex-automata"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
-dependencies = [
- "regex-syntax 0.6.29",
 ]
 
 [[package]]
@@ -6202,12 +6194,6 @@ dependencies = [
  "memchr",
  "regex-syntax 0.8.5",
 ]
-
-[[package]]
-name = "regex-syntax"
-version = "0.6.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "regex-syntax"
@@ -6390,14 +6376,14 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.28.0"
+version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01e213bc3ecb39ac32e81e51ebe31fd888a940515173e3a18a35f8c6e896422a"
+checksum = "7753b721174eb8ff87a9a0e799e2d7bc3749323e773db92e0984debb00019d6e"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.6.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink",
+ "hashlink 0.9.1",
  "libsqlite3-sys",
  "smallvec",
 ]
@@ -7524,7 +7510,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7550,7 +7536,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -7567,7 +7553,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "argon2 0.4.1",
  "base64 0.21.7",
@@ -7605,7 +7591,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7657,7 +7643,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "bitflags 2.6.0",
@@ -7699,7 +7685,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "futures 0.3.31",
  "proc-macro2",
@@ -7714,7 +7700,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7727,6 +7713,7 @@ dependencies = [
  "criterion 0.4.0",
  "digest",
  "dirs-next 1.0.2",
+ "env_logger 0.7.1",
  "fs2",
  "futures 0.3.31",
  "hex",
@@ -7805,11 +7792,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 
 [[package]]
 name = "tari_hashing"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -7866,7 +7853,7 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "borsh",
  "digest",
@@ -7879,7 +7866,7 @@ dependencies = [
 
 [[package]]
 name = "tari_libtor"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "derivative",
  "libtor",
@@ -7892,7 +7879,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "borsh",
  "serde",
@@ -7902,7 +7889,7 @@ dependencies = [
 
 [[package]]
 name = "tari_metrics"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "futures 0.3.31",
@@ -7917,7 +7904,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -7935,7 +7922,7 @@ dependencies = [
 
 [[package]]
 name = "tari_node_components"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -7954,7 +7941,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
@@ -7987,7 +7974,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -8005,7 +7992,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8022,7 +8009,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "futures 0.3.31",
  "tokio",
@@ -8030,7 +8017,7 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "borsh",
  "hex",
@@ -8047,7 +8034,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -8060,7 +8047,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "futures 0.3.31",
  "futures-test",
@@ -8073,7 +8060,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_components"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8123,7 +8110,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_key_manager"
-version = "5.0.0-pre.8"
+version = "5.0.0"
 dependencies = [
  "async-trait",
  "chacha20poly1305",
@@ -8722,14 +8709,14 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
-version = "0.3.19"
+version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8189decb5ac0fa7bc8b96b7cb9b2701d60d48805aca84a238004d665fcc4008"
+checksum = "2054a14f5307d601f88daf0553e1cbf472acc4f2c51afab632431cdcd72124d5"
 dependencies = [
  "matchers",
  "nu-ansi-term",
  "once_cell",
- "regex",
+ "regex-automata",
  "sharded-slab",
  "smallvec",
  "thread_local",
@@ -9699,7 +9686,7 @@ checksum = "8902160c4e6f2fb145dbe9d6760a75e3c9522d8bf796ed7047c85919ac7115f8"
 dependencies = [
  "arraydeque",
  "encoding_rs",
- "hashlink",
+ "hashlink 0.8.4",
 ]
 
 [[package]]

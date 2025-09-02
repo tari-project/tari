@@ -31,6 +31,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
 };
+
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
 
 #[derive(Debug, Error)]

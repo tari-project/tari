@@ -25,9 +25,8 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
-use tari_integration_tests::{wallet_ffi::get_mnemonic_word_list_for_language, TariWorld};
+use tari_integration_tests::{wallet_ffi::get_mnemonic_word_list_for_language, FfiConnectivityStatus, TariWorld};
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
-use tari_utilities::hex::Hex;
 
 use crate::steps::cucumber_steps_log;
 
@@ -65,19 +64,15 @@ async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
     assert_eq!(words.get_length(), 2048);
 }
 
-#[then(expr = "I wait for ffi wallet {word} to connect to {word}")]
-async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node: String) {
+#[then(expr = "I wait for ffi wallet {word} to have connectivity")]
+async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let node = world.get_node(&node).unwrap().identity.public_key();
-    for _ in 0..10 {
-        let public_keys = ffi_wallet.connected_public_keys();
-        for i in 0..public_keys.get_length() {
-            let public_key = public_keys.get_public_key_at(u32::try_from(i).unwrap());
-            if public_key.get_bytes().get_as_hex() == node.to_hex() {
-                return;
-            }
+    for _ in 0..30 {
+        let status = ffi_wallet.get_connectivity_status();
+        if status.0 == FfiConnectivityStatus::Online || status.0 == FfiConnectivityStatus::Degraded {
+            return;
         }
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
     panic!("Wallet not connected");
 }

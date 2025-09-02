@@ -734,46 +734,60 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             prev_height = Some(current_height);
         }
 
+        let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
         if !has_switched_to_new_chain {
-            if sync_peer.claimed_chain_metadata().accumulated_difficulty() <
-                self.header_validator
-                    .current_valid_chain_tip_header()
-                    .map(|h| h.accumulated_data().total_accumulated_difficulty)
-                    .unwrap_or_default()
+            let best_local_before_sync = split_info
+                .best_block_header
+                .accumulated_data()
+                .total_accumulated_difficulty;
+            match self
+                .header_validator
+                .current_valid_chain_tip_header()
+                .map(|h| h.accumulated_data().total_accumulated_difficulty)
             {
-                // We should only return this error if the peer sent a PoW less than they advertised.
-                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: self
-                        .header_validator
-                        .current_valid_chain_tip_header()
-                        .map(|h| h.accumulated_data().total_accumulated_difficulty),
-                    local: split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
-                });
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "Received pow from peer matches claimed, difficulty #{} but local is higher: ({}) and we have not \
-                     swapped. Ignoring",
-                    sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty
-                );
-                return Ok(());
+                Some(validated_total_accumulated_diff) => {
+                    if claimed_total_accumulated_diff > validated_total_accumulated_diff {
+                        // Over-claim: peer advertised more PoW than their headers actually provide.
+                        return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                            claimed: claimed_total_accumulated_diff,
+                            actual: Some(validated_total_accumulated_diff),
+                            local: best_local_before_sync,
+                        });
+                    } else if self.pending_chain_has_higher_pow(&split_info.best_block_header) {
+                        self.switch_to_pending_chain(&split_info).await?;
+                        has_switched_to_new_chain = true;
+                        info!(
+                            target: LOG_TARGET,
+                            "Received PoW from peer exceeds local tip. Before sync: {}, received: {}. Committed.",
+                            best_local_before_sync,
+                            validated_total_accumulated_diff,
+                        );
+                    } else {
+                        // We have a stronger chain, so we do not commit the headers.
+                        debug!(
+                            target: LOG_TARGET,
+                            "Not committing headers as we have a stronger chain, ours: {} theirs: {}",
+                            best_local_before_sync,
+                            validated_total_accumulated_diff,
+                        );
+                    };
+                },
+                None => {
+                    // No validated headers at this stage, but there should have been.
+                    return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                        claimed: claimed_total_accumulated_diff,
+                        actual: None,
+                        local: best_local_before_sync,
+                    });
+                },
             }
         }
 
-        // Commit the last blocks that don't fit into the COMMIT_EVENT_N_HEADERS blocks
-        if !self.header_validator.valid_headers().is_empty() {
+        // Commit the last blocks only if we have switched to the new chain.
+        if has_switched_to_new_chain && !self.header_validator.valid_headers().is_empty() {
             self.commit_pending_headers().await?;
         }
 
-        let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
         // This rule is strict: if the peer advertised a higher PoW than they were able to provide (without
         // some other external factor like a disconnect etc), we detect the and ban the peer.
         if last_total_accumulated_difficulty < claimed_total_accumulated_diff {

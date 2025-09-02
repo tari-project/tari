@@ -25,14 +25,10 @@ mod error;
 pub use error::WalletConnectivityError;
 
 mod handle;
-pub use handle::WalletConnectivityHandle;
+pub use handle::{OnlineStatus, WalletConnectivityHandle, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS};
 
 mod initializer;
 pub use initializer::WalletConnectivityInitializer;
 
 mod interface;
 pub use interface::WalletConnectivityInterface;
-
-mod base_node_peer_manager;
-pub use base_node_peer_manager::BaseNodePeerManager;
-pub use handle::OnlineStatus;

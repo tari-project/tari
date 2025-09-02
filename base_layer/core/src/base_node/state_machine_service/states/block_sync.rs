@@ -103,10 +103,14 @@ impl BlockSync {
         });
 
         let timer = Instant::now();
-        let state_event = match synchronizer.synchronize().await {
+        match synchronizer.synchronize().await {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
+                // Cleanup
+                if let Err(e) = shared.db.cleanup_orphans().await {
+                    warn!(target: LOG_TARGET, "Failed to remove orphan blocks: {e}");
+                }
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
@@ -116,7 +120,23 @@ impl BlockSync {
                     randomx_vm_cnt,
                     randomx_vm_flags,
                 });
-                warn!(target: LOG_TARGET, "Block sync failed: {err}");
+                if let Ok(best_header) = shared.db.fetch_last_chain_header().await {
+                    if let Ok(best_block) = shared.db.get_chain_metadata().await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Block sync failed - best header: {}/{}, best block: {}/{}. {}",
+                            best_header.height(),
+                            best_header.hash(),
+                            best_block.best_block_height(),
+                            best_block.best_block_hash(),
+                            err,
+                        );
+                    } else {
+                        warn!(target: LOG_TARGET, "Block sync failed - {}", err);
+                    }
+                } else {
+                    warn!(target: LOG_TARGET, "Block sync failed - {}", err);
+                }
                 if let Err(e) = shared.db.swap_to_highest_pow_chain().await {
                     error!(
                         target: LOG_TARGET,
@@ -125,25 +145,7 @@ impl BlockSync {
                 }
                 StateEvent::BlockSyncFailed
             },
-        };
-
-        // Cleanup
-        if let Err(e) = shared.db.cleanup_orphans().await {
-            warn!(target: LOG_TARGET, "Failed to remove orphan blocks: {e}");
         }
-        match shared.db.clear_all_pending_headers().await {
-            Ok(num_cleared) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Cleared {num_cleared} pending headers from database"
-                );
-            },
-            Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to clear pending headers: {e}");
-            },
-        }
-
-        state_event
     }
 
     pub fn is_synced(&self) -> bool {

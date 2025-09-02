@@ -47,7 +47,6 @@ use tari_common_types::{
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
-    tor::TorIdentity,
 };
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_utilities::{
@@ -311,39 +310,6 @@ impl WalletSqliteDatabase {
         }
     }
 
-    fn set_tor_id(&self, tor: TorIdentity, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-
-        let bytes =
-            Hidden::hide(bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?);
-        let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), bytes)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))?;
-
-        WalletSettingSql::new(DbKey::TorId, ciphertext_integral_nonce.to_hex()).set(conn)?;
-
-        Ok(())
-    }
-
-    fn get_tor_id(&self, conn: &mut SqliteConnection) -> Result<Option<DbValue>, WalletStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-        if let Some(key_str) = WalletSettingSql::get(&DbKey::TorId, conn)? {
-            let id = {
-                // we must zeroize decrypted_key_bytes, as this contains sensitive data,
-                // including private key informations
-                let decrypted_key_bytes = Hidden::hide(
-                    decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(&key_str)?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?,
-                );
-
-                bincode::deserialize(decrypted_key_bytes.reveal())
-                    .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
-            };
-            Ok(Some(DbValue::TorId(id)))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn set_chain_metadata(&self, chain: ChainMetadata, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         let bytes = bincode::serialize(&chain).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
         WalletSettingSql::new(DbKey::BaseNodeChainMetadata, bytes.to_hex()).set(conn)?;
@@ -370,10 +336,6 @@ impl WalletSqliteDatabase {
             DbKeyValuePair::MasterSeed(seed) => {
                 kvp_text = "MasterSeed";
                 self.set_master_seed(&seed, &mut conn)?;
-            },
-            DbKeyValuePair::TorId(node_id) => {
-                kvp_text = "TorId";
-                self.set_tor_id(node_id, &mut conn)?;
             },
             DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
                 kvp_text = "BaseNodeChainMetadata";
@@ -455,9 +417,6 @@ impl WalletSqliteDatabase {
                     return Ok(Some(DbValue::ValueCleared));
                 }
             },
-            DbKey::TorId => {
-                let _ = WalletSettingSql::clear(&DbKey::TorId, &mut conn)?;
-            },
             DbKey::CommsFeatures |
             DbKey::CommsAddress |
             DbKey::BaseNodeChainMetadata |
@@ -508,7 +467,6 @@ impl WalletBackend for WalletSqliteDatabase {
                 },
             },
             DbKey::CommsAddress => self.get_comms_address(&mut conn)?.map(DbValue::CommsAddress),
-            DbKey::TorId => self.get_tor_id(&mut conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&mut conn)?.map(DbValue::CommsFeatures),
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&mut conn)?.map(DbValue::BaseNodeChainMetadata),
             DbKey::EncryptedMainKey => WalletSettingSql::get(key, &mut conn)?.map(DbValue::EncryptedMainKey),
