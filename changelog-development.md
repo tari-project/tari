@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.1](https://github.com/tari-project/tari/compare/v5.0.0...v5.0.1) (2025-09-02)
+
+
+### Features
+
+* clear bad blocks on startup ([#7465](https://github.com/tari-project/tari/issues/7465)) ([39eb903](https://github.com/tari-project/tari/commit/39eb9030c9eb6d86b1649bc6d2004f597fbc6c27))
+
 ## [5.0.0](https://github.com/tari-project/tari/compare/v5.0.0-rc.0...v5.0.0) (2025-09-01)
 
 
