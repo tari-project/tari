@@ -239,7 +239,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_bad_blocks() -> Vec<BadBlock>, "bad_block_exists");
 
-    make_async_fn!(clear_all_blocks() -> (), "clear_all_bad_blocks");
+    make_async_fn!(clear_all_bad_blocks() -> (), "clear_all_bad_blocks");
 
     make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
 
