@@ -1668,7 +1668,7 @@ impl PeerDatabaseSql {
             .map(|protocol| format!("multi_addresses.address LIKE '{}%'", sql_escape(protocol.get_prefix())))
             .collect();
 
-        Some(conditions.join(" OR "))
+        Some(format!("({})", conditions.join(" OR ")))
     }
 }
 

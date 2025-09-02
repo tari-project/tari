@@ -27,8 +27,6 @@
 /// This function attempts to determine if the local machine has IPv6 support
 /// by checking if it can obtain a local IPv6 address.
 ///
-/// # Returns
-///
 /// Returns `true` if IPv6 is supported, `false` otherwise.
 ///
 /// # Example

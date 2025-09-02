@@ -200,7 +200,7 @@ impl ProactiveDialer {
         // Get available dial candidates using SQL-based filtering
         let candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed, Some(count * 3))
+            .get_available_dial_candidates(&managed, Some(count * 3)) // Get 3x more for health scoring
             .await?;
 
         // Apply health-based filtering and ranking
