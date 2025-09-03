@@ -45,8 +45,12 @@ pub struct PeerSeedsConfig {
     #[serde(default)]
     pub peer_seeds: StringList,
     /// Custom specified peer seed endpoints
-    #[serde(default)]
-    pub endpoints: StringList,
+    #[serde(default, alias = "")]
+    pub dns_seeds: StringList,
+    #[serde(default, skip)]
+    pub dns_seed_name_servers: Option<()>,
+    #[serde(default, skip)]
+    pub dns_seeds_use_dnssec: Option<()>,
 }
 
 impl Default for PeerSeedsConfig {
@@ -54,11 +58,13 @@ impl Default for PeerSeedsConfig {
         Self {
             override_from: None,
             peer_seeds: StringList::default(),
-            endpoints: vec![format!(
+            dns_seeds: vec![format!(
                 "https://cdn-universe.tari.com/tari-project/tari/{}/seednodes.json",
                 Network::get_current_or_user_setting_or_default().as_key_str()
             )]
             .into(),
+            dns_seed_name_servers: None,
+            dns_seeds_use_dnssec: None,
         }
     }
 }
@@ -172,11 +178,11 @@ mod test {
     fn it_deserializes_from_toml() {
         // No empty fields, no omitted fields
         let config_str = r#"
-            endpoints = ["https://cdn-universe.tari.com/tari-project/tari/esmeralda/seednodes.json"]
+            dns_seeds = ["https://cdn-universe.tari.com/tari-project/tari/esmeralda/seednodes.json"]
             peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.endpoints.into_vec(), vec!["seeds.esmeralda.tari.com"]);
+        assert_eq!(config.dns_seeds.into_vec(), vec!["seeds.esmeralda.tari.com"]);
         assert_eq!(config.peer_seeds.into_vec(), vec![
             "20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/\
              e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"
@@ -184,7 +190,7 @@ mod test {
 
         // 'dns_seeds_name_server' parse error handled
         let config_str = r#"
-            endpoints = ["seeds.esmeralda.tari.com"]
+            dns_seeds = ["seeds.esmeralda.tari.com"]
             #peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
          "#;
         match toml::from_str::<PeerSeedsConfig>(config_str) {
@@ -197,20 +203,20 @@ mod test {
 
         // Empty config list fields
         let config_str = r#"
-            endpoints = []
+            dns_seeds = []
             peer_seeds = []
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.endpoints.into_vec(), Vec::<String>::new());
+        assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
 
         // Omitted config fields
         let config_str = r#"
-            #endpoints = []
+            #dns_seeds = []
             #peer_seeds = []
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.endpoints.into_vec(), Vec::<String>::new());
+        assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
     }
 }

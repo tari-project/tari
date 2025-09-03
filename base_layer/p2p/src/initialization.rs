@@ -467,7 +467,7 @@ impl P2pInitializer {
     }
 
     async fn try_resolve_seeds(&self, config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
-        if config.endpoints.is_empty() {
+        if config.dns_seeds.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
         }
@@ -476,7 +476,7 @@ impl P2pInitializer {
             target: LOG_TARGET,
             "Resolving peer seeds (addresses: {}) ...",
             config
-                .endpoints
+                .dns_seeds
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<String>>()

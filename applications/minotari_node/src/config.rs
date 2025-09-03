@@ -67,11 +67,16 @@ pub struct ApplicationConfig {
 
 impl ApplicationConfig {
     pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let common = CommonConfig::load_from(cfg)?;
+        let auto_update = AutoUpdateConfig::load_from(cfg)?;
+        let peer_seeds = PeerSeedsConfig::load_from(cfg)?;
+        let base_node = BaseNodeConfig::load_from(cfg)?;
+
         let mut config = Self {
-            common: CommonConfig::load_from(cfg)?,
-            auto_update: AutoUpdateConfig::load_from(cfg)?,
-            peer_seeds: PeerSeedsConfig::load_from(cfg)?,
-            base_node: BaseNodeConfig::load_from(cfg)?,
+            common,
+            auto_update,
+            peer_seeds,
+            base_node,
             #[cfg(feature = "metrics")]
             metrics: MetricsConfig::load_from(cfg)?,
         };

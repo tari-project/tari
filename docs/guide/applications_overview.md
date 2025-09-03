@@ -21,7 +21,7 @@ The Tari project consists of several applications that work together to provide 
 
 **Binary Name**: `minotari_node`
 
-**Purpose**: 
+**Purpose**:
 - Maintains a full copy of the Tari blockchain
 - Validates and processes transactions
 - Provides gRPC API for other applications
