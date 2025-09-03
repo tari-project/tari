@@ -47,14 +47,17 @@ use tokio::sync::RwLock;
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
-    base_node::comms_interface::{
-        comms_response::ValidatorNodeChange,
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+    base_node::{
+        comms_interface::{
+            comms_response::ValidatorNodeChange,
+            error::CommsInterfaceError,
+            local_interface::BlockEventSender,
+            FetchMempoolTransactionsResponse,
+            NodeCommsRequest,
+            NodeCommsResponse,
+            OutboundNodeCommsInterface,
+        },
+        metrics::{log2_u128, log2_u512, milli_bits, u512_exp2_sig53},
     },
     blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
@@ -69,11 +72,13 @@ use crate::{
     },
     validation::{helpers, tari_rx_vm_key_height, ValidationError},
 };
+
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
 const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
 const MAX_MEMPOOL_TIMEOUT: u64 = 150;
+const DIFF_INDICATOR_LAG: u64 = 25;
 
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
@@ -1043,6 +1048,7 @@ where B: BlockchainBackend + 'static
         match block_add_result {
             BlockAddResult::Ok(ref block) => {
                 update_target_difficulty(block);
+                self.update_difficulty_indicators(block.height()).await?;
                 #[allow(clippy::cast_possible_wrap)]
                 metrics::tip_height().set(block.height() as i64);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
@@ -1059,6 +1065,7 @@ where B: BlockchainBackend + 'static
                 }
                 for block in added {
                     update_target_difficulty(block);
+                    self.update_difficulty_indicators(block.height()).await?;
                 }
             },
             BlockAddResult::OrphanBlock => {
@@ -1066,6 +1073,46 @@ where B: BlockchainBackend + 'static
             },
             _ => {},
         }
+        Ok(())
+    }
+
+    #[cfg(feature = "metrics")]
+    async fn update_difficulty_indicators(&self, tip: u64) -> Result<(), CommsInterfaceError> {
+        // Use canonical height from tip where reorgs are highly unlikely
+        if tip <= DIFF_INDICATOR_LAG {
+            // Not enough history yet; clear or skip
+            metrics::difficulty_indicator_height().set(0);
+            metrics::accumulated_difficulty_indicator().set(0);
+            metrics::target_difficulty_indicator().set(0);
+            metrics::target_difficulty().set(0);
+            metrics::accumulated_difficulty_exp2().set(0);
+            metrics::accumulated_difficulty_sig53().set(0);
+            return Ok(());
+        }
+        let height = tip - DIFF_INDICATOR_LAG;
+        let chain_header = self.blockchain_db.fetch_chain_header(height).await?;
+
+        // Compute indicators in millibits as `log₂(value) * 1000` to make huge numbers fathomable in a time-series
+        // graph with enough granularity
+        let acc_diff_milli_bits = log2_u512(&chain_header.accumulated_data().total_accumulated_difficulty)
+            .map(milli_bits)
+            .unwrap_or(0);
+        let target_diff_milli_bits = log2_u128(u128::from(chain_header.accumulated_data().target_difficulty.as_u64()))
+            .map(milli_bits)
+            .unwrap_or(0);
+        let (acc_diff_exp2, acc_diff_sig53) =
+            u512_exp2_sig53(&chain_header.accumulated_data().total_accumulated_difficulty).unwrap_or((0, 0));
+
+        // Publish
+        metrics::accumulated_difficulty_indicator().set(acc_diff_milli_bits);
+        metrics::target_difficulty_indicator().set(target_diff_milli_bits);
+        #[allow(clippy::cast_possible_wrap)]
+        metrics::difficulty_indicator_height().set(height as i64);
+        #[allow(clippy::cast_possible_wrap)]
+        metrics::target_difficulty_indicator().set(chain_header.accumulated_data().target_difficulty.as_u64() as i64);
+        metrics::accumulated_difficulty_exp2().set(acc_diff_exp2);
+        metrics::accumulated_difficulty_sig53().set(acc_diff_sig53);
+
         Ok(())
     }
 
