@@ -67,6 +67,7 @@
 track_reorgs = true
 # Clean out
 #cleanup_orphans_at_startup = false
+#clear_bad_blocks_at_startup = true
 
 [base_node.mempool]
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool

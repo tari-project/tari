@@ -2729,6 +2729,13 @@ impl BlockchainBackend for LMDBDatabase {
             .collect())
     }
 
+    fn clear_all_bad_blocks(&mut self) -> Result<(), ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        lmdb_clear(&write_txn, &self.bad_blocks)?;
+        write_txn.commit()?;
+        Ok(())
+    }
+
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &CompressedSignature,
