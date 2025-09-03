@@ -50,7 +50,7 @@ use crate::{
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolExtensions},
     tor,
-    types::CommsDatabase,
+    types::{CommsDatabase, TransportProtocol},
 };
 
 /// # CommsBuilder
@@ -124,6 +124,7 @@ pub struct CommsBuilder {
     connectivity_config: ConnectivityConfig,
     shutdown_signal: Option<ShutdownSignal>,
     maintain_n_closest_connections_only: Option<usize>,
+    transport_protocols: Vec<TransportProtocol>,
 }
 
 impl Default for CommsBuilder {
@@ -137,6 +138,7 @@ impl Default for CommsBuilder {
             connectivity_config: ConnectivityConfig::default(),
             shutdown_signal: None,
             maintain_n_closest_connections_only: None,
+            transport_protocols: TransportProtocol::get_all(),
         }
     }
 }
@@ -310,10 +312,18 @@ impl CommsBuilder {
         self
     }
 
+    /// Set the transport protocols to use for communication
+    /// if not provided defaults to IP4, IP6, TOR and memory address
+    pub fn with_transport_protocols(mut self, protocols: Vec<TransportProtocol>) -> Self {
+        self.transport_protocols = protocols;
+        self
+    }
+
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
         match self.peer_storage.take() {
             Some(storage) => {
-                let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
+                let peer_manager = PeerManager::new(storage, self.transport_protocols.clone())
+                    .map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },
             None => Err(CommsBuilderError::PeerStorageNotProvided),

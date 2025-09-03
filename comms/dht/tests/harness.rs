@@ -36,8 +36,7 @@ use tari_comms::{
         PeerFeatures,
         PeerFlags,
     },
-    pipeline,
-    pipeline::SinkService,
+    pipeline::{self, SinkService},
     protocol::{
         messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
         ProtocolId,

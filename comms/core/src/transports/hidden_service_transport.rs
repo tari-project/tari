@@ -29,6 +29,8 @@ use tokio::sync::RwLock;
 use crate::{
     tor::{HiddenServiceController, TorIdentity},
     transports::{tcp::TcpInbound, SocksTransport, Transport},
+    types::TransportProtocol,
+    utils::network::supports_ipv6,
 };
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
@@ -42,16 +44,22 @@ struct HiddenServiceTransportInner {
 pub struct HiddenServiceTransport<F: Fn(TorIdentity)> {
     inner: Arc<RwLock<HiddenServiceTransportInner>>,
     after_init: F,
+    supported_protocols: Vec<TransportProtocol>,
 }
 
 impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
     pub fn new(hidden_service_ctl: HiddenServiceController, after_init: F) -> Self {
+        let mut supported_protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Onion];
+        if supports_ipv6() {
+            supported_protocols.push(TransportProtocol::Ipv6);
+        }
         Self {
             inner: Arc::new(RwLock::new(HiddenServiceTransportInner {
                 socks_transport: None,
                 hidden_service_ctl: Some(hidden_service_ctl),
             })),
             after_init,
+            supported_protocols,
         }
     }
 
@@ -122,5 +130,9 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
             io::Error::other("BUG: Hidden service transport not initialized before dialling".to_string())
         })?;
         transport.dial(addr).await
+    }
+
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        self.supported_protocols.clone()
     }
 }

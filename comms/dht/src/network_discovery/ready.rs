@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::peer_manager::{PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION};
+use tari_comms::peer_manager::{Peer, PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION};
 
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
@@ -44,9 +44,8 @@ async fn select_peers_for_discovery_round(
     excluded_peers: &[tari_comms::peer_manager::NodeId],
     config: &DhtConfig,
 ) -> Result<Vec<tari_comms::peer_manager::NodeId>, NetworkDiscoveryError> {
-    let peers_to_request_from = match last_round_info {
+    let peers_to_request_from: Vec<Peer> = match last_round_info {
         Some(stats) if stats.has_new_peers() => {
-            // If the last round had new peers, try to sync from those first or closest ones
             debug!(
                 target: LOG_TARGET,
                 "Last peer sync round found {} new peer(s). Selecting peers for discovery based on a 'closest' strategy.",

@@ -53,7 +53,7 @@ use crate::{
         PeerId,
     },
     protocol::ProtocolId,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
     utils::datetime::safe_future_datetime_from_duration,
 };
 
@@ -1120,8 +1120,10 @@ impl PeerDatabaseSql {
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
+        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
         // Build base query filtering for communication nodes, not banned, not deleted
         let mut query = peers::table
@@ -1137,6 +1139,10 @@ impl PeerDatabaseSql {
                 PeerFeatures::COMMUNICATION_NODE.to_i32()
             )))
             .into_boxed();
+
+        if let Some(filter_sql) = addr_filter_sql {
+            query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
+        }
 
         // Exclude connected peers if provided
         if !exclude_node_ids.is_empty() {
@@ -1390,8 +1396,10 @@ impl PeerDatabaseSql {
         at_least_one_external_addresses: bool,
         n: Option<usize>,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<String>, StorageError> {
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
         // Step 1: Retrieve relevant node_ids
         let mut query = peers::table
@@ -1408,6 +1416,10 @@ impl PeerDatabaseSql {
 
         if let Some(flags) = peer_flags {
             query = query.filter(peers::flags.eq(flags.to_i32()));
+        }
+
+        if let Some(filter_sql) = addr_filter_sql {
+            query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
         }
 
         if exclude_if_all_address_failed {
@@ -1475,6 +1487,7 @@ impl PeerDatabaseSql {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1492,6 +1505,7 @@ impl PeerDatabaseSql {
                 external_addresses_only,
                 None,
                 conn,
+                transport_protocols,
             )?;
 
             let mut node_ids = node_ids_hex
@@ -1529,6 +1543,7 @@ impl PeerDatabaseSql {
         peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         external_addresses_only: bool,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1546,6 +1561,7 @@ impl PeerDatabaseSql {
                 external_addresses_only,
                 Some(n),
                 conn,
+                transport_protocols,
             )?;
 
             let peers = self.get_peers_by_node_ids_str(&node_ids_hex, external_addresses_only, conn)?;
@@ -1561,6 +1577,7 @@ impl PeerDatabaseSql {
         n: usize,
         exclude_node_ids: &[NodeId],
         peer_flags: Option<PeerFlags>,
+        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1568,6 +1585,7 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
         let exclude_node_ids = exclude_node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
         conn.transaction::<_, StorageError, _>(|conn| {
             // Step 1: Filtered, random and truncated list of node_ids
@@ -1589,10 +1607,14 @@ impl PeerDatabaseSql {
                 .limit(i64::try_from(n).unwrap_or(i64::MAX))
                 .select(peers::node_id)
                 .distinct()
-                .into_boxed(); // Enables dynamic query building
+                .into_boxed();
 
             if let Some(flags) = peer_flags {
                 query = query.filter(peers::flags.eq(flags.to_i32()));
+            }
+
+            if let Some(filter_sql) = addr_filter_sql {
+                query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
             }
 
             let node_ids: Vec<String> = query.load::<String>(conn)?;
@@ -1632,6 +1654,21 @@ impl PeerDatabaseSql {
     /// Get the size of the peer database
     pub fn size(&self) -> usize {
         self.get_peer_indexes().unwrap_or_default().len()
+    }
+
+    /// Builds an OR-ed SQL clause like:
+    /// "multi_addresses.address LIKE '/ip4%' OR multi_addresses.address LIKE '/ip6%'"
+    fn build_addr_filter_sql(transport_protocols: &[TransportProtocol]) -> Option<String> {
+        if transport_protocols.is_empty() {
+            return None;
+        }
+
+        let conditions: Vec<String> = transport_protocols
+            .iter()
+            .map(|protocol| format!("multi_addresses.address LIKE '{}%'", sql_escape(protocol.get_prefix())))
+            .collect();
+
+        Some(format!("({})", conditions.join(" OR ")))
     }
 }
 
@@ -1906,6 +1943,7 @@ mod tests {
             create_test_peer_add_internal_addresses,
             create_test_peer_internal_addresses_only,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
+            manager::create_test_peer_with_onion_address,
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
                 schema::{multi_addresses, peers},
@@ -1916,7 +1954,7 @@ mod tests {
             PeerFlags,
         },
         protocol::ProtocolId,
-        types::CommsPublicKey,
+        types::{CommsPublicKey, TransportProtocol},
     };
 
     #[test]
@@ -2007,6 +2045,54 @@ mod tests {
         // Verify that the addresses can be retrieved from the db by node_id
         let addresses_from_db = peers_db.get_addresses(&new_peer.node_id).unwrap();
         assert_eq!(addresses_from_db, new_peer.addresses);
+    }
+
+    #[test]
+    fn test_filtering_peers_by_transport_protocols() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+        let transport_protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6];
+
+        // Create new node and wallet peers with internal and external addresses
+        for _i in 0..20 {
+            let peer = create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_NODE);
+            peers_db.add_or_update_peer(peer).unwrap();
+            let peer = create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_CLIENT);
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        assert_eq!(peers_db.size(), 40);
+
+        // Assert that retrieved peers have internal and external addresses
+        let nodes_with_all_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false, &transport_protocols)
+            .unwrap();
+        assert_eq!(nodes_with_all_addresses.len(), 40);
+
+        let nodes_with_onion_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false, &[TransportProtocol::Onion])
+            .unwrap();
+        assert!(nodes_with_onion_addresses.is_empty());
+
+        // - Has external address
+        assert!(nodes_with_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
+        // - Has internal address
+        assert!(nodes_with_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+
+        // Add peer with onion addresses only
+        let onion_peer = create_test_peer_with_onion_address(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(onion_peer).unwrap();
+        let node_with_onion_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false, &[TransportProtocol::Onion])
+            .unwrap();
+        assert_eq!(node_with_onion_addresses.len(), 1);
     }
 
     #[ignore]
@@ -2133,6 +2219,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2148,6 +2235,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2163,6 +2251,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2179,6 +2268,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2187,6 +2277,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_seed_peer_exclusion() {
+        let transport_protocols = TransportProtocol::get_all();
         let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
@@ -2217,6 +2308,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 12);
@@ -2233,6 +2325,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 4);
@@ -2250,6 +2343,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes[0].flags, PeerFlags::SEED);
@@ -2266,6 +2360,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 8);
@@ -2283,30 +2378,41 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes[0].flags, PeerFlags::NONE);
 
         // All peers as random
-        let random_peers = peers_db.get_n_random_peers(12, &[], None).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers(12, &[], None, &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers.len(), 12);
 
         // All seed peers only as random
-        let random_peers = peers_db.get_n_random_peers(12, &[], Some(PeerFlags::SEED)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers(12, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers.len(), 4);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::SEED));
 
         // One seed peer as random
-        let random_peers = peers_db.get_n_random_peers(1, &[], Some(PeerFlags::SEED)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers(1, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::SEED);
 
         // All normal peers only as random
-        let random_peers = peers_db.get_n_random_peers(12, &[], Some(PeerFlags::NONE)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers(12, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers.len(), 8);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::NONE));
 
         // One normal peer as random
-        let random_peers = peers_db.get_n_random_peers(1, &[], Some(PeerFlags::NONE)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers(1, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::NONE);
     }
 
@@ -2319,6 +2425,7 @@ mod tests {
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
         )
         .unwrap();
+        let transport_protocols = TransportProtocol::get_all();
 
         // Create new node peers
         let mut node_peers = Vec::with_capacity(12);
@@ -2457,6 +2564,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2492,6 +2600,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2530,6 +2639,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &[],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2562,7 +2672,7 @@ mod tests {
 
         // Test 'random_peers_sqlite'
         let random_peers = peers_db
-            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None)
+            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None, &transport_protocols)
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned
@@ -2805,7 +2915,7 @@ mod tests {
 
         // Assert that retrieved peers have internal and external addresses
         let nodes_with_all_addresses = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, false)
+            .get_n_random_active_peers(100, &[], None, None, None, false, &[])
             .unwrap();
         assert_eq!(nodes_with_all_addresses.len(), 40);
         // - Has external address
@@ -2828,7 +2938,7 @@ mod tests {
 
         // Assert that retrieved peers have external addresses only
         let nodes_with_external_addresses_only = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, true)
+            .get_n_random_active_peers(100, &[], None, None, None, true, &[])
             .unwrap();
         assert_eq!(nodes_with_external_addresses_only.len(), 40);
         // - Has external address only

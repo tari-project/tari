@@ -31,9 +31,10 @@ use tokio::net::TcpStream;
 
 use crate::{
     multiaddr::Multiaddr,
-    socks,
-    socks::Socks5Client,
+    socks::{self, Socks5Client},
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
+    types::TransportProtocol,
+    utils::network::supports_ipv6,
 };
 
 const LOG_TARGET: &str = "comms::transports::socks";
@@ -61,13 +62,20 @@ impl Debug for SocksConfig {
 pub struct SocksTransport {
     socks_config: SocksConfig,
     tcp_transport: TcpTransport,
+    supported_protocols: Vec<TransportProtocol>,
 }
 
 impl SocksTransport {
     pub fn new(socks_config: SocksConfig) -> Self {
+        let mut supported_protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Onion];
+        // check if this machine has ipv6 address. If not it's means that we can't use ipv6
+        if supports_ipv6() {
+            supported_protocols.push(TransportProtocol::Ipv6);
+        }
         Self {
             socks_config,
             tcp_transport: Self::create_socks_tcp_transport(),
+            supported_protocols,
         }
     }
 
@@ -117,6 +125,10 @@ impl Transport for SocksTransport {
 
         let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
         Ok(socket)
+    }
+
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        self.supported_protocols.clone()
     }
 }
 

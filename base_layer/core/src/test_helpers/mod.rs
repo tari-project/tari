@@ -44,7 +44,7 @@ use tari_comms::{
         PeerFeatures,
         PeerFlags,
     },
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
     PeerManager,
 };
 use tari_crypto::keys::SecretKey;
@@ -233,7 +233,7 @@ fn create_test_peer() -> Peer {
 pub fn create_peer_manager() -> Arc<PeerManager> {
     let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
-    Arc::new(PeerManager::new(peers_db).unwrap())
+    Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap())
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {

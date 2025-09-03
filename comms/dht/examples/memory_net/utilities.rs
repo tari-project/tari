@@ -43,8 +43,7 @@ use tari_comms::{
         Peer,
         PeerFeatures,
     },
-    pipeline,
-    pipeline::SinkService,
+    pipeline::{self, SinkService},
     protocol::{
         messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,

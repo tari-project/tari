@@ -35,9 +35,9 @@ use futures::stream::Stream;
 use multiaddr::{Multiaddr, Protocol};
 
 use crate::{
-    memsocket,
-    memsocket::{MemoryListener, MemorySocket},
+    memsocket::{self, MemoryListener, MemorySocket},
     transports::Transport,
+    types::TransportProtocol,
 };
 
 /// Transport to build in-memory connections
@@ -78,6 +78,10 @@ impl Transport for MemoryTransport {
         // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
         let port = parse_addr(addr)?;
         Ok(MemorySocket::connect(port)?)
+    }
+
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        vec![TransportProtocol::Memory]
     }
 }
 

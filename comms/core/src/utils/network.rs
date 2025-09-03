@@ -20,11 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Utilities used within Tari comms.
+//! Network-related utility functions for Tari comms.
 
-pub mod atomic_ref_counter;
-pub mod cidr;
-pub mod datetime;
-pub mod mpsc;
-pub mod multiaddr;
-pub mod network;
+/// Checks if the host machine supports IPv6 connectivity.
+///
+/// This function attempts to determine if the local machine has IPv6 support
+/// by checking if it can obtain a local IPv6 address.
+///
+/// Returns `true` if IPv6 is supported, `false` otherwise.
+///
+/// # Example
+///
+/// ```
+/// use tari_comms::utils::network::supports_ipv6;
+///
+/// if supports_ipv6() {
+///     println!("IPv6 is supported on this machine");
+/// } else {
+///     println!("IPv6 is not supported on this machine");
+/// }
+/// ```
+pub fn supports_ipv6() -> bool {
+    local_ip_address::local_ipv6().is_ok()
+}

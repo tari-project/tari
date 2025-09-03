@@ -52,8 +52,7 @@ use crate::connection_manager::metrics;
 use crate::{
     backoff::Backoff,
     connection_manager::{
-        common,
-        common::ValidatedPeerIdentityExchange,
+        common::{self, ValidatedPeerIdentityExchange},
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
         peer_connection,
@@ -589,7 +588,7 @@ where
         }
     }
 
-    /// Attempts to dial a peer sequentially on all addresses; if connections are to be minimized only.
+    /// Attempts to dial a peer sequentially on supported addresses; if connections are to be minimized only.
     /// Returns ownership of the given `DialState` and a success or failure result for the dial,
     /// or None if the dial was cancelled inflight
     #[allow(clippy::too_many_lines)]
@@ -603,15 +602,22 @@ where
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
+        let supported_transport_protocols = transport.supported_protocols();
+        trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
+
         let addresses = dial_state
             .peer()
             .addresses
             .clone()
             .into_vec()
             .iter()
-            .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)))
+            .filter(|&a| {
+                !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)) &&
+                    supported_transport_protocols.contains(a.into())
+            })
             .cloned()
             .collect::<Vec<_>>();
+
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
             trace!(

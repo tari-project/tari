@@ -23,7 +23,7 @@
 use super::{peer::PeersFactory, TestFactory, TestFactoryError};
 use crate::{
     peer_manager::{Peer, PeerManager},
-    types::CommsDatabase,
+    types::{CommsDatabase, TransportProtocol},
 };
 
 pub fn create() -> PeerManagerFactory {
@@ -53,7 +53,7 @@ impl TestFactory for PeerManagerFactory {
             .database
             .ok_or_else(|| TestFactoryError::BuildFailed("Failed to build peer manager: database undefined".into()))?;
 
-        let pm = PeerManager::new(database)
+        let pm = PeerManager::new(database, TransportProtocol::get_all())
             .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
 
         let peers = self
@@ -61,7 +61,7 @@ impl TestFactory for PeerManagerFactory {
             .or(self.peers_factory.build().ok())
             .ok_or_else(|| TestFactoryError::BuildFailed("Failed to build peers".into()))?;
         for peer in peers {
-            pm.add_or_update_peer(peer)
+            futures::executor::block_on(pm.add_or_update_peer(peer))
                 .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
         }
 

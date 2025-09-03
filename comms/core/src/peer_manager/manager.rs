@@ -39,7 +39,7 @@ use crate::{
         PeerManagerError,
         ThisPeerIdentity,
     },
-    types::{CommsDatabase, CommsPublicKey},
+    types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
 
 /// The PeerManager provides functionality to add, find and delete peers. It wraps synchronous
@@ -48,14 +48,21 @@ use crate::{
 pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
     peer_storage_sql: PeerStorageSql,
+    transport_protocols: Vec<TransportProtocol>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
+    pub fn new(
+        database: CommsDatabase,
+        transport_protocols: Vec<TransportProtocol>,
+    ) -> Result<PeerManager, PeerManagerError> {
         let peer_storage_sql = PeerStorageSql::new_indexed(database)?;
 
-        Ok(Self { peer_storage_sql })
+        Ok(Self {
+            peer_storage_sql,
+            transport_protocols,
+        })
     }
 
     /// Get this peer's identity
@@ -146,7 +153,7 @@ impl PeerManager {
         self.peer_storage_sql.all(features)
     }
 
-    /// Get available dial candidates that are communication nodes, not banned, not deleted,
+    /// Get available dial candidates that are communication nodes, not banned, not deleted, reachable
     /// and not in the excluded node IDs list
     pub async fn get_available_dial_candidates(
         &self,
@@ -154,7 +161,7 @@ impl PeerManager {
         limit: Option<usize>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
-            .get_available_dial_candidates(exclude_node_ids, limit)
+            .get_available_dial_candidates(exclude_node_ids, limit, &self.transport_protocols)
     }
 
     /// Return "good" peers for syncing
@@ -170,8 +177,13 @@ impl PeerManager {
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql
-            .discovery_syncing(n, excluded_peers, features, external_addresses_only)
+        self.peer_storage_sql.discovery_syncing(
+            n,
+            excluded_peers,
+            features,
+            external_addresses_only,
+            &self.transport_protocols,
+        )
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -238,6 +250,7 @@ impl PeerManager {
             exclude_if_all_address_failed,
             exclusion_distance,
             external_addresses_only,
+            &self.transport_protocols,
         )
     }
 
@@ -257,7 +270,8 @@ impl PeerManager {
         excluded: &[NodeId],
         flags: Option<PeerFlags>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.random_peers(n, excluded, flags)
+        self.peer_storage_sql
+            .random_peers(n, excluded, flags, &self.transport_protocols)
     }
 
     /// Calculate the region threshold for a given number of peers and features
@@ -415,6 +429,71 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     peer
 }
 
+/// Generate a random, syntactically valid Tor v3 onion hostname:
+///  - 56 chars, base32 alphabet [a-z2-7], lowercase.
+#[cfg(test)]
+fn random_onion3_host() -> String {
+    use rand::distributions::Uniform;
+
+    const LEN: usize = 56;
+    // RFC4648 base32 alphabet as used by onion v3 (lowercase).
+    const B32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+
+    let mut rng = rand::thread_rng();
+    let dist = Uniform::from(0..B32.len());
+
+    let mut s = String::with_capacity(LEN);
+    for _ in 0..LEN {
+        use rand::Rng;
+
+        let idx = rng.sample(dist);
+        s.push(*B32.get(idx).expect("Index out of bounds") as char);
+    }
+    s
+}
+
+#[cfg(test)]
+pub fn create_test_peer_with_onion_address(ban_flag: bool, features: PeerFeatures) -> Peer {
+    use std::borrow::BorrowMut;
+
+    use rand::{rngs::OsRng, Rng};
+
+    use crate::peer_manager::PeerFlags;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let node_id = NodeId::from_key(&pk);
+    let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
+
+    // Create 1 to 4 random onion addresses
+    for _i in 1..=rand::thread_rng().gen_range(1..4) {
+        use std::str::FromStr;
+
+        let host = random_onion3_host();
+        let port = rand::thread_rng().gen_range(1024..=65535);
+        let addr_str = format!("/onion3/{}:{}", host, port);
+        let maddr = Multiaddr::from_str(&addr_str).expect("valid onion3 multiaddr");
+        net_addresses.add_address(&maddr, &PeerAddressSource::Config);
+    }
+
+    let mut peer = Peer::new(
+        pk,
+        node_id,
+        net_addresses,
+        PeerFlags::default(),
+        features,
+        Default::default(),
+        Default::default(),
+    );
+    if ban_flag {
+        peer.ban_for(Duration::from_secs(1000), "".to_string());
+    }
+
+    let good_addresses = peer.addresses.borrow_mut();
+    let good_address = good_addresses.addresses().first().unwrap().address().clone();
+    good_addresses.mark_last_seen_now(&good_address);
+
+    peer
+}
+
 #[cfg(test)]
 pub fn create_test_peer_add_internal_addresses(ban_flag: bool, features: PeerFeatures) -> Peer {
     let mut peer = create_test_peer(ban_flag, features);
@@ -536,7 +615,7 @@ mod test {
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
         )
         .unwrap();
-        PeerManager::new(peers_db).unwrap()
+        PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap()
     }
 
     #[tokio::test]

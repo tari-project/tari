@@ -59,7 +59,7 @@ use crate::{
         node_id,
         node_identity::build_node_identity,
     },
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
 };
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
@@ -74,7 +74,7 @@ fn create_peer_manager() -> Arc<PeerManager> {
         &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
     )
     .unwrap();
-    Arc::new(PeerManager::new(peers_db).unwrap())
+    Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap())
 }
 
 async fn spawn_messaging_protocol() -> (

@@ -65,6 +65,7 @@ tower = { version = "0.4", features = ["util"] }
 tracing = "0.1.26"
 yamux = "0.13.2"
 zeroize = "1"
+local-ip-address = "0.6.5"
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }

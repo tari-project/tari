@@ -784,6 +784,7 @@ impl DhtActor {
         // - The peer isn't banned,
         // - it has the required features
         // - it didn't recently fail to connect, and
+        // - it's address is reachable
         // - it is not in the exclusion list in closest_request
         let peers = peer_manager
             .closest_n_active_peers(
