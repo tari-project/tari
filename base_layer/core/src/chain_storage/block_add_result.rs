@@ -22,9 +22,8 @@
 
 use std::{fmt, sync::Arc};
 
+use tari_node_components::blocks::ChainBlock;
 use tari_utilities::hex::Hex;
-
-use crate::blocks::ChainBlock;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {

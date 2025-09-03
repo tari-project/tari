@@ -32,4 +32,6 @@ pub enum BlockError {
     ChainBlockInvariantError(String),
     #[error("Adding difficulties overflowed")]
     DifficultyOverflow,
+    #[error("Failed to convert block")]
+    ConversionError,
 }

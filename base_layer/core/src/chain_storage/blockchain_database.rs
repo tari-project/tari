@@ -64,7 +64,16 @@ use tari_common_types::{
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
-use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, NewBlockTemplate};
+use tari_node_components::blocks::{
+    Block,
+    BlockHeader,
+    BlockHeaderAccumulatedData,
+    BlockHeaderValidationError,
+    ChainBlock,
+    ChainHeader,
+    HistoricalBlock,
+    NewBlockTemplate,
+};
 use tari_transaction_components::{
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
     tari_proof_of_work::PowAlgorithm,
@@ -86,10 +95,7 @@ use crate::{
     blocks::{
         genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
         BlockAccumulatedData,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
+        BlockHeaderAccumulatedDataBuilder,
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
@@ -2616,7 +2622,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     // Include the current block timestamp in the median window
     prev_timestamps.push(candidate_block.header.timestamp);
 
-    let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(parent.accumulated_data())
         .with_hash(hash)
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
@@ -2703,7 +2709,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 prev_timestamps_for_children.push(child.header.timestamp);
 
                 let child_hash = child.hash();
-                let accum_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
+                let accum_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_chain_header.accumulated_data())
                     .with_hash(child_hash)
                     .with_achieved_target_difficulty(achieved_target)
                     .with_total_kernel_offset(child.header.total_kernel_offset.clone())
@@ -2998,7 +3004,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
 
     let achieved_difficulty = difficulty_calculator.check_achieved_and_target_difficulty(&*write_lock, &header)?;
 
-    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_chain_header.accumulated_data())
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header.total_kernel_offset.clone())

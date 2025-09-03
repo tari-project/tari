@@ -6,7 +6,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
-use tari_node_components::blocks::{Block, BlockHeader};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_sidechain::ShardGroup;
 use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
@@ -19,7 +19,7 @@ use super::{
     ValidatorNodeRegistrationInfo,
 };
 use crate::{
-    blocks::{BlockAccumulatedData, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    blocks::BlockAccumulatedData,
     chain_storage::{
         ChainStorageError,
         DbBasicStats,

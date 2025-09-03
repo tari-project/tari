@@ -20,7 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::{blocks::ChainBlock, chain_storage::BlockAddResult};
+use tari_core::chain_storage::BlockAddResult;
+use tari_node_components::blocks::ChainBlock;
 
 mod async_db;
 mod block_sync;

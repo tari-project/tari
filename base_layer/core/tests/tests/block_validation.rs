@@ -30,7 +30,7 @@ use serial_test::serial;
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
-    blocks::{BlockHeaderAccumulatedData, ChainBlock},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
@@ -51,7 +51,7 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_node_components::blocks::{Block, BlockHeaderValidationError, BlockValidationError};
+use tari_node_components::blocks::{Block, BlockHeaderValidationError, BlockValidationError, ChainBlock};
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
@@ -546,7 +546,7 @@ OutputFeatures::default()),
             FixedHash::zero(),
         )
         .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
@@ -619,7 +619,7 @@ OutputFeatures::default()),
             FixedHash::zero(),
         )
         .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
@@ -652,7 +652,7 @@ OutputFeatures::default()),
             FixedHash::zero(),
         )
         .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
@@ -683,7 +683,7 @@ OutputFeatures::default()),
             FixedHash::zero(),
         )
         .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())

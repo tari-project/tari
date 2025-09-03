@@ -78,11 +78,11 @@ use tari_comms::{
 use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
-    blocks::ChainHeader,
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::BaseNodeConsensusManager,
     mempool::service::LocalMempoolService,
 };
+use tari_node_components::blocks::ChainHeader;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_shutdown::Shutdown;
 use tokio::{sync::watch, time};

@@ -28,21 +28,28 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_core::{
-    blocks::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
     consensus::BaseNodeConsensusManager,
     kernel_mr_hash_from_mmr,
-    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty},
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
     KernelMmr,
     PrunedOutputMmr,
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
-use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
+use tari_node_components::blocks::{
+    Block,
+    BlockHeader,
+    BlockHeaderAccumulatedData,
+    ChainBlock,
+    ChainHeader,
+    NewBlockTemplate,
+};
 use tari_script::script;
 use tari_transaction_components::{
     consensus::{emission::Emission, ConsensusConstants},
     key_manager::{TransactionKeyManagerInterface, TxoStage},
-    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
     transaction_components::{
         CoinBaseExtra,
@@ -598,7 +605,7 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         prev_accum.achieved_difficulty,
     )
     .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(header.total_kernel_offset.clone())

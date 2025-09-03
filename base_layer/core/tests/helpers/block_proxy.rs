@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_core::blocks::ChainBlock;
+use tari_node_components::blocks::ChainBlock;
 
 #[derive(Debug, Clone)]
 pub struct BlockProxy {
