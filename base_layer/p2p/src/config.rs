@@ -45,7 +45,7 @@ pub struct PeerSeedsConfig {
     #[serde(default)]
     pub peer_seeds: StringList,
     /// Custom specified peer seed endpoints
-    #[serde(default, alias = "")]
+    #[serde(default)]
     pub dns_seeds: StringList,
     #[serde(default, skip)]
     pub dns_seed_name_servers: Option<()>,
