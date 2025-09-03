@@ -19,15 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use blake2::Blake2b;
 use digest::consts::U64;
-use tari_common_types::types::{CommsDHKE, CompressedPublicKey, PrivateKey, WalletHasher};
+use tari_common_types::types::{CommsDHKE, CompressedPublicKey, PrivateKey};
 use tari_crypto::{
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::SecretKey as SKtrait,
 };
-use tari_hashing::{WalletOutputEncryptionKeysDomain, WalletOutputSpendingKeysDomain};
+use tari_hashing::{WalletHasher, WalletOutputEncryptionKeysDomain, WalletOutputSpendingKeysDomain};
 use tari_utilities::{byte_array::ByteArrayError, ByteArray};
 
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputEncryptionKeysDomain>;

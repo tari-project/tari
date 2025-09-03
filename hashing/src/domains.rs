@@ -1,7 +1,8 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-
-use tari_crypto::hash_domain;
+use blake2::Blake2b;
+use digest::consts::U64;
+use tari_crypto::{hash_domain, hasher};
 
 // These are the hash domains that are also used in tari-dan.
 
@@ -69,5 +70,19 @@ hash_domain!(
 hash_domain!(
     WalletMessageSigningDomain,
     "com.tari.base_layer.wallet.message_signing",
+    1
+);
+
+hasher!(
+    Blake2b<U64>,
+    WalletHasher,
+    "com.tari.base_layer.wallet",
+    1,
+    wallet_hasher
+);
+
+hash_domain!(
+    BulletRangeProofHashDomain,
+    "com.tari.base_layer.common_types.bullet_rangeproofs",
     1
 );
