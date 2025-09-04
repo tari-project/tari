@@ -91,6 +91,15 @@ impl DnsSeedResolver {
             .collect();
         Ok(peers)
     }
+
+    pub async fn resolve_download_url(&mut self, addr: &str) -> Result<String, DnsClientError> {
+        let records = self.client.query_txt(addr).await?;
+        let download_url = records
+            .into_iter()
+            .find(|record| record.starts_with("https://") || record.starts_with("http://"))
+            .ok_or(DnsClientError::NoDownloadUrlFound)?;
+        Ok(download_url.to_string())
+    }
 }
 
 /// Parsed information from a DNS seed record

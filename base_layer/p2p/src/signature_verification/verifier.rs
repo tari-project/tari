@@ -22,7 +22,7 @@
 
 use tari_utilities::hex::from_hex;
 
-use crate::auto_update::dns::UpdateSpec;
+use crate::signature_verification::error::SignatureVerificationError;
 
 pub struct SignedMessageVerifier {
     maintainers: Vec<pgp::SignedPublicKey>,
@@ -33,13 +33,26 @@ impl SignedMessageVerifier {
         Self { maintainers }
     }
 
-    pub fn verify_signed_update(
+    /// Verify a standalone signature against a message using the configured maintainers' public keys
+    pub fn verify_signature(
+        &self,
+        signature: &pgp::StandaloneSignature,
+        message: &str,
+    ) -> Option<&pgp::SignedPublicKey> {
+        self.maintainers
+            .iter()
+            .find(|pk| signature.verify(pk, message.as_bytes()).is_ok())
+    }
+
+    /// Verify a signed hash file and return the matching hash and filename for a given target hash
+    pub fn verify_signed_hashes(
         &self,
         signature: &pgp::StandaloneSignature,
         hashes: &str,
-        update: &UpdateSpec,
-    ) -> Option<(Vec<u8>, String)> {
-        self.verify_signature(signature, hashes)?;
+        target_hash: &[u8],
+    ) -> Result<(Vec<u8>, String), SignatureVerificationError> {
+        self.verify_signature(signature, hashes)
+            .ok_or(SignatureVerificationError::VerificationFailed)?;
 
         hashes
             .lines()
@@ -49,13 +62,8 @@ impl SignedMessageVerifier {
                 let filename = parts.next()?;
                 Some((hash, filename.trim().to_string()))
             })
-            .find(|(hash, _)| update.hash == *hash)
-    }
-
-    fn verify_signature(&self, signature: &pgp::StandaloneSignature, message: &str) -> Option<&pgp::SignedPublicKey> {
-        self.maintainers
-            .iter()
-            .find(|pk| signature.verify(pk, message.as_bytes()).is_ok())
+            .find(|(hash, _)| *hash == target_hash)
+            .ok_or(SignatureVerificationError::InvalidHashFormat)
     }
 }
 
@@ -64,7 +72,6 @@ mod test {
     use pgp::Deserializable;
 
     use super::*;
-    use crate::auto_update::maintainers;
 
     const PUBLIC_KEY: &str = r#"-----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -151,7 +158,8 @@ l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
     #[test]
     fn it_does_not_validate_with_tampered_message() {
         let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
-        let verifier = SignedMessageVerifier::new(maintainers().collect());
+        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let verifier = SignedMessageVerifier::new(vec![key]);
         assert!(verifier.verify_signature(&sig, "Zilip R. Phimmermann").is_none());
     }
 }

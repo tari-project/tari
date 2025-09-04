@@ -28,7 +28,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::future;
 use log::*;
 use tari_common::{
     configuration::{DnsNameServerList, Network},
@@ -44,34 +43,21 @@ use tari_comms::{
     multiaddr::multiaddr,
     peer_manager::{
         database::{PeerDatabaseSql, MIGRATIONS},
-        NodeIdentity,
-        Peer,
-        PeerFeatures,
-        PeerFlags,
-        PeerManagerError,
+        NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError,
     },
     pipeline,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        NodeNetworkInfo,
-        ProtocolId,
+        NodeNetworkInfo, ProtocolId,
     },
     tor::{self, HiddenServiceControllerError, TorIdentity},
     transports::{
-        predicate::FalsePredicate,
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksConfig,
-        SocksTransport,
+        predicate::FalsePredicate, HiddenServiceTransport, MemoryTransport, SocksConfig, SocksTransport,
         TcpWithTorTransport,
     },
     utils::cidr::parse_cidrs,
-    CommsBuilder,
-    CommsBuilderError,
-    CommsNode,
-    PeerManager,
-    UnspawnedCommsNode,
+    CommsBuilder, CommsBuilderError, CommsNode, PeerManager, UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -90,15 +76,30 @@ use crate::{
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
-    TransportConfig,
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
+    TransportConfig, MAJOR_NETWORK_VERSION, MINOR_NETWORK_VERSION,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";
 
 /// ProtocolId for minotari messaging protocol
 pub static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/0.1");
+
+// Example usage of signature verification module:
+//
+// use crate::signature_verification::{SignedMessageVerifier, maintainers, verify_signed_hash_file};
+//
+// async fn verify_downloaded_file(hash_url: &str, sig_url: &str, file_hash: &[u8]) -> Result<(), Error> {
+//     // Method 1: Use the convenience function
+//     let (hash, filename) = verify_signed_hash_file(hash_url, sig_url, file_hash).await?;
+//
+//     // Method 2: Use the verifier directly
+//     let verifier = SignedMessageVerifier::new(maintainers().collect());
+//     let hashes = signature_verification::download_hashes_file(hash_url).await?;
+//     let sig = signature_verification::download_hashes_sig_file(sig_url).await?;
+//     let (hash, filename) = verifier.verify_signed_hashes(&sig, &hashes, file_hash)?;
+//
+//     Ok(())
+// }
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -474,53 +475,54 @@ impl P2pInitializer {
                 .collect::<Vec<String>>()
                 .join(",")
         );
-        let start = Instant::now();
+        let _start = Instant::now();
 
         let resolver =
             P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
-        let resolving = config.dns_seeds.iter().map(|addr| {
+        let _resolving = config.dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
             async move {
                 let timer = Instant::now();
-                let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
+                let download_url_res = match timeout(Duration::from_secs(5), resolver.resolve_download_url(addr)).await
+                {
                     Ok(res) => res,
                     Err(_) => {
-                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{addr}`");
+                        warn!(target: LOG_TARGET, "Timeout resolving DNS download URL `{addr}`");
                         Err(DnsClientError::Timeout)
                     },
                 };
-                // let res = (resolver.resolve(addr).await, addr);
-                let res = (seeds_res, addr.clone());
-                info!(target: LOG_TARGET, "Resolved DNS seed `{}` in {:.0?}", addr, timer.elapsed());
+                let res = (download_url_res, addr.clone());
+                info!(target: LOG_TARGET, "Resolved DNS download URL `{}` in {:.0?}", addr, timer.elapsed());
                 res
             }
         });
 
-        let peers = future::join_all(resolving)
-            .await
-            .into_iter()
-            // Log and ignore errors
-            .filter_map(|(result, addr)| match result {
-                Ok(peers) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Found {} peer(s) from `{}` in {:.0?}",
-                        peers.len(),
-                        addr,
-                        start.elapsed()
-                    );
-                    Some(peers)
-                },
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
-                    None
-                },
-            })
-            .flatten()
-            .map(Into::into)
-            .collect::<Vec<_>>();
+        // let peers = future::join_all(resolving)
+        //     .await
+        //     .into_iter()
+        //     // Log and ignore errors
+        //     .filter_map(|(result, addr)| match result {
+        //         Ok(peers) => {
+        //             info!(
+        //                 target: LOG_TARGET,
+        //                 "Found {} peer(s) from `{}` in {:.0?}",
+        //                 peers.len(),
+        //                 addr,
+        //                 start.elapsed()
+        //             );
+        //             Some(peers)
+        //         },
+        //         Err(err) => {
+        //             warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
+        //             None
+        //         },
+        //     })
+        //     .flatten()
+        //     .map(Into::into)
+        //     .collect::<Vec<_>>();
 
-        Ok(peers)
+        // Ok(peers)
+        Ok(vec![])
     }
 
     async fn get_dns_seed_resolver(

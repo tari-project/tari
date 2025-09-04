@@ -36,6 +36,7 @@ pub mod peer;
 pub mod peer_seeds;
 pub mod proto;
 pub mod services;
+pub mod signature_verification;
 mod socks_authentication;
 pub mod tari_message;
 mod tor_authentication;
