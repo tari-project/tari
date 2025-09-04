@@ -20,25 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use pgp::{SignedPublicKey, StandaloneSignature};
 use tari_utilities::hex::from_hex;
 
 use crate::signature_verification::error::SignatureVerificationError;
 
 pub struct SignedMessageVerifier {
-    maintainers: Vec<pgp::SignedPublicKey>,
+    maintainers: Vec<SignedPublicKey>,
 }
 
 impl SignedMessageVerifier {
-    pub fn new(maintainers: Vec<pgp::SignedPublicKey>) -> Self {
+    pub fn new(maintainers: Vec<SignedPublicKey>) -> Self {
         Self { maintainers }
     }
 
     /// Verify a standalone signature against a message using the configured maintainers' public keys
-    pub fn verify_signature(
-        &self,
-        signature: &pgp::StandaloneSignature,
-        message: &str,
-    ) -> Option<&pgp::SignedPublicKey> {
+    pub fn verify_signature(&self, signature: &StandaloneSignature, message: &str) -> Option<&SignedPublicKey> {
         self.maintainers
             .iter()
             .find(|pk| signature.verify(pk, message.as_bytes()).is_ok())
@@ -48,9 +45,9 @@ impl SignedMessageVerifier {
     /// Returns Ok with the signing key if verification succeeds
     pub fn verify_file_signature(
         &self,
-        signature: &pgp::StandaloneSignature,
+        signature: &StandaloneSignature,
         file_content: &str,
-    ) -> Result<&pgp::SignedPublicKey, SignatureVerificationError> {
+    ) -> Result<&SignedPublicKey, SignatureVerificationError> {
         self.verify_signature(signature, file_content)
             .ok_or(SignatureVerificationError::VerificationFailed)
     }
@@ -59,7 +56,7 @@ impl SignedMessageVerifier {
     /// This function expects the file to contain lines in the format: "HASH filename"
     pub fn verify_signed_hashes(
         &self,
-        signature: &pgp::StandaloneSignature,
+        signature: &StandaloneSignature,
         hashes: &str,
         target_hash: &[u8],
     ) -> Result<(Vec<u8>, String), SignatureVerificationError> {
@@ -81,7 +78,7 @@ impl SignedMessageVerifier {
 
 #[cfg(test)]
 mod test {
-    use pgp::Deserializable;
+    use pgp::{Deserializable, StandaloneSignature};
 
     use super::*;
 
@@ -158,27 +155,27 @@ l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
 
     #[test]
     fn it_verifies_signed_message() {
-        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
-        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (sig, _) = StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (key, _) = SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         let verifier = SignedMessageVerifier::new(vec![key]);
         let signer = verifier.verify_signature(&sig, MESSAGE).unwrap();
 
-        let (maintainer, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (maintainer, _) = SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         assert_eq!(*signer, maintainer);
     }
 
     #[test]
     fn it_does_not_validate_with_tampered_message() {
-        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
-        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (sig, _) = StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (key, _) = SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         let verifier = SignedMessageVerifier::new(vec![key]);
         assert!(verifier.verify_signature(&sig, "Zilip R. Phimmermann").is_none());
     }
 
     #[test]
     fn it_verifies_file_signature() {
-        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
-        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (sig, _) = StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (key, _) = SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         let verifier = SignedMessageVerifier::new(vec![key]);
 
         // Test valid file signature
@@ -194,12 +191,12 @@ l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
     fn test_verify_json_file() {
         // Test that we can verify a JSON file content
         let json_content = r#"{"peer_seeds": ["node1", "node2"]}"#;
-        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (key, _) = SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         let verifier = SignedMessageVerifier::new(vec![key]);
 
         // This would work with a real signature of the JSON content
         // For now, we just test that the function accepts JSON strings
-        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (sig, _) = StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
         let result = verifier.verify_file_signature(&sig, json_content);
         // This will fail because the signature is for a different message
         assert!(result.is_err());
@@ -220,7 +217,7 @@ BwIXgAAKCRBrHRtevPqxv5cOAQDR1jrEiLxlsEFLsI6DLd0I7SRQDw+tziT/02ed
 -----END PGP PUBLIC KEY BLOCK-----"#;
 
         // Parse the key
-        let (key, _) = pgp::SignedPublicKey::from_string(SEED_PEERS_KEY).unwrap();
+        let (key, _) = SignedPublicKey::from_string(SEED_PEERS_KEY).unwrap();
 
         // Create verifier with the seed peers key
         let verifier = SignedMessageVerifier::new(vec![key]);
@@ -243,8 +240,8 @@ BwIXgAAKCRBrHRtevPqxv5cOAQDR1jrEiLxlsEFLsI6DLd0I7SRQDw+tziT/02ed
 =rjiS
 -----END PGP PUBLIC KEY BLOCK-----"#;
 
-        let (key1, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
-        let (key2, _) = pgp::SignedPublicKey::from_string(SEED_PEERS_KEY).unwrap();
+        let (key1, _) = SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (key2, _) = SignedPublicKey::from_string(SEED_PEERS_KEY).unwrap();
 
         let verifier = SignedMessageVerifier::new(vec![key1, key2]);
 

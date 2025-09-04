@@ -45,12 +45,15 @@ use tari_common::{
         utils::{deserialize_string_or_struct, serialize_string},
         StringList,
     },
-    DnsNameServer, SubConfigPath,
+    DnsNameServer,
+    SubConfigPath,
 };
 use tari_utilities::hex::Hex;
 
-use crate::auto_update::dns::UpdateSpec;
-use crate::signature_verification::{self, SignedMessageVerifier};
+use crate::{
+    auto_update::dns::UpdateSpec,
+    signature_verification::{self, SignedMessageVerifier},
+};
 
 const LOG_TARGET: &str = "p2p::auto_update";
 

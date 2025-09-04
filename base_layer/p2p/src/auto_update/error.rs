@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dns::DnsClientError;
-use crate::signature_verification::SignatureVerificationError;
 use thiserror::Error;
+
+use crate::{dns::DnsClientError, signature_verification::SignatureVerificationError};
 
 #[derive(Debug, Error)]
 pub enum AutoUpdateError {

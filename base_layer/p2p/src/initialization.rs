@@ -45,21 +45,34 @@ use tari_comms::{
     multiaddr::multiaddr,
     peer_manager::{
         database::{PeerDatabaseSql, MIGRATIONS},
-        NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
     },
     pipeline,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        NodeNetworkInfo, ProtocolId,
+        NodeNetworkInfo,
+        ProtocolId,
     },
     tor::{self, HiddenServiceControllerError, TorIdentity},
     transports::{
-        predicate::FalsePredicate, HiddenServiceTransport, MemoryTransport, SocksConfig, SocksTransport,
+        predicate::FalsePredicate,
+        HiddenServiceTransport,
+        MemoryTransport,
+        SocksConfig,
+        SocksTransport,
         TcpWithTorTransport,
     },
     utils::cidr::parse_cidrs,
-    CommsBuilder, CommsBuilderError, CommsNode, PeerManager, UnspawnedCommsNode,
+    CommsBuilder,
+    CommsBuilderError,
+    CommsNode,
+    PeerManager,
+    UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -78,7 +91,9 @@ use crate::{
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
-    TransportConfig, MAJOR_NETWORK_VERSION, MINOR_NETWORK_VERSION,
+    TransportConfig,
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -477,8 +492,9 @@ impl P2pInitializer {
     async fn download_seed_peers_files(
         (url, addr): (String, String),
     ) -> Result<Vec<SeedPeer>, ServiceInitializationError> {
-        use crate::signature_verification::verify_signed_file;
         use serde::Deserialize;
+
+        use crate::signature_verification::verify_signed_file;
 
         #[derive(Deserialize)]
         struct SeedNodesJson {
@@ -687,9 +703,10 @@ impl ServiceInitializer for P2pInitializer {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tari_common::configuration::Network;
     use tari_comms::connection_manager::WireMode;
+
+    use super::*;
 
     #[test]
     fn self_liveness_network_wire_byte_is_consistent() {
@@ -824,8 +841,7 @@ BwIXgAAKCRBrHRtevPqxv5cOAQDR1jrEiLxlsEFLsI6DLd0I7SRQDw+tziT/02ed
 =rjiS
 -----END PGP PUBLIC KEY BLOCK-----"#;
 
-        use pgp::types::PublicKeyTrait;
-        use pgp::Deserializable;
+        use pgp::{types::PublicKeyTrait, Deserializable};
 
         // Parse the public key
         let (key, _) = pgp::SignedPublicKey::from_string(SEED_PEERS_PUBLIC_KEY).unwrap();

@@ -23,11 +23,12 @@
 mod error;
 mod verifier;
 
+use std::io;
+
 pub use error::SignatureVerificationError;
 use futures;
-use pgp::SignedPublicKey;
-use reqwest::{self, IntoUrl};
-use std::io;
+use pgp::{Deserializable, SignedPublicKey, StandaloneSignature};
+use reqwest::IntoUrl;
 pub use verifier::SignedMessageVerifier;
 
 const LOG_TARGET: &str = "p2p::signature_verification";
@@ -53,9 +54,7 @@ pub async fn download_hashes_file<T: IntoUrl>(url: T) -> Result<String, Signatur
 }
 
 /// Download a PGP signature file from the given URL (legacy name for compatibility)
-pub async fn download_hashes_sig_file<T: IntoUrl>(
-    url: T,
-) -> Result<pgp::StandaloneSignature, SignatureVerificationError> {
+pub async fn download_hashes_sig_file<T: IntoUrl>(url: T) -> Result<StandaloneSignature, SignatureVerificationError> {
     download_signature_file(url).await
 }
 
@@ -99,8 +98,9 @@ pub async fn verify_signed_hash_file(
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let content = verify_signed_file(
 ///     "https://example.com/seednodes.json",
-///     "https://example.com/seednodes.json.asc"
-/// ).await?;
+///     "https://example.com/seednodes.json.asc",
+/// )
+/// .await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -126,13 +126,11 @@ pub async fn download_file<T: IntoUrl>(url: T) -> Result<String, SignatureVerifi
 }
 
 /// Download a PGP signature file from the given URL
-pub async fn download_signature_file<T: IntoUrl>(
-    url: T,
-) -> Result<pgp::StandaloneSignature, SignatureVerificationError> {
+pub async fn download_signature_file<T: IntoUrl>(url: T) -> Result<StandaloneSignature, SignatureVerificationError> {
     let resp = http_download(url).await?;
     let sig_bytes = resp.bytes().await?;
     let cursor = io::Cursor::new(&sig_bytes);
-    let sig = pgp::StandaloneSignature::from_bytes(cursor).map_err(SignatureVerificationError::SignatureError)?;
+    let sig = StandaloneSignature::from_bytes(cursor).map_err(SignatureVerificationError::SignatureError)?;
     Ok(sig)
 }
 

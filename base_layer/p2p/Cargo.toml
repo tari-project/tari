@@ -20,10 +20,10 @@ tari_utilities = { workspace = true }
 anyhow = "1.0.53"
 futures = { version = "^0.3.1" }
 log = "0.4.6"
-pgp = { version = "0.14.2", optional = true }
+pgp = { version = "0.14.2" }
 prost = "0.13.3"
 rand = "0.8"
-reqwest = { version = "0.11", optional = true, default-features = false }
+reqwest = { version = "0.11" }
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 serde_json = "1.0.51"
@@ -53,7 +53,7 @@ tari_common = { workspace = true, features = ["build"] }
 
 [features]
 test-mocks = []
-auto-update = ["reqwest/default", "pgp", "semver"]
+auto-update = ["semver"]
 
 [package.metadata.cargo-machete]
 ignored = []
