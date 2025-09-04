@@ -24,17 +24,26 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use std::{
     cmp::Ordering,
+    default::Default,
     fmt::{Debug, Formatter},
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof};
-use tari_script::{ExecutionStack, TariScript};
+use tari_common_types::types::{
+    ComAndPubSignature,
+    CompressedCommitment,
+    CompressedPublicKey,
+    FixedHash,
+    PrivateKey,
+    RangeProof,
+};
+use tari_crypto::keys::SecretKey;
+use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
     transaction_components,
     transaction_components::{
         covenants::Covenant,
@@ -157,6 +166,40 @@ impl WalletOutput {
         }
     }
 
+    /// This will create a new wallet output and try and calculate the required script key and input stack to spend this
+    /// output, will return None if it cannot calculate the script key or input stack
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new_imported<KM: TransactionKeyManagerInterface>(
+        value: MicroMinotari,
+        commitment_mask_key_id: TariKeyId,
+        memo: MemoField,
+        output: TransactionOutput,
+        key_manager: &KM,
+    ) -> Option<Self> {
+        let mut output = WalletOutput::new_with_rangeproof(
+            output.version,
+            value,
+            commitment_mask_key_id,
+            output.features,
+            output.script,
+            Default::default(),
+            Default::default(),
+            output.sender_offset_public_key,
+            output.metadata_signature,
+            0,
+            output.covenant,
+            output.encrypted_data,
+            output.minimum_value_promise,
+            output.proof,
+            memo,
+        );
+        let (input_data, script_key) = output.get_script_private_key_id(key_manager).await.ok()??;
+        output.input_data = input_data;
+        output.script_key_id = script_key;
+
+        Some(output)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
         value: MicroMinotari,
@@ -192,6 +235,45 @@ impl WalletOutput {
             key_manager,
         )
         .await
+    }
+
+    async fn get_script_private_key_id<KM: TransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Option<(ExecutionStack, TariKeyId)>, TransactionError> {
+        if self.script == script!(Nop)? {
+            // This is a nop, so we can just create a new key for the input stack.
+            let private_key = PrivateKey::random(&mut rand::thread_rng());
+            let key_id = key_manager.import_key(private_key).await?;
+            let public_key = key_manager.get_public_key_at_key_id(&key_id).await?;
+            return Ok(Some((inputs!(public_key), key_id)));
+        }
+        // this is push public key script, so lets see if we know the public key
+        if let [Opcode::PushPubKey(public_key)] = self.script.as_slice() {
+            // first lets check the commitment mask derived keys
+            let result = key_manager
+                .find_script_key_id_from_commitment_mask_key_id(&self.commitment_mask_key_id, Some(public_key))
+                .await?;
+            if let Some(script_key_id) = result {
+                return Ok(Some((ExecutionStack::default(), script_key_id)));
+            }
+            // now lets try stealth
+            let spend_key = key_manager.get_spend_key().await?;
+            let script_spending_key = key_manager
+                .stealth_address_script_spending_key(&self.commitment_mask_key_id, &spend_key.pub_key)
+                .await?;
+
+            if script_spending_key == **public_key {
+                let script_key = TariKeyId::Derived {
+                    key: SerializedKeyString::from(self.commitment_mask_key_id.to_string()),
+                };
+                return Ok(Some((ExecutionStack::default(), script_key)));
+            }
+        }
+
+        // no match
+
+        Ok(None)
     }
 
     /// Commits an KeyManagerOutput into a Transaction input

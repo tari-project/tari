@@ -25,28 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::transaction::{
-    LegacyTransactionStatus,
-    LegacyTransactionStatus::{
-        Broadcast,
-        Coinbase,
-        CoinbaseConfirmed,
-        CoinbaseNotInBlockChain,
-        CoinbaseUnconfirmed,
-        Completed,
-        Imported,
-        MinedConfirmed,
-        MinedUnconfirmed,
-        OneSidedConfirmed,
-        OneSidedUnconfirmed,
-        Pending,
-        Queued,
-        Rejected,
-    },
-    TransactionDirection,
-    TransactionStatus,
-    TxId,
-};
+use tari_common_types::transaction::{LegacyTransactionStatus, TransactionDirection, TransactionStatus, TxId};
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::ByteArray;
