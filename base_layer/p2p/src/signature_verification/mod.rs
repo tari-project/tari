@@ -25,40 +25,38 @@ mod verifier;
 
 pub use error::SignatureVerificationError;
 use futures;
-use pgp::Deserializable;
-use reqwest::IntoUrl;
+use pgp::SignedPublicKey;
+use reqwest::{self, IntoUrl};
 use std::io;
 pub use verifier::SignedMessageVerifier;
 
 const LOG_TARGET: &str = "p2p::signature_verification";
 
 // Include GPG keys of authorized maintainers
-const MAINTAINERS: &[&str] = &[include_str!("gpg_keys/swvheerden.asc")];
+const MAINTAINERS: &[&str] = &[
+    include_str!("gpg_keys/swvheerden.asc"),
+    include_str!("gpg_keys/seed_peers_http.asc"),
+];
 
 /// Returns an iterator over all configured maintainer public keys
-pub fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
+pub fn maintainers() -> impl Iterator<Item = SignedPublicKey> {
     MAINTAINERS.iter().map(|s| {
-        let (pk, _) = pgp::SignedPublicKey::from_string(s).expect("Malformed maintainer PGP signature");
+        let (pk, _) = SignedPublicKey::from_string(s).expect("Malformed maintainer PGP signature");
         pk
     })
 }
 
-/// Download a text file from the given URL
+// Legacy function names kept for backward compatibility with auto_update module
+/// Download a text file from the given URL (legacy name for compatibility)
 pub async fn download_hashes_file<T: IntoUrl>(url: T) -> Result<String, SignatureVerificationError> {
-    let resp = http_download(url).await?;
-    let txt = resp.text().await?;
-    Ok(txt)
+    download_file(url).await
 }
 
-/// Download a PGP signature file from the given URL
+/// Download a PGP signature file from the given URL (legacy name for compatibility)
 pub async fn download_hashes_sig_file<T: IntoUrl>(
     url: T,
 ) -> Result<pgp::StandaloneSignature, SignatureVerificationError> {
-    let resp = http_download(url).await?;
-    let sig_bytes = resp.bytes().await?;
-    let cursor = io::Cursor::new(&sig_bytes);
-    let sig = pgp::StandaloneSignature::from_bytes(cursor).map_err(SignatureVerificationError::SignatureError)?;
-    Ok(sig)
+    download_signature_file(url).await
 }
 
 /// Perform an HTTP GET request and return the response
@@ -79,10 +77,7 @@ pub async fn verify_signed_hash_file(
     target_hash: &[u8],
 ) -> Result<(Vec<u8>, String), SignatureVerificationError> {
     // Download both files in parallel
-    let (hashes, sig) = futures::join!(
-        download_hashes_file(hashes_url),
-        download_hashes_sig_file(signature_url)
-    );
+    let (hashes, sig) = futures::join!(download_file(hashes_url), download_signature_file(signature_url));
 
     let hashes = hashes?;
     let sig = sig?;
@@ -90,6 +85,55 @@ pub async fn verify_signed_hash_file(
     // Verify the signature using maintainer keys
     let verifier = SignedMessageVerifier::new(maintainers().collect());
     verifier.verify_signed_hashes(&sig, &hashes, target_hash)
+}
+
+/// Download and verify a generic file with its PGP signature
+///
+/// This function:
+/// 1. Downloads the file and its signature
+/// 2. Verifies the signature using maintainer keys
+/// 3. Returns the file content if verification succeeds
+///
+/// # Example
+/// ```no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let content = verify_signed_file(
+///     "https://example.com/seednodes.json",
+///     "https://example.com/seednodes.json.asc"
+/// ).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn verify_signed_file(file_url: &str, signature_url: &str) -> Result<String, SignatureVerificationError> {
+    // Download both files in parallel
+    let (content, sig) = futures::join!(download_file(file_url), download_signature_file(signature_url));
+
+    let content = content?;
+    let sig = sig?;
+
+    // Verify the signature using maintainer keys
+    let verifier = SignedMessageVerifier::new(maintainers().collect());
+    verifier.verify_file_signature(&sig, &content)?;
+
+    Ok(content)
+}
+
+/// Download a text file from the given URL
+pub async fn download_file<T: IntoUrl>(url: T) -> Result<String, SignatureVerificationError> {
+    let resp = http_download(url).await?;
+    let txt = resp.text().await?;
+    Ok(txt)
+}
+
+/// Download a PGP signature file from the given URL
+pub async fn download_signature_file<T: IntoUrl>(
+    url: T,
+) -> Result<pgp::StandaloneSignature, SignatureVerificationError> {
+    let resp = http_download(url).await?;
+    let sig_bytes = resp.bytes().await?;
+    let cursor = io::Cursor::new(&sig_bytes);
+    let sig = pgp::StandaloneSignature::from_bytes(cursor).map_err(SignatureVerificationError::SignatureError)?;
+    Ok(sig)
 }
 
 #[cfg(test)]

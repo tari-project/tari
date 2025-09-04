@@ -44,7 +44,19 @@ impl SignedMessageVerifier {
             .find(|pk| signature.verify(pk, message.as_bytes()).is_ok())
     }
 
+    /// Verify a file's content against its signature
+    /// Returns Ok with the signing key if verification succeeds
+    pub fn verify_file_signature(
+        &self,
+        signature: &pgp::StandaloneSignature,
+        file_content: &str,
+    ) -> Result<&pgp::SignedPublicKey, SignatureVerificationError> {
+        self.verify_signature(signature, file_content)
+            .ok_or(SignatureVerificationError::VerificationFailed)
+    }
+
     /// Verify a signed hash file and return the matching hash and filename for a given target hash
+    /// This function expects the file to contain lines in the format: "HASH filename"
     pub fn verify_signed_hashes(
         &self,
         signature: &pgp::StandaloneSignature,
@@ -161,5 +173,82 @@ l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
         let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         let verifier = SignedMessageVerifier::new(vec![key]);
         assert!(verifier.verify_signature(&sig, "Zilip R. Phimmermann").is_none());
+    }
+
+    #[test]
+    fn it_verifies_file_signature() {
+        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let verifier = SignedMessageVerifier::new(vec![key]);
+
+        // Test valid file signature
+        let result = verifier.verify_file_signature(&sig, MESSAGE);
+        assert!(result.is_ok());
+
+        // Test invalid file signature
+        let result = verifier.verify_file_signature(&sig, "Wrong content");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_json_file() {
+        // Test that we can verify a JSON file content
+        let json_content = r#"{"peer_seeds": ["node1", "node2"]}"#;
+        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let verifier = SignedMessageVerifier::new(vec![key]);
+
+        // This would work with a real signature of the JSON content
+        // For now, we just test that the function accepts JSON strings
+        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let result = verifier.verify_file_signature(&sig, json_content);
+        // This will fail because the signature is for a different message
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_seed_peers_http_key() {
+        // Test that the seed_peers_http key can be parsed and used for verification
+        const SEED_PEERS_KEY: &str = r#"-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEaLl/nhYJKwYBBAHaRw8BAQdAocXM74pI54REY9Y0fESxir/iq8We9wp6JHFP
+z8vcdm20Sk1hY2llaiAoVGVzdCBmb3Igc2VlZCBwZWVycyBIVFRQIGRvd25sb2Fk
+KSA8bWFjaWVqLmtvenVzemVrQHNwYWNlaW5jaS5jb20+iJMEExYKADsWIQTaz8Pe
+9KT58ia7xIFrHRtevPqxvwUCaLl/ngIbAwULCQgHAgIiAgYVCgkICwIEFgIDAQIe
+BwIXgAAKCRBrHRtevPqxv5cOAQDR1jrEiLxlsEFLsI6DLd0I7SRQDw+tziT/02ed
+7E8wMQD/ZzdO7ZO8oLfneJrrwoWiGk241+yq7ym5uEcBuhnKyQ8=
+=rjiS
+-----END PGP PUBLIC KEY BLOCK-----"#;
+
+        // Parse the key
+        let (key, _) = pgp::SignedPublicKey::from_string(SEED_PEERS_KEY).unwrap();
+
+        // Create verifier with the seed peers key
+        let verifier = SignedMessageVerifier::new(vec![key]);
+
+        // The verifier should be created successfully
+        assert_eq!(verifier.maintainers.len(), 1);
+    }
+
+    #[test]
+    fn test_multiple_maintainer_keys() {
+        // Test with both the original test key and the seed peers key
+        const SEED_PEERS_KEY: &str = r#"-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEaLl/nhYJKwYBBAHaRw8BAQdAocXM74pI54REY9Y0fESxir/iq8We9wp6JHFP
+z8vcdm20Sk1hY2llaiAoVGVzdCBmb3Igc2VlZCBwZWVycyBIVFRQIGRvd25sb2Fk
+KSA8bWFjaWVqLmtvenVzemVrQHNwYWNlaW5jaC5jb20+iJMEExYKADsWIQTaz8Pe
+9KT58ia7xIFrHRtevPqxvwUCaLl/ngIbAwULCQgHAgIiAgYVCgkICwIEFgIDAQIe
+BwIXgAAKCRBrHRtevPqxv5cOAQDR1jrEiLxlsEFLsI6DLd0I7SRQDw+tziT/02ed
+7E8wMQD/ZzdO7ZO8oLfneJrrwoWiGk241+yq7ym5uEcBuhnKyQ8=
+=rjiS
+-----END PGP PUBLIC KEY BLOCK-----"#;
+
+        let (key1, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (key2, _) = pgp::SignedPublicKey::from_string(SEED_PEERS_KEY).unwrap();
+
+        let verifier = SignedMessageVerifier::new(vec![key1, key2]);
+
+        // Should have both keys
+        assert_eq!(verifier.maintainers.len(), 2);
     }
 }

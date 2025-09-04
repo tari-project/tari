@@ -7956,6 +7956,7 @@ dependencies = [
  "reqwest 0.11.27",
  "semver",
  "serde",
+ "serde_json",
  "tari_common",
  "tari_common_sqlite",
  "tari_comms",
