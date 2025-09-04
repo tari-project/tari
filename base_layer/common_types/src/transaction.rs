@@ -207,6 +207,34 @@ impl TransactionStatus {
     }
 }
 
+impl TryFrom<i32> for TransactionStatus {
+    type Error = TransactionConversionError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(TransactionStatus::Completed),
+            1 => Ok(TransactionStatus::Broadcast),
+            2 => Ok(TransactionStatus::MinedUnconfirmed),
+            3 => Ok(TransactionStatus::MinedConfirmed),
+            4 => Ok(TransactionStatus::Rejected),
+            code => Err(TransactionConversionError { code }),
+        }
+    }
+}
+
+impl Display for TransactionStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        // No struct or tuple variants
+        match self {
+            TransactionStatus::Completed => write!(f, "Completed"),
+            TransactionStatus::Broadcast => write!(f, "Broadcast"),
+            TransactionStatus::MinedUnconfirmed => write!(f, "Mined Unconfirmed"),
+            TransactionStatus::MinedConfirmed => write!(f, "Mined Confirmed"),
+            TransactionStatus::Rejected => write!(f, "Rejected"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LegacyImportStatus {
     /// Special case where we import a tx received from broadcast
