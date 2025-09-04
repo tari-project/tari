@@ -87,4 +87,6 @@ hash_domain!(
     1
 );
 
+hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
+
 hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);

@@ -882,7 +882,6 @@ service Wallet {
   //   "failure_message": "",
   //   "commitment": "0xcommitmenthash",
   //   "ownership_proof": "0xownershipproof",
-  //   "range_proof": "0xrangeproof",
   //   "reciprocal_claim_public_key": "0xreciprocalpublickey"
   // }
   rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
@@ -1220,7 +1219,7 @@ service Wallet {
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
 
-// Estimates the transaction fee based on amount, fee rate, and number of outputs.
+  // Estimates the transaction fee based on amount, fee rate, and number of outputs.
   //
   // The `GetFeeEstimate` call allows clients to calculate the expected transaction fee before sending funds.
   // This is useful for presenting fee information to the user or for ensuring sufficient funds are available.
@@ -1307,7 +1306,7 @@ service Wallet {
   // ```
   rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
 
- // Attempts to replace an existing transaction with a new one that has a higher fee.
+  // Attempts to replace an existing transaction with a new one that has a higher fee.
   //
   // The `ReplaceByFee` call enables clients to increase the fee of a pending transaction,
   // potentially speeding up its confirmation by incentivizing miners to prioritize it.
@@ -1435,6 +1434,7 @@ service Wallet {
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
   rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
+  rpc GetBurnClaimProof(GetBurnClaimProofRequest) returns (GetBurnClaimProofResponse);
 }
 
 
@@ -1576,9 +1576,10 @@ message CreateBurnTransactionResponse{
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
+  // Only provided if a burn claim key is provided
   bytes commitment = 4;
-  CommitmentSignature ownership_proof = 5;
-  bytes range_proof = 6;
+  Signature ownership_proof = 5;
+  Signature kernel_excess_sig = 6;
   bytes reciprocal_claim_public_key = 7;
 }
 
@@ -2006,16 +2007,16 @@ message ReplaceByFeeResponse {
 }
 
 message UserPayForFeeRequest {
-    repeated TxOutputsToSpendTransfer recipients = 1;
+  repeated TxOutputsToSpendTransfer recipients = 1;
 }
 
 message TxOutputsToSpendTransfer {
-    // Id of the transaction to spend outputs from.
-    uint64 tx_id = 1;
-    // Fee to pay for the transaction in microTari.
-    uint64 fee = 2;
-    // Base58 Tari address of the recipient.
-    string destination = 3;
+  // Id of the transaction to spend outputs from.
+  uint64 tx_id = 1;
+  // Fee to pay for the transaction in microTari.
+  uint64 fee = 2;
+  // Base58 Tari address of the recipient.
+  string destination = 3;
 }
 
 message UserPayForFeeResponse {
@@ -2059,4 +2060,27 @@ message HttpPeer {
   uint64 last_latency = 2;
   // Online status of the peer
   bool is_online = 3;
+}
+
+message GetBurnClaimProofRequest {
+  bytes commitment = 1;
+}
+
+message GetBurnClaimProofResponse {
+  BurnClaimProof claim_proof = 1;
+  // Optional, not available until the burn transaction is confirmed
+  EncodedMerkleProof merkle_proof = 2;
+}
+
+message BurnClaimProof {
+  bytes commitment = 1;
+  Signature ownership_proof = 2;
+  Signature kernel_excess_sig = 3;
+  bytes reciprocal_claim_public_key = 4;
+}
+
+message EncodedMerkleProof {
+  bytes block_hash = 1;
+  bytes encoded_proof = 2;
+  uint64 leaf_index = 3;
 }

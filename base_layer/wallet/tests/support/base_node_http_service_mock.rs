@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
@@ -34,6 +34,7 @@ use tari_transaction_components::{
         BlockHeader,
         BlockUtxoInfo,
         FeePerGramStat,
+        GenerateUtxoMerkleProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
@@ -310,6 +311,14 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         });
 
         Ok(rx)
+    }
+
+    async fn get_kernel_merkle_proof(
+        &self,
+        _excess_sig_nonce: &[u8],
+        _excess_sig: &[u8],
+    ) -> Result<GenerateUtxoMerkleProofResponse, Error> {
+        Err(anyhow!("Not implemented"))
     }
 }
 

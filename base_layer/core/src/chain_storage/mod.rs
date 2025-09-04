@@ -89,6 +89,7 @@ use tari_common_types::{
 };
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
+mod merkle_proof;
 mod smt_hasher;
 
 pub use smt_hasher::SmtHasher;

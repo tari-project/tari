@@ -63,7 +63,7 @@ use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burnt_proof::BurntProof,
+    burn_proof::BurnClaimProof,
     emoji::EmojiId,
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
@@ -163,7 +163,7 @@ pub async fn burn_tari(
     amount: MicroMinotari,
     payment_id: MemoField,
     sidechain_deployment_key: Option<PrivateKey>,
-) -> Result<(TxId, BurntProof), CommandError> {
+) -> Result<(TxId, Option<BurnClaimProof>), CommandError> {
     wallet_transaction_service
         .burn_tari(
             amount,
@@ -711,10 +711,15 @@ pub async fn command_runner(
                         println!("Burnt {} Minotari in tx_id: {}", args.amount, tx_id);
                         println!("The following can be used to claim the burnt funds:");
                         println!();
-                        println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
-                        println!("commitment: {}", proof.commitment.to_public_key()?);
-                        println!("ownership_proof: {:?}", proof.ownership_proof);
-                        println!("ownership_proof: {:?}", proof.range_proof);
+                        if let Some(proof) = proof {
+                            println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
+                            println!("commitment: {}", proof.commitment.to_public_key()?);
+                            println!(
+                                "ownership_proof: (R {}, s {})",
+                                proof.ownership_proof.get_compressed_public_nonce(),
+                                proof.ownership_proof.get_signature().reveal()
+                            );
+                        }
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("BurnMinotari error! {e}"),

@@ -45,7 +45,7 @@ mod domain_hashing {
     use digest::consts::U32;
     use tari_common_types::types::{FixedHash, FixedHashSizeError};
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_hashing::ValidatorNodeMerkleHashDomain;
+    use tari_hashing::{KernelMmrHashDomain, ValidatorNodeMerkleHashDomain};
     use tari_mmr::{
         error::MerkleMountainRangeError,
         pruned_hashset::PrunedHashSet,
@@ -53,8 +53,6 @@ mod domain_hashing {
         Hash,
         MerkleMountainRange,
     };
-
-    hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
 
     pub type KernelMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, KernelMmrHashDomain>;
     pub type KernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, Vec<Hash>>;

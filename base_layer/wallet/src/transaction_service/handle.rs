@@ -29,7 +29,7 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use tari_common_types::{
-    burnt_proof::BurntProof,
+    burn_proof::BurnClaimProof,
     epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
@@ -576,7 +576,7 @@ pub enum TransactionServiceResponse {
     TransactionImported(TxId),
     BurntTransactionSent {
         tx_id: TxId,
-        proof: Box<BurntProof>,
+        proof: Option<Box<BurnClaimProof>>,
     },
     TemplateRegistrationTransactionSent {
         tx_id: TxId,
@@ -1065,7 +1065,9 @@ impl TransactionServiceHandle {
         }
     }
 
-    /// Burns the given amount of Tari from the wallet
+    /// Burns the given amount of Tari from the wallet>
+    /// If a claim_public_key is provided, a BurnClaimProof will be returned that can be used to claim the
+    /// equivalent amount of tokens on a sidechain
     pub async fn burn_tari(
         &mut self,
         amount: MicroMinotari,
@@ -1074,7 +1076,7 @@ impl TransactionServiceHandle {
         payment_id: MemoField,
         claim_public_key: Option<CompressedPublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
-    ) -> Result<(TxId, BurntProof), TransactionServiceError> {
+    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -1087,7 +1089,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, *proof)),
+            TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, proof.map(|p| *p))),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

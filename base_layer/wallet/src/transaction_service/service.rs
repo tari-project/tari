@@ -36,7 +36,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burnt_proof::BurntProof,
+    burn_proof::BurnClaimProof,
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     payment_reference::generate_payment_reference,
@@ -821,7 +821,7 @@ where
                 .await
                 .map(|(tx_id, proof)| TransactionServiceResponse::BurntTransactionSent {
                     tx_id,
-                    proof: Box::new(proof),
+                    proof: proof.map(Box::new),
                 }),
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
@@ -1365,6 +1365,7 @@ where
                 output_manager_handle,
                 db,
                 event_publisher,
+                self.config.clone(),
                 tip_height,
             ));
         }
@@ -2389,7 +2390,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<(TxId, BurntProof), TransactionServiceError> {
+    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
         let tx_id = TxId::new_random();
         let payment_id = payment_id
             .add_sender_address(
@@ -2504,46 +2505,25 @@ where
             .await?;
 
         let finalized = tx_builder.build().await?;
-
-        let range_proof = finalized
+        let tx_output = finalized
             .sent_outputs
             .first()
             .expect("Should exist")
             .output
             .to_transaction_output(&self.resources.transaction_key_manager_service)
-            .await?
-            .proof_result()?
-            .clone();
-        let mut ownership_proof = None;
-        let commitment = finalized
-            .sent_outputs
-            .first()
-            .expect("Should exist")
-            .output
-            .to_transaction_output(&self.resources.transaction_key_manager_service)
-            .await?
-            .commitment
-            .clone();
+            .await?;
 
-        if let Some(claim_public_key) = claim_public_key {
-            ownership_proof = Some(
-                self.resources
-                    .transaction_key_manager_service
-                    .generate_burn_proof(&commitment_mask_key.key_id, &amount.into(), &claim_public_key)
-                    .await?,
-            );
-        }
+        self.resources
+            .output_manager_service
+            .add_output_with_tx_id(tx_id, output, None)
+            .await?;
 
-        let tx = finalized.transaction.clone();
-        let fee = finalized.fee;
-        let change = finalized.change.clone().map(|change| vec![change]);
+        let change = finalized.change.map(|change| vec![change]);
         self.resources
             .output_manager_service
             .confirm_pending_transaction(tx_id, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let sent_hashes = finalized.sent_output_hashes.clone();
-        let change_hashes = finalized.change_output_hashes.clone();
 
         info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {tx_id}");
 
@@ -2553,36 +2533,61 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                TariAddress::default(),
-                amount,
-                fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                payment_id,
-                sent_hashes,
-                vec![],
-                change_hashes,
-            )?,
-        )
-        .await?;
+        let completed_transaction = CompletedTransaction::new_with_output_hashes(
+            tx_id,
+            self.resources.one_sided_tari_address.clone(),
+            TariAddress::default(),
+            amount,
+            finalized.fee,
+            finalized.transaction,
+            LegacyTransactionStatus::Completed,
+            Utc::now(),
+            TransactionDirection::Outbound,
+            None,
+            None,
+            payment_id,
+            finalized.sent_output_hashes,
+            vec![],
+            finalized.change_output_hashes,
+        )?;
+
+        let burn_kernel = completed_transaction
+            .transaction
+            .body
+            .kernels()
+            .iter()
+            .find(|k| k.features.is_burned())
+            .ok_or(TransactionServiceError::InvalidBurnTransaction(
+                "No burn kernel found in transaction".to_string(),
+            ))?;
+        let kernel_excess_sig = burn_kernel.excess_sig.clone();
+
+        self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
+            .await?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {tx_id}");
 
-        Ok((tx_id, BurntProof {
-            // Key used to claim the burn on L2
-            reciprocal_claim_public_key: commitment_mask_key.pub_key,
-            commitment,
-            ownership_proof,
-            range_proof,
-        }))
+        // Generate claim proof if needed
+        let mut burn_proof = None;
+        if let Some(claim_public_key) = claim_public_key {
+            let ownership_proof = self
+                .resources
+                .transaction_key_manager_service
+                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)
+                .await?;
+            let output_hash = tx_output.hash();
+            let proof = BurnClaimProof {
+                // Nonce part of the DH key exchange to derive the shared secret and decryption key
+                reciprocal_claim_public_key: commitment_mask_key.pub_key,
+                commitment: tx_output.commitment,
+                ownership_proof,
+                kernel_excess_sig,
+            };
+
+            self.db.insert_burn_proof(output_hash, &proof)?;
+            burn_proof = Some(proof);
+        }
+
+        Ok((tx_id, burn_proof))
     }
 
     async fn register_validator_node(
@@ -3168,6 +3173,7 @@ where
             self.resources.config.clone(),
             self.event_publisher.clone(),
             self.resources.output_manager_service.clone(),
+            self.resources.transaction_key_manager_service.clone(),
         );
 
         let validation_in_progress = self.validation_in_progress.clone();
@@ -3175,7 +3181,7 @@ where
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
 
         let join_handle = tokio::spawn(async move {
-            let mut _lock = validation_in_progress.try_lock().map_err(|_| {
+            let _lock = validation_in_progress.try_lock().map_err(|_| {
                 debug!(
                     target: LOG_TARGET,
                     "Transaction Validation Protocol (Id: {id}) spawned while a previous protocol was busy, ignored"

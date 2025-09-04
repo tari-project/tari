@@ -48,7 +48,6 @@ use minotari_app_grpc::tari_rpc::{
     ClaimShaAtomicSwapResponse,
     CoinSplitRequest,
     CoinSplitResponse,
-    CommitmentSignature,
     CreateBurnTransactionRequest,
     CreateBurnTransactionResponse,
     CreateTemplateRegistrationRequest,
@@ -61,6 +60,8 @@ use minotari_app_grpc::tari_rpc::{
     GetBalanceResponse,
     GetBlockHeightTransactionsRequest,
     GetBlockHeightTransactionsResponse,
+    GetBurnClaimProofRequest,
+    GetBurnClaimProofResponse,
     GetCompleteAddressResponse,
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
@@ -1201,45 +1202,49 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         debug!(target: LOG_TARGET, "Trying to burn {} Minotari", message.amount);
-        let response = match transaction_service
+        let result = transaction_service
             .burn_tari(
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
                 MemoField::from_bytes(&message.payment_id),
-                if message.claim_public_key.is_empty() {
-                    None
-                } else {
-                    Some(
-                        CompressedPublicKey::from_canonical_bytes(&message.claim_public_key)
-                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                    )
-                },
-                if message.sidechain_deployment_key.is_empty() {
-                    None
-                } else {
-                    Some(
-                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
-                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                    )
-                },
+                Some(message.claim_public_key.as_slice())
+                    .filter(|v| !v.is_empty())
+                    .map(CompressedPublicKey::from_canonical_bytes)
+                    .transpose()
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                Some(message.sidechain_deployment_key.as_slice())
+                    .filter(|v| !v.is_empty())
+                    .map(PrivateKey::from_canonical_bytes)
+                    .transpose()
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?,
             )
-            .await
-        {
-            Ok((tx_id, proof)) => {
-                debug!(target: LOG_TARGET, "Transaction broadcast: {tx_id}",);
+            .await;
+
+        let response = match result {
+            Ok((tx_id, Some(proof))) => {
+                debug!(target: LOG_TARGET, "Burn transaction broadcast: {tx_id}",);
                 CreateBurnTransactionResponse {
                     transaction_id: tx_id.as_u64(),
                     is_success: true,
                     failure_message: Default::default(),
                     commitment: proof.commitment.to_vec(),
-                    ownership_proof: proof.ownership_proof.map(CommitmentSignature::from),
-                    range_proof: proof.range_proof.to_vec(),
+                    ownership_proof: Some(proof.ownership_proof.into()),
                     reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
+                    kernel_excess_sig: Some(proof.kernel_excess_sig.into()),
+                }
+            },
+            Ok((tx_id, None)) => {
+                debug!(target: LOG_TARGET, "Burn transaction broadcast: {tx_id}",);
+                CreateBurnTransactionResponse {
+                    transaction_id: tx_id.as_u64(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                    ..Default::default()
                 }
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to burn Tarid: {e}");
+                warn!(target: LOG_TARGET, "Failed to burn Tari: {e}");
                 CreateBurnTransactionResponse {
                     is_success: false,
                     failure_message: e.to_string(),
@@ -2673,6 +2678,47 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(SignMessageResponse {
             signature: hex_sig,
             public_nonce: hex_nonce,
+        }))
+    }
+
+    async fn get_burn_claim_proof(
+        &self,
+        request: Request<GetBurnClaimProofRequest>,
+    ) -> Result<Response<GetBurnClaimProofResponse>, Status> {
+        let req = request.into_inner();
+        let commitment = CompressedCommitment::from_canonical_bytes(&req.commitment)
+            .map_err(|_| Status::invalid_argument("Commitment is malformed".to_string()))?;
+
+        let proof = self
+            .wallet
+            .db
+            .get_burn_proof_by_commitment(&commitment)
+            .map_err(|e| {
+                Status::internal(format!(
+                    "Failed to get burn claim proof for commitment {}: {}",
+                    commitment.to_compressed_key(),
+                    e
+                ))
+            })?
+            .ok_or_else(|| {
+                Status::not_found(format!(
+                    "No burn claim proof found for commitment {}",
+                    commitment.to_hex()
+                ))
+            })?;
+
+        Ok(Response::new(GetBurnClaimProofResponse {
+            claim_proof: Some(tari_rpc::BurnClaimProof {
+                commitment: commitment.as_bytes().to_vec(),
+                ownership_proof: Some(proof.burn_proof.ownership_proof.into()),
+                kernel_excess_sig: Some(proof.burn_proof.kernel_excess_sig.into()),
+                reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
+            }),
+            merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
+                block_hash: p.block_hash.to_vec(),
+                encoded_proof: p.encoded_merkle_proof,
+                leaf_index: p.leaf_index,
+            }),
         }))
     }
 }

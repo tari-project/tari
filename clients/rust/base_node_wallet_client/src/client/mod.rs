@@ -10,6 +10,7 @@ use tari_transaction_components::{
         self,
         BlockHeader,
         FeePerGramStat,
+        GenerateUtxoMerkleProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
@@ -62,6 +63,11 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
     ) -> Result<models::TxQueryResponse, Error>;
 
     async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error>;
+    async fn get_kernel_merkle_proof(
+        &self,
+        excess_sig_nonce: &[u8],
+        excess_sig: &[u8],
+    ) -> Result<GenerateUtxoMerkleProofResponse, anyhow::Error>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

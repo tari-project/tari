@@ -44,7 +44,6 @@ use super::TransactionOutputVersion;
 use crate::{
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
-    transaction_components,
     transaction_components::{
         covenants::Covenant,
         transaction_input::{SpentOutput, TransactionInput},
@@ -452,22 +451,7 @@ impl WalletOutput {
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
         let output = self.to_transaction_output(key_manager).await?;
-        let rp_hash = match output.proof {
-            Some(rp) => rp.hash(),
-            None => FixedHash::zero(),
-        };
-        Ok(transaction_components::hash_output(
-            self.version,
-            &self.features,
-            &output.commitment,
-            &rp_hash,
-            &self.script,
-            &self.sender_offset_public_key,
-            &self.metadata_signature,
-            &self.covenant,
-            &self.encrypted_data,
-            self.minimum_value_promise,
-        ))
+        Ok(output.hash())
     }
 
     pub async fn commitment<KM: TransactionKeyManagerInterface>(

@@ -26,7 +26,7 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{LegacyTransactionStatus, TxId},
-    types::{BlockHash, CompressedSignature},
+    types::{BlockHash, CompressedSignature, FixedHash},
 };
 use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, rpc::models::TxLocation};
 use tari_utilities::{hex::Hex, ByteArray};
@@ -38,7 +38,7 @@ use crate::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
         handle::{TransactionEvent, TransactionEventSender},
-        protocols::check_faux_transaction_status::check_detected_transactions,
+        protocols::{check_faux_transaction_status::check_detected_transactions, fetch_claim_burn_merkle_proofs},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
             sqlite_db::UnconfirmedTransactionInfo,
@@ -54,6 +54,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     operation_id: OperationId,
     db: TransactionDatabase<TTransactionBackend>,
     connectivity: TWalletConnectivity,
+    key_manager: TKeyManagerInterface,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
     output_manager: OutputManagerHandle<TKeyManagerInterface>,
@@ -74,6 +75,7 @@ where
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
         output_manager: OutputManagerHandle<TKeyManagerInterface>,
+        key_manager: TKeyManagerInterface,
     ) -> Self {
         Self {
             operation_id,
@@ -82,6 +84,7 @@ where
             config,
             event_publisher,
             output_manager,
+            key_manager,
         }
     }
 
@@ -94,15 +97,27 @@ where
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
         // Fetch completed but unconfirmed transactions that were not imported
-        let (state_changed, tip) = self.check_unconfirmed(base_node_wallet_client).await?;
+        let (state_changed, tip, confirmed_burnt) = self.check_unconfirmed(base_node_wallet_client).await?;
         debug!(target: LOG_TARGET, "Using tip height {tip} for validation");
         check_detected_transactions(
             self.output_manager.clone(),
             self.db.clone(),
             self.event_publisher.clone(),
+            self.config.clone(),
             tip,
         )
         .await;
+
+        if !confirmed_burnt.is_empty() {
+            tokio::spawn(fetch_claim_burn_merkle_proofs::execute(
+                self.db.clone(),
+                self.key_manager.clone(),
+                self.output_manager.clone(),
+                self.connectivity.clone(),
+                confirmed_burnt,
+            ));
+        }
+
         if state_changed {
             self.publish_event(TransactionEvent::TransactionValidationStateChanged {
                 faux: false,
@@ -116,7 +131,7 @@ where
     async fn check_unconfirmed(
         &mut self,
         base_node_wallet_client: <TWalletConnectivity as WalletConnectivityInterface>::BaseNodeClient,
-    ) -> Result<(bool, u64), TransactionServiceProtocolError<OperationId>> {
+    ) -> Result<(bool, u64, Vec<FixedHash>), TransactionServiceProtocolError<OperationId>> {
         debug!(
             target: LOG_TARGET,
             "Checking unconfirmed transactions against base node (Operation ID: {})", self.operation_id
@@ -124,13 +139,13 @@ where
         let unconfirmed_transactions = self
             .db
             .fetch_unconfirmed_transactions_info()
-            .for_protocol(self.operation_id)
-            .unwrap();
+            .for_protocol(self.operation_id)?;
         let mut state_changed = false;
         let tip_info = base_node_wallet_client.get_tip_info().await.map_err(|e| {
             TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Other(e.to_string()))
         })?;
         let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+        let mut confirmed_burns = vec![];
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined) = self
                 .query_base_node_for_transactions(batch, &base_node_wallet_client)
@@ -143,22 +158,32 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (mined_tx, mined_height, mined_in_block, mined_timestamp) in &mined {
+            for (mined_tx, mined_height, mined_in_block, mined_timestamp) in mined {
+                let UnconfirmedTransactionInfo {
+                    tx_id,
+                    status,
+                    burnt_outputs,
+                    ..
+                } = mined_tx;
                 debug!(
                     target: LOG_TARGET,
                     "Updating transaction {} as mined (Operation ID: {})",
-                    mined_tx.tx_id,
+                    tx_id,
                     self.operation_id
                 );
+
+                let num_confirmations = tip.saturating_sub(mined_height);
+                if num_confirmations >= self.config.num_confirmations_required {
+                    confirmed_burns.extend(burnt_outputs);
+                }
                 self.update_transaction_as_mined(
-                    mined_tx.tx_id,
-                    &mined_tx.status,
-                    mined_in_block,
-                    *mined_height,
-                    tip.saturating_sub(*mined_height),
-                    *mined_timestamp,
-                )
-                .await?;
+                    tx_id,
+                    status,
+                    &mined_in_block,
+                    mined_height,
+                    num_confirmations,
+                    mined_timestamp,
+                )?;
                 state_changed = true;
             }
             for unmined_tx in &unmined {
@@ -166,11 +191,11 @@ where
                     target: LOG_TARGET,
                     "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
                 );
-                self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
-                    .await?;
+                self.update_transaction_as_unmined(unmined_tx.tx_id, unmined_tx.status)?;
             }
         }
-        Ok((state_changed, tip))
+
+        Ok((state_changed, tip, confirmed_burns))
     }
 
     fn publish_event(&self, event: TransactionEvent) {
@@ -247,8 +272,7 @@ where
                         .unwrap_or_else(|| "{No Kernel found}".to_string()),
                     self.operation_id
                 );
-                self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
-                    .await?;
+                self.update_transaction_as_unmined(last_mined_transaction.tx_id, last_mined_transaction.status)?;
                 self.publish_event(TransactionEvent::TransactionValidationStateChanged { faux: false, id: op_id });
             } else {
                 debug!(
@@ -371,11 +395,10 @@ where
         Ok(result.map(|x| x.hash))
     }
 
-    #[allow(clippy::ptr_arg)]
-    async fn update_transaction_as_mined(
+    fn update_transaction_as_mined(
         &mut self,
         tx_id: TxId,
-        status: &LegacyTransactionStatus,
+        status: LegacyTransactionStatus,
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
@@ -415,10 +438,10 @@ where
         Ok(())
     }
 
-    async fn update_transaction_as_unmined(
+    fn update_transaction_as_unmined(
         &mut self,
         tx_id: TxId,
-        status: &LegacyTransactionStatus,
+        status: LegacyTransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_as_unmined(tx_id)

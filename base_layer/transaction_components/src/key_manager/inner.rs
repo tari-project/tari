@@ -63,10 +63,7 @@ use tari_crypto::{
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::SecretKey,
     range_proof::RangeProofService as RPService,
-    ristretto::{
-        bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
-        RistrettoComSig,
-    },
+    ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
@@ -763,35 +760,24 @@ where TBackend: TransactionKeyManagerBackend + 'static
         }
     }
 
-    pub async fn generate_burn_proof(
+    pub async fn generate_burn_claim_proof_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        amount: &PrivateKey,
+        value: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<RistrettoComSig, TransactionError> {
-        let nonce_a = PrivateKey::random(&mut OsRng);
-        let nonce_x = PrivateKey::random(&mut OsRng);
-        let pub_nonce = self.crypto_factories.commitment.commit(&nonce_x, &nonce_a);
+    ) -> Result<CompressedSignature, TransactionError> {
+        let mask = self.get_private_key(commitment_mask_key_id).await?;
+        let commitment =
+            CompressedCommitment::from_commitment(self.crypto_factories.commitment.commit(&mask, &value.into()));
 
-        let commitment = self.get_commitment(commitment_mask_key_id, amount).await?;
-
-        let challenge = ConfidentialOutputHasher::new("commitment_signature")
-            .chain(&pub_nonce)
+        let message = ConfidentialOutputHasher::new("commitment_signature")
             .chain(&commitment)
             .chain(claim_public_key)
             .finalize();
 
-        let commitment_mask = self.get_private_key(commitment_mask_key_id).await?;
-
-        RistrettoComSig::sign(
-            amount,
-            &commitment_mask,
-            &nonce_a,
-            &nonce_x,
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )
-        .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))
+        let s = UncompressedSignature::sign(&mask, message, &mut OsRng)
+            .map_err(|e| TransactionError::InvalidSignatureError(format!("Failed to sign burn claim proof: {}", e)))?;
+        Ok(CompressedSignature::new_from_schnorr(s))
     }
 
     // -----------------------------------------------------------------------------------------------------------------

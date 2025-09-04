@@ -33,6 +33,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that are invalid
     fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    /// Retrieve all outputs matching the provided hashes
+    fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have not been found or confirmed in the block chain yet
     fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation

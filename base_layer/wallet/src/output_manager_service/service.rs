@@ -35,6 +35,7 @@ use tari_common_types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         HashOutput,
         PrivateKey,
         UncompressedCommitment,
@@ -424,6 +425,14 @@ where
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self.fetch_invalid_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
+            },
+            OutputManagerRequest::GetManyOutputs { outputs } => {
+                let outputs = self
+                    .fetch_many_outputs(&outputs)?
+                    .into_iter()
+                    .map(|v| v.into())
+                    .collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
@@ -1954,6 +1963,10 @@ where
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
+    }
+
+    pub fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_many_outputs(outputs)?)
     }
 
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {

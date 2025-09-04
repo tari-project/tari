@@ -25,8 +25,7 @@ const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxos_by_block";
 #[into_params(parameter_in = Query)]
 pub struct GetUtxosByBlockQueryParams {
     #[serde(deserialize_with = "from_hex")]
-    #[param(value_type = String, example = "1a8da4213566e3cda06958c7ee46b87870a587fabb1c7f050f553b6da36cccb3"
-    )]
+    #[param(value_type = String, example = "1a8da4213566e3cda06958c7ee46b87870a587fabb1c7f050f553b6da36cccb3")]
     pub header_hash: Vec<u8>,
 }
 

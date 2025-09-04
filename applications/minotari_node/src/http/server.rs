@@ -89,6 +89,10 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 "/json_rpc",
                 post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::disable()),
             )
+            .route(
+                "/generate_kernel_merkle_proof",
+                get(handler::generate_kernel_merkle_proof::handle::<B>),
+            )
             .layer(RequestBodyLimitLayer::new(4 * 1024 * 1024))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))

@@ -14,6 +14,7 @@ pub mod get_height_at_time;
 pub use get_height_at_time::__path_handle as __path_get_height_at_time;
 pub mod sync_utxos_by_block;
 pub use sync_utxos_by_block::__path_handle as __path_sync_utxos_by_block;
+pub mod generate_kernel_merkle_proof;
 pub mod get_utxos_deleted_info;
 pub mod get_utxos_mined_info;
 pub mod json_rpc;
@@ -32,6 +33,7 @@ pub fn query_service_error_to_status_code(error: query_service::Error) -> Status
         Error::EndHeaderHashNotFound => StatusCode::NOT_FOUND,
         Error::HeaderHashNotFound => StatusCode::NOT_FOUND,
         Error::HeaderHeightMismatch { .. } => StatusCode::BAD_REQUEST,
+        Error::General { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

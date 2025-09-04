@@ -99,7 +99,7 @@ impl NewOutputSql {
             script: output.wallet_output.script.to_bytes(),
             input_data: output.wallet_output.input_data.to_bytes(),
             script_private_key: output.wallet_output.script_key_id.to_string(),
-            coinbase_extra: Some(output.wallet_output.features.coinbase_extra.to_vec().clone()),
+            coinbase_extra: Some(output.wallet_output.features.coinbase_extra.to_vec()),
             sender_offset_public_key: output.wallet_output.sender_offset_public_key.to_vec(),
             metadata_signature_ephemeral_commitment: output
                 .wallet_output
@@ -129,7 +129,7 @@ impl NewOutputSql {
 
     /// Write this struct to the database
     pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
+        diesel::insert_into(outputs::table).values(self).execute(conn)?;
         Ok(())
     }
 }

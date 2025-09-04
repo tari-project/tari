@@ -33,7 +33,15 @@ use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, RangeProof},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        RangeProof,
+    },
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
@@ -474,6 +482,17 @@ impl OutputSql {
             )
             .order(outputs::id.asc())
             .load(conn)?)
+    }
+
+    pub fn index_by_output_hashes(
+        conn: &mut SqliteConnection,
+        hashes: &[HashOutput],
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let outputs = outputs::table
+            .filter(outputs::hash.eq_any(hashes.iter().map(|h| h.as_slice())))
+            .load(conn)?;
+
+        Ok(outputs)
     }
 
     pub fn first_by_mined_height_desc(

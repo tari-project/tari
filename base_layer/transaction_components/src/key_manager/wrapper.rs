@@ -42,7 +42,7 @@ use tari_common_types::{
     },
     wallet_types::WalletType,
 };
-use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
+use tari_crypto::hashing::DomainSeparatedHash;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tokio::sync::RwLock;
 
@@ -586,16 +586,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
-    async fn generate_burn_proof(
+    async fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        amount: &PrivateKey,
+        value: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<RistrettoComSig, TransactionError> {
+    ) -> Result<CompressedSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .generate_burn_proof(commitment_mask_key_id, amount, claim_public_key)
+            .generate_burn_claim_proof_signature(commitment_mask_key_id, value, claim_public_key)
             .await
     }
 

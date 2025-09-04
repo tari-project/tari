@@ -11,9 +11,12 @@ pub mod query_service;
 
 use std::{error::Error, fmt::Debug};
 
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::{
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    types::CompressedSignature,
+};
 use tari_comms_rpc_macros::tari_rpc;
-use tari_transaction_components::rpc::models;
+use tari_transaction_components::rpc::{models, models::GenerateUtxoMerkleProofResponse};
 use url::Url;
 
 use crate::{
@@ -77,10 +80,14 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
         &self,
         request: models::GetUtxosDeletedInfoRequest,
     ) -> Result<models::GetUtxosDeletedInfoResponse, Self::Error>;
+
+    async fn generate_kernel_merkle_proof(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<GenerateUtxoMerkleProofResponse, Self::Error>;
 }
 
-#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient
-)]
+#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn submit_transaction(

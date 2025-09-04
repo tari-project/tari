@@ -21,11 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::NaiveDateTime;
+use tari_common_types::{burn_proof::ConfirmedBurnClaimProof, types::CompressedPublicKey};
 
 #[derive(Debug, Clone)]
-pub struct UiBurntProof {
-    pub id: u32,
-    pub reciprocal_claim_public_key: String,
-    pub payload: String,
+pub struct UiBurnProof {
+    pub id: i32,
+    pub reciprocal_claim_public_key: CompressedPublicKey,
+    pub proof: Option<ConfirmedBurnClaimProof>,
     pub burned_at: NaiveDateTime,
 }
