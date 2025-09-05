@@ -76,7 +76,8 @@ impl DnsSeedResolver {
     /// ```
     pub async fn resolve(&mut self, addr: &str) -> Result<Vec<SeedPeer>, DnsClientError> {
         let records = self.client.query_txt(addr).await?;
-        let peers = records
+        trace!(target: LOG_TARGET, "DNS records: {:?}", records);
+        let peers: Vec<_> = records
             .into_iter()
             .filter_map(|txt| {
                 txt.parse()
@@ -89,6 +90,7 @@ impl DnsSeedResolver {
                     .ok()
             })
             .collect();
+        trace!(target: LOG_TARGET, "Seed peers: {:?}", peers.iter().map(|p| format!("{}", p)).collect::<Vec<_>>());
         Ok(peers)
     }
 
