@@ -101,23 +101,6 @@ const LOG_TARGET: &str = "p2p::initialization";
 /// ProtocolId for minotari messaging protocol
 pub static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/0.1");
 
-// Example usage of signature verification module:
-//
-// use crate::signature_verification::{verify_signed_file, verify_signed_hash_file, SignedMessageVerifier, maintainers};
-//
-// // For verifying generic files like seednodes.json:
-// async fn verify_seed_nodes(url: &str, sig_url: &str) -> Result<String, Error> {
-//     let content = verify_signed_file(url, sig_url).await?;
-//     Ok(content)
-// }
-//
-// // For verifying hash files:
-// async fn verify_hash_file(hash_url: &str, sig_url: &str, file_hash: &[u8]) -> Result<(), Error> {
-//     let (hash, filename) = verify_signed_hash_file(hash_url, sig_url, file_hash).await?;
-//     Ok(())
-// }
-//
-
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
     #[error("Comms builder error: `{0}`")]
