@@ -172,7 +172,7 @@ listener_self_liveness_check_interval = 15
 # If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
-#pub cull_oldest_peer_rpc_connection_on_full = true
+##cull_oldest_peer_rpc_connection_on_full = true
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -247,10 +247,10 @@ database_url = "data/base_node/dht.db"
 # The maximum number of messages to return from a store and forward retrieval request. Default: 100
 #saf.max_returned_messages = 50
 # The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
-# Default: 6 hours
+# [Default: 6 hours
 #saf.low_priority_msg_storage_ttl = 21_600 # 6 * 60 * 60 // 6 hours
 # The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-# Default: 3 days
+# [Default: 3 days
 #saf.high_priority_msg_storage_ttl = 259_200 # 3 * 24 * 60 * 60 // 3 days
 # The limit on the message size to store in SAF storage in bytes. Default 500 KiB
 #saf.max_message_size = 524_288 # 512 * 1024
@@ -266,7 +266,7 @@ database_url = "data/base_node/dht.db"
 # The periodic trim interval for items in the message hash cache. Default: 300s (5 mins)
 #dedup_cache_trim_interval = 300 # 5 * 60
 # The number of occurrences of a message is allowed to pass through the DHT pipeline before being deduped/discarded
-# Default: 1
+# [Default: 1
 #dedup_allowed_message_occurrences = 1
 # The duration to wait for a peer discovery to complete before giving up. Default: 2 minutes
 #discovery_request_timeout = 120 # 2 * 60
@@ -301,7 +301,7 @@ database_url = "data/base_node/dht.db"
 # Time to idle after a failed round. Default: 5 secs
 #network_discovery.on_failure_idle_period = 5
 # The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
-# Default: 5
+# [Default: 5
 #network_discovery.max_sync_peers = 5
 # The maximum number of peers we allow per round of sync. (Default: 500)
 #network_discovery.max_peers_to_sync_per_round = 500
@@ -337,7 +337,7 @@ database_url = "data/base_node/dht.db"
 # Length of time to ban a peer for a "short" duration. Default: 60 mins
 #ban_duration_short = 3_600 # 60 * 60
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
-# Default: 100_000 messages
+# [Default: 100_000 messages
 #flood_ban_max_msg_count = 100_000
 # The timespan over which to calculate the max message rate.
 # `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
@@ -366,3 +366,38 @@ excluded_dial_addresses = []
 [base_node.http_wallet_query_service]
 #port = 9000
 #external_address = "http://127.0.0.1:9000"
+
+# If not enabled (false), no Cache-Control header is set anywhere. [Default: true]
+#http_cache.enabled - true
+
+# The Cache-Control string to use for the 'get_tip_info' handler.
+# [Default: "public, max-age=15, s-maxage=15, stale-while-revalidate=15"]
+#http_cache.get_tip_info = "public, max-age=15, s-maxage=15, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_header_by_height' handler.
+# [Default: "public, max-age=120, s-maxage=60, stale-while-revalidate=15"]
+#http_cache.get_header_by_height = "public, max-age=120, s-maxage=60, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.get_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'sync_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.sync_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'get_height_at_time' handler.
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_height_at_time = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'transaction_query' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.transaction_query = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_deleted_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_deleted_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_mined_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_mined_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"

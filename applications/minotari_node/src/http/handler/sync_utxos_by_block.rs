@@ -18,7 +18,13 @@ use tari_core::{
 use tari_transaction_components::rpc::models::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse};
 use tonic::service::AxumBody;
 
-use crate::http::handler::{error_handler_with_message, util::from_hex, ErrorResponse};
+use crate::{
+    http::{
+        cache_config::{apply_cache_control, RouteKey},
+        handler::{error_handler_with_message, util::from_hex, ErrorResponse},
+    },
+    HttpCacheConfig,
+};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::sync_utxos_by_block";
 
@@ -59,6 +65,7 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<SyncUtxosByBlockQueryParams>,
+    Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received sync_utxos_by_block request: {params:?}");
     let request = params.into();
@@ -70,11 +77,6 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     let body = Json(response);
     let mut response = body.into_response();
-    response.headers_mut().insert(
-        "Cache-Control",
-        "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
-            .parse()
-            .expect("should be a valid header value"),
-    );
+    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetUtxosByBlock);
     Ok(response)
 }
