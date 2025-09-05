@@ -1081,9 +1081,9 @@ where B: BlockchainBackend + 'static
         // Use canonical height from tip where reorgs are highly unlikely
         if tip <= DIFF_INDICATOR_LAG {
             // Not enough history yet; clear or skip
-            metrics::difficulty_indicator_height().set(0);
             metrics::accumulated_difficulty_indicator().set(0);
             metrics::target_difficulty_indicator().set(0);
+            metrics::difficulty_indicator_height().set(0);
             metrics::target_difficulty().set(0);
             metrics::accumulated_difficulty_exp2().set(0);
             metrics::accumulated_difficulty_sig53().set(0);
@@ -1109,7 +1109,7 @@ where B: BlockchainBackend + 'static
         #[allow(clippy::cast_possible_wrap)]
         metrics::difficulty_indicator_height().set(height as i64);
         #[allow(clippy::cast_possible_wrap)]
-        metrics::target_difficulty_indicator().set(chain_header.accumulated_data().target_difficulty.as_u64() as i64);
+        metrics::target_difficulty().set(chain_header.accumulated_data().target_difficulty.as_u64() as i64);
         metrics::accumulated_difficulty_exp2().set(acc_diff_exp2);
         metrics::accumulated_difficulty_sig53().set(acc_diff_sig53);
 

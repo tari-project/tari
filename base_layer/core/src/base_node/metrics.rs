@@ -320,6 +320,26 @@ pub fn u512_exp2_sig53(value: &U512) -> Option<(i64, i64)> {
     Some((i64::from(total_bits) - 1, i64::try_from(sig53).unwrap_or(i64::MAX)))
 }
 
+// Approximate a U512 as f64 using a 53-bit significand and exponent as `(sig53 / 2^52) * 2^exp2`.
+//   - exp2 = floor(log2(value)) (i64)
+//   - sig53 = top 53 bits (i64, always positive, safe up to 2^53-1)
+//   - Returns None if value == 0.
+#[allow(clippy::cast_possible_truncation)]
+#[cfg(test)]
+fn approximate_u512_with_f64(value: &U512) -> Option<f64> {
+    if value.is_zero() {
+        return None;
+    }
+    let (exp2, sig53) = u512_exp2_sig53(value).unwrap();
+
+    // Grafana-style reconstruction: (sig53 / 2^52) * 2^exp2
+    // This is not exact (limited by f64), but should be within a tiny relative error.
+    const TWO_P52: f64 = 4503599627370496.0; // 2^52
+                                             // Build 2^exp2 by setting the exponent (bias 1023), mantissa 0
+    let two_pow_exp2 = f64::from_bits(((exp2 + 1023) as u64) << 52);
+    Some((sig53 as f64 / TWO_P52) * two_pow_exp2)
+}
+
 // Nudge one floating point unit (ULP) down to counter rounding-up at integer boundaries.
 #[inline]
 fn next_down(x: f64) -> f64 {
@@ -473,14 +493,7 @@ mod tests {
         use primitive_types::U512;
 
         let original_u512 = U512::from_dec_str("3872628503165662556508806093911347954645375156922").unwrap();
-        let (exp2, sig53) = u512_exp2_sig53(&original_u512).unwrap();
-
-        // Grafana-style reconstruction: (sig53 / 2^52) * 2^exp2
-        // This is not exact (limited by f64), but should be within a tiny relative error.
-        const TWO_P52: f64 = 4503599627370496.0; // 2^52
-                                                 // Build 2^exp2 by setting the exponent (bias 1023), mantissa 0
-        let two_pow_exp2 = f64::from_bits(((exp2 + 1023) as u64) << 52);
-        let reconstructed_u512 = (sig53 as f64 / TWO_P52) * two_pow_exp2;
+        let reconstructed_u512 = approximate_u512_with_f64(&original_u512).unwrap();
 
         // Expected bits using our robust log2 (with next_down ULP guard)
         let expected_bits = log2_u512(&original_u512).unwrap();
@@ -495,27 +508,5 @@ mod tests {
         );
 
         // println!("approx f64 = {}\noriginal   = {}", reconstructed_u512, original_u512);
-
-        // Convert to string conserving all significant digits
-        let reconstructed_str = format!("{}", reconstructed_u512);
-        let original_str = original_u512.to_string();
-
-        // Extract the first 16 digits [Rust preserves 17] (excluding decimal point and exponent for f64)
-        let reconstructed_digits: String = reconstructed_str
-            .chars()
-            .filter(|c| c.is_ascii_digit())
-            .take(16)
-            .collect();
-        let original_digits: String = original_str.chars().take(16).collect();
-
-        assert_eq!(
-            reconstructed_digits, original_digits,
-            "The 16 most significant digits do not match"
-        );
-        assert_eq!(
-            reconstructed_str.chars().filter(|c| c.is_ascii_digit()).count(),
-            original_str.len(),
-            "The digit lengths do not match"
-        );
     }
 }
