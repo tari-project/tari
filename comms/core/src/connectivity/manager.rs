@@ -199,18 +199,6 @@ impl ConnectivityManagerActor {
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
 
-        self.seeds = self
-            .peer_manager
-            .get_seed_peers()
-            .await
-            .unwrap_or({
-                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
-                vec![]
-            })
-            .iter()
-            .map(|s| s.node_id.clone())
-            .collect();
-
         loop {
             tokio::select! {
                 Some(req) = self.request_rx.recv() => {
@@ -1217,6 +1205,23 @@ impl ConnectivityManagerActor {
         self.update_circuit_breaker_metrics();
 
         // Execute proactive dialing logic
+        if self.seeds.is_empty() {
+            self.seeds = self
+                .peer_manager
+                .get_seed_peers()
+                .await
+                .inspect_err(|err| {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to get seed peers from PeerManager, using empty list for proactive dialing, seed peers \
+                        will not be excluded as a first pass. ({})", err
+                    );
+                })
+                .unwrap_or(vec![])
+                .iter()
+                .map(|s| s.node_id.clone())
+                .collect();
+        }
         match self
             .proactive_dialer
             .execute_proactive_dialing(&self.pool, &self.connection_stats, &self.seeds, task_id)

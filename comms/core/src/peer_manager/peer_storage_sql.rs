@@ -265,8 +265,15 @@ impl PeerStorageSql {
         )?)
     }
 
+    /// Get all seed peers
     pub fn get_seed_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.get_seed_peers()?)
+        let seed_peers = self.peer_db.get_seed_peers()?;
+        trace!(
+            target: LOG_TARGET,
+            "Get seed peers: {:?}",
+            seed_peers.iter().map(|p| p.node_id.short_str()).collect::<Vec<_>>(),
+        );
+        Ok(seed_peers)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline and
