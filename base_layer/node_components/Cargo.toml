@@ -13,7 +13,6 @@ wasm = ["wasm-bindgen"]
 
 [dependencies]
 tari_common_types = { workspace = true }
-tari_crypto = { workspace = true, features = ["borsh"] }
 tari_hashing = { workspace = true }
 tari_transaction_components = { workspace = true }
 tari_utilities = { workspace = true, features = ["borsh"] }

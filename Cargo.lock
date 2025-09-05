@@ -7933,7 +7933,6 @@ dependencies = [
  "primitive-types",
  "serde",
  "tari_common_types",
- "tari_crypto",
  "tari_hashing",
  "tari_transaction_components",
  "tari_utilities",
