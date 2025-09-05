@@ -416,6 +416,12 @@ mod tests {
         // u128::MAX = 2^128 - 1  => strictly less than 128
         assert!(log2_u512(&U512::from(u128::MAX)).unwrap() < 128.0);
 
+        // Test U512 max value = 2^512 - 1  => strictly less than 512
+        let u512_max = U512::MAX;
+        let log2_u512_max = log2_u512(&u512_max).unwrap();
+        assert!(log2_u512_max < 512.0);
+        assert!(log2_u512_max > 511.0);
+
         // log2(0) == None
         assert!(log2_u512(&U512::from(0u64)).is_none());
     }

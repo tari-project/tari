@@ -1109,7 +1109,8 @@ where B: BlockchainBackend + 'static
         #[allow(clippy::cast_possible_wrap)]
         metrics::difficulty_indicator_height().set(height as i64);
         #[allow(clippy::cast_possible_wrap)]
-        metrics::target_difficulty().set(chain_header.accumulated_data().target_difficulty.as_u64() as i64);
+        metrics::target_difficulty()
+            .set(i64::try_from(chain_header.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
         metrics::accumulated_difficulty_exp2().set(acc_diff_exp2);
         metrics::accumulated_difficulty_sig53().set(acc_diff_sig53);
 
