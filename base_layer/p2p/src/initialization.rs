@@ -747,29 +747,32 @@ mod test {
         assert_eq!(peers.len(), 6);
 
         // Verify the first peer (IPv4)
-        let first_peer = &peers[0];
+        let first_peer = &peers.first().unwrap();
         assert_eq!(
             first_peer.public_key.to_hex(),
             "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409"
         );
         assert_eq!(first_peer.addresses.len(), 1);
-        assert_eq!(first_peer.addresses[0].to_string(), "/ip4/51.83.4.85/tcp/18189");
+        assert_eq!(
+            first_peer.addresses.first().unwrap().to_string(),
+            "/ip4/51.83.4.85/tcp/18189"
+        );
 
         // Verify an IPv6 peer
-        let ipv6_peer = &peers[2];
+        let ipv6_peer = &peers.get(2).unwrap();
         assert_eq!(
             ipv6_peer.public_key.to_hex(),
             "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76"
         );
         assert_eq!(
-            ipv6_peer.addresses[0].to_string(),
+            ipv6_peer.addresses.first().unwrap().to_string(),
             "/ip6/2001:41d0:303:a619::1/tcp/18189"
         );
 
         // Verify an onion peer
-        let onion_peer = &peers[4];
+        let onion_peer = &peers.get(4).unwrap();
         assert_eq!(
-            onion_peer.addresses[0].to_string(),
+            onion_peer.addresses.first().unwrap().to_string(),
             "/onion3/tadnxyokalnqjtvu6mlhxndcq4v2tlolotpvrflscdmi7lcautao3had:18141"
         );
     }
@@ -785,7 +788,7 @@ mod test {
         assert_eq!(peers.len(), 2);
 
         // Verify conversion to Peer works
-        let first_peer = &peers[0];
+        let first_peer = &peers.first().unwrap();
         assert_eq!(
             first_peer.public_key.to_hex(),
             "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409"

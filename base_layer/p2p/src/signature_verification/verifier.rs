@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::{debug, info, warn};
+use log::{debug, warn};
 use pgp::{types::PublicKeyTrait, SignedPublicKey, StandaloneSignature};
 use tari_utilities::hex::from_hex;
 
@@ -39,14 +39,12 @@ impl SignedMessageVerifier {
 
     /// Verify a standalone signature against a message using the configured maintainers' public keys
     pub fn verify_signature(&self, signature: &StandaloneSignature, message: &str) -> Option<&SignedPublicKey> {
-        info!(target: LOG_TARGET, "Starting signature verification, maintainers count: {}", self.maintainers.len());
         self.maintainers.iter().find(|pk| {
-            debug!(target: LOG_TARGET, "Verifying signature with public key fingerprint: {:?}", pk.fingerprint());
             let result = signature.verify(pk, message.as_bytes()).is_ok();
             if result {
-                info!(target: LOG_TARGET, "Signature verified successfully with key: {:?}", pk.fingerprint());
+                debug!(target: LOG_TARGET, "Signature verified successfully with key: {:?}", pk.fingerprint());
             } else {
-                debug!(target: LOG_TARGET, "Signature verification failed with key: {:?}", pk.fingerprint());
+                warn!(target: LOG_TARGET, "Signature verification failed with key: {:?}", pk.fingerprint());
             }
             result
         })
@@ -59,7 +57,6 @@ impl SignedMessageVerifier {
         signature: &StandaloneSignature,
         file_content: &str,
     ) -> Result<&SignedPublicKey, SignatureVerificationError> {
-        debug!(target: LOG_TARGET, "Verifying file signature, content length: {} bytes", file_content.len());
         self.verify_signature(signature, file_content).ok_or_else(|| {
             warn!(target: LOG_TARGET, "File signature verification failed - no matching maintainer key found");
             SignatureVerificationError::VerificationFailed
@@ -74,10 +71,6 @@ impl SignedMessageVerifier {
         hashes: &str,
         target_hash: &[u8],
     ) -> Result<(Vec<u8>, String), SignatureVerificationError> {
-        info!(target: LOG_TARGET, "Verifying signed hashes file, looking for target hash");
-        debug!(target: LOG_TARGET, "Target hash: {:?}", target_hash);
-        debug!(target: LOG_TARGET, "Hashes file content length: {} bytes", hashes.len());
-
         self.verify_signature(signature, hashes).ok_or_else(|| {
             warn!(target: LOG_TARGET, "Hash file signature verification failed - no matching maintainer key found");
             SignatureVerificationError::VerificationFailed
@@ -93,14 +86,12 @@ impl SignedMessageVerifier {
             })
             .collect();
 
-        debug!(target: LOG_TARGET, "Parsed {} hash entries from file", parsed_hashes.len());
-
         parsed_hashes
             .into_iter()
             .find(|(hash, filename)| {
                 let matches = *hash == target_hash;
                 if matches {
-                    info!(target: LOG_TARGET, "Found matching hash for file: {}", filename);
+                    debug!(target: LOG_TARGET, "Found matching hash for file: {}", filename);
                 }
                 matches
             })

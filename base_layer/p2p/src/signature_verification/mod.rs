@@ -27,7 +27,7 @@ use std::io;
 
 pub use error::SignatureVerificationError;
 use futures;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use pgp::{Deserializable, SignedPublicKey, StandaloneSignature};
 use reqwest::IntoUrl;
 pub use verifier::SignedMessageVerifier;
@@ -61,10 +61,7 @@ pub async fn download_hashes_sig_file<T: IntoUrl>(url: T) -> Result<StandaloneSi
 
 /// Perform an HTTP GET request and return the response
 async fn http_download<T: IntoUrl>(url: T) -> Result<reqwest::Response, SignatureVerificationError> {
-    eprintln!("[SIGNATURE_VERIFICATION] Starting HTTP download");
-    debug!(target: LOG_TARGET, "Starting HTTP download");
     let resp = reqwest::get(url).await?.error_for_status()?;
-    debug!(target: LOG_TARGET, "HTTP download completed successfully");
     Ok(resp)
 }
 
@@ -79,25 +76,15 @@ pub async fn verify_signed_hash_file(
     signature_url: &str,
     target_hash: &[u8],
 ) -> Result<(Vec<u8>, String), SignatureVerificationError> {
-    info!(target: LOG_TARGET, "Starting verify_signed_hash_file for: {} with signature: {}", hashes_url, signature_url);
-
-    // Download both files in parallel
-    debug!(target: LOG_TARGET, "Downloading hashes and signature in parallel");
     let (hashes, sig) = futures::join!(download_file(hashes_url), download_signature_file(signature_url));
-
     let hashes = hashes?;
     let sig = sig?;
-    info!(target: LOG_TARGET, "Successfully downloaded hashes file and signature");
-    debug!(target: LOG_TARGET, "Hashes content length: {} bytes", hashes.len());
-
-    // Verify the signature using maintainer keys
     let verifier = SignedMessageVerifier::new(maintainers().collect());
     let result = verifier.verify_signed_hashes(&sig, &hashes, target_hash);
 
     match &result {
-        Ok((hash, filename)) => {
-            info!(target: LOG_TARGET, "Signature verification successful for file: {}", filename);
-            debug!(target: LOG_TARGET, "Verified hash: {:?}", hash);
+        Ok((_hash, filename)) => {
+            debug!(target: LOG_TARGET, "Signature verification successful for file: {}", filename);
         },
         Err(e) => {
             warn!(target: LOG_TARGET, "Signature verification failed: {}", e);
@@ -126,28 +113,14 @@ pub async fn verify_signed_hash_file(
 /// # }
 /// ```
 pub async fn verify_signed_file(file_url: &str, signature_url: &str) -> Result<String, SignatureVerificationError> {
-    eprintln!(
-        "[SIGNATURE_VERIFICATION] Starting verify_signed_file for: {} with signature: {}",
-        file_url, signature_url
-    );
-    info!(target: LOG_TARGET, "Starting verify_signed_file for: {} with signature: {}", file_url, signature_url);
-
-    // Download both files in parallel
-    eprintln!("[SIGNATURE_VERIFICATION] About to download file and signature in parallel");
-    debug!(target: LOG_TARGET, "Downloading file and signature in parallel");
     let (content, sig) = futures::join!(download_file(file_url), download_signature_file(signature_url));
-
     let content = content?;
     let sig = sig?;
-    info!(target: LOG_TARGET, "Downloaded file: {} and signature: {}", file_url, signature_url);
-    debug!(target: LOG_TARGET, "File content length: {} bytes", content.len());
-
-    // Verify the signature using maintainer keys
     let verifier = SignedMessageVerifier::new(maintainers().collect());
 
     match verifier.verify_file_signature(&sig, &content) {
         Ok(_) => {
-            info!(target: LOG_TARGET, "Signature verification successful for file: {}", file_url);
+            debug!(target: LOG_TARGET, "Signature verification successful for file: {}", file_url);
             Ok(content)
         },
         Err(e) => {
@@ -159,37 +132,22 @@ pub async fn verify_signed_file(file_url: &str, signature_url: &str) -> Result<S
 
 /// Download a text file from the given URL
 pub async fn download_file<T: IntoUrl>(url: T) -> Result<String, SignatureVerificationError> {
-    eprintln!("[SIGNATURE_VERIFICATION] download_file: Starting text file download");
-    info!(target: LOG_TARGET, "download_file: Starting text file download");
     let resp = http_download(url).await?;
     let txt = resp.text().await?;
-    info!(target: LOG_TARGET, "download_file: Downloaded text file, size: {} bytes", txt.len());
     Ok(txt)
 }
 
 /// Download a PGP signature file from the given URL
 pub async fn download_signature_file<T: IntoUrl>(url: T) -> Result<StandaloneSignature, SignatureVerificationError> {
-    eprintln!("[SIGNATURE_VERIFICATION] download_signature_file: Starting signature file download");
-    info!(target: LOG_TARGET, "download_signature_file: Starting signature file download");
     let resp = http_download(url).await?;
     let sig_bytes = resp.bytes().await?;
-    eprintln!(
-        "[SIGNATURE_VERIFICATION] download_signature_file: Downloaded signature, size: {} bytes",
-        sig_bytes.len()
-    );
-    info!(target: LOG_TARGET, "download_signature_file: Downloaded signature, size: {} bytes", sig_bytes.len());
     let cursor = io::Cursor::new(&sig_bytes);
-    eprintln!("[SIGNATURE_VERIFICATION] About to parse PGP signature as binary");
     match StandaloneSignature::from_bytes(cursor) {
         Ok(sig) => {
-            info!(target: LOG_TARGET, "download_signature_file: Successfully parsed PGP signature");
+            debug!(target: LOG_TARGET, "download_signature_file: Successfully parsed PGP signature");
             Ok(sig)
         },
         Err(e) => {
-            eprintln!(
-                "[SIGNATURE_VERIFICATION] download_signature_file: Failed to parse PGP signature: {}",
-                e
-            );
             warn!(target: LOG_TARGET, "download_signature_file: Failed to parse PGP signature: {}", e);
             Err(SignatureVerificationError::SignatureError(e))
         },
