@@ -29,7 +29,9 @@ use std::{
 };
 
 use anyhow::anyhow;
+use futures::future;
 use log::*;
+use serde::Deserialize;
 use serde_json;
 use tari_common::{
     configuration::{DnsNameServerList, Network},
@@ -90,6 +92,7 @@ use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
+    signature_verification::verify_signed_file,
     transport::{TorTransportConfig, TransportType},
     TransportConfig,
     MAJOR_NETWORK_VERSION,
@@ -475,10 +478,6 @@ impl P2pInitializer {
     async fn download_seed_peers_files(
         (url, addr): (String, String),
     ) -> Result<Vec<SeedPeer>, ServiceInitializationError> {
-        use serde::Deserialize;
-
-        use crate::signature_verification::verify_signed_file;
-
         #[derive(Deserialize)]
         struct SeedNodesJson {
             peer_seeds: Vec<String>,
@@ -486,19 +485,16 @@ impl P2pInitializer {
 
         let timer = Instant::now();
 
-        // Download and verify the seed nodes file with its signature
         let content = verify_signed_file(&url, &format!("{}.asc", url)).await.map_err(|e| {
             warn!(target: LOG_TARGET, "Failed to verify seed nodes file from {}: {}", url, e);
             anyhow!("Signature verification failed: {}", e)
         })?;
 
-        // Parse the JSON content
         let seed_nodes: SeedNodesJson = serde_json::from_str(&content).map_err(|e: serde_json::Error| {
             warn!(target: LOG_TARGET, "Failed to parse seed nodes JSON from {}: {}", url, e);
             anyhow!("Invalid JSON: {}", e)
         })?;
 
-        // Convert strings to SeedPeer objects
         let mut peers = Vec::new();
         for peer_str in seed_nodes.peer_seeds {
             match peer_str.parse::<SeedPeer>() {
@@ -521,9 +517,7 @@ impl P2pInitializer {
         Ok(peers)
     }
 
-    async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
-        use futures::future;
-
+    async fn resolve_http_download_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
         if config.dns_seeds.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
@@ -570,8 +564,12 @@ impl P2pInitializer {
             .into_iter()
             .map(|url_pair| async move { P2pInitializer::download_seed_peers_files(url_pair).await });
 
-        let all_seed_peers: Vec<SeedPeer> = future::join_all(downloading)
-            .await
+        let seed_peers = future::join_all(downloading).await;
+        if seed_peers.iter().all(|downlaod_res| downlaod_res.is_err()) {
+            return Err(anyhow!("Failed to download and verify seed peer files"));
+        }
+
+        let all_seed_peers: Vec<SeedPeer> = seed_peers
             .into_iter()
             .filter_map(|result| match result {
                 Ok(peers) => Some(peers),
@@ -583,15 +581,80 @@ impl P2pInitializer {
             .flatten()
             .collect();
 
-        // Convert SeedPeer to Peer
         let peers: Vec<Peer> = all_seed_peers.into_iter().map(Peer::from).collect();
-
         info!(
             target: LOG_TARGET,
             "Resolved {} seed peers from DNS in {:.0?}",
             peers.len(),
             start.elapsed()
         );
+
+        Ok(peers)
+    }
+
+    async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
+        if config.dns_seeds.is_empty() {
+            debug!(target: LOG_TARGET, "No DNS Seeds configured");
+            return Ok(Vec::new());
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "Resolving DNS seeds (DNSSEC is enabled: {}, name servers: {}, addresses: {}) ...",
+            config.dns_seeds_use_dnssec,
+            config.dns_seed_name_servers,
+            config
+                .dns_seeds
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(",")
+        );
+        let start = Instant::now();
+
+        let resolver =
+            P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
+        let resolving = config.dns_seeds.iter().map(|addr| {
+            let mut resolver = resolver.clone();
+            async move {
+                let timer = Instant::now();
+                let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
+                    Ok(res) => res,
+                    Err(_) => {
+                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{addr}`");
+                        Err(DnsClientError::Timeout)
+                    },
+                };
+                // let res = (resolver.resolve(addr).await, addr);
+                let res = (seeds_res, addr.clone());
+                info!(target: LOG_TARGET, "Resolved DNS seed `{}` in {:.0?}", addr, timer.elapsed());
+                res
+            }
+        });
+
+        let peers = future::join_all(resolving)
+                .await
+                .into_iter()
+                // Log and ignore errors
+                .filter_map(|(result, addr)| match result {
+                    Ok(peers) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Found {} peer(s) from `{}` in {:.0?}",
+                            peers.len(),
+                            addr,
+                            start.elapsed()
+                        );
+                        Some(peers)
+                    },
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
+                        None
+                    },
+                })
+                .flatten()
+                .map(Into::into)
+                .collect::<Vec<_>>();
 
         Ok(peers)
     }
@@ -662,11 +725,11 @@ impl ServiceInitializer for P2pInitializer {
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
 
-        let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
+        let peers = match Self::resolve_http_download_seeds(&self.seed_config).await {
             Ok(peers) => peers,
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {err}");
-                Vec::new()
+                warn!(target: LOG_TARGET, "Failed to resolve seeds through HTTP, fallback to DNS: {err}");
+                Self::try_resolve_dns_seeds(&self.seed_config).await.unwrap_or_default()
             },
         };
         add_seed_peers(&peer_manager, &node_identity, peers).await?;
