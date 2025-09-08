@@ -510,7 +510,7 @@ impl P2pInitializer {
             target: LOG_TARGET,
             "Downloaded and verified {} seed peers from {} in {:.0?}",
             peers.len(),
-            addr,
+            url,
             timer.elapsed()
         );
 
@@ -584,7 +584,7 @@ impl P2pInitializer {
         let peers: Vec<Peer> = all_seed_peers.into_iter().map(Peer::from).collect();
         info!(
             target: LOG_TARGET,
-            "Resolved {} seed peers from DNS in {:.0?}",
+            "Resolved {} seed peers from download URL in {:.0?}",
             peers.len(),
             start.elapsed()
         );
