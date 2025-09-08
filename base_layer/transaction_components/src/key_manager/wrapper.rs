@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{
+    fmt::{Debug, Formatter},
+    sync::Arc,
+};
 
 use blake2::Blake2b;
 use digest::consts::U64;
@@ -97,6 +100,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
     /// Get the wallet type
     pub async fn get_wallet_type(&self) -> Arc<WalletType> {
         self.transaction_key_manager_inner.read().await.get_wallet_type()
+    }
+
+    /// Get the birthday of the wallet seed
+    pub async fn get_birthday(&self) -> u16 {
+        self.transaction_key_manager_inner.read().await.master_seed().birthday()
     }
 }
 
@@ -381,12 +389,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key: Option<PrivateKey>,
     ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
+            .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key)
             .await
     }
 
@@ -613,5 +621,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
             .get_private_key(key_id)
             .await
+    }
+}
+
+impl<KM> Debug for TransactionKeyManagerWrapper<KM> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Key Manager").finish()
     }
 }

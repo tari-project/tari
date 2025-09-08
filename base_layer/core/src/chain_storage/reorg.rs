@@ -25,8 +25,7 @@ use std::{collections::VecDeque, sync::Arc};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-
-use crate::blocks::ChainBlock;
+use tari_node_components::blocks::ChainBlock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Reorg {

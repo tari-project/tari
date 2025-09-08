@@ -26,7 +26,7 @@ use std::{cmp, sync::Arc};
 use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
-use tari_node_components::blocks::BlockHeader;
+use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
 use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
@@ -49,7 +49,7 @@ use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
 
 use crate::{
-    blocks::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction, SmtHasher},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
@@ -322,7 +322,7 @@ async fn chain_balance_validation() {
         genesis.accumulated_data().achieved_difficulty,
     )
     .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(header1.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header1.total_kernel_offset.clone())
@@ -388,7 +388,7 @@ async fn chain_balance_validation() {
         genesis.accumulated_data().achieved_difficulty,
     )
     .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(header2.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header2.total_kernel_offset.clone())
@@ -578,7 +578,7 @@ async fn chain_balance_validation_burned() {
         genesis.accumulated_data().achieved_difficulty,
     )
     .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(header1.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header1.total_kernel_offset.clone())

@@ -42,7 +42,6 @@ use tari_core::{
         BaseNodeStateMachineConfig,
         SyncValidators,
     },
-    blocks::ChainBlock,
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
@@ -50,6 +49,7 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     validation::mocks::MockValidator,
 };
+use tari_node_components::blocks::ChainBlock;
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{

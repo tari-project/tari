@@ -22,7 +22,8 @@
 
 use std::cmp;
 
-use tari_core::{base_node::LocalNodeCommsInterface, blocks::HistoricalBlock};
+use tari_core::base_node::LocalNodeCommsInterface;
+use tari_node_components::blocks::HistoricalBlock;
 use tonic::Status;
 
 // The maximum number of blocks that can be requested at a time. These will be streamed to the

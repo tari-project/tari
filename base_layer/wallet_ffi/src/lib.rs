@@ -121,7 +121,7 @@ use tari_common_types::{
         seed_words::SeedWords,
     },
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{
         ComAndPubSignature,
         CompressedCommitment,
@@ -4122,7 +4122,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
     // check the tx is not in pending state
     if matches!(
         (*transaction).status,
-        TransactionStatus::Pending | TransactionStatus::Imported
+        LegacyTransactionStatus::Pending | LegacyTransactionStatus::Imported
     ) {
         let msg = format!("Incorrect transaction status: {}", (*transaction).status);
         *error_out = LibWalletError::from(TransactionError::StatusError(msg)).code;
@@ -7370,9 +7370,9 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
             // the Completed and Broadcast states from the list returned by this FFI function
             for tx in completed_transactions
                 .iter()
-                .filter(|ct| ct.status != TransactionStatus::Completed)
-                .filter(|ct| ct.status != TransactionStatus::Broadcast)
-                .filter(|ct| ct.status != TransactionStatus::Imported)
+                .filter(|ct| ct.status != LegacyTransactionStatus::Completed)
+                .filter(|ct| ct.status != LegacyTransactionStatus::Broadcast)
+                .filter(|ct| ct.status != LegacyTransactionStatus::Imported)
             {
                 completed.push(tx.clone());
             }
@@ -7446,9 +7446,9 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 for ct in completed_txs
                     .iter()
                     .filter(|ct| {
-                        ct.status == TransactionStatus::Completed ||
-                            ct.status == TransactionStatus::Broadcast ||
-                            ct.status == TransactionStatus::Imported
+                        ct.status == LegacyTransactionStatus::Completed ||
+                            ct.status == LegacyTransactionStatus::Broadcast ||
+                            ct.status == LegacyTransactionStatus::Imported
                     })
                     .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
@@ -7523,7 +7523,10 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
                 // list here in the FFI interface
                 for ct in completed_txs
                     .iter()
-                    .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
+                    .filter(|ct| {
+                        ct.status == LegacyTransactionStatus::Completed ||
+                            ct.status == LegacyTransactionStatus::Broadcast
+                    })
                     .filter(|ct| ct.direction == TransactionDirection::Outbound)
                 {
                     pending.push(OutboundTransaction::from(ct.clone()));
@@ -7679,8 +7682,8 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transaction) => {
-            if completed_transaction.status != TransactionStatus::Completed &&
-                completed_transaction.status != TransactionStatus::Broadcast
+            if completed_transaction.status != LegacyTransactionStatus::Completed &&
+                completed_transaction.status != LegacyTransactionStatus::Broadcast
             {
                 let completed = completed_transaction.clone();
                 return Box::into_raw(Box::new(completed));
@@ -7745,7 +7748,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                if (tx.status == LegacyTransactionStatus::Broadcast || tx.status == LegacyTransactionStatus::Completed) &&
                     tx.direction == TransactionDirection::Inbound
                 {
                     let completed = tx.clone();
@@ -7826,7 +7829,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                if (tx.status == LegacyTransactionStatus::Broadcast || tx.status == LegacyTransactionStatus::Completed) &&
                     tx.direction == TransactionDirection::Outbound
                 {
                     let completed = tx.clone();
@@ -9419,7 +9422,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Completed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::Completed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.received_tx_reply_callback_called = true;
         drop(lock);
@@ -9432,7 +9435,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Completed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::Completed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.received_finalized_tx_callback_called = true;
         drop(lock);
@@ -9448,7 +9451,7 @@ mod test {
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.broadcast_tx_callback_called = true;
         drop(lock);
-        assert_eq!((*tx).status, TransactionStatus::Broadcast);
+        assert_eq!((*tx).status, LegacyTransactionStatus::Broadcast);
         completed_transaction_destroy(tx);
     }
 
@@ -9458,7 +9461,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_callback_called = true;
         drop(lock);
@@ -9475,7 +9478,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = true;
         let mut error = 0;
@@ -9504,7 +9507,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::OneSidedConfirmed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::OneSidedConfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.scanned_tx_callback_called = true;
         drop(lock);
@@ -9522,8 +9525,8 @@ mod test {
             std::any::type_name::<TariCompletedTransaction>()
         );
         match (*tx).status {
-            TransactionStatus::Imported => {},
-            TransactionStatus::OneSidedUnconfirmed => {
+            LegacyTransactionStatus::Imported => {},
+            LegacyTransactionStatus::OneSidedUnconfirmed => {
                 let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
                 lock.scanned_tx_unconfirmed_callback_called = true;
                 let mut error = 0;

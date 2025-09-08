@@ -33,6 +33,7 @@ use tari_node_components::blocks::{
     BlockBuilder,
     BlockHeader,
     BlockHeaderValidationError,
+    ChainBlock,
     NewBlock,
     NewBlockTemplate,
 };
@@ -56,7 +57,6 @@ use crate::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::BaseNodeConsensusManager,
     mempool::Mempool,

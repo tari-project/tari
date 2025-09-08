@@ -26,14 +26,13 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-use tari_node_components::blocks::{Block, BlockHeader};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 
-use crate::blocks::{BlockHeaderAccumulatedData, ChainBlock};
 /// Placeholder root hash for an empty validator node Merkle tree.
 /// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the
 /// validator set is empty, we define this hash as the resulting Merkle root.

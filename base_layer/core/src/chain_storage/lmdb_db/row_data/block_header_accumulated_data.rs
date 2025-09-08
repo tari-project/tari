@@ -23,9 +23,8 @@
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashOutput, PrivateKey};
-use tari_transaction_components::tari_proof_of_work::Difficulty;
-
-use crate::{blocks::BlockHeaderAccumulatedData, proof_of_work::AccumulatedDifficulty};
+use tari_node_components::blocks::BlockHeaderAccumulatedData;
+use tari_transaction_components::tari_proof_of_work::{AccumulatedDifficulty, Difficulty};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LmdbRowBlockHeaderAccumulatedDataV1 {

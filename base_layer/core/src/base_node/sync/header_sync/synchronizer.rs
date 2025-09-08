@@ -34,7 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError},
     PeerConnection,
 };
-use tari_node_components::blocks::BlockHeader;
+use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
 use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 
@@ -48,7 +48,6 @@ use crate::{
         BlockchainSyncConfig,
         SyncPeer,
     },
-    blocks::{ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     common::rolling_avg::RollingAverageTime,
     consensus::BaseNodeConsensusManager,

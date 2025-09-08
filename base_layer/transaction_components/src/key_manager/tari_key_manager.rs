@@ -144,10 +144,6 @@ where
         self.primary_key_index
     }
 
-    pub fn cipher_seed(&self) -> &CipherSeed {
-        &self.seed
-    }
-
     pub fn key_index(&self) -> u64 {
         self.primary_key_index
     }

@@ -25,7 +25,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TxId},
     types::{BlockHash, CompressedSignature},
 };
 use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, rpc::models::TxLocation};
@@ -375,7 +375,7 @@ where
     async fn update_transaction_as_mined(
         &mut self,
         tx_id: TxId,
-        status: &TransactionStatus,
+        status: &LegacyTransactionStatus,
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
@@ -418,7 +418,7 @@ where
     async fn update_transaction_as_unmined(
         &mut self,
         tx_id: TxId,
-        status: &TransactionStatus,
+        status: &LegacyTransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_as_unmined(tx_id)

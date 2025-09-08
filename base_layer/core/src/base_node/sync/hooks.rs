@@ -24,10 +24,9 @@
 
 use std::sync::Arc;
 
-use crate::{
-    base_node::sync::{horizon_state_sync::HorizonSyncInfo, SyncPeer},
-    blocks::ChainBlock,
-};
+use tari_node_components::blocks::ChainBlock;
+
+use crate::base_node::sync::{horizon_state_sync::HorizonSyncInfo, SyncPeer};
 
 #[derive(Default)]
 pub(super) struct Hooks {

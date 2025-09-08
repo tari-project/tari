@@ -48,7 +48,7 @@ use tari_comms::{
     PeerManager,
 };
 use tari_crypto::keys::SecretKey;
-use tari_node_components::blocks::{Block, BlockHeader};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader};
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
@@ -67,11 +67,12 @@ use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{BlockHeaderAccumulatedData, ChainHeader},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseNodeConsensusManager,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
 };
+
 #[macro_use]
 mod block_spec;
 pub mod blockchain;
@@ -243,7 +244,7 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
     )
     .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(header.total_kernel_offset.clone())

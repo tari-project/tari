@@ -24,13 +24,13 @@ use std::cmp::Ordering;
 use log::*;
 use primitive_types::U512;
 use tari_common_types::types::{FixedHash, HashOutput};
-use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError};
+use tari_node_components::blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader};
 use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     base_node::sync::{header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS, BlockHeaderSyncError},
-    blocks::{BlockHeaderAccumulatedData, ChainHeader},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
     consensus::BaseNodeConsensusManager,
@@ -226,7 +226,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .add_back(&header, target_difficulty)
             .map_err(ChainStorageError::UnexpectedResult)?;
 
-        let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
+        let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(&state.previous_accum)
             .with_hash(header.hash())
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())

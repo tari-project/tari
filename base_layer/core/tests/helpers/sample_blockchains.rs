@@ -24,12 +24,12 @@
 #![allow(clippy::indexing_slicing)]
 use tari_common::configuration::Network;
 use tari_core::{
-    blocks::ChainBlock,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     validation::DifficultyCalculator,
 };
+use tari_node_components::blocks::ChainBlock;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusConstantsBuilder},
     tari_amount::{uT, T},

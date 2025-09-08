@@ -22,24 +22,8 @@
 
 mod accumulated_data;
 
-pub use accumulated_data::{
-    BlockAccumulatedData,
-    BlockHeaderAccumulatedData,
-    ChainBlock,
-    ChainHeader,
-    UpdateBlockAccumulatedData,
-};
-use tari_crypto::hash_domain;
-
-mod error;
-pub use error::BlockError;
+pub use accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder, UpdateBlockAccumulatedData};
 
 pub mod genesis_block;
 
 pub mod pre_mine;
-
-mod historical_block;
-
-pub use historical_block::HistoricalBlock;
-
-hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);
