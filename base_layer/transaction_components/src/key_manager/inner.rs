@@ -1651,14 +1651,18 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key_id: Option<PrivateKey>,
     ) -> Result<bool, TransactionError> {
-        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            self.get_private_key(key_id).await?
+        let recovery_key = if let Some(key) = custom_recovery_key_id {
+            key
         } else {
             self.get_private_view_key().await?
         };
-        let (value, private_key, _payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        let (value, private_key, _payment_id) =
+            match EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data) {
+                Ok(res) => res,
+                Err(_) => return Ok(false),
+            };
         self.crypto_factories
             .range_proof
             .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;

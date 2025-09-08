@@ -1519,6 +1519,7 @@ message BroadcastSignedOneSidedTransactionResponse {
 // A request to send funds to one or more recipients.
 message TransferRequest {
   repeated PaymentRecipient recipients = 1;
+  bool single_tx = 2;
 }
 
 message SendShaAtomicSwapRequest {

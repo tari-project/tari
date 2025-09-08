@@ -96,6 +96,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
     TransactionBuilder,
+    TransactionBuilderError,
 };
 use tari_utilities::hex::Hex;
 use tokio::{
@@ -758,6 +759,21 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::SendManyOneSidedTransactions {
+                destinations,
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+            } => self
+                .send_many_one_sided_transactions(
+                    destinations,
+                    selection_criteria,
+                    *output_features,
+                    fee_per_gram,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(TransactionServiceResponse::TransactionsSent),
 
             TransactionServiceRequest::ScrapeWallet {
                 destination,
@@ -2203,6 +2219,161 @@ where
             payment_id,
         )
         .await
+    }
+
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
+    pub async fn send_many_one_sided_transactions(
+        &mut self,
+        mut destinations: Vec<(TariAddress, MicroMinotari, MemoField)>,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
+        debug!(target: LOG_TARGET, "Sending many one sided transactions");
+        if destinations.is_empty() {
+            return Err(TransactionServiceError::TransactionBuilderError(
+                TransactionBuilderError::NoRecipients,
+            ));
+        }
+        let tx_id = TxId::new_random();
+        // let override the payment_id if the address says we should
+        let mut total_send = MicroMinotari::zero();
+        for destination in &mut destinations {
+            total_send += destination.1;
+            if destination.0.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", destination.2, destination.0.get_memo_field_payment_id_bytes());
+                destination.2 =
+                    MemoField::open(destination.0.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+            }
+            destination.2 = destination
+                .2
+                .clone()
+                .add_sender_address(
+                    self.resources.one_sided_tari_address.clone(),
+                    true,
+                    fee_per_gram,
+                    if destination.0 == self.resources.one_sided_tari_address ||
+                        destination.0 == self.resources.interactive_tari_address
+                    {
+                        Some(TxType::PaymentToSelf)
+                    } else {
+                        Some(TxType::PaymentToOther)
+                    },
+                )
+                .map_err(TransactionServiceError::InvalidPaymentId)?;
+            self.verify_send(&destination.0, TariAddressFeatures::create_one_sided_only())?;
+        }
+
+        // Prepare sender part of the transaction
+        let mut tx_builder = self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                total_send,
+                selection_criteria,
+                output_features.clone(),
+                fee_per_gram,
+                push_pubkey_script(&Default::default()),
+                Covenant::default(),
+            )
+            .await?;
+        for destination in &destinations {
+            tx_builder
+                .add_stealth_recipient(
+                    destination.0.clone(),
+                    destination.1,
+                    output_features.clone(),
+                    destination.2.clone(),
+                )
+                .await?;
+        }
+
+        let finalized = tx_builder.build().await?;
+
+        // Finalize
+
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast one-sided transaction
+
+        let tx = finalized.transaction.clone();
+        let fee = finalized.fee;
+        let change = finalized.change.clone().map(|change| vec![change]);
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id, change)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let sent_hashes = finalized.sent_output_hashes.clone();
+        let change_hashes = finalized.change_output_hashes.clone();
+
+        check_transaction_size(&tx, tx_id)?;
+        let (first_address, first_amount, first_memo) = destinations.remove(0);
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new_with_output_hashes(
+                tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                first_address,
+                first_amount,
+                fee,
+                tx.clone(),
+                LegacyTransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                first_memo,
+                sent_hashes.clone(),
+                vec![],
+                change_hashes.clone(),
+            )?,
+        )
+        .await?;
+        let mut tx_ids = vec![tx_id];
+        for destination in destinations {
+            let new_tx_id = TxId::new_random();
+            tx_ids.push(new_tx_id);
+            let completed_tx = CompletedTransaction::new_with_output_hashes(
+                new_tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                destination.0.clone(),
+                destination.1,
+                fee,
+                tx.clone(),
+                LegacyTransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                destination.2,
+                sent_hashes.clone(),
+                vec![],
+                change_hashes.clone(),
+            )?;
+            self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
+            trace!(
+                target: LOG_TARGET,
+                "Launch the transaction broadcast protocol for submitted transaction ({tx_id})."
+            );
+        }
+
+        Ok(tx_ids)
     }
 
     /// Creates a transaction to burn some Minotari. The optional _claim public key_ parameter is used in the challenge

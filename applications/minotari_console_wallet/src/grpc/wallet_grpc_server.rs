@@ -243,6 +243,94 @@ impl WalletGrpcServer {
     fn get_output_manager_service(&self) -> OutputManagerHandle<WalletKeyManager> {
         self.wallet.output_manager_service.clone()
     }
+
+    async fn transfer_single_tx(
+        &self,
+        recipients: Vec<minotari_app_grpc::tari_rpc::PaymentRecipient>,
+    ) -> Result<Response<minotari_app_grpc::tari_rpc::TransferResponse>, Status> {
+        let fee_per_gram = recipients.first().expect("already checked").fee_per_gram;
+        let recipients = recipients
+            .into_iter()
+            .enumerate()
+            .map(|(idx, dest)| -> Result<_, String> {
+                let address = TariAddress::from_str(&dest.address)
+                    .map_err(|_| format!("Destination address at index {idx} is malformed"))?;
+                let payment_id = if !dest.raw_payment_id.is_empty() {
+                    MemoField::open_unchecked(dest.raw_payment_id.to_vec(), TxType::PaymentToOther)
+                } else if let Some(user_pay_id) = dest.user_payment_id {
+                    let bytes = match (
+                        user_pay_id.u256.is_empty(),
+                        user_pay_id.utf8_string.is_empty(),
+                        user_pay_id.user_bytes.is_empty(),
+                    ) {
+                        (false, true, true) => user_pay_id.u256,
+                        (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                        (true, true, false) => user_pay_id.user_bytes,
+                        _ => {
+                            return Err("user_payment_id must be one of u256, utf8_string or user_bytes".to_string());
+                        },
+                    };
+                    MemoField::open_unchecked(bytes, TxType::PaymentToOther)
+                } else {
+                    MemoField::new_empty()
+                };
+                Ok((address, MicroMinotari(dest.amount), payment_id))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Status::invalid_argument)?;
+        let mut transaction_service = self.get_transaction_service();
+        let ids = transaction_service
+            .send_one_sided_multi_recipient_transaction(
+                recipients,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                fee_per_gram.into(),
+            )
+            .await
+            .map_err(|e| Status::internal(format!("Failed to send transaction: {e}")))?;
+        let mut results = Vec::new();
+        for id in ids {
+            let wallet_address = self
+                .wallet
+                .get_wallet_one_sided_address()
+                .await
+                .map_err(|e| Status::internal(format!("{e:?}")))?;
+            let wallet_tx = timeout(Duration::from_millis(100), async {
+                loop {
+                    let tx = self
+                        .get_transaction_service()
+                        .get_any_transaction(id)
+                        .await
+                        .map_err(|e| Status::internal(format!("{e:?}")));
+
+                    if let Ok(Some(tx)) = tx {
+                        break tx;
+                    }
+                    sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .map_err(|_| {
+                error!(target: LOG_TARGET, "Transaction {id} not found within timeout");
+                Status::not_found(format!("Transaction {id} not found within timeout"))
+            })?;
+            let address = wallet_tx.destination_address().expect("cannot fail").to_string();
+            let final_tx = convert_wallet_transaction_into_transaction_info(
+                wallet_tx,
+                &wallet_address,
+                &self.wallet.key_manager_service,
+            )
+            .await;
+            results.push(minotari_app_grpc::tari_rpc::TransferResult {
+                address,
+                transaction_id: id.into(),
+                is_success: true,
+                failure_message: Default::default(),
+                transaction_info: Some(final_tx),
+            });
+        }
+        Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results }))
+    }
 }
 
 #[tonic::async_trait]
@@ -954,6 +1042,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
     #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
+
+        if message.single_tx {
+            return self.transfer_single_tx(message.recipients).await;
+        }
         let recipients = message
             .recipients
             .into_iter()
@@ -973,7 +1065,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
-
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
             if payment_type == PaymentType::StandardMimblewimble as i32 {
