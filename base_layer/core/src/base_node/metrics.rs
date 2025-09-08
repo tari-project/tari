@@ -23,7 +23,7 @@
 use once_cell::sync::Lazy;
 use primitive_types::U512;
 use tari_common_types::types::FixedHash;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+use tari_metrics::{Gauge, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 use tari_utilities::hex::Hex;
 
 pub fn tip_height() -> &'static IntGauge {
@@ -128,24 +128,41 @@ pub fn difficulty_indicator_height() -> &'static IntGauge {
     &METER
 }
 
-/// floor(log2(total_accumulated_difficulty)) at height [reconstruction: (sig53 / 2^52) * 2^exp2]
+/// floor(log2(total_accumulated_difficulty)) at height [reconstruction: (acc_diff_sig53 / 2^52) * 2^acc_diff_exp2]
 pub fn accumulated_difficulty_exp2() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
             "base_node::blockchain::acc_diff_exp2",
-            "floor(log2(total_accumulated_difficulty)) at height [reconstruction: (sig53 / 2^52) * 2^exp2]",
+            "floor(log2(total_accumulated_difficulty)) at height [reconstruction: (acc_diff_sig53 / 2^52) * \
+             2^acc_diff_exp2]",
         )
         .unwrap()
     });
     &METER
 }
 
-/// Top 53 bits of total_accumulated_difficulty at height [reconstruction: (sig53 / 2^52) * 2^exp2]
+/// Top 53 bits of total_accumulated_difficulty at height [reconstruction: (acc_diff_sig53 / 2^52) * 2^acc_diff_exp2]
 pub fn accumulated_difficulty_sig53() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
             "base_node::blockchain::acc_diff_sig53",
-            "Top 53 bits of total_accumulated_difficulty at height [reconstruction: (sig53 / 2^52) * 2^exp2]",
+            "Top 53 bits of total_accumulated_difficulty at height [reconstruction: (acc_diff_sig53 / 2^52) * \
+             2^acc_diff_exp2]",
+        )
+        .unwrap()
+    });
+    &METER
+}
+
+/// Approximate total_accumulated_difficulty at height as an f64 [reconstruction: (acc_diff_sig53 / 2^52) *
+/// 2^acc_diff_exp2] Note: This is less accurate than doing the computation directly in the client, but is provided for
+/// convenience.
+pub fn accumulated_difficulty_as_f64() -> &'static Gauge {
+    static METER: Lazy<Gauge> = Lazy::new(|| {
+        tari_metrics::register_gauge(
+            "base_node::blockchain::acc_diff_as_f64",
+            "Approximate total_accumulated_difficulty at height as an f64 [approximation: (acc_diff_sig53 / 2^52) * \
+             2^acc_diff_exp2]",
         )
         .unwrap()
     });
@@ -288,9 +305,9 @@ pub fn log2_u512(value_u512: &U512) -> Option<f64> {
     Some(res)
 }
 
-/// Returns (exp2, sig53) where:
-///   - exp2 = floor(log2(value)) (u32)
-///   - sig53 = top 53 bits (u64)
+// Returns (exp2, sig53) where:
+//   - exp2 = floor(log2(value)) (u32)
+//   - sig53 = top 53 bits (u64)
 #[allow(clippy::cast_possible_truncation)]
 fn u512_into_parts(value_u512: &U512) -> (u32, u64) {
     let total_bits: u32 = value_u512.bits() as u32; // total bits
@@ -320,13 +337,12 @@ pub fn u512_exp2_sig53(value: &U512) -> Option<(i64, i64)> {
     Some((i64::from(total_bits) - 1, i64::try_from(sig53).unwrap_or(i64::MAX)))
 }
 
-// Approximate a U512 as f64 using a 53-bit significand and exponent as `(sig53 / 2^52) * 2^exp2`.
-//   - exp2 = floor(log2(value)) (i64)
-//   - sig53 = top 53 bits (i64, always positive, safe up to 2^53-1)
-//   - Returns None if value == 0.
+/// Approximate a U512 as f64 using a 53-bit significand and exponent as `(sig53 / 2^52) * 2^exp2`.
+///   - exp2 = floor(log2(value)) (i64)
+///   - sig53 = top 53 bits (i64, always positive, safe up to 2^53-1)
+///   - Returns None if value == 0.
 #[allow(clippy::cast_possible_truncation)]
-#[cfg(test)]
-fn approximate_u512_with_f64(value: &U512) -> Option<f64> {
+pub fn approximate_u512_with_f64(value: &U512) -> Option<f64> {
     if value.is_zero() {
         return None;
     }
@@ -344,7 +360,7 @@ fn approximate_u512_with_f64(value: &U512) -> Option<f64> {
 #[inline]
 fn next_down(x: f64) -> f64 {
     // Move to the next representable float toward -∞
-    f64::from_bits(x.to_bits() - 1)
+    f64::from_bits(x.to_bits().saturating_sub(1))
 }
 
 /// Computes log₂(value) as f64 for a u128 using a 53-bit normalized significand.
@@ -499,19 +515,23 @@ mod tests {
         use primitive_types::U512;
 
         let original_u512 = U512::from_dec_str("3872628503165662556508806093911347954645375156922").unwrap();
-        let reconstructed_u512 = approximate_u512_with_f64(&original_u512).unwrap();
+        let approximate_u512 = approximate_u512_with_f64(&original_u512).unwrap();
 
         // Expected bits using our robust log2 (with next_down ULP guard)
         let expected_bits = log2_u512(&original_u512).unwrap();
 
         // The two log2 values should match within a tiny epsilon (a few ULPs)
-        let approx_bits = reconstructed_u512.log2();
+        let approx_bits = approximate_u512.log2();
         assert!(
             (approx_bits - expected_bits).abs() < 1e-9,
             "reconstructed log2 mismatch: approx={}, expected={}",
             approx_bits,
             expected_bits
         );
+
+        // Relative error via logs (safer for huge values):
+        let relative_err = (approximate_u512.log2() - log2_u512(&original_u512).unwrap()).abs() / log2_u512(&original_u512).unwrap().abs();
+        assert!(relative_err < 1e-12);
 
         // println!("approx f64 = {}\noriginal   = {}", reconstructed_u512, original_u512);
     }

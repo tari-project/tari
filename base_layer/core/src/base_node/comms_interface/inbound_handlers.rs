@@ -57,7 +57,7 @@ use crate::{
             NodeCommsResponse,
             OutboundNodeCommsInterface,
         },
-        metrics::{log2_u128, log2_u512, milli_bits, u512_exp2_sig53},
+        metrics::{approximate_u512_with_f64, log2_u128, log2_u512, milli_bits, u512_exp2_sig53},
     },
     blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
@@ -1102,6 +1102,8 @@ where B: BlockchainBackend + 'static
             .unwrap_or(0);
         let (acc_diff_exp2, acc_diff_sig53) =
             u512_exp2_sig53(&chain_header.accumulated_data().total_accumulated_difficulty).unwrap_or((0, 0));
+        let acc_diff_as_f64 =
+            approximate_u512_with_f64(&chain_header.accumulated_data().total_accumulated_difficulty).unwrap_or(0.0);
 
         // Publish
         metrics::accumulated_difficulty_indicator().set(acc_diff_milli_bits);
@@ -1113,6 +1115,7 @@ where B: BlockchainBackend + 'static
             .set(i64::try_from(chain_header.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
         metrics::accumulated_difficulty_exp2().set(acc_diff_exp2);
         metrics::accumulated_difficulty_sig53().set(acc_diff_sig53);
+        metrics::accumulated_difficulty_as_f64().set(acc_diff_as_f64);
 
         Ok(())
     }
