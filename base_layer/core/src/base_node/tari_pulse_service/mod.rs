@@ -28,7 +28,7 @@ use futures::future;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, Minimized};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, types::CommsPublicKey, Minimized};
 use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
 use tari_p2p::{
     dns::DnsClient,
@@ -39,8 +39,9 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{broadcast::error::RecvError, watch, Mutex, RwLock},
+    sync::{broadcast, broadcast::error::RecvError, watch, Mutex, RwLock},
     task,
+    task::JoinHandle,
     time::{self, timeout, MissedTickBehavior},
 };
 
@@ -123,6 +124,8 @@ impl TariPulseService {
         notify_passed_checkpoints: watch::Sender<bool>,
         notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
     ) {
+        tokio::time::sleep(Duration::from_secs(30)).await; // Wait for the node to start up properly
+
         let mut dns_check_interval = time::interval(self.config.dns_check_interval);
         dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::pin!(dns_check_interval);
@@ -329,9 +332,22 @@ async fn check_health(
     notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
 ) {
     let results = Arc::new(RwLock::new(Vec::new()));
-    let peers = node_comms.get_seeds().await.unwrap_or_else(|_| vec![]);
+
+    let peers = match tokio::time::timeout(Duration::from_secs(10), node_comms.get_seeds()).await {
+        Ok(Ok(seeds)) => seeds,
+        Ok(Err(err)) => {
+            warn!(target: LOG_TARGET, "check_health: failed to get seed peers: {}", err);
+            return;
+        },
+        Err(_) => {
+            warn!(target: LOG_TARGET, "check_health: timeout getting seed peers");
+            return;
+        },
+    };
+
     let mut handles = vec![];
-    trace!(target: LOG_TARGET, "check_health started contacting {} seed peers", peers.len());
+    debug!(target: LOG_TARGET, "check_health: started contacting {} seed peers", peers.len());
+    let comms = node_comms.clone();
     for peer in &peers {
         let result_clone = results.clone();
         let mut result = LivenessCheckResult {
@@ -340,48 +356,184 @@ async fn check_health(
             ping_latency: None,
         };
         let dest_key = peer.public_key.clone();
-        let mut discovery = node_discovery.clone();
-        let mut liveness_events = liveness_handle.get_event_stream();
-        let mut liveness = liveness_handle.clone();
-        let mut comms = node_comms.clone();
+        let discovery = node_discovery.clone();
+        let liveness_events = liveness_handle.get_event_stream();
+        let liveness = liveness_handle.clone();
+        let comms_clone = comms.clone();
         handles.push(task::spawn(async move {
-            let start = Instant::now();
-            if discovery
-                .discover_peer(dest_key.clone(), NodeDestination::PublicKey(dest_key.into()))
-                .await
-                .is_ok()
-            {
-                result.discovery_latency = Some(start.elapsed());
+            let discovery_handle = spawn_discovery(discovery, dest_key);
+            let ping_handle = spawn_ping(comms_clone.clone(), liveness, liveness_events, result.peer.clone());
+            // Await both inner tasks
+            let (discovery_result, ping_result) = tokio::join!(discovery_handle, ping_handle);
+
+            match discovery_result {
+                Ok(latency) => {
+                    result.discovery_latency = latency;
+                },
+                Err(err) => warn!(
+                    target: LOG_TARGET,
+                    "check_health: discovery task join error for {}: {}",
+                    result.peer, err
+                ),
             }
-            let start2 = Instant::now();
-            if let Ok(nonce) = liveness.send_ping(result.peer.clone()).await {
-                loop {
-                    match liveness_events.recv().await {
-                        Ok(event) => {
-                            if let LivenessEvent::ReceivedPong(pong) = &*event {
-                                if pong.node_id == result.peer && pong.nonce == nonce {
-                                    result.ping_latency = Some(start2.elapsed());
-                                    break;
-                                }
-                            }
-                        },
-                        Err(RecvError::Closed) => {
-                            break;
-                        },
-                        Err(RecvError::Lagged(_)) => {},
-                    }
-                }
+            match ping_result {
+                Ok(latency) => {
+                    result.ping_latency = latency;
+                },
+                Err(err) => warn!(
+                    target: LOG_TARGET,
+                    "check_health: ping task join error for {}: {}",
+                    result.peer, err
+                ),
             }
-            if let Ok(Some(mut conn)) = comms.get_connection(result.peer.clone()).await {
-                if let Err(err) = conn.disconnect_if_unused(Minimized::No, 0, 2, "Health check").await {
-                    warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", result.peer, err);
-                }
-            }
+
+            // Disconnect seed if unused
+            disconnect_peer(comms_clone.clone(), result.peer.clone()).await;
+
+            debug!(
+                target: LOG_TARGET,
+                "check_health: peer {} discovery: {:.2?}, ping: {:.2?}",
+                result.peer,
+                result.discovery_latency,
+                result.ping_latency
+            );
             (*result_clone).write().await.push(result);
         }));
     }
     futures::future::join_all(handles).await;
     let inner_result = (*(*results).read().await).clone();
     notify_comms_health.send(inner_result).expect("Channel should be open");
-    trace!(target: LOG_TARGET, "check_health ended");
+    debug!(target: LOG_TARGET, "check_health: session ended");
+}
+
+fn spawn_discovery(
+    mut discovery: DhtDiscoveryRequester,
+    dest_key: CommsPublicKey,
+) -> JoinHandle<Option<std::time::Duration>> {
+    task::spawn(async move {
+        let start = Instant::now();
+        match tokio::time::timeout(
+            Duration::from_secs(90),
+            discovery.discover_peer(dest_key.clone(), NodeDestination::PublicKey(dest_key.clone().into())),
+        )
+        .await
+        {
+            Ok(Ok(_)) => Some(start.elapsed()),
+            Ok(Err(err)) => {
+                debug!(target: LOG_TARGET, "check_health: failed to discover {}: {}", dest_key, err);
+                None
+            },
+            Err(_) => {
+                debug!(target: LOG_TARGET, "check_health: discovery timeout {}", dest_key);
+                None
+            },
+        }
+    })
+}
+
+fn spawn_ping(
+    comms: ConnectivityRequester,
+    mut liveness: LivenessHandle,
+    mut liveness_events: broadcast::Receiver<Arc<LivenessEvent>>,
+    peer_node_id: NodeId,
+) -> JoinHandle<Option<std::time::Duration>> {
+    task::spawn(async move {
+        // Ensure we have a connection first
+        match tokio::time::timeout(Duration::from_secs(60), comms.dial_peer(peer_node_id.clone())).await {
+            Ok(Ok(_)) => {},
+            Ok(Err(err)) => {
+                // This error is not treated as a warning or error as the result will be passed back to the caller
+                debug!(target: LOG_TARGET, "check_health: dial {} failed: {}", peer_node_id, err);
+                return None;
+            },
+            Err(_) => {
+                // This error is not treated as a warning or error as the result will be passed back to the caller
+                debug!(target: LOG_TARGET, "check_health: dial {} timed out", peer_node_id);
+                return None;
+            },
+        }
+
+        // Now send the ping
+        let start = Instant::now();
+        let nonce = match tokio::time::timeout(Duration::from_secs(15), liveness.send_ping(peer_node_id.clone())).await
+        {
+            Ok(Ok(n)) => n,
+            Ok(Err(err)) => {
+                // This error is not treated as a warning or error as the result will be passed back to the caller
+                debug!(target: LOG_TARGET, "check_health: send_ping {} failed: {}", peer_node_id, err);
+                return None;
+            },
+            Err(_) => {
+                // This error is not treated as a warning or error as the result will be passed back to the caller
+                debug!(target: LOG_TARGET, "check_health: send_ping {} timed out", peer_node_id);
+                return None;
+            },
+        };
+
+        // Wait for matching pong with rolling timeouts
+        loop {
+            match tokio::time::timeout(Duration::from_secs(30), liveness_events.recv()).await {
+                Ok(Ok(event)) => {
+                    if let LivenessEvent::ReceivedPong(pong) = &*event {
+                        if pong.node_id == peer_node_id && pong.nonce == nonce {
+                            return Some(start.elapsed());
+                        }
+                    }
+                    // Give up after ~60s total waiting
+                    if start.elapsed() >= Duration::from_secs(60) {
+                        debug!(target: LOG_TARGET, "check_health: waited too long for pong from {}", peer_node_id);
+                        return None;
+                    }
+                },
+                Ok(Err(RecvError::Closed)) => {
+                    // This error is not treated as a warning or error as the result will be passed back to the caller
+                    return None;
+                },
+                Ok(Err(RecvError::Lagged(_))) => { /* keep waiting within total window */ },
+                Err(_) => {
+                    // This error is not treated as a warning or error as the result will be passed back to the caller
+                    debug!(target: LOG_TARGET, "check_health: recv pong {} timed out", peer_node_id);
+                    return None;
+                },
+            }
+        }
+    })
+}
+
+async fn disconnect_peer(mut comms: ConnectivityRequester, peer_node_id: NodeId) {
+    match tokio::time::timeout(Duration::from_secs(15), comms.get_connection(peer_node_id.clone())).await {
+        Ok(Ok(Some(mut conn))) => {
+            match tokio::time::timeout(
+                Duration::from_secs(15),
+                conn.disconnect_if_unused(Minimized::No, 0, 2, "Health check"),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {},
+                Ok(Err(err)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "check_health: failed to disconnect peer {} ({})",
+                        peer_node_id, err
+                    );
+                },
+                Err(_) => {
+                    warn!(target: LOG_TARGET, "check_health: timeout disconnecting from peer {}", peer_node_id);
+                },
+            }
+        },
+        Ok(Ok(None)) => {
+            debug!(target: LOG_TARGET, "check_health: no connection to peer {}, cannot disconnect", peer_node_id);
+        },
+        Ok(Err(err)) => {
+            warn!(
+                target: LOG_TARGET,
+                "check_health: connectivity error {} ({})",
+                peer_node_id, err
+            );
+        },
+        Err(_) => {
+            warn!(target: LOG_TARGET, "check_health: timeout getting connection for peer {}", peer_node_id);
+        },
+    }
 }
