@@ -47,17 +47,14 @@ use tokio::sync::RwLock;
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
-    base_node::{
-        comms_interface::{
-            comms_response::ValidatorNodeChange,
-            error::CommsInterfaceError,
-            local_interface::BlockEventSender,
-            FetchMempoolTransactionsResponse,
-            NodeCommsRequest,
-            NodeCommsResponse,
-            OutboundNodeCommsInterface,
-        },
-        metrics::{approximate_u512_with_f64, log2_u128, log2_u512, milli_bits, u512_exp2_sig53},
+    base_node::comms_interface::{
+        comms_response::ValidatorNodeChange,
+        error::CommsInterfaceError,
+        local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse,
+        NodeCommsRequest,
+        NodeCommsResponse,
+        OutboundNodeCommsInterface,
     },
     blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
@@ -1087,6 +1084,7 @@ where B: BlockchainBackend + 'static
             metrics::target_difficulty().set(0);
             metrics::accumulated_difficulty_exp2().set(0);
             metrics::accumulated_difficulty_sig53().set(0);
+            metrics::accumulated_difficulty_as_f64().set(0.0);
             return Ok(());
         }
         let height = tip - DIFF_INDICATOR_LAG;
@@ -1094,16 +1092,18 @@ where B: BlockchainBackend + 'static
 
         // Compute indicators in millibits as `log₂(value) * 1000` to make huge numbers fathomable in a time-series
         // graph with enough granularity
-        let acc_diff_milli_bits = log2_u512(&chain_header.accumulated_data().total_accumulated_difficulty)
-            .map(milli_bits)
+        let acc_diff_milli_bits = metrics::log2_u512(&chain_header.accumulated_data().total_accumulated_difficulty)
+            .map(metrics::milli_bits)
             .unwrap_or(0);
-        let target_diff_milli_bits = log2_u128(u128::from(chain_header.accumulated_data().target_difficulty.as_u64()))
-            .map(milli_bits)
-            .unwrap_or(0);
+        let target_diff_milli_bits =
+            metrics::log2_u128(u128::from(chain_header.accumulated_data().target_difficulty.as_u64()))
+                .map(metrics::milli_bits)
+                .unwrap_or(0);
         let (acc_diff_exp2, acc_diff_sig53) =
-            u512_exp2_sig53(&chain_header.accumulated_data().total_accumulated_difficulty).unwrap_or((0, 0));
+            metrics::u512_exp2_sig53(&chain_header.accumulated_data().total_accumulated_difficulty).unwrap_or((0, 0));
         let acc_diff_as_f64 =
-            approximate_u512_with_f64(&chain_header.accumulated_data().total_accumulated_difficulty).unwrap_or(0.0);
+            metrics::approximate_u512_with_f64(&chain_header.accumulated_data().total_accumulated_difficulty)
+                .unwrap_or(0.0);
 
         // Publish
         metrics::accumulated_difficulty_indicator().set(acc_diff_milli_bits);

@@ -530,7 +530,8 @@ mod tests {
         );
 
         // Relative error via logs (safer for huge values):
-        let relative_err = (approximate_u512.log2() - log2_u512(&original_u512).unwrap()).abs() / log2_u512(&original_u512).unwrap().abs();
+        let relative_err = (approximate_u512.log2() - log2_u512(&original_u512).unwrap()).abs() /
+            log2_u512(&original_u512).unwrap().abs();
         assert!(relative_err < 1e-12);
 
         // println!("approx f64 = {}\noriginal   = {}", reconstructed_u512, original_u512);
