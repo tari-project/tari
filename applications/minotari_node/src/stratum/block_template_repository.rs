@@ -307,10 +307,6 @@ impl BlockTemplateRepository for DefaultBlockTemplateRepository {
                 blob: mining_hash,
                 height: block.header.height,
                 target: miner_data.target_difficulty,
-                // extra_nonce: match algo {
-                //     PowAlgorithm::RandomXT | PowAlgorithm::Sha3x | PowAlgorithm::RandomXM => None,
-                //     PowAlgorithm::Cuckaroo => Some(block.header.nonce),
-                // },
                 seed_hash: match algo {
                     PowAlgorithm::RandomXT => Some(vm_key),
                     PowAlgorithm::Sha3x | PowAlgorithm::RandomXM | PowAlgorithm::Cuckaroo => None,

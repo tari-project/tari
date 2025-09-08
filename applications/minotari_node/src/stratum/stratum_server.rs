@@ -137,7 +137,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                     // Handle the connection with the job handler
                                                     info!(target: LOG_TARGET, "Accepted connection from {}", stream.peer_addr()?);
                                                     let handler = self.hander.clone();
-                                                    // self.hander.handle_connection(stream).await?;
                                                     tokio::spawn(async move {
                                                         let (reader, mut writer) = stream.into_split();
                                                         let mut reader = BufReader::new(reader).lines();
@@ -145,7 +144,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                         let mut current_subscription_id: Option<String> =None;
 
                                                         loop {
-                                                        // match let Ok(Some(line)) = reader.next_line().await;
                                                         let line: String;
                                                         match timeout(Duration::from_secs(1), reader.next_line()).await {
                                                             Ok(Ok(Some(l))) => {
@@ -166,7 +164,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                 for (sub_id, extra_nonce, ref mut last_job) in subscription_ids.iter_mut() {
 
                                                                     if last_job.is_none() {
-                                                                        // last_job = &mut current_subscription_id;
                                                                         continue;
                                                                     }
                                                                     let job = last_job.clone().unwrap();
@@ -199,7 +196,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
 
 
-                                                            // if let Ok(msg): Result<Value, _> = serde_json::from_str(&line) {
                                                                 // handle 'login', 'submit', etc.
                                                                 debug!(target: LOG_TARGET, "Received line: {}", line);
                                                                 match TAdapter::try_convert(line) {
@@ -212,7 +208,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                         match request {
                                                                             StratumRequest::Login { id, login, address, pass: _pass, agent: _agent, algo, worker: _worker } => {
 
-                                                                                // let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
                                                                                 let login_parts = login.split("=").collect::<Vec<_>>();
                                                                                 let login_address = login_parts[0].to_string();
                                                                                 let login_difficulty = match login_parts.len() {
@@ -288,16 +283,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
                                                                                         subscription_ids.push((r.subscription_id.clone(), r.nonce.clone(), None));
                                                                                         current_subscription_id = Some(r.subscription_id.clone());
-                        // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
-
-                                                                                        // let json_response = serde_json::to_string(&r).unwrap();
-                                                                                        // let difficulty = r.difficulty;
-                                                                                        // let difficulty = "1".to_string();
-                                                                                        // let block_template = r.block_template;
-                                                                                        // let nonce = r.nonce;
-                                                                                        // let height = r.height;
-
-                                                                                        // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
                                                                                         let res = format!(
                                                                                             "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
                                                                                             id, r.subscription_id, r.subscription_id, r.nonce_hex, r.nonce_hex.len()/2 // length in hex
@@ -306,7 +291,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                         let _res = writer.write_all(
                                                                                             res.as_bytes(),
                                                                                         ).await;
-                                                                                        // let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await;
                                                                                     },
                                                                                     Err(e) => {
                                                                                         warn!(target: LOG_TARGET, "Failed to handle subscribe request: {}", e);
@@ -325,8 +309,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     if let Some(subscription_id) = current_subscription_id.clone() {
                                                                                         info!(target: LOG_TARGET, "Using subscription id: {}", subscription_id);
             sub = subscription_id.clone();
-                                                                                        // let nonce = subscription_ids.iter().find(|(sub_id, _)| sub_id == &subscription_id).map(|(_, nonce)| nonce.clone()).unwrap_or_else(|| "00000000".to_string());
-                                                                                        // let response = handler.authorize(id.clone(), login, worker_name, pass).await;
                                                                                    } else {
                                                                                         warn!(target: LOG_TARGET, "No current subscription id found. Not authorizing.");
                                                                                         let _res = writer.write_all(format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"error\": \"Not subscribed\", \"result\": null}}\n", id).as_bytes()).await;
@@ -349,20 +331,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     Ok(r) =>  {
                                                                                         info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
 
-                        // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
-
-                                                                                        // let json_response = serde_json::to_string(&r).unwrap();
-                                                                                        // let difficulty = r.difficulty;
-                                                                                        // let difficulty = "1".to_string();
-                                                                                        // let block_template = r.block_template;
-                                                                                        // let nonce = r.nonce;
-                                                                                        // let height = r.height;
-
-                                                                                        // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
-                                                                                        // let res = format!(
-                                                                                        //     "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
-                                                                                        //     id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
-                                                                                        // );
                                                                                         let res = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": true, \"error\": null}}\n",
                                                                                             id
                                                                                         );
@@ -391,28 +359,11 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
                                                                         }
 
-                                                                        //
-                                                                        // [applications\minotari_node\src\stratum\stratum_server.rs:729:9] &line = "{\"id\":4,\"method\":\"mining.submit\",\"params\":[\\",\"59890\",\"000001c3\",[\"142cf04a\",\"0f41a5a2\",\"116d7b9f\",\"0710dcdf\",\"03500464\",\"06c8d06e\",\"138b8d6f\",\"1b33704a\",\"18ec789a\",\"1f8cf1f5\",\"00b091fc\",\"081b39ca\",\"16237ad0\",\"018cfa11\",\"042af3ad\",\"176689fe\",\"1bae17bb\",\"1f55f90a\",\"19a98291\",\"0e3e48da\",\"0d5e6c48\",\"06c6de56\",\"0624ddc6\",\"0a04a5e0\",\"039f9998\",\"053316ad\",\"126df8e6\",\"1848c32f\",\"0f0e94df\",\"0d565b02\",\"111619d9\",\"0a901346\",\"1bacf7f2\",\"17af46dc\",\"1c5efce6\",\"03c6b589\",\"1c14205d\",\"0a6efdd9\",\"190b0fe8\",\"1801bf1e\",\"1cd9e943\",\"1de05eb2\"]]}"
-
-
-
-                                                                        // match handler.handle_request(request) {
-                                                                        //     Ok(resp) => {
-                                                                        //         info!( "Handled request with id: {}", id);
-                                                                        //         let json_response = serde_json::to_string(&resp).unwrap();
-                                                                        //         writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.unwrap();
-                                                                        //     },
-                                                                        //     Err(e) => {
-                                                                        //         info!("Failed to handle request: {}", e);
-                                                                        //         writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
-                                                                        //     }
-                                                                        // }
                                                                     },
                                                                     Err(e) => {
                                                                         info!( target: LOG_TARGET, "Failed to parse request: {}", e);
                                                                     }
                                                                 }
-                                                            // }
                                                         }
 
                                                     });
@@ -431,7 +382,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
 #[async_trait]
 pub trait StratumJobHandler: Clone + Send + Sync + 'static {
-    // fn handle_request(&self, request: StratumRequest) -> anyhow::Result<Value>;
     async fn login(&self, id: String, login: String, address: String, algo: &[String])
         -> anyhow::Result<LoginResponse>;
 
@@ -447,11 +397,7 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
     async fn subscribe(
         &self,
         id: String,
-        // main_algo: String,
-        // address: String,
-        // is_solo: bool,
         agent: String,
-        // worker: Option<String>,
     ) -> anyhow::Result<SubscribeResponse>;
 
     async fn authorize(
@@ -486,10 +432,6 @@ pub(crate) struct StratumJob {
 }
 
 pub(crate) struct SubscribeResponse {
-    // pub difficulty: String,
-    // pub block_template: String,
-    // pub nonce: String,
-    // pub height: u64,
     pub subscription_id: String,
     pub nonce_hex: String,
     pub nonce: u16,
@@ -502,8 +444,6 @@ pub(crate) struct AuthorizeResponse {
 }
 
 pub(crate) struct NotifyResponse {
-    // pub subscription_id: String,
-    // pub extra_nonce: String,
     pub job_id: String,
     pub height: u64,
     pub blob: String,

@@ -311,10 +311,6 @@ async fn create_job_from_blob<TBlockRepo: BlockTemplateRepository>(
 
     let id = hex::encode(r.next_u64().to_le_bytes());
     let random_bytes = rand::random::<u16>();
-    // let xn = nonce
-    // .map(|n| hex::encode(n.to_le_bytes()))
-    // .clone()
-    // .unwrap_or_else(|| hex::encode(&random_bytes.to_le_bytes()));
     let job_target = hex::encode((u64::MAX / target).to_le_bytes());
     let chain_target = hex::encode(target.to_le_bytes());
 
