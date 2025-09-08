@@ -411,6 +411,10 @@ where
                 let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
+            OutputManagerRequest::GetOutputsByQuery(query) => {
+                let outputs = self.fetch_outputs_by_query(query)?;
+                Ok(OutputManagerResponse::SpentOutputs(outputs))
+            },
             OutputManagerRequest::ValidateTxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
@@ -486,6 +490,10 @@ where
                 .scan_outputs_for_one_sided_payments(outputs)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
+            OutputManagerRequest::ScanOutputsForMultisig(outputs) => self
+                .scan_outputs_for_multisig(outputs)
+                .await
+                .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
                 .add_known_script(known_script)
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
@@ -498,20 +506,7 @@ where
                     output: Box::new(wallet_output),
                 })
             },
-            OutputManagerRequest::CreatePayToSelfWithOutputs {
-                outputs,
-                fee_per_gram,
-                selection_criteria,
-                payment_id,
-            } => {
-                let (tx_id, transaction) = self
-                    .create_pay_to_self_containing_outputs(outputs, selection_criteria, fee_per_gram, payment_id)
-                    .await?;
-                Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
-                    transaction: Box::new(transaction),
-                    tx_id,
-                })
-            },
+
             OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(output_hash, pre_image, fee_per_gram) => {
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
@@ -523,6 +518,20 @@ where
             OutputManagerRequest::GetOutputInfoByTxId(tx_id) => {
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
+            },
+
+            OutputManagerRequest::FetchUnspentOutputs(hashes) => {
+                let mut outputs = Vec::new();
+                for hash in hashes {
+                    if let Some(output) = self.fetch_unspent_outputs_from_node(hash).await? {
+                        outputs.push(output);
+                    }
+                }
+                Ok(OutputManagerResponse::FetchUnspentOutputs(outputs))
+            },
+            OutputManagerRequest::ConfirmEncumberance(tx_id, change_outputs) => {
+                self.confirm_encumberance(tx_id, change_outputs).await?;
+                Ok(OutputManagerResponse::ConfirmEncumberance)
             },
             OutputManagerRequest::ClearShortTermEncumberances => self
                 .clear_short_term_encumberances()
@@ -946,8 +955,7 @@ where
         Ok(builder)
     }
 
-    #[allow(clippy::too_many_lines)]
-    async fn create_pay_to_self_containing_outputs(
+    pub async fn create_transaction_with_outputs_internal(
         &mut self,
         outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
@@ -955,9 +963,11 @@ where
         payment_id: MemoField,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
+
         let nop_script = script![Nop]?;
         let weighting = self.resources.consensus_constants.transaction_weight_params();
         let mut features_and_scripts_byte_size = 0;
+
         for output in &outputs {
             let (features, covenant, script) = (
                 output
@@ -974,7 +984,6 @@ where
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
             );
-
             features_and_scripts_byte_size += weighting.round_up_features_and_scripts_size(features + covenant + script)
         }
 
@@ -1007,6 +1016,7 @@ where
         }
 
         let mut db_outputs = vec![];
+
         for mut wallet_output in outputs {
             let sender_offset_key = self
                 .resources
@@ -1016,8 +1026,8 @@ where
             wallet_output = wallet_output
                 .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)
                 .await?;
-
             let ub = wallet_output.try_build(&self.resources.key_manager).await?;
+
             builder
                 .with_output(ub.clone(), sender_offset_key.key_id.clone())
                 .await
@@ -1032,7 +1042,7 @@ where
                     None,
                 )
                 .await?,
-            )
+            );
         }
 
         let finalized = builder.build().await?;
@@ -1113,13 +1123,14 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
         // Fetch the output from the blockchain or use provided
         let output = match use_output {
-            UseOutput::FromBlockchain(output_hash) => {
-                self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
+            UseOutput::FromBlockchain(output_hash) => self
+                .fetch_unspent_outputs_from_node(output_hash)
+                .await?
+                .ok_or_else(|| {
                     OutputManagerError::ServiceError(format!(
                         "Output with hash {output_hash} not found in blockchain (TxId: {tx_id})"
                     ))
-                })?
-            },
+                })?,
             UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
@@ -1438,11 +1449,15 @@ where
         minimum_value_promise: MicroMinotari,
     ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         // Fetch the output from the blockchain
-        let output = self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
-            OutputManagerError::ServiceError(format!(
-                "Output with hash {output_hash} not found in blockchain (TxId: {tx_id})"
-            ))
-        })?;
+        let output = self
+            .fetch_unspent_outputs_from_node(output_hash)
+            .await?
+            .ok_or_else(|| {
+                OutputManagerError::ServiceError(format!(
+                    "Output with hash {} not found in blockchain (TxId: {})",
+                    output_hash, tx_id
+                ))
+            })?;
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {tx_id})"
@@ -1807,15 +1822,20 @@ where
             selection_criteria.excluding_onesided = self.resources.config.autoignore_onesided_utxos;
         }
 
+        selection_criteria.excluding_multisig = true;
+
         debug!(
             target: LOG_TARGET,
             "select_utxos selection criteria: {selection_criteria}"
         );
         let start_new = Instant::now();
-        let uo = self
-            .resources
-            .db
-            .fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height)?;
+        let uo: Vec<DbWalletOutput> =
+            self.resources
+                .db
+                .fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height)?;
+
+        // OutputSource
+
         let uo_len = uo.len();
         trace!(
             target: LOG_TARGET,
@@ -2614,7 +2634,7 @@ where
         Ok(builder)
     }
 
-    async fn fetch_utxo_from_node(
+    pub async fn fetch_unspent_outputs_from_node(
         &mut self,
         hash: HashOutput,
     ) -> Result<Option<TransactionOutput>, OutputManagerError> {
@@ -2928,6 +2948,86 @@ where
                             scanned_outputs.push((rewound_output, OutputSource::StealthOneSided, tx_id));
                         }
                     }
+                }
+            }
+        }
+
+        self.import_onesided_outputs(scanned_outputs).await
+    }
+
+    // Scanning outputs addressed to this wallet
+    #[allow(clippy::too_many_lines)]
+    async fn scan_outputs_for_multisig(
+        &mut self,
+        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
+        // 1. Get all your wallet's public keys (or just the spend key for now)
+        let mut scanned_outputs = vec![];
+
+        for (output, tx_id) in outputs {
+            // 2. Check if the script is a multisig script
+
+            if let [Opcode::CheckMultiSigVerify(_m, _n, pubkeys, _msg), Opcode::PushPubKey(scanned_pk)] =
+                output.script.as_slice()
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "Found multisig script in output with tx_id: {:?}, pubkeys: {:?}",
+                    tx_id,
+                    pubkeys
+                );
+
+                let view_key = self.resources.key_manager.get_view_key().await?;
+
+                let shared_secret = self
+                    .resources
+                    .key_manager
+                    .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)
+                    .await?;
+
+                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+
+                if let Ok((spending_key_id, committed_value, payment_id)) = self
+                    .resources
+                    .key_manager
+                    .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(encryption_key))
+                    .await
+                {
+                    let script_spending_key = self
+                        .resources
+                        .key_manager
+                        .stealth_address_script_spending_key(
+                            &spending_key_id,
+                            &self.resources.key_manager.get_spend_key().await?.pub_key,
+                        )
+                        .await?;
+
+                    if script_spending_key != **scanned_pk {
+                        continue;
+                    }
+
+                    let script_key = TariKeyId::Derived {
+                        key: SerializedKeyString::from(spending_key_id.to_string()),
+                    };
+
+                    let rewound_output = WalletOutput::new_with_rangeproof(
+                        output.version,
+                        committed_value,
+                        spending_key_id,
+                        output.features,
+                        output.script,
+                        ExecutionStack::new(vec![]),
+                        script_key,
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
+                        0,
+                        output.covenant,
+                        output.encrypted_data,
+                        output.minimum_value_promise,
+                        output.proof,
+                        payment_id,
+                    );
+                    scanned_outputs.push((rewound_output, OutputSource::Multisig, tx_id));
                 }
             }
         }

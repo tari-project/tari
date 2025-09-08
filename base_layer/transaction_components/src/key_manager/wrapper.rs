@@ -38,6 +38,7 @@ use tari_common_types::{
         CompressedSignature,
         PrivateKey,
         RangeProof,
+        WalletMessageSchnorrSignature,
     },
     wallet_types::WalletType,
 };
@@ -198,6 +199,18 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_spend_key().await
+    }
+
+    async fn sign_message_with_spend_key(
+        &self,
+        message: &[u8],
+        sender_offset_pub_key: Option<&CompressedPublicKey>,
+    ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .sign_message(message, sender_offset_pub_key)
+            .await
     }
 
     async fn get_comms_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
@@ -497,6 +510,18 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
+    async fn sign_script_message_with_spend_key(
+        &self,
+        message: &[u8],
+        sender_offset_pub_key: Option<&CompressedPublicKey>,
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .sign_script_message_with_spend_key(message, sender_offset_pub_key)
+            .await
+    }
+
     async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
@@ -583,6 +608,18 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .read()
             .await
             .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
+            .await
+    }
+
+    async fn add_offset_to_spend_key(
+        &self,
+        spend_key_id: &TariKeyId,
+        sender_offset_pub_key: &CompressedPublicKey,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .write()
+            .await
+            .add_offset_to_spend_key(spend_key_id, sender_offset_pub_key)
             .await
     }
 

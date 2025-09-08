@@ -36,6 +36,7 @@ use tari_common_types::{
         CompressedSignature,
         PrivateKey,
         RangeProof,
+        WalletMessageSchnorrSignature,
     },
     WALLET_COMMS_AND_SPEND_KEY_BRANCH,
 };
@@ -443,11 +444,23 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn sign_message_with_spend_key(
+        &self,
+        message: &[u8],
+        sender_offset_key: Option<&CompressedPublicKey>,
+    ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError>;
+
     async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError>;
+
+    async fn sign_script_message_with_spend_key(
+        &self,
+        message: &[u8],
+        sender_offset_pub_key: Option<&CompressedPublicKey>,
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError>;
 
     async fn sign_with_nonce_and_challenge(
         &self,
@@ -492,6 +505,12 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, TransactionError>;
+
+    async fn add_offset_to_spend_key(
+        &self,
+        spend_key_id: &TariKeyId,
+        sender_offset_pub_key: &CompressedPublicKey,
+    ) -> Result<TariKeyId, KeyManagerServiceError>;
 
     async fn encrypted_key(
         &self,

@@ -42,6 +42,7 @@ pub enum OutputSource {
     SidechainCheckpoint,
     SidechainProof,
     ValidatorNodeExit,
+    Multisig,
 }
 
 impl TryFrom<i32> for OutputSource {
@@ -62,9 +63,10 @@ impl TryFrom<i32> for OutputSource {
             10 => OutputSource::SidechainCheckpoint,
             11 => OutputSource::SidechainProof,
             12 => OutputSource::ValidatorNodeExit,
+            13 => OutputSource::Multisig,
             _ => {
                 return Err(OutputManagerStorageError::ConversionError {
-                    reason: "Was expecting value between 0 and 7 for OutputSource".to_string(),
+                    reason: "Was expecting value between 0 and 13 for OutputSource".to_string(),
                 })
             },
         })

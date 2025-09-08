@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     convert::TryInto,
     time::{Duration, Instant},
 };
@@ -568,6 +569,7 @@ where
                 .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
 
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
+
             // Received output use the DH of view key and sender offset.
             let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
@@ -597,14 +599,11 @@ where
             }
         }
         let scanned_time = start.elapsed();
-        let start = Instant::now();
 
-        let one_sided_time = start.elapsed();
         trace!(
             target: LOG_TARGET,
-            "Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            "Scanned for outputs: outputs took {} ms",
             scanned_time.as_millis(),
-            one_sided_time.as_millis(),
         );
         Ok(found_outputs)
     }
@@ -614,32 +613,61 @@ where
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
         let start = Instant::now();
-        let mut found_outputs: Vec<(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)> = self
-            .resources
-            .output_manager_service
-            .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
-            .await?
-            .into_iter()
-            .map(|ro| -> Result<_, anyhow::Error> {
-                let status = if ro.output.features.is_coinbase() {
-                    LegacyImportStatus::CoinbaseUnconfirmed
-                } else {
-                    LegacyImportStatus::OneSidedUnconfirmed
-                };
-                let output = outputs
-                    .iter()
-                    .find(|o| o.hash() == ro.hash)
-                    .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                Ok((ro.output, status, ro.tx_id, output.clone()))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let one_sided_time = start.elapsed();
-        let other_outputs = outputs
+        let outputs_by_hash: HashMap<_, _> = outputs.iter().cloned().map(|o| (o.hash(), o)).collect();
+        let mut found_outputs = Vec::new();
+
+        found_outputs.append(
+            &mut self
+                .resources
+                .output_manager_service
+                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
+                .await?
+                .into_iter()
+                .map(|ro| -> Result<_, anyhow::Error> {
+                    let status = if ro.output.features.is_coinbase() {
+                        LegacyImportStatus::CoinbaseUnconfirmed
+                    } else {
+                        LegacyImportStatus::OneSidedUnconfirmed
+                    };
+                    let output = outputs_by_hash
+                        .get(&ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+
+        let output_without_one_sided: Vec<(TransactionOutput, Option<TxId>)> = outputs
             .iter()
             .filter(|o| !found_outputs.iter().any(|f| f.3.hash() == o.hash()))
             .map(|o| (o.clone(), None))
             .collect();
+
+        let one_sided_time = start.elapsed();
         let start = Instant::now();
+        found_outputs.append(
+            &mut self
+                .resources
+                .output_manager_service
+                .scan_outputs_for_multisig(output_without_one_sided.clone())
+                .await?
+                .into_iter()
+                .map(|ro| -> Result<_, anyhow::Error> {
+                    let status = LegacyImportStatus::Imported;
+                    let output = outputs_by_hash
+                        .get(&ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+
+        let other_outputs: Vec<(TransactionOutput, Option<TxId>)> = output_without_one_sided
+            .iter()
+            .filter(|o| !found_outputs.iter().any(|f| f.3.hash() == o.0.hash()))
+            .map(|o| (o.0.clone(), o.1))
+            .collect();
+
         found_outputs.append(
             &mut self
                 .resources
@@ -653,9 +681,8 @@ where
                     } else {
                         LegacyImportStatus::Imported
                     };
-                    let output = outputs
-                        .iter()
-                        .find(|o| o.hash() == ro.hash)
+                    let output = outputs_by_hash
+                        .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
@@ -669,6 +696,7 @@ where
             scanned_time.as_millis(),
             one_sided_time.as_millis(),
         );
+
         Ok(found_outputs)
     }
 

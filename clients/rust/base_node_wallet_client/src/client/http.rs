@@ -131,6 +131,7 @@ impl BaseNodeWalletClient for Client {
         let server_address = self.http_server_address().await?;
         debug!(target: LOG_TARGET, "Requesting tip info from Base Node wallet service at {}", server_address);
         let timer = Instant::now();
+
         let res = self
             .http_client
             .get(server_address.join("/get_tip_info")?)

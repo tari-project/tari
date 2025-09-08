@@ -61,7 +61,15 @@ use crate::{
     output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
-        offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
+        multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
+        offline_signing::models::{
+            PrepareDepositMultisigTransactionResult,
+            PrepareOneSidedTransactionForSigningResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SignedOneSidedDepositMultisigTransactionResult,
+            SignedOneSidedTransactionResult,
+            SignedOneSidedWithdrawMultisigTransactionResult,
+        },
         storage::models::{
             CompletedTransaction,
             InboundTransaction,
@@ -186,6 +194,13 @@ pub enum TransactionServiceRequest {
     SignOneSidedTransaction {
         request: PrepareOneSidedTransactionForSigningResult,
     },
+
+    SignOneSidedDepositMultisigTransaction {
+        request: PrepareDepositMultisigTransactionResult,
+    },
+    SignOneSidedWithdrawMultisigTransaction {
+        request: PrepareWithdrawMultisigTransactionResult,
+    },
     BroadcastSignedOneSidedTransaction {
         request: SignedOneSidedTransactionResult,
     },
@@ -254,6 +269,23 @@ pub enum TransactionServiceRequest {
     },
     /// Get all transactions with their PayRefs (for listing/filtering)
     GetTransactionByPaymentReference(FixedHash),
+    PrepareDepositMultisigTransaction {
+        request: CreateMultisigUtxo,
+    },
+    PrepareWithdrawMultisigTransaction {
+        request: WithdrawMultisigUtxo,
+    },
+    CreateMultisigUtxo {
+        request: CreateMultisigUtxo,
+    },
+    GetMultisigUtxoData {
+        utxo_commitment: CompressedCommitment,
+    },
+    SendMultisigUtxo {
+        utxo_commitment: CompressedCommitment,
+        recipient_address: TariAddress,
+        signatures: Vec<CompressedCheckSigSchnorrSignature>,
+    },
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -270,6 +302,12 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions(_) => write!(f, "GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({t})"),
+            Self::SignOneSidedDepositMultisigTransaction { request } => {
+                write!(f, "SignOneSidedDepositMultisigTransaction (request {request:?})")
+            },
+            Self::SignOneSidedWithdrawMultisigTransaction { request } => {
+                write!(f, "SignOneSidedWithdrawMultisigTransaction (request {request:?})")
+            },
             Self::ScrapeWallet {
                 destination,
                 fee_per_gram,
@@ -467,6 +505,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetTransactionByPaymentReference(payref) => {
                 write!(f, "GetTransactionByPaymentReference({payref})")
             },
+
             Self::SubmitValidatorEvictionProof {
                 amount,
                 proof,
@@ -482,6 +521,31 @@ impl fmt::Display for TransactionServiceRequest {
                     fee_per_gram,
                     payment_id
                 )
+            },
+            Self::CreateMultisigUtxo { request } => {
+                write!(f, "CreateMultisigUtxo (request: {:?})", request)
+            },
+
+            Self::GetMultisigUtxoData { utxo_commitment } => {
+                write!(f, "GetMultisigUtxoData (utxo_commitment: {:?})", utxo_commitment)
+            },
+
+            Self::SendMultisigUtxo {
+                utxo_commitment,
+                recipient_address,
+                signatures,
+            } => {
+                write!(
+                    f,
+                    "SendMultisigUtxo (utxo_commitment: {:?}, recipient_address: {}, signatures: {:?})",
+                    utxo_commitment, recipient_address, signatures
+                )
+            },
+            Self::PrepareDepositMultisigTransaction { request } => {
+                write!(f, "PrepareDepositMultisigTransaction (request: {:?})", request)
+            },
+            Self::PrepareWithdrawMultisigTransaction { request } => {
+                write!(f, "PrepareWithdrawMultisigTransaction (request: {:?})", request)
             },
         }
     }
@@ -534,6 +598,8 @@ pub enum TransactionServiceResponse {
     PaymentDetails(Option<PaymentDetails>),
     OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
     SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
+    SignedOneSidedDepositMultisigTransaction(Box<SignedOneSidedDepositMultisigTransactionResult>),
+    SignedOneSidedWithdrawMultisigTransaction(Box<SignedOneSidedWithdrawMultisigTransactionResult>),
     TransactionReplaced(TxId),
     CodeRegistrationTransactionSent {
         tx_id: TxId,
@@ -542,6 +608,12 @@ pub enum TransactionServiceResponse {
     ValidatorEvictionProofSent {
         tx_id: TxId,
     },
+
+    PrepareDepositMultisigTransaction(Box<PrepareDepositMultisigTransactionResult>),
+    PrepareWithdrawMultisigTransaction(Box<PrepareWithdrawMultisigTransactionResult>),
+    CreateMultisigUtxo(TxId),
+    GetMultisigUtxoData(Box<GetMultisigUtxoDataOutput>),
+    SendMultisigUtxo(TxId),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -891,6 +963,34 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::SignedOneSidedTransaction(result) => Ok(*result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn sign_one_sided_deposit_multisig_transaction(
+        &mut self,
+        request: PrepareDepositMultisigTransactionResult,
+    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(result) => Ok(*result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn sign_one_sided_withdraw_multisig_transaction(
+        &mut self,
+        request: PrepareWithdrawMultisigTransactionResult,
+    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(result) => Ok(*result),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
@@ -1404,6 +1504,107 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn prepare_deposit_multisig_transaction(
+        &mut self,
+        amount: MicroMinotari,
+        party_number: u8,
+        public_keys: Vec<CompressedPublicKey>,
+        recipient_address: TariAddress,
+    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionServiceError> {
+        let request = CreateMultisigUtxo {
+            amount,
+            party_number,
+            public_keys,
+            recipient_address,
+        };
+        match self
+            .handle
+            .call(TransactionServiceRequest::PrepareDepositMultisigTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::PrepareDepositMultisigTransaction(result) => Ok(*result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn prepare_withdraw_multisig_transaction(
+        &mut self,
+        utxo_commitment: CompressedCommitment,
+        signatures: Vec<CompressedCheckSigSchnorrSignature>,
+        recipient_address: TariAddress,
+    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionServiceError> {
+        let request = WithdrawMultisigUtxo {
+            utxo_commitment,
+            recipient_address,
+            signatures,
+        };
+        match self
+            .handle
+            .call(TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::PrepareWithdrawMultisigTransaction(result) => Ok(*result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_multisig_utxo(
+        &mut self,
+        amount: MicroMinotari,
+        party_number: u8,
+        public_keys: Vec<CompressedPublicKey>,
+        recipient_address: TariAddress,
+    ) -> Result<TxId, TransactionServiceError> {
+        let request = CreateMultisigUtxo {
+            amount,
+            party_number,
+            public_keys,
+            recipient_address,
+        };
+        match self
+            .handle
+            .call(TransactionServiceRequest::CreateMultisigUtxo { request })
+            .await??
+        {
+            TransactionServiceResponse::CreateMultisigUtxo(id) => Ok(id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_multisig_utxo_data(
+        &mut self,
+        utxo_commitment: CompressedCommitment,
+    ) -> Result<GetMultisigUtxoDataOutput, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetMultisigUtxoData { utxo_commitment })
+            .await??
+        {
+            TransactionServiceResponse::GetMultisigUtxoData(output) => Ok(*output),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_multisig_utxo(
+        &mut self,
+        utxo_commitment: CompressedCommitment,
+        recipient_address: TariAddress,
+        signatures: Vec<CompressedCheckSigSchnorrSignature>,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendMultisigUtxo {
+                utxo_commitment,
+                recipient_address,
+                signatures,
+            })
+            .await??
+        {
+            TransactionServiceResponse::SendMultisigUtxo(output) => Ok(output),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -31,7 +31,12 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
-use tari_common_types::{epoch::VnEpoch, seeds::seed_words::SeedWords, tari_address::TariAddress};
+use tari_common_types::{
+    epoch::VnEpoch,
+    seeds::seed_words::SeedWords,
+    tari_address::TariAddress,
+    types::CompressedCommitment,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_transaction_components::tari_amount::{self, MicroMinotari};
 use tari_utilities::{
@@ -172,12 +177,54 @@ pub enum CliCommands {
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
+
+    GetMultisigUtxoData(GetMultisigUtxoDataArgs),
+    SendMultisigUtxo(SendMultisigUtxoArgs),
+    CreateMultisigUtxo(CreateMultisigUtxoArgs),
+
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
+
+    PrepareDepositMultisigTransaction(PrepareDepositMultisigTransactionArgs),
+    PrepareWithdrawMultisigTransaction(PrepareWithdrawMultisigTransactionArgs),
+
     PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
     SignOneSidedTransaction(SignOneSidedTransactionArgs),
+
+    SignOneSidedDepositMultisigTransaction(SignOneSidedTransactionArgs),
+    SignOneSidedWithdrawMultisigTransaction(SignOneSidedTransactionArgs),
+
     BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
+
+    SignMessage(SignMessageArgs),
+    SignScriptMessage(SignScriptMessageArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareDepositMultisigTransactionArgs {
+    #[clap(long)]
+    pub amount: MicroMinotari,
+    /// The number of required signatures
+    #[clap(long)]
+    pub party_number: u8,
+    #[clap(long, multiple = true)]
+    /// list of public keys of the parties involved in the multisig
+    pub public_keys: Vec<UniPublicKey>,
+    #[clap(long)]
+    /// The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareWithdrawMultisigTransactionArgs {
+    #[clap(long)]
+    pub utxo_commitment: String,
+    #[clap(short, long, parse(try_from_str = parse_hex), multiple = true, use_value_delimiter = true)]
+    pub schnorr_signatures: Vec<Vec<u8>>,
+    #[clap(long)]
+    /// The recipient address that will receive the funds
+    pub recipient_address: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -202,6 +249,32 @@ pub struct SignOneSidedTransactionArgs {
 pub struct BroadcastSignedOneSidedTransactionArgs {
     #[clap(short, long)]
     pub input_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignMessageArgs {
+    /// The message to be signed (UTF-8 string)
+    #[clap(long)]
+    pub message: String,
+    /// Optional output file path
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    /// Optional sender offset public key to use for signing
+    #[clap(long)]
+    pub sender_offset_key: Option<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignScriptMessageArgs {
+    /// The message to be signed (UTF-8 string)
+    #[clap(long)]
+    pub message: String,
+    /// Optional output file path
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    /// Optional sender offset public key to use for signing
+    #[clap(long)]
+    pub sender_offset_key: Option<UniPublicKey>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -528,4 +601,52 @@ pub struct ShowPayRefArgs {
 #[derive(Debug, Args, Clone)]
 pub struct FindPayRefArgs {
     pub payment_reference_hex: String,
+}
+
+// Helper function to parse CompressedCommitment from hex string
+fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> {
+    CompressedCommitment::from_hex(s).map_err(|e| format!("Invalid CompressedCommitment: {}", e))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SendMultisigUtxoArgs {
+    #[clap(long, parse(try_from_str = parse_compressed_commitment))]
+    //  The commitment of the multisig UTXO
+    pub utxo_commitment: CompressedCommitment,
+    #[clap(long)]
+    // The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+
+    // signatures
+    #[clap(short, long, parse(try_from_str = parse_hex), multiple = true, use_value_delimiter = true)]
+    pub schnorr_signatures: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct GetMultisigUtxoDataArgs {
+    //  The commitment of the multisig UTXO
+    #[clap(long, parse(try_from_str = parse_compressed_commitment))]
+    pub utxo_commitment: CompressedCommitment,
+
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateMultisigUtxoArgs {
+    #[clap(long)]
+    //  amount on microtari
+    pub amount: MicroMinotari,
+
+    // How many signatures are required to spend the multisig UTXO
+    #[clap(long, default_value = "2")]
+    pub party_number: u8,
+
+    #[clap(long, multiple = true)]
+    // list of public keys of the parties involved in the multisig
+    pub public_keys: Vec<UniPublicKey>,
+
+    #[clap(long)]
+    // The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
 }
