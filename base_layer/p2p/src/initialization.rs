@@ -470,7 +470,7 @@ impl P2pInitializer {
             },
         }?;
         let res = (download_url_res, addr.to_string());
-        info!(target: LOG_TARGET, "Resolved DNS download URL `{}` in {:.0?}", addr, timer.elapsed());
+        info!(target: LOG_TARGET, "Resolved DNS download URL `{}` in {:.0?}", res.0, timer.elapsed());
         Ok(res)
     }
 

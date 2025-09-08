@@ -44,7 +44,8 @@ impl SignedMessageVerifier {
             if result {
                 debug!(target: LOG_TARGET, "Signature verified successfully with key: {:?}", pk.fingerprint());
             } else {
-                warn!(target: LOG_TARGET, "Signature verification failed with key: {:?}", pk.fingerprint());
+                // It's debug since other keys are not checked
+                debug!(target: LOG_TARGET, "Signature verification failed with key: {:?}", pk.fingerprint());
             }
             result
         })

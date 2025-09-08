@@ -23,8 +23,6 @@
 mod error;
 mod verifier;
 
-use std::io;
-
 pub use error::SignatureVerificationError;
 use futures;
 use log::{debug, warn};
@@ -140,10 +138,9 @@ pub async fn download_file<T: IntoUrl>(url: T) -> Result<String, SignatureVerifi
 /// Download a PGP signature file from the given URL
 pub async fn download_signature_file<T: IntoUrl>(url: T) -> Result<StandaloneSignature, SignatureVerificationError> {
     let resp = http_download(url).await?;
-    let sig_bytes = resp.bytes().await?;
-    let cursor = io::Cursor::new(&sig_bytes);
-    match StandaloneSignature::from_bytes(cursor) {
-        Ok(sig) => {
+    let sig_text = resp.text().await?;
+    match StandaloneSignature::from_string(&sig_text) {
+        Ok((sig, _)) => {
             debug!(target: LOG_TARGET, "download_signature_file: Successfully parsed PGP signature");
             Ok(sig)
         },
@@ -161,5 +158,28 @@ mod test {
     #[test]
     fn all_maintainers_well_formed() {
         assert_eq!(maintainers().count(), MAINTAINERS.len());
+    }
+
+    #[tokio::test]
+    async fn test_parse_ascii_armored_signature() {
+        // This is the actual signature from the error log
+        let ascii_signature = r#"-----BEGIN PGP SIGNATURE-----
+
+iHUEABYKAB0WIQTaz8Pe9KT58ia7xIFrHRtevPqxvwUCaLmBrwAKCRBrHRtevPqx
+v/oSAP92nITPC9TNDwfsIow7IBKxHqNNvOB6FjMy0ZCgpN1ouwEA4xGcg7aodWu/
+G0eKB6s7pbpSyu3XdQqJwozutRuCzA0=
+=Y0ye
+-----END PGP SIGNATURE-----"#;
+
+        // Test that from_string can parse ASCII-armored signatures
+        let result = StandaloneSignature::from_string(ascii_signature);
+        assert!(
+            result.is_ok(),
+            "Failed to parse ASCII-armored signature: {:?}",
+            result.err()
+        );
+
+        let (_sig, _) = result.unwrap();
+        // Successfully parsed the ASCII-armored signature
     }
 }
