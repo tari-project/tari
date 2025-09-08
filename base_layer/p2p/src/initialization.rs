@@ -476,7 +476,7 @@ impl P2pInitializer {
 
     /// downloads seed peers files - json with peers and .asc for verification
     async fn download_seed_peers_files(
-        (url, addr): (String, String),
+        (url, _): (String, String),
     ) -> Result<Vec<SeedPeer>, ServiceInitializationError> {
         #[derive(Deserialize)]
         struct SeedNodesJson {

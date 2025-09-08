@@ -23,11 +23,13 @@
 mod error;
 mod verifier;
 
+use std::time::Duration;
+
 pub use error::SignatureVerificationError;
 use futures;
 use log::{debug, warn};
 use pgp::{Deserializable, SignedPublicKey, StandaloneSignature};
-use reqwest::IntoUrl;
+use reqwest::{Client, IntoUrl, Response};
 pub use verifier::SignedMessageVerifier;
 
 const LOG_TARGET: &str = "p2p::signature_verification";
@@ -58,8 +60,13 @@ pub async fn download_hashes_sig_file<T: IntoUrl>(url: T) -> Result<StandaloneSi
 }
 
 /// Perform an HTTP GET request and return the response
-async fn http_download<T: IntoUrl>(url: T) -> Result<reqwest::Response, SignatureVerificationError> {
-    let resp = reqwest::get(url).await?.error_for_status()?;
+async fn http_download<T: IntoUrl>(url: T) -> Result<Response, SignatureVerificationError> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .connect_timeout(Duration::from_secs(5))
+        .build()
+        .expect("HTTP client build failed");
+    let resp = client.get(url).send().await?.error_for_status()?;
     Ok(resp)
 }
 
