@@ -680,11 +680,12 @@ where
 
                 for pair_output in &mut request.info.inputs.iter_mut() {
                     let input_wallet_output = &mut pair_output.output_pair.output;
+                    let view_key = key_manager.get_view_key().await?;
                     let spend_key = key_manager.get_spend_key().await?;
 
                     let shared_secret = key_manager
                         .get_diffie_hellman_shared_secret(
-                            &spend_key.key_id,
+                            &view_key.key_id,
                             &input_wallet_output.sender_offset_public_key,
                         )
                         .await?;

@@ -149,17 +149,16 @@ where
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
+        let recipient_view_key = recipient
+            .public_view_key()
+            .ok_or(TransactionServiceError::Other("Missing public view key".to_string()))?;
+
         let recipient_spend_key = recipient.public_spend_key();
 
         let sender_offset_public_key = sender_offset_key.pub_key;
 
         let encrypted_data_shared_secret = key_manager
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_key.key_id,
-                recipient
-                    .public_view_key()
-                    .ok_or(TransactionServiceError::Other("Missing public view key".to_string()))?,
-            )
+            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, recipient_view_key)
             .await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&encrypted_data_shared_secret)
@@ -180,7 +179,7 @@ where
         let shared_secret = self
             .resources
             .transaction_key_manager_service
-            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, recipient_spend_key)
+            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, recipient_view_key)
             .await?;
 
         let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
