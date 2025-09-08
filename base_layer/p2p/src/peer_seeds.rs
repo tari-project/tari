@@ -96,11 +96,13 @@ impl DnsSeedResolver {
 
     pub async fn resolve_download_url(&mut self, addr: &str) -> Result<String, DnsClientError> {
         let records = self.client.query_txt(addr).await?;
+        trace!(target: LOG_TARGET, "DNS TXT records (download URL lookup) for {addr}: {:?}", records);
         let download_url = records
             .into_iter()
-            .find(|record| record.starts_with("https://") || record.starts_with("http://"))
+            .map(|r| r.trim().to_string())
+            .find(|r| r.starts_with("https://"))
             .ok_or(DnsClientError::NoDownloadUrlFound)?;
-        Ok(download_url.to_string())
+        Ok(download_url)
     }
 }
 
