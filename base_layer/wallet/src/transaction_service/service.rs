@@ -2369,7 +2369,7 @@ where
             self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
             trace!(
                 target: LOG_TARGET,
-                "Launch the transaction broadcast protocol for submitted transaction ({tx_id})."
+                "Created transaction for ({tx_id})."
             );
         }
 

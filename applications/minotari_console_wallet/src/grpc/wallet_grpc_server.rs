@@ -1043,6 +1043,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
 
+        if message.recipients.is_empty() {
+            return Err(Status::invalid_argument("At least one recipient is required".to_string()));
+        }
+
         if message.single_tx {
             return self.transfer_single_tx(message.recipients).await;
         }
