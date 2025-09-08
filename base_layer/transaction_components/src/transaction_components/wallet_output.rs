@@ -175,7 +175,7 @@ impl WalletOutput {
         memo: MemoField,
         output: TransactionOutput,
         key_manager: &KM,
-    ) -> Option<Self> {
+    ) -> Result<Self, TransactionError> {
         let mut output = WalletOutput::new_with_rangeproof(
             output.version,
             value,
@@ -193,11 +193,17 @@ impl WalletOutput {
             output.proof,
             memo,
         );
-        let (input_data, script_key) = output.get_script_private_key_id(key_manager).await.ok()??;
+        let (input_data, script_key) =
+            output
+                .get_script_private_key_id(key_manager)
+                .await?
+                .ok_or(TransactionError::KeyManagerError(
+                    "Could not find a valid script key for the script".to_string(),
+                ))?;
         output.input_data = input_data;
         output.script_key_id = script_key;
 
-        Some(output)
+        Ok(output)
     }
 
     #[allow(clippy::too_many_arguments)]
