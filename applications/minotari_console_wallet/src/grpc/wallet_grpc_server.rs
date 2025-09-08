@@ -87,8 +87,12 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    PrepareDepositMultisigTransactionRequest,
+    PrepareDepositMultisigTransactionResponse,
     PrepareOneSidedTransactionForSigningRequest,
     PrepareOneSidedTransactionForSigningResponse,
+    PrepareWithdrawMultisigTransactionRequest,
+    PrepareWithdrawMultisigTransactionResponse,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     ReplaceByFeeRequest,
@@ -125,7 +129,7 @@ use minotari_wallet::{
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
+        offline_signing::models::SignedOneSidedTransactionResult,
         storage::models::{self, WalletTransaction},
     },
     WalletKeyManager,
@@ -136,10 +140,18 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        PrivateKey,
+        SignatureWithDomain,
+    },
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_hashing::WalletMessageSigningDomain;
+use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
@@ -150,7 +162,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
@@ -794,6 +806,143 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 BroadcastSignedOneSidedTransactionResponse {
                     is_success: false,
                     transaction_id: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn prepare_deposit_multisig_transaction(
+        &self,
+        request: Request<PrepareDepositMultisigTransactionRequest>,
+    ) -> Result<Response<PrepareDepositMultisigTransactionResponse>, Status> {
+        debug!(target: LOG_TARGET, "prepare_deposit_multisig_transaction called");
+        let message = request.into_inner();
+
+        let recipient = TariAddress::from_bytes(message.recipient_address.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Invalid recipient address: {e}")))?;
+
+        let public_keys = message
+            .public_keys
+            .into_iter()
+            .map(|pk_bytes| {
+                CompressedPublicKey::from_canonical_bytes(&pk_bytes)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid public key: {e}")))
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        // Semantic validation
+        if message.amount == 0 {
+            return Err(Status::invalid_argument("amount must be greater than 0".to_string()));
+        }
+        if public_keys.is_empty() {
+            return Err(Status::invalid_argument("public_keys cannot be empty".to_string()));
+        }
+        let party_number_u8 = u8::try_from(message.party_number)
+            .map_err(|_| Status::invalid_argument("party_number_u8 must be in 1..=255".to_string()))?;
+        if party_number_u8 == 0 {
+            return Err(Status::invalid_argument(
+                "party_number_u8 must be greater than 0".to_string(),
+            ));
+        }
+        if (party_number_u8 as usize) > public_keys.len() {
+            return Err(Status::invalid_argument(
+                "party_number_u8 must be less than or equal to the number of public keys".to_string(),
+            ));
+        }
+        // Ensure unique signers
+        {
+            let mut set = std::collections::HashSet::new();
+            if !public_keys.iter().all(|pk| set.insert(pk.as_bytes().to_vec())) {
+                return Err(Status::invalid_argument("public_keys must be unique".to_string()));
+            }
+        }
+
+        let mut transaction_service = self.get_transaction_service();
+
+        let response = match transaction_service
+            .prepare_deposit_multisig_transaction(
+                MicroMinotari::from(message.amount),
+                party_number_u8,
+                public_keys,
+                recipient.clone(),
+            )
+            .await
+        {
+            Ok(data) => {
+                let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
+                PrepareDepositMultisigTransactionResponse {
+                    is_success: true,
+                    result: json_data,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to lock transaction for address `{recipient}`: {err}"
+                );
+                PrepareDepositMultisigTransactionResponse {
+                    is_success: false,
+                    result: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn prepare_withdraw_multisig_transaction(
+        &self,
+        request: Request<PrepareWithdrawMultisigTransactionRequest>,
+    ) -> Result<Response<PrepareWithdrawMultisigTransactionResponse>, Status> {
+        debug!(target: LOG_TARGET, "prepare_withdraw_multisig_transaction called");
+        let message = request.into_inner();
+
+        let recipient = TariAddress::from_bytes(message.recipient_address.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Invalid recipient address: {e}")))?;
+
+        let signatures = message
+            .signatures
+            .into_iter()
+            .map(|signature_bytes| {
+                CompressedCheckSigSchnorrSignature::from_binary(&signature_bytes)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid signature: {e}")))
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        if signatures.is_empty() {
+            return Err(Status::invalid_argument("signatures cannot be empty".to_string()));
+        }
+
+        let commitment = CompressedCommitment::from_hex(&message.utxo_commitment)
+            .map_err(|e| Status::invalid_argument(format!("Invalid UTXO commitment hash: {e}")))?;
+
+        let mut transaction_service = self.get_transaction_service();
+
+        let response = match transaction_service
+            .prepare_withdraw_multisig_transaction(commitment, signatures, recipient.clone())
+            .await
+        {
+            Ok(data) => {
+                let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
+                PrepareWithdrawMultisigTransactionResponse {
+                    is_success: true,
+                    result: json_data,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to lock transaction for address `{recipient}`: {err}"
+                );
+                PrepareWithdrawMultisigTransactionResponse {
+                    is_success: false,
+                    result: Default::default(),
                     failure_message: err.to_string(),
                 }
             },

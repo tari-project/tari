@@ -37,8 +37,9 @@ use tari_crypto::{
         RistrettoSchnorrWithDomain,
         RistrettoSecretKey,
     },
+    signatures::SchnorrSignature,
 };
-
+use tari_hashing::WalletMessageSigningDomain;
 pub type BlockHash = FixedHash;
 
 pub use fixed_hash::{FixedHash, FixedHashSizeError};
@@ -93,6 +94,9 @@ use tari_crypto::{
 };
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;
+
+pub type WalletMessageSchnorrSignature =
+    SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, WalletMessageSigningDomain>;
 
 #[derive(Debug)]
 pub struct BadBlock {

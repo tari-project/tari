@@ -24,7 +24,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, FixedHash},
+    types::{CompressedCommitment, CompressedPublicKey, FixedHash},
 };
 use tari_transaction_components::{
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, WalletOutput},
@@ -111,6 +111,43 @@ pub struct OneSidedTransactionInfo {
     /// Sender address
     pub sender_address: TariAddress,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OneSidedMultisigTransactionInfo {
+    #[serde(flatten)]
+    pub base: OneSidedTransactionInfo,
+    pub public_keys: Vec<CompressedPublicKey>,
+    pub party_number: u8,
+}
+
+impl core::ops::Deref for OneSidedMultisigTransactionInfo {
+    type Target = OneSidedTransactionInfo;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl core::ops::DerefMut for OneSidedMultisigTransactionInfo {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
+}
+
+impl OneSidedMultisigTransactionInfo {
+    pub fn new(base: OneSidedTransactionInfo, public_keys: Vec<CompressedPublicKey>, party_number: u8) -> Self {
+        Self {
+            base,
+            public_keys,
+            party_number,
+        }
+    }
+
+    pub fn into_base(self) -> OneSidedTransactionInfo {
+        self.base
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PrepareOneSidedTransactionForSigningResult {
     pub version: Version,
@@ -121,6 +158,36 @@ pub struct PrepareOneSidedTransactionForSigningResult {
 impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
 
 impl HasVersion for PrepareOneSidedTransactionForSigningResult {
+    fn get_version(&self) -> &Version {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PrepareDepositMultisigTransactionResult {
+    pub version: Version,
+    pub tx_id: TxId,
+    pub info: OneSidedMultisigTransactionInfo,
+}
+
+impl TransactionResult for PrepareDepositMultisigTransactionResult {}
+
+impl HasVersion for PrepareDepositMultisigTransactionResult {
+    fn get_version(&self) -> &Version {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PrepareWithdrawMultisigTransactionResult {
+    pub version: Version,
+    pub tx_id: TxId,
+    pub info: OneSidedTransactionInfo,
+}
+
+impl TransactionResult for PrepareWithdrawMultisigTransactionResult {}
+
+impl HasVersion for PrepareWithdrawMultisigTransactionResult {
     fn get_version(&self) -> &Version {
         &self.version
     }
@@ -144,6 +211,36 @@ pub struct SignedOneSidedTransactionResult {
 impl TransactionResult for SignedOneSidedTransactionResult {}
 
 impl HasVersion for SignedOneSidedTransactionResult {
+    fn get_version(&self) -> &Version {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SignedOneSidedDepositMultisigTransactionResult {
+    pub version: Version,
+    pub request: PrepareDepositMultisigTransactionResult,
+    pub signed_transaction: SignedTransaction,
+}
+
+impl TransactionResult for SignedOneSidedDepositMultisigTransactionResult {}
+
+impl HasVersion for SignedOneSidedDepositMultisigTransactionResult {
+    fn get_version(&self) -> &Version {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SignedOneSidedWithdrawMultisigTransactionResult {
+    pub version: Version,
+    pub request: PrepareWithdrawMultisigTransactionResult,
+    pub signed_transaction: SignedTransaction,
+}
+
+impl TransactionResult for SignedOneSidedWithdrawMultisigTransactionResult {}
+
+impl HasVersion for SignedOneSidedWithdrawMultisigTransactionResult {
     fn get_version(&self) -> &Version {
         &self.version
     }

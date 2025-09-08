@@ -50,8 +50,10 @@ use tari_common_types::{
         CompressedSignature,
         PrivateKey,
         RangeProof,
+        SignatureWithDomain,
         UncompressedComAndPubSignature,
         UncompressedSignature,
+        WalletMessageSchnorrSignature,
     },
     wallet_types::WalletType,
 };
@@ -66,7 +68,7 @@ use tari_crypto::{
         RistrettoComSig,
     },
 };
-use tari_hashing::KeyManagerTransactionsHashDomain;
+use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::{ByteArray, Hidden};
 use tokio::sync::RwLock;
@@ -371,6 +373,31 @@ where TBackend: TransactionKeyManagerBackend + 'static
             "{}: Expected '{}', got {}, wallet_type: {}",
             caller, expected, key_id, self.wallet_type
         ))
+    }
+
+    pub async fn add_offset_to_spend_key(
+        &self,
+        spend_key_id: &TariKeyId,
+        sender_offset_pub_key: &CompressedPublicKey,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        let mut secret = self.get_private_key(spend_key_id).await?;
+        // 1. Get the shared secret (Ad)
+        let shared_secret = self
+            .get_diffie_hellman_shared_secret(spend_key_id, sender_offset_pub_key)
+            .await
+            .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()))?;
+
+        // 2. Hash the shared secret for stealth domain separation
+        let stealth_hash = diffie_hellman_stealth_domain_hasher(shared_secret);
+
+        // 3. Convert hash to a private key
+        let shared_secret_private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
+
+        secret = secret + shared_secret_private_key;
+
+        let shared_secret_key = self.import_key(secret).await?;
+
+        Ok(shared_secret_key)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1145,6 +1172,64 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
                 Ok(CompressedCheckSigSchnorrSignature::new_from_schnorr(signature))
             },
+        }
+    }
+
+    pub async fn sign_script_message_with_spend_key(
+        &self,
+        message: &[u8],
+        sender_offset_pub_key: Option<&CompressedPublicKey>,
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError> {
+        let spend_key = self.get_spend_key().await?;
+
+        if let Some(sender_offset_pub_key) = sender_offset_pub_key {
+            return self
+                .sign_script_message(
+                    &self
+                        .add_offset_to_spend_key(&spend_key.key_id, sender_offset_pub_key)
+                        .await?,
+                    message,
+                )
+                .await
+                .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
+        } else {
+            return self
+                .sign_script_message(&spend_key.key_id, message)
+                .await
+                .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
+        }
+    }
+
+    pub async fn sign_message(
+        &self,
+        message: &[u8],
+        sender_offset_pub_key: Option<&CompressedPublicKey>,
+    ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError> {
+        if matches!(*self.wallet_type, WalletType::Ledger(_)) {
+            return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(
+                "sign_message requires software keys".to_string(),
+            ));
+        }
+
+        let spend_key = self.get_spend_key().await?;
+
+        if let Some(sender_offset_pub_key) = sender_offset_pub_key {
+            let spend_key_id = &self
+                .add_offset_to_spend_key(&spend_key.key_id, sender_offset_pub_key)
+                .await?;
+            return SignatureWithDomain::<WalletMessageSigningDomain>::sign(
+                &self.get_private_key(spend_key_id).await?,
+                message,
+                &mut OsRng,
+            )
+            .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
+        } else {
+            return SignatureWithDomain::<WalletMessageSigningDomain>::sign(
+                &self.get_private_key(&spend_key.key_id).await?,
+                message,
+                &mut OsRng,
+            )
+            .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
         }
     }
 

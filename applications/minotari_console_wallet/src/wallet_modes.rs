@@ -502,6 +502,7 @@ mod test {
         let mut export_tx = false;
         let mut import_tx = false;
         let mut whois = false;
+
         for command in commands {
             match command {
                 CliCommands::GetBalance => get_balance = true,
@@ -531,6 +532,7 @@ mod test {
                         import_tx = true
                     }
                 },
+                CliCommands::PrepareDepositMultisigTransaction(_) => {},
                 CliCommands::ExportSpentUtxos(_) => {},
                 CliCommands::CountUtxos => {},
                 CliCommands::InitShaAtomicSwap(_) => {},
@@ -541,11 +543,20 @@ mod test {
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
                 CliCommands::Sync(_) => {},
                 CliCommands::ExportViewKeyAndSpendKey(_) => {},
+
                 CliCommands::ShowPayRef(_) => {},
                 CliCommands::FindPayRef(_) => {},
                 CliCommands::ListTx => {},
+                CliCommands::SendMultisigUtxo(_) => {},
+                CliCommands::GetMultisigUtxoData(_) => {},
+                CliCommands::CreateMultisigUtxo(_) => {},
                 CliCommands::ReplaceByFee(_) => {},
                 CliCommands::UserPayForFee(_) => {},
+                CliCommands::SignMessage(_) => {},
+                CliCommands::SignScriptMessage(_) => {},
+                CliCommands::SignOneSidedDepositMultisigTransaction(_) => {},
+                CliCommands::SignOneSidedWithdrawMultisigTransaction(_) => {},
+                CliCommands::PrepareWithdrawMultisigTransaction(_) => {},
             }
         }
         assert!(

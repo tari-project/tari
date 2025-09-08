@@ -232,6 +232,10 @@ impl OutputSql {
                 if selection_criteria.excluding_onesided {
                     query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
                 }
+
+                if selection_criteria.excluding_multisig {
+                    query = query.filter(outputs::source.ne(OutputSource::Multisig as i32));
+                }
             },
 
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
@@ -319,6 +323,10 @@ impl OutputSql {
 
         if selection_criteria.excluding_onesided {
             query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
+        }
+
+        if selection_criteria.excluding_multisig {
+            query = query.filter(outputs::source.ne(OutputSource::Multisig as i32));
         }
 
         // Exclude the must-include outputs from the main query

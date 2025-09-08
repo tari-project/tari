@@ -42,6 +42,7 @@ pub struct UtxoSelectionCriteria {
     pub excluding: Vec<CompressedCommitment>,
     pub min_dust: u64,
     pub excluding_onesided: bool,
+    pub excluding_multisig: bool,
 }
 
 impl UtxoSelectionCriteria {

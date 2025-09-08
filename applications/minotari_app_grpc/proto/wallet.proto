@@ -226,6 +226,9 @@ service Wallet {
 
   rpc PrepareOneSidedTransactionForSigning (PrepareOneSidedTransactionForSigningRequest)  returns (PrepareOneSidedTransactionForSigningResponse);
 
+  rpc PrepareDepositMultisigTransaction (PrepareDepositMultisigTransactionRequest) returns (PrepareDepositMultisigTransactionResponse);
+  rpc PrepareWithdrawMultisigTransaction (PrepareWithdrawMultisigTransactionRequest) returns (PrepareWithdrawMultisigTransactionResponse);
+
   rpc BroadcastSignedOneSidedTransaction  (BroadcastSignedOneSidedTransactionRequest)  returns (BroadcastSignedOneSidedTransactionResponse);
 
   // This call supports standard interactive transactions (Mimblewimble),
@@ -1463,6 +1466,33 @@ message GetCompleteAddressResponse {
   // Emoji-encoded version of the one-sided address.
   string one_sided_address_emoji = 6;
 }
+
+
+message PrepareDepositMultisigTransactionRequest {
+  uint64 amount = 1;
+  uint64 party_number = 2;
+  repeated bytes public_keys = 3;
+  bytes recipient_address = 4;
+}
+
+message PrepareWithdrawMultisigTransactionRequest {
+  string utxo_commitment = 1;
+  repeated bytes signatures = 2;
+  bytes recipient_address = 3;
+}
+
+message PrepareDepositMultisigTransactionResponse {
+  bool is_success = 1;
+  string result = 2;
+  string failure_message = 3;
+}
+
+message PrepareWithdrawMultisigTransactionResponse {
+  bool is_success = 1;
+  string result = 2;
+  string failure_message = 3;
+}
+
 
 // A request to preapre a one sided transaction for offline signing
 message PrepareOneSidedTransactionForSigningRequest {

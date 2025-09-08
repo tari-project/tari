@@ -144,7 +144,6 @@ impl TariScript {
     ) -> Result<StackItem, ScriptError> {
         // Copy all inputs onto the stack
         let mut stack = inputs.clone();
-
         // Local execution state
         let mut state = ExecutionState::default();
 
@@ -692,6 +691,16 @@ impl TariScript {
         let ristretto_pk = CompressedKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
+    }
+}
+
+impl Iterator for TariScript {
+    // Define the type of item returned by the iterator
+    type Item = Opcode;
+
+    // Implement the next method
+    fn next(&mut self) -> Option<Self::Item> {
+        self.script.iter().next().cloned()
     }
 }
 

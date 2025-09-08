@@ -19,12 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::str::FromStr;
 
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{memo_field::MemoField, OutputFeatures},
+    transaction_components::{MemoField, OutputFeatures},
     MicroMinotari,
     TransactionBuilder,
 };
@@ -35,10 +36,15 @@ use crate::transaction_service::{
         marshal_output_pair::MarshalOutputPair,
         models::{
             get_supported_version,
+            OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
             PaymentRecipient,
+            PrepareDepositMultisigTransactionResult,
             PrepareOneSidedTransactionForSigningResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
+            SignedOneSidedWithdrawMultisigTransactionResult,
             TransactionMetadata,
         },
         one_sided_signer::OneSidedSigner,
@@ -85,6 +91,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 .map_err(TransactionServiceError::NotSupported)?;
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
+
         let mut outputs = Vec::new();
         for output_pair in tx_builder.custom_outputs() {
             let mut output = output_pair.clone();
@@ -133,6 +140,151 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         })
     }
 
+    pub async fn prepare_deposit_multisig_transaction(
+        &self,
+        tx_id: TxId,
+        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
+        amount: MicroMinotari,
+        payment_id: MemoField,
+        output_features: OutputFeatures,
+        party_number: u8,
+        public_keys: Vec<CompressedPublicKey>,
+        sender: TariAddress,
+        recipient: TariAddress,
+    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionServiceError> {
+        // we do this to ensure the fee is calculated correctly
+        tx_builder
+            .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
+            .await?;
+
+        let mut inputs = Vec::new();
+        for input_ref in tx_builder.inputs() {
+            let mut input = input_ref.clone();
+            input.output.script_key_id = self
+                .make_key_id_export_safe(&input.output.script_key_id)
+                .await
+                .map_err(TransactionServiceError::NotSupported)?;
+            inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
+        }
+        let outputs = Vec::new();
+
+        let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
+            (fee, Some(mut change_output)) => {
+                change_output.output.script_key_id = self
+                    .make_key_id_export_safe(&change_output.output.script_key_id)
+                    .await
+                    .map_err(TransactionServiceError::NotSupported)?;
+                (
+                    fee,
+                    Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
+                )
+            },
+            (fee, None) => (fee, None),
+        };
+
+        let metadata = TransactionMetadata {
+            fee,
+            ..Default::default()
+        };
+
+        let info = OneSidedMultisigTransactionInfo {
+            base: OneSidedTransactionInfo {
+                payment_id,
+                recipient: PaymentRecipient {
+                    amount,
+                    output_features,
+                    address: recipient,
+                },
+                change_output,
+                inputs,
+                outputs,
+                metadata,
+                sender_address: sender,
+            },
+            party_number,
+            public_keys,
+        };
+
+        Ok(PrepareDepositMultisigTransactionResult {
+            version: get_supported_version(),
+            tx_id,
+            info,
+        })
+    }
+
+    pub async fn prepare_withdraw_multisig_transaction(
+        &self,
+        tx_id: TxId,
+        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
+        amount: MicroMinotari,
+        payment_id: MemoField,
+        output_features: OutputFeatures,
+        sender: TariAddress,
+        recipient: TariAddress,
+    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionServiceError> {
+        tx_builder
+            .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
+            .await?;
+
+        let mut inputs = Vec::new();
+        for input_ref in tx_builder.inputs() {
+            let mut input = input_ref.clone();
+            input.output.script_key_id = self
+                .make_key_id_export_safe(&input.output.script_key_id)
+                .await
+                .map_err(TransactionServiceError::NotSupported)?;
+            inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
+        }
+        let mut outputs = Vec::new();
+        for output_pair in tx_builder.custom_outputs() {
+            let mut output = output_pair.clone();
+            output.output.script_key_id = self
+                .make_key_id_export_safe(&output.output.script_key_id)
+                .await
+                .map_err(TransactionServiceError::NotSupported)?;
+            outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
+        }
+
+        let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
+            (fee, Some(mut change_output)) => {
+                change_output.output.script_key_id = self
+                    .make_key_id_export_safe(&change_output.output.script_key_id)
+                    .await
+                    .map_err(TransactionServiceError::NotSupported)?;
+                (
+                    fee,
+                    Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
+                )
+            },
+            (fee, None) => (fee, None),
+        };
+
+        let metadata = TransactionMetadata {
+            fee,
+            ..Default::default()
+        };
+
+        let info = OneSidedTransactionInfo {
+            payment_id,
+            recipient: PaymentRecipient {
+                amount,
+                output_features,
+                address: recipient,
+            },
+            change_output,
+            inputs,
+            outputs,
+            metadata,
+            sender_address: sender,
+        };
+
+        Ok(PrepareWithdrawMultisigTransactionResult {
+            version: get_supported_version(),
+            tx_id,
+            info,
+        })
+    }
+
     pub async fn sign_locked_transaction(
         &self,
         request: PrepareOneSidedTransactionForSigningResult,
@@ -141,6 +293,39 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
         Ok(SignedOneSidedTransactionResult {
+            version: get_supported_version(),
+            request,
+            signed_transaction,
+        })
+    }
+
+    pub async fn sign_locked_deposit_multisig_transaction(
+        &self,
+        request: PrepareDepositMultisigTransactionResult,
+    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionServiceError> {
+        let signer = OneSidedSigner::new(&self.key_manager);
+        let signed_transaction = signer
+            .sign_multisig_transaction(request.tx_id, request.info.clone())
+            .await?;
+
+        Ok(SignedOneSidedDepositMultisigTransactionResult {
+            version: get_supported_version(),
+            request,
+            signed_transaction,
+        })
+    }
+
+    pub async fn sign_locked_withdraw_multisig_transaction(
+        &self,
+        request: PrepareWithdrawMultisigTransactionResult,
+    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionServiceError> {
+        let signer = OneSidedSigner::new(&self.key_manager);
+
+        let signed_transaction = signer
+            .sign_multisig_withdraw_transaction(request.tx_id, request.info.clone())
+            .await?;
+
+        Ok(SignedOneSidedWithdrawMultisigTransactionResult {
             version: get_supported_version(),
             request,
             signed_transaction,
