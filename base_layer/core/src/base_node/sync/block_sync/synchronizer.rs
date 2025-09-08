@@ -29,7 +29,7 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
-use tari_node_components::blocks::Block;
+use tari_node_components::blocks::{Block, ChainBlock};
 use tari_transaction_components::{aggregated_body::AggregateBody, BanPeriod};
 use tari_utilities::hex::Hex;
 
@@ -39,7 +39,6 @@ use crate::{
         sync::{ban::PeerBanManager, hooks::Hooks, rpc, SyncPeer},
         BlockchainSyncConfig,
     },
-    blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,

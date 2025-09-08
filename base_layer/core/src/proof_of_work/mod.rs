@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Crates for proof of work difficulty
-pub(crate) mod accumulated_difficulty;
-pub use accumulated_difficulty::AccumulatedDifficulty;
-
 /// Crates for proof of work monero_rx
 pub mod monero_rx;
 

@@ -32,3 +32,7 @@ pub use proof_of_work::{PowData, ProofOfWork};
 
 mod proof_of_work_algorithm;
 pub use proof_of_work_algorithm::PowAlgorithm;
+
+/// Crates for proof of work difficulty
+pub(crate) mod accumulated_difficulty;
+pub use accumulated_difficulty::AccumulatedDifficulty;

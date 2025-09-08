@@ -37,7 +37,15 @@ use tari_common_types::{
         HashOutput,
     },
 };
-use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
+use tari_node_components::blocks::{
+    Block,
+    BlockHeader,
+    BlockHeaderAccumulatedData,
+    ChainBlock,
+    ChainHeader,
+    HistoricalBlock,
+    NewBlockTemplate,
+};
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
@@ -46,14 +54,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use super::{MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
-    blocks::{
-        BlockAccumulatedData,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        UpdateBlockAccumulatedData,
-    },
+    blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
         blockchain_database::MmrRoots,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},

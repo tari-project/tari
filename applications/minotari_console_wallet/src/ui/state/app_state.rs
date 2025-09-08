@@ -48,7 +48,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::WalletType,
 };
@@ -399,7 +399,7 @@ impl AppState {
             self.cached_data
                 .completed_txs
                 .iter()
-                .filter(|tx| !matches!(tx.status, TransactionStatus::CoinbaseNotInBlockChain))
+                .filter(|tx| !matches!(tx.status, LegacyTransactionStatus::CoinbaseNotInBlockChain))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -733,14 +733,14 @@ impl AppStateInner {
                 )
                 .map_err(|e| UiError::TransactionError(e.to_string()))?;
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
-                    if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
+                    if tx.status == LegacyTransactionStatus::Pending && tx.cancelled.is_none() {
                         self.data.pending_txs[index] = tx;
                         self.updated = true;
                         return Ok(());
                     } else {
                         let _completed_transaction_info = self.data.pending_txs.remove(index);
                     }
-                } else if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
+                } else if tx.status == LegacyTransactionStatus::Pending && tx.cancelled.is_none() {
                     self.data.pending_txs.push(tx);
                     self.data.pending_txs.sort_by(|a, b| {
                         b.timestamp
@@ -881,7 +881,7 @@ pub struct CompletedTransactionInfo {
     pub fee: MicroMinotari,
     pub excess_signature: String,
     pub maturity: u64,
-    pub status: TransactionStatus,
+    pub status: LegacyTransactionStatus,
     pub timestamp: NaiveDateTime,
     pub mined_timestamp: Option<NaiveDateTime>,
     pub cancelled: Option<TxCancellationReason>,

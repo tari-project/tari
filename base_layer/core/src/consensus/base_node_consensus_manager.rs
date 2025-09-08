@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
+use tari_node_components::blocks::ChainBlock;
 use tari_transaction_components::{
     consensus::{
         emission::{Emission, EmissionSchedule},
@@ -37,7 +38,7 @@ use tari_transaction_components::{
 };
 
 use crate::{
-    blocks::{pre_mine::pre_mine_spendable_at_height, ChainBlock},
+    blocks::pre_mine::pre_mine_spendable_at_height,
     consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
     proof_of_work::TargetDifficultyWindow,
 };

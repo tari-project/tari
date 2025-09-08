@@ -22,13 +22,12 @@
 
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock};
 use tari_transaction_components::{crypto_factories::CryptoFactories, tari_proof_of_work::PowAlgorithm};
 use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
-    blocks::ChainBlock,
     chain_storage::{self, BlockchainBackend},
     consensus::BaseNodeConsensusManager,
     proof_of_work::monero_rx::MoneroPowData,

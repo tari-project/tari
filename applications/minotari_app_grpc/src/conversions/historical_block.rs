@@ -22,17 +22,17 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_core::{blocks::HistoricalBlock, chain_storage::ChainStorageError};
+use tari_node_components::blocks::{BlockError, HistoricalBlock};
 
 use crate::tari_rpc as grpc;
 
 impl TryFrom<HistoricalBlock> for grpc::HistoricalBlock {
-    type Error = ChainStorageError;
+    type Error = BlockError;
 
     fn try_from(hb: HistoricalBlock) -> Result<Self, Self::Error> {
         Ok(Self {
             confirmations: hb.confirmations(),
-            block: Some(hb.into_block().try_into().map_err(ChainStorageError::ConversionError)?),
+            block: Some(hb.into_block().try_into().map_err(|_| BlockError::ConversionError)?),
         })
     }
 }

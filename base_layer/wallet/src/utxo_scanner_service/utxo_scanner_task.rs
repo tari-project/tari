@@ -32,7 +32,7 @@ use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     seeds::seed_words::get_birthday_from_unix_epoch_in_seconds,
     tari_address::TariAddress,
-    transaction::{ImportStatus, TxId},
+    transaction::{LegacyImportStatus, TxId},
     types::{BlockHash, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
@@ -612,9 +612,9 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
+    ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
         let start = Instant::now();
-        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = self
+        let mut found_outputs: Vec<(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)> = self
             .resources
             .output_manager_service
             .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
@@ -622,9 +622,9 @@ where
             .into_iter()
             .map(|ro| -> Result<_, anyhow::Error> {
                 let status = if ro.output.features.is_coinbase() {
-                    ImportStatus::CoinbaseUnconfirmed
+                    LegacyImportStatus::CoinbaseUnconfirmed
                 } else {
-                    ImportStatus::OneSidedUnconfirmed
+                    LegacyImportStatus::OneSidedUnconfirmed
                 };
                 let output = outputs
                     .iter()
@@ -649,9 +649,9 @@ where
                 .into_iter()
                 .map(|ro| -> Result<_, anyhow::Error> {
                     let status = if ro.output.features.is_coinbase() {
-                        ImportStatus::CoinbaseUnconfirmed
+                        LegacyImportStatus::CoinbaseUnconfirmed
                     } else {
-                        ImportStatus::Imported
+                        LegacyImportStatus::Imported
                     };
                     let output = outputs
                         .iter()
@@ -674,7 +674,7 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: &[(WalletOutput, ImportStatus, TxId, TransactionOutput)],
+        utxos: &[(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)],
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
@@ -746,7 +746,7 @@ where
         &mut self,
         wallet_output: WalletOutput,
         source_address: TariAddress,
-        import_status: ImportStatus,
+        import_status: LegacyImportStatus,
         tx_id: TxId,
         current_height: u64,
         mined_timestamp: DateTime<Utc>,

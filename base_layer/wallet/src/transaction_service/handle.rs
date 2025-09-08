@@ -32,7 +32,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     epoch::VnEpoch,
     tari_address::TariAddress,
-    transaction::{ImportStatus, TransactionDirection, TxId},
+    transaction::{LegacyImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
@@ -220,7 +220,7 @@ pub enum TransactionServiceRequest {
     ImportUtxoWithStatus {
         amount: MicroMinotari,
         source_address: TariAddress,
-        import_status: ImportStatus,
+        import_status: LegacyImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
@@ -1289,7 +1289,7 @@ impl TransactionServiceHandle {
         &mut self,
         amount: MicroMinotari,
         source_address: TariAddress,
-        import_status: ImportStatus,
+        import_status: LegacyImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,

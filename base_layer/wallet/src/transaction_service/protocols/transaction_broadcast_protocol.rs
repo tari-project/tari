@@ -28,7 +28,7 @@ use futures::FutureExt;
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TxId},
     types::CompressedSignature,
 };
 use tari_transaction_components::{
@@ -109,9 +109,9 @@ where
                 },
             };
 
-            if !(completed_tx.status == TransactionStatus::Completed ||
-                completed_tx.status == TransactionStatus::Broadcast ||
-                completed_tx.status == TransactionStatus::MinedUnconfirmed)
+            if !(completed_tx.status == LegacyTransactionStatus::Completed ||
+                completed_tx.status == LegacyTransactionStatus::Broadcast ||
+                completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
             {
                 debug!(
                     target: LOG_TARGET,

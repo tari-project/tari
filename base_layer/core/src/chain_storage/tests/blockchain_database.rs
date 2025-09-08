@@ -37,7 +37,6 @@ use tari_transaction_components::{
 use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::{
-    blocks::{BlockHeaderAccumulatedData, ChainHeader},
     chain_storage::{BlockchainDatabase, ChainStorageError},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{
@@ -536,9 +535,11 @@ mod fetch_header_containing_kernel_mmr {
 }
 
 mod clear_all_pending_headers {
+    use tari_node_components::blocks::ChainHeader;
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
+    use crate::blocks::BlockHeaderAccumulatedDataBuilder;
 
     #[tokio::test]
     async fn it_clears_no_headers() {
@@ -564,7 +565,7 @@ mod clear_all_pending_headers {
                 let mut header = BlockHeader::from_previous(prev_header.header());
                 header.kernel_mmr_size += 1;
                 header.output_smt_size += 1;
-                let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
+                let accum = BlockHeaderAccumulatedDataBuilder::from_previous(&prev_accum)
                     .with_hash(header.hash())
                     .with_achieved_target_difficulty(
                         AchievedTargetDifficulty::try_construct(

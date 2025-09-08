@@ -48,10 +48,10 @@ use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     tari_address::TariAddress,
     transaction::{
+        LegacyTransactionStatus,
         TransactionConversionError,
         TransactionDirection,
         TransactionDirectionError,
-        TransactionStatus,
         TxId,
     },
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
@@ -673,10 +673,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Ok(v) => {
                     // Note: This status test that does not error if the status do not match makes it inefficient
                     //       to combine the 'find' and 'update' queries.
-                    if TransactionStatus::try_from(v.status)? == TransactionStatus::Completed {
+                    if LegacyTransactionStatus::try_from(v.status)? == LegacyTransactionStatus::Completed {
                         v.update(
                             UpdateCompletedTransactionSql {
-                                status: Some(TransactionStatus::Broadcast as i32),
+                                status: Some(LegacyTransactionStatus::Broadcast as i32),
                                 ..Default::default()
                             },
                             conn,
@@ -831,7 +831,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         must_be_confirmed: bool,
-        status: &TransactionStatus,
+        status: &LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -937,8 +937,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let txs = completed_transactions::table
             .filter(
                 completed_transactions::status
-                    .eq(TransactionStatus::Completed as i32)
-                    .or(completed_transactions::status.eq(TransactionStatus::Broadcast as i32)),
+                    .eq(LegacyTransactionStatus::Completed as i32)
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::Broadcast as i32)),
             )
             .filter(completed_transactions::cancelled.is_null())
             .order_by(completed_transactions::tx_id)
@@ -969,9 +969,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let result = diesel::update(completed_transactions::table)
-            .filter(completed_transactions::status.ne(TransactionStatus::CoinbaseNotInBlockChain as i32))
-            .filter(completed_transactions::status.ne(TransactionStatus::CoinbaseUnconfirmed as i32))
-            .filter(completed_transactions::status.ne(TransactionStatus::CoinbaseConfirmed as i32))
+            .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
+            .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
+            .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
@@ -998,7 +998,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let result = diesel::update(completed_transactions::table)
-            .filter(completed_transactions::status.eq(TransactionStatus::Rejected as i32))
+            .filter(completed_transactions::status.eq(LegacyTransactionStatus::Rejected as i32))
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
@@ -1008,11 +1008,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         trace!(target: LOG_TARGET, "rows updated: {result:?}");
         // we want to double check unmined coinbases again, so lets set those
         let result = diesel::update(completed_transactions::table)
-            .filter(completed_transactions::status.eq(TransactionStatus::CoinbaseNotInBlockChain as i32))
+            .filter(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
-                completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32),
+                completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseUnconfirmed as i32),
             ))
             .execute(&mut conn)?;
         trace!(target: LOG_TARGET, "rows updated: {result:?}");
@@ -1089,7 +1089,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &mut conn)?
+        CompletedTransactionSql::index_by_status_and_cancelled(LegacyTransactionStatus::Imported, false, &mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
                 CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
@@ -1104,7 +1104,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut results = HashMap::new();
 
         let one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
-            TransactionStatus::OneSidedUnconfirmed,
+            LegacyTransactionStatus::OneSidedUnconfirmed,
             false,
             &mut conn,
         )?
@@ -1118,7 +1118,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         let coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
-            TransactionStatus::CoinbaseUnconfirmed,
+            LegacyTransactionStatus::CoinbaseUnconfirmed,
             false,
             &mut conn,
         )?
@@ -1209,7 +1209,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
 
         let coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
-            TransactionStatus::CoinbaseNotInBlockChain,
+            LegacyTransactionStatus::CoinbaseNotInBlockChain,
             false,
             height as i64,
             &mut conn,
@@ -1294,7 +1294,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
 
         let mut one_sided = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
-            TransactionStatus::OneSidedConfirmed,
+            LegacyTransactionStatus::OneSidedConfirmed,
             false,
             height as i64,
             &mut conn,
@@ -1305,7 +1305,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
-            TransactionStatus::CoinbaseConfirmed,
+            LegacyTransactionStatus::CoinbaseConfirmed,
             false,
             height as i64,
             &mut conn,
@@ -1608,7 +1608,7 @@ impl InboundTransaction {
             amount: MicroMinotari::from(i.amount as u64),
             receiver_protocol: bincode::deserialize(&i.receiver_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             timestamp: i.timestamp.and_utc(),
             cancelled: i.cancelled != 0,
             direct_send_success: i.direct_send_success != 0,
@@ -1871,7 +1871,7 @@ impl OutboundTransaction {
             fee: MicroMinotari::from(o.fee as u64),
             sender_protocol: bincode::deserialize(&o.sender_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             timestamp: o.timestamp.and_utc(),
             cancelled: o.cancelled != 0,
             direct_send_success: o.direct_send_success != 0,
@@ -1961,7 +1961,7 @@ impl CompletedTransactionSql {
     }
 
     pub fn index_by_status_and_cancelled(
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         cancelled: bool,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
@@ -1977,7 +1977,7 @@ impl CompletedTransactionSql {
     }
 
     pub fn index_by_status_and_cancelled_from_block_height(
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         cancelled: bool,
         block_height: i64,
         conn: &mut SqliteConnection,
@@ -2022,11 +2022,11 @@ impl CompletedTransactionSql {
             .filter(
                 completed_transactions::status
                     // Include transactions with confirmed/unconfirmed statuses that may have mismatched mined data
-                    .eq(TransactionStatus::Imported as i32)
-                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedUnconfirmed as i32))
-                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedConfirmed as i32))
-                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32))
-                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
+                    .eq(LegacyTransactionStatus::Imported as i32)
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::OneSidedUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::OneSidedConfirmed as i32))
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseConfirmed as i32)),
             )
             .filter(
                 completed_transactions::mined_height
@@ -2072,7 +2072,7 @@ impl CompletedTransactionSql {
         )
         .set(UpdateCompletedTransactionSql {
             cancelled: Some(Some(reason as i32)),
-            status: Some(TransactionStatus::Rejected as i32),
+            status: Some(LegacyTransactionStatus::Rejected as i32),
             ..Default::default()
         })
         .execute(conn)
@@ -2132,7 +2132,7 @@ impl CompletedTransactionSql {
 
     pub fn update_mined_height(
         tx_id: TxId,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
@@ -2228,22 +2228,22 @@ impl CompletedTransactionSql {
             .load::<(i32, Option<i64>)>(conn)?
             .first()
             .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
-        let current_status = TransactionStatus::try_from(current_status)
+        let current_status = LegacyTransactionStatus::try_from(current_status)
             .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 status: match current_status {
-                    TransactionStatus::OneSidedConfirmed | TransactionStatus::OneSidedUnconfirmed => {
-                        Some(TransactionStatus::OneSidedUnconfirmed as i32)
+                    LegacyTransactionStatus::OneSidedConfirmed | LegacyTransactionStatus::OneSidedUnconfirmed => {
+                        Some(LegacyTransactionStatus::OneSidedUnconfirmed as i32)
                     },
-                    TransactionStatus::CoinbaseUnconfirmed |
-                    TransactionStatus::CoinbaseConfirmed |
-                    TransactionStatus::CoinbaseNotInBlockChain => {
-                        Some(TransactionStatus::CoinbaseNotInBlockChain as i32)
+                    LegacyTransactionStatus::CoinbaseUnconfirmed |
+                    LegacyTransactionStatus::CoinbaseConfirmed |
+                    LegacyTransactionStatus::CoinbaseNotInBlockChain => {
+                        Some(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32)
                     },
-                    TransactionStatus::Imported => Some(TransactionStatus::Imported as i32),
-                    TransactionStatus::Broadcast => Some(TransactionStatus::Broadcast as i32),
-                    _ => Some(TransactionStatus::Completed as i32),
+                    LegacyTransactionStatus::Imported => Some(LegacyTransactionStatus::Imported as i32),
+                    LegacyTransactionStatus::Broadcast => Some(LegacyTransactionStatus::Broadcast as i32),
+                    _ => Some(LegacyTransactionStatus::Completed as i32),
                 },
                 mined_in_block: Some(None),
                 mined_height: {
@@ -2412,7 +2412,7 @@ impl CompletedTransaction {
             fee: MicroMinotari::from(c.fee as u64),
             transaction: bincode::deserialize(&c.transaction_protocol)
                 .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
-            status: TransactionStatus::try_from(c.status)?,
+            status: LegacyTransactionStatus::try_from(c.status)?,
             timestamp: c.timestamp.and_utc(),
             cancelled: c
                 .cancelled
@@ -2462,7 +2462,7 @@ pub struct UpdateCompletedTransactionSql {
 pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
     pub signature: CompressedSignature,
-    pub status: TransactionStatus,
+    pub status: LegacyTransactionStatus,
     pub payment_id: MemoField,
 }
 
@@ -2476,7 +2476,7 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
                 CompressedPublicKey::from_vec(&i.transaction_signature_nonce)?,
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
-            status: TransactionStatus::try_from(i.status)?,
+            status: LegacyTransactionStatus::try_from(i.status)?,
             payment_id: MemoField::from_bytes(&i.payment_id.unwrap_or_default()),
         })
     }
@@ -2507,12 +2507,12 @@ impl UnconfirmedTransactionInfoSql {
             .filter(
                 completed_transactions::status
                     // Filter out imported or scanned transactions
-                    .ne(TransactionStatus::Imported as i32)
-                    .and(completed_transactions::status.ne(TransactionStatus::OneSidedUnconfirmed as i32))
-                    .and(completed_transactions::status.ne(TransactionStatus::OneSidedConfirmed as i32))
-                    .and(completed_transactions::status.ne(TransactionStatus::CoinbaseUnconfirmed as i32))
-                    .and(completed_transactions::status.ne(TransactionStatus::CoinbaseConfirmed as i32))
-                    .and(completed_transactions::status.ne(TransactionStatus::CoinbaseNotInBlockChain as i32))
+                    .ne(LegacyTransactionStatus::Imported as i32)
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedUnconfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
                     // Filter out any transaction without a kernel signature
                     .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
                     .and(completed_transactions::transaction_signature_key.ne(vec![0u8; 32]))
@@ -2520,7 +2520,7 @@ impl UnconfirmedTransactionInfoSql {
                     .and(
                         completed_transactions::mined_height
                             .is_null()
-                            .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32)),
                     ),
             )
             .filter(completed_transactions::cancelled.is_null())
@@ -2600,7 +2600,7 @@ mod test {
     use tari_common_types::{
         encryption::Encryptable,
         tari_address::TariAddress,
-        transaction::{TransactionDirection, TransactionStatus, TxId},
+        transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
         types::{CompressedPublicKey, CompressedSignature, PrivateKey},
     };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
@@ -2704,7 +2704,7 @@ mod test {
             amount,
             fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
@@ -2725,7 +2725,7 @@ mod test {
                 amount,
                 fee,
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
-                status: TransactionStatus::Pending,
+                status: LegacyTransactionStatus::Pending,
                 payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
@@ -2795,7 +2795,7 @@ mod test {
             source_address: source_address.clone(),
             amount,
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
@@ -2809,7 +2809,7 @@ mod test {
             source_address,
             amount,
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
@@ -2873,7 +2873,7 @@ mod test {
             amount,
             fee: MicroMinotari::from(100),
             transaction: tx.clone(),
-            status: TransactionStatus::MinedUnconfirmed,
+            status: LegacyTransactionStatus::MinedUnconfirmed,
             timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
@@ -2910,7 +2910,7 @@ mod test {
             amount,
             fee: MicroMinotari::from(100),
             transaction: tx.clone(),
-            status: TransactionStatus::Broadcast,
+            status: LegacyTransactionStatus::Broadcast,
             timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
@@ -3031,7 +3031,7 @@ mod test {
             .update(
                 UpdateCompletedTransactionSql {
                     cancelled: Some(Some(TxCancellationReason::Unknown as i32)),
-                    status: Some(TransactionStatus::Rejected as i32),
+                    status: Some(LegacyTransactionStatus::Rejected as i32),
                     ..Default::default()
                 },
                 &mut conn,
@@ -3083,7 +3083,7 @@ mod test {
             source_address,
             amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
@@ -3113,7 +3113,7 @@ mod test {
             amount: MicroMinotari::from(100),
             fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
+            status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
@@ -3157,7 +3157,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 PrivateKey::random(&mut OsRng),
             ),
-            status: TransactionStatus::MinedUnconfirmed,
+            status: LegacyTransactionStatus::MinedUnconfirmed,
             timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
@@ -3231,7 +3231,7 @@ mod test {
                 source_address,
                 amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-                status: TransactionStatus::Pending,
+                status: LegacyTransactionStatus::Pending,
                 payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
@@ -3256,7 +3256,7 @@ mod test {
                 amount: MicroMinotari::from(100),
                 fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
-                status: TransactionStatus::Pending,
+                status: LegacyTransactionStatus::Pending,
                 payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
@@ -3294,7 +3294,7 @@ mod test {
                     PrivateKey::random(&mut OsRng),
                     PrivateKey::random(&mut OsRng),
                 ),
-                status: TransactionStatus::MinedUnconfirmed,
+                status: LegacyTransactionStatus::MinedUnconfirmed,
                 timestamp: Utc::now(),
                 cancelled: None,
                 direction: TransactionDirection::Unknown,
@@ -3378,7 +3378,7 @@ mod test {
                     } else {
                         None
                     },
-                    TransactionStatus::Completed,
+                    LegacyTransactionStatus::Completed,
                 ),
                 1 => (
                     if i % 5 == 0 {
@@ -3386,7 +3386,7 @@ mod test {
                     } else {
                         None
                     },
-                    TransactionStatus::Broadcast,
+                    LegacyTransactionStatus::Broadcast,
                 ),
                 2 => (
                     if i % 7 == 0 {
@@ -3394,7 +3394,7 @@ mod test {
                     } else {
                         None
                     },
-                    TransactionStatus::Completed,
+                    LegacyTransactionStatus::Completed,
                 ),
                 3 => (
                     if i % 11 == 0 {
@@ -3402,15 +3402,15 @@ mod test {
                     } else {
                         None
                     },
-                    TransactionStatus::Broadcast,
+                    LegacyTransactionStatus::Broadcast,
                 ),
-                4 => (None, TransactionStatus::Completed),
-                5 => (None, TransactionStatus::Broadcast),
-                6 => (None, TransactionStatus::Pending),
-                8 => (None, TransactionStatus::MinedUnconfirmed),
-                9 => (None, TransactionStatus::Imported),
-                10 => (None, TransactionStatus::MinedConfirmed),
-                _ => (None, TransactionStatus::Completed),
+                4 => (None, LegacyTransactionStatus::Completed),
+                5 => (None, LegacyTransactionStatus::Broadcast),
+                6 => (None, LegacyTransactionStatus::Pending),
+                8 => (None, LegacyTransactionStatus::MinedUnconfirmed),
+                9 => (None, LegacyTransactionStatus::Imported),
+                10 => (None, LegacyTransactionStatus::MinedConfirmed),
+                _ => (None, LegacyTransactionStatus::Completed),
             };
             let source_address = TariAddress::new_dual_address_with_default_features(
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -3475,7 +3475,9 @@ mod test {
         let txn_list = db1.get_transactions_to_be_broadcast().unwrap();
         assert_eq!(txn_list.len(), 633);
         for txn in &txn_list {
-            assert!(txn.status == TransactionStatus::Completed || txn.status == TransactionStatus::Broadcast);
+            assert!(
+                txn.status == LegacyTransactionStatus::Completed || txn.status == LegacyTransactionStatus::Broadcast
+            );
             assert!(txn.cancelled.is_none());
         }
 

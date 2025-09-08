@@ -127,13 +127,13 @@ use tari_common_types::{
         UncompressedCommitment,
     },
 };
-use tari_node_components::blocks::{Block, BlockHeader};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::{consensus_constants::BlockVersion, ConsensusConstants},
-    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
         OutputType,
         SideChainFeatureData,
@@ -160,7 +160,7 @@ use super::{
     stats_collector::{DatabaseStats, LMDBStatsCollector},
 };
 use crate::{
-    blocks::{BlockAccumulatedData, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
+    blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
@@ -217,7 +217,7 @@ use crate::{
         ValidatorNodeRegistrationInfo,
     },
     consensus::BaseNodeConsensusManager,
-    proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty},
+    proof_of_work::monero_rx::MoneroPowData,
     PrunedKernelMmr,
 };
 

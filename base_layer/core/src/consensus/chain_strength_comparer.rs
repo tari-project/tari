@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, fmt::Debug};
 
-use crate::blocks::ChainHeader;
+use tari_node_components::blocks::ChainHeader;
 
 pub trait ChainStrengthComparer: Debug {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering;

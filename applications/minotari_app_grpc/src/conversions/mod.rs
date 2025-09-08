@@ -29,7 +29,6 @@ pub mod chain_metadata;
 pub mod com_and_pub_signature;
 pub mod commitment_signature;
 pub mod consensus_constants;
-#[cfg(feature = "base_node")]
 pub mod historical_block;
 pub mod new_block_template;
 pub mod output_features;

@@ -41,7 +41,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
-    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
     types::{
         ComAndPubSignature,
         CommitmentFactory,
@@ -1097,7 +1097,7 @@ where
                     amount,
                     fee,
                     transaction.clone(),
-                    TransactionStatus::Pending,
+                    LegacyTransactionStatus::Pending,
                     Utc::now(),
                     TransactionDirection::Outbound,
                     None,
@@ -1158,7 +1158,7 @@ where
                     amount,
                     fee,
                     transaction.clone(),
-                    TransactionStatus::Pending,
+                    LegacyTransactionStatus::Pending,
                     Utc::now(),
                     TransactionDirection::Outbound,
                     None,
@@ -1307,7 +1307,7 @@ where
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,
-                transaction_status: TransactionStatus::Completed,
+                transaction_status: LegacyTransactionStatus::Completed,
             }),
             transaction_broadcast_join_handles,
         );
@@ -1495,7 +1495,7 @@ where
                 amount,
                 fee,
                 tx.clone(),
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
@@ -1620,7 +1620,7 @@ where
                 amount,
                 fee,
                 tx.clone(),
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
@@ -1788,7 +1788,7 @@ where
                 amount,
                 fee,
                 tx.clone(),
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
@@ -2025,7 +2025,7 @@ where
                 amount,
                 fee,
                 tx.clone(),
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
@@ -2122,7 +2122,7 @@ where
                 amount,
                 fee,
                 transaction,
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Inbound,
                 None,
@@ -2207,7 +2207,7 @@ where
                 amount,
                 fee,
                 transaction,
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Inbound,
                 None,
@@ -2282,7 +2282,7 @@ where
                 amount,
                 fee,
                 transaction,
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Inbound,
                 None,
@@ -2440,7 +2440,7 @@ where
     ) {
         match join_result {
             Ok(val) => {
-                if val.transaction_status != TransactionStatus::Queued {
+                if val.transaction_status != LegacyTransactionStatus::Queued {
                     let _sender = self.send_transaction_cancellation_senders.remove(&val.tx_id);
                     let completed_tx = match self.db.get_completed_transaction(val.tx_id) {
                         Ok(v) => v,
@@ -2460,7 +2460,7 @@ where
                                 "Error starting Broadcast Protocol after completed Send Transaction Protocol: {resp:?}"
                             );
                         });
-                } else if val.transaction_status == TransactionStatus::Queued {
+                } else if val.transaction_status == LegacyTransactionStatus::Queued {
                     trace!(
                         target: LOG_TARGET,
                         "Send Transaction Protocol for TxId: {} not completed successfully, transaction Queued",
@@ -2735,9 +2735,9 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_tx.tx_id;
-        if !(completed_tx.status == TransactionStatus::Completed ||
-            completed_tx.status == TransactionStatus::Broadcast ||
-            completed_tx.status == TransactionStatus::MinedUnconfirmed) ||
+        if !(completed_tx.status == LegacyTransactionStatus::Completed ||
+            completed_tx.status == LegacyTransactionStatus::Broadcast ||
+            completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed) ||
             completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
@@ -2826,7 +2826,7 @@ where
         &mut self,
         value: MicroMinotari,
         source_address: TariAddress,
-        import_status: ImportStatus,
+        import_status: LegacyImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
@@ -2872,7 +2872,7 @@ where
             amount,
             source_address,
             destination_address,
-            TransactionStatus::try_from(import_status.clone())?,
+            LegacyTransactionStatus::try_from(import_status.clone())?,
             current_height,
             mined_timestamp,
             scanned_output,
@@ -2880,20 +2880,20 @@ where
             direction,
         )?;
         let transaction_event = match import_status {
-            ImportStatus::Broadcast => TransactionEvent::TransactionBroadcast(tx_id),
-            ImportStatus::Imported => TransactionEvent::DetectedTransactionUnconfirmed {
+            LegacyImportStatus::Broadcast => TransactionEvent::TransactionBroadcast(tx_id),
+            LegacyImportStatus::Imported => TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations: 0,
                 is_valid: true,
             },
-            ImportStatus::OneSidedUnconfirmed | ImportStatus::CoinbaseUnconfirmed => {
+            LegacyImportStatus::OneSidedUnconfirmed | LegacyImportStatus::CoinbaseUnconfirmed => {
                 TransactionEvent::DetectedTransactionUnconfirmed {
                     tx_id,
                     num_confirmations: 0,
                     is_valid: true,
                 }
             },
-            ImportStatus::OneSidedConfirmed | ImportStatus::CoinbaseConfirmed => {
+            LegacyImportStatus::OneSidedConfirmed | LegacyImportStatus::CoinbaseConfirmed => {
                 TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true }
             },
         };
@@ -2929,7 +2929,7 @@ where
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,
-                transaction_status: TransactionStatus::Completed,
+                transaction_status: LegacyTransactionStatus::Completed,
             }),
             transaction_broadcast_join_handles,
         );
@@ -3157,7 +3157,7 @@ where
                 amount,
                 fee,
                 tx,
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Inbound,
                 None,
@@ -3324,7 +3324,7 @@ where
                 amount,
                 fee,
                 request.signed_transaction.transaction.clone(),
-                TransactionStatus::Completed,
+                LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
@@ -3371,5 +3371,5 @@ enum PowerMode {
 #[derive(Debug)]
 pub struct TransactionSendResult {
     pub tx_id: TxId,
-    pub transaction_status: TransactionStatus,
+    pub transaction_status: LegacyTransactionStatus,
 }

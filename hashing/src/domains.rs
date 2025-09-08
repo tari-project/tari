@@ -86,3 +86,5 @@ hash_domain!(
     "com.tari.base_layer.common_types.bullet_rangeproofs",
     1
 );
+
+hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);

@@ -9,7 +9,7 @@ use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::{
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{LegacyTransactionStatus, TransactionDirection},
 };
 use tari_transaction_components::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
@@ -223,8 +223,12 @@ impl TransactionsTab {
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
             if let Some(tx_type) = tx.payment_id.as_ref().and_then(|p| p.get_tx_type()) {
                 match tx.status {
-                    TransactionStatus::OneSidedUnconfirmed => transaction_status = TransactionStatus::MinedUnconfirmed,
-                    TransactionStatus::OneSidedConfirmed => transaction_status = TransactionStatus::MinedConfirmed,
+                    LegacyTransactionStatus::OneSidedUnconfirmed => {
+                        transaction_status = LegacyTransactionStatus::MinedUnconfirmed
+                    },
+                    LegacyTransactionStatus::OneSidedConfirmed => {
+                        transaction_status = LegacyTransactionStatus::MinedConfirmed
+                    },
                     _ => {},
                 }
                 transaction_type = tx_type;
@@ -393,8 +397,8 @@ impl TransactionsTab {
             let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
                 if let Some(fee) = tx.payment_id.as_ref().and_then(|p| p.get_fee()) {
                     let status = match tx.status {
-                        TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
-                        TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
+                        LegacyTransactionStatus::OneSidedUnconfirmed => LegacyTransactionStatus::MinedUnconfirmed,
+                        LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::MinedConfirmed,
                         _ => tx.status,
                     };
 
@@ -426,13 +430,13 @@ impl TransactionsTab {
                 };
 
             let source_address =
-                if tx.status == TransactionStatus::Pending && direction == TransactionDirection::Outbound {
+                if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Outbound {
                     Span::raw("")
                 } else {
                     Span::styled(format!("{source}"), Style::default().fg(Color::White))
                 };
             let destination_address =
-                if tx.status == TransactionStatus::Pending && direction == TransactionDirection::Inbound {
+                if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Inbound {
                     Span::raw("")
                 } else {
                     Span::styled(format!("{destination}"), Style::default().fg(Color::White))
@@ -482,15 +486,15 @@ impl TransactionsTab {
             );
 
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
-            let confirmations_msg = if (tx.status == TransactionStatus::MinedConfirmed ||
-                tx.status == TransactionStatus::OneSidedConfirmed ||
-                tx.status == TransactionStatus::CoinbaseConfirmed) &&
+            let confirmations_msg = if (tx.status == LegacyTransactionStatus::MinedConfirmed ||
+                tx.status == LegacyTransactionStatus::OneSidedConfirmed ||
+                tx.status == LegacyTransactionStatus::CoinbaseConfirmed) &&
                 tx.cancelled.is_none()
             {
                 format!("{required_confirmations} required confirmations met")
-            } else if (tx.status == TransactionStatus::MinedUnconfirmed ||
-                tx.status == TransactionStatus::OneSidedUnconfirmed ||
-                tx.status == TransactionStatus::CoinbaseUnconfirmed) &&
+            } else if (tx.status == LegacyTransactionStatus::MinedUnconfirmed ||
+                tx.status == LegacyTransactionStatus::OneSidedUnconfirmed ||
+                tx.status == LegacyTransactionStatus::CoinbaseUnconfirmed) &&
                 tx.cancelled.is_none()
             {
                 if let Some(count) = confirmation_count {
