@@ -29,7 +29,13 @@ use tari_common::{
     configuration::bootstrap::prompt,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity, NodeIdentity};
+use tari_comms::{
+    multiaddr::{Multiaddr, Protocol},
+    peer_manager::PeerFeatures,
+    tor::TorIdentity,
+    NodeIdentity,
+};
+use tari_p2p::TransportType;
 use tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "minotari_application";
@@ -52,12 +58,20 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     public_addresses: Vec<Multiaddr>,
     create_id: bool,
     peer_features: PeerFeatures,
+    transport_type: TransportType,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
-    match load_node_identity(&identity_file) {
+    match load_node_identity(&identity_file, transport_type) {
         Ok(mut id) => {
             id.set_peer_features(peer_features);
-            for public_address in public_addresses {
+            // Filter addresses based on transport type
+            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
+            for public_address in filtered_addresses {
                 id.add_public_address(public_address.clone());
+                debug!(
+                    target: LOG_TARGET,
+                    "Added address: {}",
+                    public_address
+                );
             }
             Ok(Arc::new(id))
         },
@@ -90,7 +104,8 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             }
             debug!(target: LOG_TARGET, "Existing node id not found. {e}. Creating new ID");
 
-            match create_new_node_identity(&identity_file, public_addresses, peer_features) {
+            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
+            match create_new_node_identity(&identity_file, filtered_addresses, peer_features) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -121,11 +136,60 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing a NodeIdentity on success, string indicates the reason on failure
-fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityError> {
+fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) -> Result<NodeIdentity, IdentityError> {
     check_identity_file(&path)?;
 
     let id_str = fs::read_to_string(path.as_ref())?;
     let id = json5::from_str::<NodeIdentity>(&id_str)?;
+
+    let id = if transport_type == TransportType::Tcp {
+        let current_addresses = id.public_addresses();
+        debug!(
+            target: LOG_TARGET,
+            "Filtering addresses for TCP transport. Current addresses: {:?}",
+            current_addresses
+        );
+        // For TCP transport:
+        // 1. Remove all onion addresses
+        // 2. Remove localhost TCP addresses (they likely have stale ports from previous runs)
+        // 3. Keep external TCP addresses as they're likely intentionally configured
+        let filtered_addresses: Vec<Multiaddr> = current_addresses
+            .into_iter()
+            .filter(|addr| {
+                // Remove onion addresses
+                if addr.iter().any(|p| matches!(p, Protocol::Onion3(_))) {
+                    return false;
+                }
+                // Remove localhost TCP addresses to avoid stale ports from previous runs
+                // but keep external addresses
+                let is_localhost = addr.iter().any(|p| match p {
+                    Protocol::Ip4(ip) => ip.is_loopback() || ip.is_unspecified(),
+                    Protocol::Ip6(ip) => ip.is_loopback() || ip.is_unspecified(),
+                    _ => false,
+                });
+                if is_localhost && addr.iter().any(|p| matches!(p, Protocol::Tcp(_))) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Removing localhost TCP address from identity: {}",
+                        addr
+                    );
+                    return false;
+                }
+                true
+            })
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "After filtering for TCP transport, {} addresses remain: {:?}",
+            filtered_addresses.len(),
+            filtered_addresses
+        );
+        id.set_public_addresses(filtered_addresses);
+        id
+    } else {
+        id
+    };
+
     // Check whether the previous version has a signature and sign if necessary
     if !id.is_signed() {
         id.sign();
@@ -136,6 +200,31 @@ fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityE
         id.node_id().to_hex()
     );
     Ok(id)
+}
+
+/// Filter addresses based on transport type
+fn filter_addresses_for_transport(addresses: Vec<Multiaddr>, transport_type: TransportType) -> Vec<Multiaddr> {
+    if transport_type == TransportType::Tcp {
+        // Filter out onion addresses for TCP transport
+        let filtered: Vec<Multiaddr> = addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "Filtered addresses for TCP transport: {:?}",
+            filtered
+        );
+        filtered
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "No filtering for {:?} transport, keeping all {} addresses",
+            transport_type,
+            addresses.len()
+        );
+        addresses
+    }
 }
 
 /// Create a new node id and save it to disk

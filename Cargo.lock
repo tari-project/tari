@@ -4215,6 +4215,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_features",
+ "tari_p2p",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
