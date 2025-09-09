@@ -14,7 +14,6 @@ This document describes the available **HTTP endpoints** exposed by the Minotari
   - [get_utxos_by_block](#get_utxos_by_block)
 - [Testing Endpoints with curl](#testing-endpoints-with-curl)
 - [Authentication](#authentication)
-- [Error Handling](#error-handling)
 
 ## Base URL
 
@@ -38,14 +37,15 @@ Returns information about the best known current tip of the blockchain.
 
 **Response**
 
-| Field                  | Type          | Description                                                                                                           |
-|------------------------|---------------|-----------------------------------------------------------------------------------------------------------------------|
-| `best_block_height`    | `u64`         | The current chain height, or the block number of the longest valid chain.                                             |
-| `best_block_hash`      | `BlockHash`   | The block hash of the current tip of the longest valid chain.                                                         |
-| `pruning_horizon`      | `u64`         | The configured number of blocks back from the tip that this database tracks. `0` means pruning mode is disabled.      |
-| `pruned_height`        | `u64`         | The height of the pruning horizon; blocks below this height may be pruned. Archival nodes have this as zero.          |
-| `accumulated_difficulty` | `U512`      | The total accumulated proof of work (PoW) of the longest chain.                                                       |
-| `timestamp`            | `u64`         | Timestamp of the tip block in the longest valid chain (Unix epoch).                                                   |
+| Field                    | Type                   | Description                                                                                                      |
+| ------------------------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `best_block_height`      | `u64`                  | The current chain height, or the block number of the longest valid chain.                                        |
+| `best_block_hash`        | `byte[]` (hex-encoded) | The block hash of the current tip of the longest valid chain.                                                    |
+| `pruning_horizon`        | `u64`                  | The configured number of blocks back from the tip that this database tracks. `0` means pruning mode is disabled. |
+| `pruned_height`          | `u64`                  | The height of the pruning horizon; blocks below this height may be pruned. Archival nodes have this as zero.     |
+| `accumulated_difficulty` | `string` (hex)         | The total accumulated proof of work (PoW) of the longest chain.                                                  |
+| `timestamp`              | `u64`                  | Timestamp of the tip block in the longest valid chain (Unix epoch).                                              |
+
 
 **Example**:
 
@@ -80,20 +80,20 @@ Returns a full block header object, or `null` if not found.
 
 | Field                 | Type          | Description                                                                      |
 | --------------------- | ------------- | -------------------------------------------------------------------------------- |
-| `hash`                | `BlockHash`   | Hash of this block header (usually SHA3 or Blake2 hash of the serialized header) |
+| `hash`                | `byte[]` (hex-encoded)   | Hash of this block header (usually SHA3 or Blake2 hash of the serialized header) |
 | `version`             | `u16`         | Version of the block format (for protocol upgrades)                              |
 | `height`              | `u64`         | Height of this block in the chain, starting at 0 for genesis                     |
-| `prev_hash`           | `BlockHash`   | Hash of the previous block header in the chain in byte array format; must be hex-encoded for reuse                                  |
+| `prev_hash`           | `byte[]` (hex-encoded)   | Hash of the previous block header in the chain in byte array format; must be hex-encoded for reuse                                  |
 | `timestamp`           | `EpochTime`   | Time at which the block was built (Unix epoch in seconds)                        |
-| `input_mr`            | `FixedHash`   | Merkle root of all inputs in the block in byte array format; must be hex-encoded for reuse.                                          |
-| `output_mr`           | `FixedHash`   | Merkle root of all outputs on the blockchain at this block in byte array format; must be hex-encoded for reuse                      |
-| `block_output_mr`     | `FixedHash`   | Combined output MMR root for block verification in byte array format; must be hex-encoded for reuse                                 |
+| `input_mr`            | `byte[]` (hex-encoded)   | Merkle root of all inputs in the block in byte array format; must be hex-encoded for reuse.                                          |
+| `output_mr`           | `byte[]` (hex-encoded)   | Merkle root of all outputs on the blockchain at this block in byte array format; must be hex-encoded for reuse                      |
+| `block_output_mr`     | `byte[]` (hex-encoded)   | Combined output MMR root for block verification in byte array format; must be hex-encoded for reuse                                 |
 | `output_smt_size`     | `u64`         | Size (number of leaves) of the output and range proof MMRs at this height        |
-| `kernel_mr`           | `FixedHash`   | Merkle root of all transaction kernels in this block in byte array format; must be hex-encoded for reuse                            |
+| `kernel_mr`           | `byte[]` (hex-encoded)   | Merkle root of all transaction kernels in this block in byte array format; must be hex-encoded for reuse                            |
 | `kernel_mmr_size`     | `u64`         | Number of leaves in the kernel MMR                                               |
 | `total_kernel_offset` | `PrivateKey`  | Aggregate kernel offset — hides transaction blinding factors                     |
 | `total_script_offset` | `PrivateKey`  | Aggregate script offset — used for script-based transactions                     |
-| `validator_node_mr`   | `FixedHash`   | Merkle root of all active validator node identities in byte array format; must be hex-encoded for reuse                             |
+| `validator_node_mr`   | `byte[]` (hex-encoded)   | Merkle root of all active validator node identities in byte array format; must be hex-encoded for reuse                             |
 | `validator_node_size` | `u64`         | Number of validator nodes at this block height                                   |
 | `pow`                 | `ProofOfWork` | Proof of work object detailing the algorithm and data                             |
 | `pow_algo`            | `String`      | The alogrithm used to mine the block                                              |
@@ -132,7 +132,7 @@ Returns a full block header object, or `null` if not found.
 
 | Name | Type | Description           |
 | ---- | ---- | --------------------- |
-| time | u64  | Epoch time in seconds |
+| `time` | `u64` | Epoch time in seconds |
 
 **Description**:
 Returns the blockchain height at or just before the specified epoch time.
@@ -162,12 +162,12 @@ Returns mined info (e.g., block height, inclusion) for the specified UTXO hashes
 | Name                          | Type       | Description                                                                |
 | ----------------------------- | ---------- | -------------------------------------------------------------------------- |
 | utxos                         | array      | List of mined UTXO information                                             |
-| utxos[].utxo_hash           | `[u8; 32]` | The hash of the UTXO (in byte array format; must be hex-encoded for reuse) |
-| utxos[].mined_in_hash      | `[u8; 32]` | Hash of the block that mined this UTXO                                     |
-| utxos[].mined_in_height    | `u64`      | Block height where UTXO was mined                                          |
-| utxos[].mined_in_timestamp | `u64`      | UNIX timestamp of the block that mined the UTXO                            |
-| best_block_hash             | `[u8; 32]` | Latest known block hash at the time of query                               |
-| best_block_height           | `u64`      | Height of the latest known block                                           |
+| `utxos[].utxo_hash `          | `byte[]` (hex-encoded) | The hash of the UTXO (in byte array format; must be hex-encoded for reuse) |
+| `utxos[].mined_in_hash`      | `byte[]` (hex-encoded)` | Hash of the block that mined this UTXO                                     |
+| `utxos[].mined_in_height `   | `u64`      | Block height where UTXO was mined                                          |
+| `utxos[].mined_in_timestamp` | `u64`      | UNIX timestamp of the block that mined the UTXO                            |
+| `best_block_hash`             | `byte[]` (hex-encoded) | Latest known block hash at the time of query                               |
+| `best_block_height`           | `u64`      | Height of the latest known block                                           |
 
 **Example**:
 ```json
@@ -202,10 +202,10 @@ Returns information about deleted UTXOs and whether they are present up to a cer
 | Name                      | Type                            | Description                                                                                            |
 | ------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `utxos`                   | Array  | A list of UTXOs that have been deleted (spent or removed).                                             |
-| `utxos[].utxo_hash`       | Byte array (`Vec<u8>`)          | The unique identifier hash of the UTXO in byte array format; must be hex-encoded for reuse.                                                                |
+| `utxos[].utxo_hash`       | `byte[]` (hex-encoded)         | The unique identifier hash of the UTXO in byte array format; must be hex-encoded for reuse.                                                                |
 | `utxos[].found_in_header` | Optional tuple `(u64, Vec<u8>)` | The block height and block hash where the UTXO was originally found (mined). May be absent if unknown. |
 | `utxos[].spent_in_header` | Optional tuple `(u64, Vec<u8>)` | The block height and block hash where the UTXO was spent or deleted. May be absent if unknown.         |
-| `best_block_hash`         | Byte array (`Vec<u8>`)          | The hash of the latest (best) block known at the time of the query.                                    |
+| `best_block_hash`         | `byte[]` (hex-encoded)          | The hash of the latest (best) block known at the time of the query.                                    |
 | `best_block_height`       | `u64`                           | The height (number) of the latest known block at the time of the query.                                |
 
 **Example**
@@ -246,9 +246,9 @@ Query for a transaction in the mempool by its excess signature. Returns
 | Name                | Type                            | Description                                                                                  |
 | ------------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
 | `location`          | String (enum)                   | The state of the transaction: `"Mined"`, `"Mempool"`, `"NotStored"`, or `"Unknown"`.         |
-| `mined_height`      | Optional `u64`                  | The block height at which the transaction was mined. `null` if not mined.                    |
-| `mined_header_hash` | Optional byte array (`Vec<u8>`) | The block hash in which the transaction was mined. `null` if not mined. Hex-encoded in JSON. |
-| `mined_timestamp`   | Optional `u64`                  | The UNIX timestamp when the block containing the transaction was mined. `null` if not mined. |
+| `mined_height`      | `u64`                  | The block height at which the transaction was mined. `null` if not mined.                    |
+| `mined_header_hash` | `byte[]` (hex-encoded) | The block hash in which the transaction was mined. `null` if not mined. Hex-encoded in JSON. |
+| `mined_timestamp`   | `u64`                  | The UNIX timestamp when the block containing the transaction was mined. `null` if not mined. |
 
 **Example**
 ```json
@@ -282,17 +282,17 @@ Fetch paginated UTXOs mined in blocks, beginning from the specified block header
 | Name                                          | Type                   | Description                                                            |
 | --------------------------------------------- | ---------------------- | ---------------------------------------------------------------------- |
 | `blocks`                                      | Array                  | List of blocks with UTXO data included in the response.                |
-| `blocks[].header_hash`                        | Byte array (`Vec<u8>`) | The hash of the block header.                                          |
+| `blocks[].header_hash`                        | `byte[]` (hex-encoded) | The hash of the block header.                                          |
 | `blocks[].height`                             | `u64`                  | The height (position) of the block in the blockchain.                  |
 | `blocks[].outputs`                            | Array                  | List of UTXOs created (mined) in this block.                           |
-| `blocks[].outputs[].output_hash`              | Byte array (`Vec<u8>`) | Unique identifier hash of the UTXO output.                             |
-| `blocks[].outputs[].commitment`               | Byte array (`Vec<u8>`) | Commitment associated with the UTXO output.                            |
-| `blocks[].outputs[].encrypted_data`           | Byte array (`Vec<u8>`) | Encrypted data related to the UTXO output.                             |
-| `blocks[].outputs[].sender_offset_public_key` | Byte array (`Vec<u8>`) | Public key used as an offset by the sender of the UTXO.                |
+| `blocks[].outputs[].output_hash`              | `byte[]` (hex-encoded) | Unique identifier hash of the UTXO output.                             |
+| `blocks[].outputs[].commitment`               | `byte[]` (hex-encoded) | Commitment associated with the UTXO output.                            |
+| `blocks[].outputs[].encrypted_data`           | `byte[]` (hex-encoded) | Encrypted data related to the UTXO output.                             |
+| `blocks[].outputs[].sender_offset_public_key` | `byte[]` (hex-encoded) | Public key used as an offset by the sender of the UTXO.                |
 | `blocks[].inputs`                             | Array of byte arrays   | List of inputs (spent UTXO hashes) in this block.                      |
 | `blocks[].mined_timestamp`                    | `u64`                  | Timestamp (Unix epoch) when the block was mined.                       |
 | `has_next_page`                               | `bool`                 | Indicates if there are more pages of blocks/UTXOs to fetch.            |
-| `next_header_to_scan`                         | Byte array (`Vec<u8>`) | The header hash of the next block to scan for pagination continuation. |
+| `next_header_to_scan`                         | `byte[]` (hex-encoded) | The header hash of the next block to scan for pagination continuation. |
 
 **Example**
 ```json
