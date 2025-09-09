@@ -26,6 +26,7 @@ use crate::{
     key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
     transaction_builder::OutputPair,
 };
+use crate::transaction_components::TransactionError;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MarshalOutputPair {
@@ -39,7 +40,7 @@ impl MarshalOutputPair {
     pub async fn marshal<KM: TransactionKeyManagerInterface>(
         key_manager: &KM,
         output_pair: OutputPair,
-    ) -> Result<Self, TransactionServiceError> {
+    ) -> Result<Self, TransactionError> {
         let encrypted_kernel_nonce = MarshalOutputPair::encrypt_key(key_manager, &output_pair.kernel_nonce).await?;
         let encrypted_sender_offset_key = match &output_pair.sender_offset_key_id {
             Some(key) => Some(MarshalOutputPair::encrypt_key(key_manager, key).await?),
@@ -59,7 +60,7 @@ impl MarshalOutputPair {
     pub async fn unmarshal<KM: TransactionKeyManagerInterface>(
         &mut self,
         key_manager: &KM,
-    ) -> Result<(), TransactionServiceError> {
+    ) -> Result<(), TransactionError> {
         self.output_pair.kernel_nonce =
             MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_kernel_nonce).await?;
         if let Some(sender_offset_key_id) = &self.encrypted_sender_offset_key {

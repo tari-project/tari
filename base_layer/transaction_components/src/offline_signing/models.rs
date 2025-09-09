@@ -32,6 +32,7 @@ use crate::{
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, WalletOutput},
     MicroMinotari,
 };
+use crate::transaction_components::TransactionError;
 
 const SUPPORTED_VERSION: &str = "1.0.0";
 
@@ -44,16 +45,16 @@ pub trait HasVersion {
 }
 
 pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
-    fn from_json(s: &str) -> Result<Self, TransactionServiceError> {
+    fn from_json(s: &str) -> Result<Self, TransactionError> {
         let value: serde_json::Value =
-            serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
+            serde_json::from_str(s).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
         let version = value
             .get("version")
-            .ok_or_else(|| TransactionServiceError::SerializationError("Missing version".into()))?;
+            .ok_or_else(|| TransactionError::SerializationError("Missing version".into()))?;
         let version: Version = serde_json::from_value(version.clone())
-            .map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
         if version != get_supported_version() {
-            return Err(TransactionServiceError::SerializationError(format!(
+            return Err(TransactionError::SerializationError(format!(
                 "Unsupported version. Expected '{}', got '{}'",
                 get_supported_version(),
                 version
@@ -61,13 +62,13 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
         }
 
         let deserialized_obj: Self =
-            serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
+            serde_json::from_str(s).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
 
         Ok(deserialized_obj)
     }
 
-    fn to_json(&self) -> Result<String, TransactionServiceError> {
-        serde_json::to_string(&self).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))
+    fn to_json(&self) -> Result<String, TransactionError> {
+        serde_json::to_string(&self).map_err(|e| TransactionError::SerializationError(e.to_string()))
     }
 }
 
