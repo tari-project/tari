@@ -45,7 +45,7 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{MemoField, Transaction},
+    transaction_components::{MemoField, Transaction, TransactionKernel},
     MicroMinotari,
 };
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -1314,14 +1314,19 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(coinbases)
     }
 
-    fn insert_burn_proof(&self, output_hash: FixedHash, proof: &BurnClaimProof) -> Result<(), TransactionStorageError> {
+    fn insert_burn_proof(
+        &self,
+        output_hash: FixedHash,
+        proof: &BurnClaimProof,
+        kernel: &TransactionKernel,
+    ) -> Result<(), TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
         let proof = NewBurntProofSql::new_encrypted(
             output_hash.as_bytes(),
             proof.commitment.as_bytes(),
-            proof.reciprocal_claim_public_key.as_bytes(),
             serializers::bincode_encode(&proof)?,
+            serializers::bincode_encode(&kernel)?,
             None,
             &self.cipher,
         )?;

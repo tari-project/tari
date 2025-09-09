@@ -57,7 +57,7 @@ use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
         blockchain_database::MmrRoots,
-        merkle_proof::KernelMerkleProof,
+        kernel_merkle_proof::KernelMerkleProof,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
         BlockAddResult,
         BlockchainBackend,

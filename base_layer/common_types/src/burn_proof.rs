@@ -22,7 +22,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature};
+use crate::{
+    serializers,
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BurnClaimProof {
@@ -30,18 +33,13 @@ pub struct BurnClaimProof {
     pub reciprocal_claim_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedSignature,
-    pub kernel_excess_sig: CompressedSignature,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ConfirmedBurnClaimProof {
-    pub claim_proof: BurnClaimProof,
-    pub merkle_proof: EncodedMerkleProof,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncodedMerkleProof {
+    #[serde(with = "serializers::base64")]
     pub block_hash: BlockHash,
+    #[serde(with = "serializers::base64")]
     pub encoded_merkle_proof: Vec<u8>,
     pub leaf_index: u64,
 }

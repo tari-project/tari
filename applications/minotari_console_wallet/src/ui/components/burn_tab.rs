@@ -270,8 +270,10 @@ impl BurnTab {
         let mut column2_items = Vec::new();
 
         for item in windowed_view {
-            column0_items.push(ListItem::new(Span::raw(item.reciprocal_claim_public_key.to_hex())));
-            column1_items.push(ListItem::new(Span::raw(if item.proof.is_some() {
+            column0_items.push(ListItem::new(Span::raw(
+                item.proof.reciprocal_claim_public_key.to_hex(),
+            )));
+            column1_items.push(ListItem::new(Span::raw(if item.encoded_merkle_proof.is_some() {
                 "✅"
             } else {
                 "⏳️"
@@ -494,7 +496,7 @@ impl BurnTab {
                         return KeyHandled::NotHandled;
                     }
 
-                    let Some(confirmed_proof) = proof.proof.as_ref() else {
+                    let Some(confirmed_proof) = proof.to_confirmed_proof() else {
                         self.error_message = Some(format!(
                             "Proof data is not yet available for proof id {}. Please wait for the wallet to fetch the \
                              full proof once the burn is confirmed. Press Enter to continue.",
@@ -503,7 +505,7 @@ impl BurnTab {
                         return KeyHandled::Handled;
                     };
 
-                    let Ok(json) = serde_json::to_string_pretty(confirmed_proof) else {
+                    let Ok(json) = serde_json::to_string_pretty(&confirmed_proof) else {
                         self.error_message = Some(format!(
                             "Failed to serialize burnt proof payload to JSON for file {}.json.  Press Enter to \
                              continue.",

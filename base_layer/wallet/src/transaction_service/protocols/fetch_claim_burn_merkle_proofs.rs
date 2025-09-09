@@ -111,11 +111,8 @@ where
 
         let result = client
             .get_kernel_merkle_proof(
-                burn.burn_proof
-                    .kernel_excess_sig
-                    .get_compressed_public_nonce()
-                    .as_bytes(),
-                burn.burn_proof.kernel_excess_sig.get_signature().as_bytes(),
+                burn.kernel.excess_sig.get_compressed_public_nonce().as_bytes(),
+                burn.kernel.excess_sig.get_signature().as_bytes(),
             )
             .await;
         match result {

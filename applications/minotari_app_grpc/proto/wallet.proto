@@ -1579,8 +1579,7 @@ message CreateBurnTransactionResponse{
   // Only provided if a burn claim key is provided
   bytes commitment = 4;
   Signature ownership_proof = 5;
-  Signature kernel_excess_sig = 6;
-  bytes reciprocal_claim_public_key = 7;
+  bytes reciprocal_claim_public_key = 6;
 }
 
 message TransferResult {
@@ -2070,13 +2069,15 @@ message GetBurnClaimProofResponse {
   BurnClaimProof claim_proof = 1;
   // Optional, not available until the burn transaction is confirmed
   EncodedMerkleProof merkle_proof = 2;
+  bytes encrypted_data = 3;
+  TransactionKernel kernel = 4;
 }
 
 message BurnClaimProof {
   bytes commitment = 1;
   Signature ownership_proof = 2;
-  Signature kernel_excess_sig = 3;
-  bytes reciprocal_claim_public_key = 4;
+  bytes reciprocal_claim_public_key = 3;
+
 }
 
 message EncodedMerkleProof {

@@ -35,7 +35,7 @@ use tari_common_types::{
     types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{MemoField, Transaction, TransactionOutput},
+    transaction_components::{MemoField, Transaction, TransactionKernel, TransactionOutput},
     MicroMinotari,
 };
 
@@ -185,7 +185,13 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
     fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError>;
-    fn insert_burn_proof(&self, output_hash: FixedHash, proof: &BurnClaimProof) -> Result<(), TransactionStorageError>;
+    fn insert_burn_proof(
+        &self,
+        output_hash: FixedHash,
+        proof: &BurnClaimProof,
+
+        kernel: &TransactionKernel,
+    ) -> Result<(), TransactionStorageError>;
     fn update_burn_proof_set_merkle_proof(
         &self,
         output_hash: &FixedHash,
@@ -901,8 +907,9 @@ where T: TransactionBackend + 'static
         &self,
         output_hash: FixedHash,
         proof: &BurnClaimProof,
+        kernel: &TransactionKernel,
     ) -> Result<(), TransactionStorageError> {
-        self.db.insert_burn_proof(output_hash, proof)
+        self.db.insert_burn_proof(output_hash, proof, kernel)
     }
 
     pub fn update_burn_proof_set_merkle_proof(

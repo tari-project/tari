@@ -40,8 +40,11 @@ where D: Default
         Self::new_with_network(label, Network::get_current_or_user_setting_or_default())
     }
 
-    pub fn new_with_network(label: &'static str, network: Network) -> Self {
-        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network.as_byte()));
+    /// Create a new hasher with the specified label and network byte.
+    /// NOTE: the network is generic (anything that converts to a byte) to allow for use in L2 without requiring
+    /// tari_common
+    pub fn new_with_network<N: Into<u8>>(label: &'static str, network: N) -> Self {
+        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network.into()));
         Self { hasher }
     }
 

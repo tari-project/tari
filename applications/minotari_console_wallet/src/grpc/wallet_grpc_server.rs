@@ -1231,7 +1231,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     commitment: proof.commitment.to_vec(),
                     ownership_proof: Some(proof.ownership_proof.into()),
                     reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
-                    kernel_excess_sig: Some(proof.kernel_excess_sig.into()),
                 }
             },
             Ok((tx_id, None)) => {
@@ -2703,7 +2702,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| {
                 Status::not_found(format!(
                     "No burn claim proof found for commitment {}",
-                    commitment.to_hex()
+                    commitment.to_compressed_key()
+                ))
+            })?;
+
+        let output = self
+            .get_output_manager_service()
+            .get_many_outputs(vec![proof.output_hash])
+            .await
+            .map_err(|e| {
+                Status::internal(format!(
+                    "Failed to get output for commitment {}: {}",
+                    commitment.to_compressed_key(),
+                    e
+                ))
+            })?
+            .pop()
+            .ok_or_else(|| {
+                Status::not_found(format!(
+                    "No output found for commitment {}",
+                    commitment.to_compressed_key()
                 ))
             })?;
 
@@ -2711,14 +2729,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
             claim_proof: Some(tari_rpc::BurnClaimProof {
                 commitment: commitment.as_bytes().to_vec(),
                 ownership_proof: Some(proof.burn_proof.ownership_proof.into()),
-                kernel_excess_sig: Some(proof.burn_proof.kernel_excess_sig.into()),
-                reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
+                reciprocal_claim_public_key: proof.burn_proof.reciprocal_claim_public_key.to_vec(),
             }),
             merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
                 block_hash: p.block_hash.to_vec(),
                 encoded_proof: p.encoded_merkle_proof,
                 leaf_index: p.leaf_index,
             }),
+            kernel: Some(proof.kernel.into()),
+            encrypted_data: output.encrypted_data.into_vec(),
         }))
     }
 }

@@ -106,7 +106,7 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
-        merkle_proof::KernelMerkleProof,
+        kernel_merkle_proof::KernelMerkleProof,
         smt_hasher::ValidatorNodeJmtHasher,
         utxo_mined_info::OutputMinedInfo,
         BlockAddResult,

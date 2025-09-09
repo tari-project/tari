@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
@@ -318,7 +318,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         _excess_sig_nonce: &[u8],
         _excess_sig: &[u8],
     ) -> Result<GenerateUtxoMerkleProofResponse, Error> {
-        Err(anyhow!("Not implemented"))
+        panic!("Not implemented")
     }
 }
 

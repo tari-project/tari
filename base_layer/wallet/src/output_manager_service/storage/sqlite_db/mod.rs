@@ -86,14 +86,24 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, Some(OutputStatus::UnspentMinedUnconfirmed), None)?;
+                let status = if o.wallet_output.is_burned() {
+                    OutputStatus::Burnt
+                } else {
+                    OutputStatus::UnspentMinedUnconfirmed
+                };
+                let new_output = NewOutputSql::new(*o, Some(status), None)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, Some(OutputStatus::UnspentMinedUnconfirmed), Some(tx_id))?;
+                let status = if o.wallet_output.is_burned() {
+                    OutputStatus::Burnt
+                } else {
+                    OutputStatus::UnspentMinedUnconfirmed
+                };
+                let new_output = NewOutputSql::new(*o, Some(status), Some(tx_id))?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::OutputToBeReceived(c, (tx_id, o)) => {

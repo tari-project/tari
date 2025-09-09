@@ -481,7 +481,7 @@ async fn large_coin_split_transaction() {
 
 #[tokio::test]
 async fn single_transaction_burn_tari() {
-    // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
+    // let _ = env_logger::builder().filter_level(log::LevelFilter::Debug).is_test(true).try_init();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -553,8 +553,12 @@ async fn single_transaction_burn_tari() {
 
     let fees = completed_tx.fee;
 
+    let balance = alice_oms.get_balance().await.unwrap();
+
+    eprintln!("Balance after burn: {:#?}", balance);
+
     assert_eq!(
-        alice_oms.get_balance().await.unwrap().pending_incoming_balance,
+        balance.pending_incoming_balance,
         initial_wallet_value - burn_value - fees
     );
 

@@ -2559,8 +2559,8 @@ where
             .find(|k| k.features.is_burned())
             .ok_or(TransactionServiceError::InvalidBurnTransaction(
                 "No burn kernel found in transaction".to_string(),
-            ))?;
-        let kernel_excess_sig = burn_kernel.excess_sig.clone();
+            ))?
+            .clone();
 
         self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
             .await?;
@@ -2580,10 +2580,9 @@ where
                 reciprocal_claim_public_key: commitment_mask_key.pub_key,
                 commitment: tx_output.commitment,
                 ownership_proof,
-                kernel_excess_sig,
             };
 
-            self.db.insert_burn_proof(output_hash, &proof)?;
+            self.db.insert_burn_proof(output_hash, &proof, &burn_kernel)?;
             burn_proof = Some(proof);
         }
 

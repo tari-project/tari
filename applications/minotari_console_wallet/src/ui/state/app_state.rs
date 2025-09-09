@@ -46,7 +46,6 @@ use minotari_wallet::{
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burn_proof::ConfirmedBurnClaimProof,
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
@@ -767,11 +766,9 @@ impl AppStateInner {
         for proof in db_burn_proofs {
             ui_proofs.push(UiBurnProof {
                 id: proof.id,
-                reciprocal_claim_public_key: proof.reciprocal_claim_public_key,
-                proof: proof.kernel_merkle_proof.map(|encoded_proof| ConfirmedBurnClaimProof {
-                    claim_proof: proof.burn_proof,
-                    merkle_proof: encoded_proof,
-                }),
+                proof: proof.burn_proof,
+                encoded_merkle_proof: proof.kernel_merkle_proof,
+                kernel: proof.kernel,
                 burned_at: proof.created_at,
             });
         }
