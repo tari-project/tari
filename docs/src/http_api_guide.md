@@ -34,7 +34,7 @@ Default port (for example): `9000`
 
 **Description**:
 
-Returns information about the best known current tip of the blockchain. Note that this can deviate from the actual best tip.
+Returns information about the best known current tip of the blockchain.
 
 **Response**
 
@@ -95,7 +95,9 @@ Returns a full block header object, or `null` if not found.
 | `total_script_offset` | `PrivateKey`  | Aggregate script offset — used for script-based transactions                     |
 | `validator_node_mr`   | `FixedHash`   | Merkle root of all active validator node identities in byte array format; must be hex-encoded for reuse                             |
 | `validator_node_size` | `u64`         | Number of validator nodes at this block height                                   |
-| `pow`                 | `ProofOfWork` | Summary of the proof-of-work used to mine this block                             |
+| `pow`                 | `ProofOfWork` | Proof of work object detailing the algorithm and data                             |
+| `pow_algo`            | `String`      | The alogrithm used to mine the block                                              |
+| `pow_data`            | `String`      | The proof of work data associated with the block, stored as length-checked Vec<u8>. Differs based on the `pow_algo` used to mine the block                                          |
 | `nonce`               | `u64`         | Nonce used in mining, incremented until PoW target is met                        |
 
 
@@ -238,7 +240,25 @@ curl "http://127.0.0.1:9000/get_utxos_deleted_info?hashes=2e56f3f2f06bb5bc3b0862
 | excess_sig_sig   | string | Signature value in hex |
 
 **Description**:
-Query for a transaction in the mempool by its excess signature.
+Query for a transaction in the mempool by its excess signature. Returns
+
+**Response**
+| Name                | Type                            | Description                                                                                  |
+| ------------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
+| `location`          | String (enum)                   | The state of the transaction: `"Mined"`, `"Mempool"`, `"NotStored"`, or `"Unknown"`.         |
+| `mined_height`      | Optional `u64`                  | The block height at which the transaction was mined. `null` if not mined.                    |
+| `mined_header_hash` | Optional byte array (`Vec<u8>`) | The block hash in which the transaction was mined. `null` if not mined. Hex-encoded in JSON. |
+| `mined_timestamp`   | Optional `u64`                  | The UNIX timestamp when the block containing the transaction was mined. `null` if not mined. |
+
+**Example**
+```json
+{
+  "location": "Mined",
+  "mined_height": 145321,
+  "mined_header_hash": "3f2c6e5d9a1c4a8b6f3c2e9e1a7b9d3c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8090",
+  "mined_timestamp": 1694956800
+}
+```
 
 ### sync_utxos_by_block
 
