@@ -2221,10 +2221,12 @@ where
         .await
     }
 
-    /// Sends a one side payment transaction to a recipient
+    /// Sends a one side payment transaction to each of the recipients
     /// # Arguments
-    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'destinations': array of destinations of (TariAddress, amount, MemoField)
     /// 'amount': The amount of Tari to send to the recipient
+    /// 'selection_criteria': The UTXO selection criteria to use for coin selection
+    /// 'output_features': The output features to use for the transaction outputs
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     #[allow(clippy::too_many_lines)]
     pub async fn send_many_one_sided_transactions(
@@ -2246,22 +2248,20 @@ where
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         let mut total_send = MicroMinotari::zero();
-        for destination in &mut destinations {
-            total_send += destination.1;
-            if destination.0.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", destination.2, destination.0.get_memo_field_payment_id_bytes());
-                destination.2 =
-                    MemoField::open(destination.0.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+        for (address, amount, memo) in &mut destinations {
+            total_send += *amount;
+            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
+                *memo =
+                    MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
             }
-            destination.2 = destination
-                .2
-                .clone()
+            *memo = memo.clone()
                 .add_sender_address(
                     self.resources.one_sided_tari_address.clone(),
                     true,
                     fee_per_gram,
-                    if destination.0 == self.resources.one_sided_tari_address ||
-                        destination.0 == self.resources.interactive_tari_address
+                    if *address == self.resources.one_sided_tari_address ||
+                        *address == self.resources.interactive_tari_address
                     {
                         Some(TxType::PaymentToSelf)
                     } else {
@@ -2269,7 +2269,7 @@ where
                     },
                 )
                 .map_err(TransactionServiceError::InvalidPaymentId)?;
-            self.verify_send(&destination.0, TariAddressFeatures::create_one_sided_only())?;
+            self.verify_send(&address, TariAddressFeatures::create_one_sided_only())?;
         }
 
         // Prepare sender part of the transaction
@@ -2286,13 +2286,13 @@ where
                 Covenant::default(),
             )
             .await?;
-        for destination in &destinations {
+        for (address, amount, memo) in &destinations {
             tx_builder
                 .add_stealth_recipient(
-                    destination.0.clone(),
-                    destination.1,
+                    address.clone(),
+                    *amount,
                     output_features.clone(),
-                    destination.2.clone(),
+                    memo.clone(),
                 )
                 .await?;
         }

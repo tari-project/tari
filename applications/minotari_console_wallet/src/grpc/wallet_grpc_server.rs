@@ -256,7 +256,7 @@ impl WalletGrpcServer {
                 let address = TariAddress::from_str(&dest.address)
                     .map_err(|_| format!("Destination address at index {idx} is malformed"))?;
                 let payment_id = if !dest.raw_payment_id.is_empty() {
-                    MemoField::open_unchecked(dest.raw_payment_id.to_vec(), TxType::PaymentToOther)
+                    MemoField::new_open(dest.raw_payment_id.to_vec(), TxType::PaymentToOther)?
                 } else if let Some(user_pay_id) = dest.user_payment_id {
                     let bytes = match (
                         user_pay_id.u256.is_empty(),
@@ -270,7 +270,7 @@ impl WalletGrpcServer {
                             return Err("user_payment_id must be one of u256, utf8_string or user_bytes".to_string());
                         },
                     };
-                    MemoField::open_unchecked(bytes, TxType::PaymentToOther)
+                    MemoField::new_open(bytes, TxType::PaymentToOther)?
                 } else {
                     MemoField::new_empty()
                 };
@@ -593,7 +593,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            MemoField::open_unchecked(bytes, TxType::ClaimAtomicSwap)
+            MemoField::new_open(bytes, TxType::ClaimAtomicSwap).map_err(|e| Status::internal(e.to_string()))?
         } else {
             MemoField::new_empty()
         };
@@ -827,7 +827,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            MemoField::open_unchecked(bytes, TxType::PaymentToOther)
+            MemoField::new_open(bytes, TxType::PaymentToOther).map_err(|e| Status::internal(e.to_string()))?
         } else {
             MemoField::new_empty()
         };
@@ -1044,7 +1044,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         if message.recipients.is_empty() {
-            return Err(Status::invalid_argument("At least one recipient is required".to_string()));
+            return Err(Status::invalid_argument(
+                "At least one recipient is required".to_string(),
+            ));
         }
 
         if message.single_tx {
@@ -1077,7 +1079,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ));
             }
             let payment_id = if !raw_payment_id.is_empty() {
-                MemoField::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
+                MemoField::new_open(raw_payment_id.to_vec(), TxType::PaymentToOther).map_err(|e| Status::internal(e.to_string()))?
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -1093,7 +1095,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         ));
                     },
                 };
-                MemoField::open_unchecked(bytes, TxType::PaymentToOther)
+                MemoField::new_open(bytes, TxType::PaymentToOther).map_err(|e| Status::internal(e.to_string()))?
             } else {
                 MemoField::new_empty()
             };
@@ -2216,7 +2218,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                MemoField::open_unchecked(request.message, TxType::PaymentToSelf),
+                MemoField::new_open(request.message, TxType::PaymentToSelf).map_err(|e| Status::internal(e.to_string()))?,
             )
             .await
         {
@@ -2270,7 +2272,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 proof,
                 request.fee_per_gram.into(),
                 sidechain_key,
-                MemoField::open_unchecked(request.message.into_bytes(), TxType::PaymentToSelf),
+                MemoField::new_open(request.message.into_bytes(), TxType::PaymentToSelf).map_err(|e| Status::internal(e.to_string()))?,
             )
             .await
         {
