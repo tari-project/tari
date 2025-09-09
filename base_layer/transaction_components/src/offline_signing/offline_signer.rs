@@ -24,24 +24,30 @@ use std::str::FromStr;
 
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 
-use crate::{key_manager::{TariKeyId, TransactionKeyManagerInterface}, offline_signing::{
-    marshal_output_pair::MarshalOutputPair,
-    models::{
-        get_supported_version,
-        OneSidedMultisigTransactionInfo,
-        OneSidedTransactionInfo,
-        PaymentRecipient,
-        PrepareDepositMultisigTransactionResult,
-        PrepareOneSidedTransactionForSigningResult,
-        PrepareWithdrawMultisigTransactionResult,
-        SignedOneSidedDepositMultisigTransactionResult,
-        SignedOneSidedTransactionResult,
-        SignedOneSidedWithdrawMultisigTransactionResult,
-        TransactionMetadata,
+use crate::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    offline_signing::{
+        marshal_output_pair::MarshalOutputPair,
+        models::{
+            get_supported_version,
+            OneSidedMultisigTransactionInfo,
+            OneSidedTransactionInfo,
+            PaymentRecipient,
+            PrepareDepositMultisigTransactionResult,
+            PrepareOneSidedTransactionForSigningResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SignedOneSidedDepositMultisigTransactionResult,
+            SignedOneSidedTransactionResult,
+            SignedOneSidedWithdrawMultisigTransactionResult,
+            TransactionMetadata,
+        },
+        one_sided_signer::OneSidedSigner,
     },
-    one_sided_signer::OneSidedSigner,
-}, transaction_components::{MemoField, OutputFeatures}, MicroMinotari, TransactionBuilder, TransactionBuilderError};
-use crate::transaction_components::TransactionError;
+    transaction_components::{MemoField, OutputFeatures, TransactionError},
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
+};
 
 pub struct OfflineSigner<TKeyManagerInterface> {
     key_manager: TKeyManagerInterface,
@@ -143,7 +149,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         public_keys: Vec<CompressedPublicKey>,
         sender: TariAddress,
         recipient: TariAddress,
-    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionError> {
+    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
         // we do this to ensure the fee is calculated correctly
         tx_builder
             .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
@@ -213,7 +219,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output_features: OutputFeatures,
         sender: TariAddress,
         recipient: TariAddress,
-    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionError> {
+    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
         tx_builder
             .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
             .await?;
@@ -280,7 +286,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn sign_locked_transaction(
         &self,
         request: PrepareOneSidedTransactionForSigningResult,
-    ) -> Result<SignedOneSidedTransactionResult, TransactionError> {
+    ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
         let signer = OneSidedSigner::new(&self.key_manager);
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
@@ -294,7 +300,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn sign_locked_deposit_multisig_transaction(
         &self,
         request: PrepareDepositMultisigTransactionResult,
-    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionError> {
+    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
         let signer = OneSidedSigner::new(&self.key_manager);
         let signed_transaction = signer
             .sign_multisig_transaction(request.tx_id, request.info.clone())
@@ -310,7 +316,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn sign_locked_withdraw_multisig_transaction(
         &self,
         request: PrepareWithdrawMultisigTransactionResult,
-    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionError> {
+    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
         let signer = OneSidedSigner::new(&self.key_manager);
 
         let signed_transaction = signer

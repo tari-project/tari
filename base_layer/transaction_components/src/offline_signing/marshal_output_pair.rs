@@ -25,8 +25,8 @@ use tari_utilities::hex::{from_hex, Hex};
 use crate::{
     key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
     transaction_builder::OutputPair,
+    transaction_components::TransactionError,
 };
-use crate::transaction_components::TransactionError;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MarshalOutputPair {

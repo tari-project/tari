@@ -23,7 +23,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{ CompressedPublicKey, FixedHash},
+    types::{CompressedPublicKey, FixedHash},
 };
 use tari_script::{
     push_pubkey_script,
@@ -36,18 +36,27 @@ use tari_script::{
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 
-use crate::{consensus::ConsensusConstants, fee::Fee, helpers::borsh::SerializedSize, key_manager::{TariKeyId, TransactionKeyManagerInterface}, multisig::{
-    script::{derive_multisig_ephemeral_pubkeys, get_multi_sig_script_components},
-}, transaction_builder::FinalizedTransaction, transaction_components::{
-    covenants::Covenant,
-    memo_field::{MemoField, TxType},
-    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    OutputFeatures,
-    Transaction,
-    TransactionError,
-    WalletOutput,
-    WalletOutputBuilder,
-}, MicroMinotari, TransactionBuilder, TransactionBuilderError};
+use crate::{
+    consensus::ConsensusConstants,
+    fee::Fee,
+    helpers::borsh::SerializedSize,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    multisig::script::{derive_multisig_ephemeral_pubkeys, get_multi_sig_script_components},
+    transaction_builder::FinalizedTransaction,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        OutputFeatures,
+        Transaction,
+        TransactionError,
+        WalletOutput,
+        WalletOutputBuilder,
+    },
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
+};
 
 pub struct MultisigSession<TKeyManagerInterface> {
     key_manager: TKeyManagerInterface,
@@ -84,7 +93,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 "Invalid multisig threshold party_number={}, participants={}",
                 party_number,
                 public_keys.len()
-            )).into());
+            ))
+            .into());
         }
 
         let mut message = Box::new([0u8; 32]);
@@ -101,9 +111,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-        let recipient_view_key = recipient.public_view_key().ok_or(TransactionError::BuilderError(
-            "Missing public view key".to_string(),
-        ))?;
+        let recipient_view_key = recipient
+            .public_view_key()
+            .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?;
 
         let recipient_spend_key = recipient.public_spend_key();
 
@@ -191,23 +201,18 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         signatures: Vec<CompressedCheckSigSchnorrSignature>,
         recipient: TariAddress,
         output: WalletOutput,
-        consensus_constants: ConsensusConstants,
-    ) -> Result<
-        (
-            FinalizedTransaction,
-            MemoField,
-            MicroMinotari,
-        ),
-        TransactionBuilderError,
-    > {
+        consensus_constants: &ConsensusConstants,
+    ) -> Result<(FinalizedTransaction, MemoField, MicroMinotari), TransactionBuilderError> {
         // Enforce correct signature count and ordering for the multisig script
-        let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(&output.script).ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
+        let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(&output.script)
+            .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
         if signatures.len() < threshold as usize {
             return Err(TransactionError::BuilderError(format!(
                 "Insufficient signatures: need at least {}, got {}",
                 threshold,
                 signatures.len()
-            )).into());
+            ))
+            .into());
         }
 
         let mut input_stack = ExecutionStack::default();
@@ -232,9 +237,15 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let features_and_scripts_byte_size = consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                OutputFeatures::default().get_serialized_size().map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
-                    script.get_serialized_size().map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
-                    Covenant::default().get_serialized_size().map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+                OutputFeatures::default()
+                    .get_serialized_size()
+                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
+                    script
+                        .get_serialized_size()
+                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
+                    Covenant::default()
+                        .get_serialized_size()
+                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
             );
 
         let fee: MicroMinotari = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
@@ -246,7 +257,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             return Err(TransactionError::BuilderError(format!(
                 "insufficient funds: fee: {}, amount: {}",
                 fee, amount
-            )).into());
+            ))
+            .into());
         }
 
         let total_amount = amount
@@ -264,10 +276,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let tx = match tx_builder.build().await {
             Ok(tx) => tx,
             Err(e) => {
-                return Err(TransactionError::BuilderError(format!(
-                    "Failed to build transaction: {:?}",
-                    e
-                )).into());
+                return Err(TransactionError::BuilderError(format!("Failed to build transaction: {:?}", e)).into());
             },
         };
 

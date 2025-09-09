@@ -51,6 +51,7 @@ use crate::{
         CoreTransactionBuilder,
         KernelBuilder,
         Transaction,
+        TransactionError,
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
@@ -60,7 +61,6 @@ use crate::{
     MicroMinotari,
     TransactionBuilderError,
 };
-use crate::transaction_components::TransactionError;
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,7 +95,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         tx_id: TxId,
         mut info: OneSidedTransactionInfo,
-    ) -> Result<SignedTransaction, TransactionError> {
+    ) -> Result<SignedTransaction, TransactionBuilderError> {
         self.marshal_output_pairs(&mut info).await?;
         let signed_message = self.sign_message(tx_id, &info).await?;
         let (transaction, change_output) = self
@@ -119,7 +119,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         tx_id: TxId,
         mut info: OneSidedMultisigTransactionInfo,
-    ) -> Result<SignedTransaction, TransactionError> {
+    ) -> Result<SignedTransaction, TransactionBuilderError> {
         self.marshal_output_pairs(&mut info).await?;
         let signed_message = self.sign_multisig_message(tx_id, &info).await?;
         let (transaction, change_output) = self
@@ -143,7 +143,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         tx_id: TxId,
         mut info: OneSidedTransactionInfo,
-    ) -> Result<SignedTransaction, TransactionError> {
+    ) -> Result<SignedTransaction, TransactionBuilderError> {
         self.marshal_output_pairs(&mut info).await?;
         let signed_message = self.sign_multisig_withdraw_message(tx_id, &info).await?;
         let (transaction, change_output) = self
@@ -163,7 +163,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         })
     }
 
-    async fn marshal_output_pairs(&self, info: &mut OneSidedTransactionInfo) -> Result<(), TransactionError> {
+    async fn marshal_output_pairs(&self, info: &mut OneSidedTransactionInfo) -> Result<(), TransactionBuilderError> {
         if let Some(change_output) = &mut info.change_output {
             change_output.unmarshal(self.key_manager).await?;
         }
@@ -239,7 +239,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
-    ) -> Result<SignedMessage, TransactionError> {
+    ) -> Result<SignedMessage, TransactionBuilderError> {
         let sender_offset_key = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
@@ -251,14 +251,10 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 info.recipient
                     .address
                     .public_view_key()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        tx_id,
-                        TransactionError::OneSidedTransactionError("Missing public view key".to_string()),
-                    ))?,
+                    .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?,
             )
             .await?;
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
         let commitment_mask_key_id = self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
@@ -368,25 +364,26 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         tx_id: TxId,
         info: &OneSidedMultisigTransactionInfo,
-    ) -> Result<SignedMessage, TransactionError> {
+    ) -> Result<SignedMessage, TransactionBuilderError> {
         let sender_offset_key = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
         let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
 
-        let shared_secret =
-            self.key_manager
-                .get_diffie_hellman_shared_secret(
-                    &sender_offset_key.key_id,
-                    info.recipient.address.public_view_key().ok_or(
-                        TransactionError::OneSidedTransactionError("Missing public view key".to_string()),
-                    )?,
-                )
-                .await?;
+        let shared_secret = self
+            .key_manager
+            .get_diffie_hellman_shared_secret(
+                &sender_offset_key.key_id,
+                info.recipient
+                    .address
+                    .public_view_key()
+                    .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?,
+            )
+            .await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)
-            .map_err(|e| TransactionError::Other(format!("Failed to derive encryption key: {}", e)))?;
+            .map_err(|e| TransactionError::BuilderError(format!("Failed to derive encryption key: {}", e)))?;
 
         let encryption_key = self.key_manager.import_key(encryption_private_key.clone()).await?;
 
@@ -403,7 +400,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
 
         let stealth_hash = shared_secret_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionError::Other(format!("Failed to derive spending key: {}", e)))?;
+            .map_err(|e| TransactionError::BuilderError(format!("Failed to derive spending key: {}", e)))?;
 
         let commitment_mask_key_id = self.key_manager.import_key(stealth_hash.clone()).await?;
         let script_pubkey = self
@@ -522,7 +519,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
-    ) -> Result<SignedMessage, TransactionError> {
+    ) -> Result<SignedMessage, TransactionBuilderError> {
         let (commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
 
         let sender_offset_key = self
@@ -542,7 +539,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 info.recipient
                     .address
                     .public_view_key()
-                    .ok_or(TransactionError::Other("Missing public view key".to_string()))?,
+                    .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?,
             )
             .await?;
 
@@ -651,7 +648,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         sender_offset_key_id: TariKeyId,
         sender_public_nonce: CompressedPublicKey,
         sender_public_excess: CompressedPublicKey,
-    ) -> Result<(Transaction, Option<WalletOutput>), TransactionError> {
+    ) -> Result<(Transaction, Option<WalletOutput>), TransactionBuilderError> {
         let mut tx_builder = CoreTransactionBuilder::new();
 
         let total_public_nonce = &sender_public_nonce.to_public_key()? +
@@ -812,7 +809,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         change: &OutputPair,
         output_hash: FixedHash,
-    ) -> Result<OutputPair, TransactionError> {
+    ) -> Result<OutputPair, TransactionBuilderError> {
         let mut payment_id = change.output.payment_id.clone();
         payment_id
             .transaction_info_set_sent_output_hashes(vec![output_hash])

@@ -621,13 +621,13 @@ where KM: TransactionKeyManagerInterface
     pub async fn get_outputs_by_query(
         &mut self,
         query: OutputBackendQuery,
-    ) -> Result<Vec<WalletOutput>, OutputManagerError> {
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputsByQuery(query))
             .await??
         {
-            OutputManagerResponse::SpentOutputs(s) => Ok(s),
+            OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

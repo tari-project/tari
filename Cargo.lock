@@ -4540,6 +4540,7 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "url",
+ "uuid",
  "zeroize",
 ]
 
@@ -8064,6 +8065,7 @@ name = "tari_transaction_components"
 version = "5.0.1"
 dependencies = [
  "anyhow",
+ "argon2 0.4.1",
  "async-trait",
  "bitflags 2.6.0",
  "blake2",

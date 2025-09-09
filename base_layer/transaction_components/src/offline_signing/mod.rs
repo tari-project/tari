@@ -48,7 +48,9 @@ mod test {
         StackItem,
         TariScript,
     };
-    use tari_transaction_components::{
+    use zeroize::Zeroizing;
+
+    use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         helpers::borsh::SerializedSize,
@@ -62,6 +64,8 @@ mod test {
             TransactionKeyManagerInterface,
             TransactionKeyManagerWrapper,
         },
+        multisig::script::derive_multisig_ephemeral_pubkeys,
+        offline_signing::offline_signer::OfflineSigner,
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
             covenants::Covenant,
@@ -74,12 +78,6 @@ mod test {
         validation::transaction::TransactionInternalConsistencyValidator,
         MicroMinotari,
         TransactionBuilder,
-    };
-    use zeroize::Zeroizing;
-
-    use crate::transaction_service::{
-        multisig::script::derive_multisig_ephemeral_pubkeys,
-        offline_signing::offline_signer::OfflineSigner,
     };
 
     async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {

@@ -29,10 +29,9 @@ use tari_common_types::{
 
 use crate::{
     offline_signing::marshal_output_pair::MarshalOutputPair,
-    transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, WalletOutput},
+    transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, TransactionError, WalletOutput},
     MicroMinotari,
 };
-use crate::transaction_components::TransactionError;
 
 const SUPPORTED_VERSION: &str = "1.0.0";
 
@@ -51,8 +50,8 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
         let version = value
             .get("version")
             .ok_or_else(|| TransactionError::SerializationError("Missing version".into()))?;
-        let version: Version = serde_json::from_value(version.clone())
-            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let version: Version =
+            serde_json::from_value(version.clone()).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
         if version != get_supported_version() {
             return Err(TransactionError::SerializationError(format!(
                 "Unsupported version. Expected '{}', got '{}'",

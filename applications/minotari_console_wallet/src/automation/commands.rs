@@ -43,14 +43,6 @@ use minotari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
-        multisig::script::is_multisig_utxo,
-        offline_signing::models::{
-            PrepareDepositMultisigTransactionResult,
-            PrepareOneSidedTransactionForSigningResult,
-            PrepareWithdrawMultisigTransactionResult,
-            SignedOneSidedTransactionResult,
-            TransactionResult,
-        },
         storage::models::WalletTransaction,
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
@@ -89,6 +81,14 @@ use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    multisig::script::is_multisig_utxo,
+    offline_signing::models::{
+        PrepareDepositMultisigTransactionResult,
+        PrepareOneSidedTransactionForSigningResult,
+        PrepareWithdrawMultisigTransactionResult,
+        SignedOneSidedTransactionResult,
+        TransactionResult,
+    },
     tari_amount::{uT, MicroMinotari, Minotari},
     transaction_components::{
         covenants::Covenant,
