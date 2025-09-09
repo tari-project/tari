@@ -71,13 +71,19 @@ impl SeedStrap {
         };
 
         match self.discover_peers_via_seeds(&mut round_info).await {
-            Ok(num_added) => {
+            Ok((num_added, seeds_communicated_with)) => {
                 round_info.num_new_peers = num_added;
 
-                if round_info.num_succeeded == 0 && num_added == 0 {
+                if seeds_communicated_with == 0 {
                     warn!(
                         target: LOG_TARGET,
-                        "SeedStrap: Failed to contact any seed nodes or retrieve new peers."
+                        "SeedStrap: Failed to communicate with any seed nodes."
+                    );
+                } else  if round_info.num_succeeded == 0 && num_added == 0 {
+                    warn!(
+                        target: LOG_TARGET,
+                        "SeedStrap: Communicated with {} seed nodes but did not retrieve any peers.",
+                        seeds_communicated_with
                     );
                 } else if num_added == 0 {
                     warn!(
@@ -129,7 +135,7 @@ impl SeedStrap {
     async fn discover_peers_via_seeds(
         &mut self,
         round_info: &mut DhtNetworkDiscoveryRoundInfo,
-    ) -> Result<usize, NetworkDiscoveryError> {
+    ) -> Result<(usize, usize), NetworkDiscoveryError> {
         let seed_peers_available = self.context.connectivity.get_seeds().await?;
         debug!(
             target: LOG_TARGET,
@@ -143,7 +149,7 @@ impl SeedStrap {
                 target: LOG_TARGET,
                 "SeedStrap: No seed peers configured. Unable to perform initial peer discovery via seeds."
             );
-            return Ok(0);
+            return Ok((0, 0));
         }
 
         let seed_node_ids_set: HashSet<NodeId> = seed_peers_available.iter().map(|p| p.node_id.clone()).collect();
@@ -209,9 +215,13 @@ impl SeedStrap {
             task_stream.push(handle);
         }
 
+        let mut seeds_communicated_with = 0;
         while let Some(result) = task_stream.next().await {
             let (peers_from_seed, new_peers_this_seed, duplicates_this_seed, spawn_another_task) = match result {
-                Ok((peers, n_new, n_dup)) => (peers, n_new, n_dup, false),
+                Ok((peers, n_new, n_dup, communicated)) => {
+                    if communicated { seeds_communicated_with += 1;}
+                    (peers, n_new, n_dup, false)
+                },
                 Err(e) => {
                     debug!(target: LOG_TARGET, "SeedStrap: get_peers task unsuccessful, starting a new one: {e}");
                     (Vec::new(), 0, 0, true)
@@ -301,7 +311,7 @@ impl SeedStrap {
 
         );
 
-        Ok(total_peers_added_this_round)
+        Ok((total_peers_added_this_round, seeds_communicated_with))
     }
 
     fn early_exit_conditions_met(&self, total_peers_added_this_round: usize, successful_seed_contacts: usize) -> bool {
@@ -381,9 +391,10 @@ async fn get_peers(
     rpc_connect_timeout: Duration,
     rpc_get_peers_stream_timeout: Duration,
     rpc_streaming_timeout: Duration,
-) -> (Vec<PeerInfo>, usize, usize) {
+) -> (Vec<PeerInfo>, usize, usize, bool) {
     let seed_peer_node_id_str = seed_peer_candidate.node_id.to_string();
 
+    let mut communicated_with_seed = false;
     if context.node_identity.node_id() == &seed_peer_candidate.node_id {
         info!(
             target: LOG_TARGET,
@@ -392,7 +403,7 @@ async fn get_peers(
             num_seeds_this_round,
             seed_peer_node_id_str
         );
-        return (vec![], 0, 0);
+        return (vec![], 0, 0, communicated_with_seed);
     }
 
     debug!(
@@ -422,14 +433,14 @@ async fn get_peers(
                     seed_peer_node_id_str,
                     e
                 );
-                return (vec![], 0, 0);
+                return (vec![], 0, 0, communicated_with_seed);
             },
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
                     "SeedStrap: Peer dial_peer to seed '{seed_peer_node_id_str}' timed out after {dial_peer_timeout:?}"
                 );
-                return (vec![], 0, 0);
+                return (vec![], 0, 0, communicated_with_seed);
             },
         };
 
@@ -450,6 +461,9 @@ async fn get_peers(
         .await
         {
             Ok(peers) => {
+                if !communicated_with_seed {
+                    communicated_with_seed = true;
+                }
                 if peers.is_empty() && !conn.is_connected() && attempt < NUM_RETRIES {
                     debug!(
                         target: LOG_TARGET,
@@ -484,7 +498,7 @@ async fn get_peers(
                         "SeedStrap: Also failed to disconnect from seed peer '{seed_peer_node_id_str}' after fetch failure: {disc_err}"
                     );
                 }
-                return (vec![], 0, 0);
+                return (vec![], 0, 0, communicated_with_seed);
             },
         };
     }
@@ -497,7 +511,7 @@ async fn get_peers(
             num_seeds_this_round,
             seed_peer_node_id_str
         );
-        return (vec![], 0, 0);
+        return (vec![], 0, 0, communicated_with_seed);
     }
 
     debug!(
@@ -642,7 +656,12 @@ async fn get_peers(
         duplicates_this_seed
     );
 
-    (peers_from_seed, new_peers_this_seed, duplicates_this_seed)
+    (
+        peers_from_seed,
+        new_peers_this_seed,
+        duplicates_this_seed,
+        communicated_with_seed,
+    )
 }
 
 async fn fetch_peers_from_connection(
