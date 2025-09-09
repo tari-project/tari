@@ -2252,10 +2252,10 @@ where
             total_send += *amount;
             if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
                 debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo =
-                    MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+                *memo = MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
             }
-            *memo = memo.clone()
+            *memo = memo
+                .clone()
                 .add_sender_address(
                     self.resources.one_sided_tari_address.clone(),
                     true,
@@ -2288,12 +2288,7 @@ where
             .await?;
         for (address, amount, memo) in &destinations {
             tx_builder
-                .add_stealth_recipient(
-                    address.clone(),
-                    *amount,
-                    output_features.clone(),
-                    memo.clone(),
-                )
+                .add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())
                 .await?;
         }
 
