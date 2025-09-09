@@ -23,15 +23,9 @@
 use std::str::FromStr;
 
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
-use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{MemoField, OutputFeatures},
-    MicroMinotari,
-    TransactionBuilder,
-};
 
-use crate::transaction_service::{
-    error::TransactionServiceError,
+use crate::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     offline_signing::{
         marshal_output_pair::MarshalOutputPair,
         models::{
@@ -49,6 +43,9 @@ use crate::transaction_service::{
         },
         one_sided_signer::OneSidedSigner,
     },
+    transaction_components::{MemoField, OutputFeatures},
+    MicroMinotari,
+    TransactionBuilder,
 };
 
 pub struct OfflineSigner<TKeyManagerInterface> {

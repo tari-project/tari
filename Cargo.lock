@@ -4540,7 +4540,6 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "url",
- "uuid",
  "zeroize",
 ]
 
@@ -8085,6 +8084,7 @@ dependencies = [
  "num-traits",
  "primitive-types",
  "rand 0.8.5",
+ "semver",
  "serde",
  "serde_json",
  "serde_repr",
@@ -8106,6 +8106,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "utoipa",
+ "uuid",
  "wasm-bindgen",
  "zeroize",
 ]

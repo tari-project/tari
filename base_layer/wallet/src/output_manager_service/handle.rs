@@ -621,7 +621,7 @@ where KM: TransactionKeyManagerInterface
     pub async fn get_outputs_by_query(
         &mut self,
         query: OutputBackendQuery,
-    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+    ) -> Result<Vec<WalletOutput>, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputsByQuery(query))

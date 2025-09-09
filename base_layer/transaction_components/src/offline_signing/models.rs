@@ -26,14 +26,11 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash},
 };
-use tari_transaction_components::{
+
+use crate::{
+    offline_signing::marshal_output_pair::MarshalOutputPair,
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, WalletOutput},
     MicroMinotari,
-};
-
-use crate::transaction_service::{
-    error::TransactionServiceError,
-    offline_signing::marshal_output_pair::MarshalOutputPair,
 };
 
 const SUPPORTED_VERSION: &str = "1.0.0";

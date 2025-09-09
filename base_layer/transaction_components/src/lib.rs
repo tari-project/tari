@@ -23,6 +23,8 @@ pub mod transaction_builder;
 pub mod transaction_components;
 pub mod validation;
 pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
+pub mod multisig;
+pub mod offline_signing;
 
 pub mod rpc;
 

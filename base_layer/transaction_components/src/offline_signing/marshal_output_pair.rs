@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_transaction_components::{
+use tari_utilities::hex::{from_hex, Hex};
+
+use crate::{
     key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
     transaction_builder::OutputPair,
 };
-use tari_utilities::hex::{from_hex, Hex};
-
-use crate::transaction_service::error::TransactionServiceError;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MarshalOutputPair {

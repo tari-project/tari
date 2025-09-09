@@ -79,6 +79,7 @@ use tari_transaction_components::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
+    multisig::types::GetMultisigUtxoDataOutput,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -90,6 +91,7 @@ use tari_transaction_components::{
         OutputFeatures,
         TemplateType,
         Transaction,
+        TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
         WalletOutputBuilder,
@@ -1205,13 +1207,34 @@ where
             },
 
             TransactionServiceRequest::CreateMultisigUtxo { request } => {
-                let multisig_session = MultisigSession::new(self.resources.clone());
-                let (tx_id, tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
+                let fee_per_gram = MicroMinotari::from(1);
+                let selected_criteria = UtxoSelectionCriteria {
+                    excluding_multisig: true,
+                    ..Default::default()
+                };
+                let tx_id = TxId::new_random();
+                let tx_builter = self
+                    .resources
+                    .output_manager_service
+                    .prepare_transaction_to_send(
+                        tx_id,
+                        request.amount,
+                        selected_criteria,
+                        OutputFeatures::default(),
+                        fee_per_gram,
+                        push_pubkey_script(&Default::default()),
+                        Covenant::default(),
+                    )
+                    .await?;
+                let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
                     .create_deposit_multisig_transaction(
                         request.amount,
                         request.party_number,
                         request.public_keys,
                         request.recipient_address.clone(),
+                        tx_builter,
+                        fee_per_gram,
                     )
                     .await?;
 
@@ -1254,10 +1277,44 @@ where
             },
 
             TransactionServiceRequest::GetMultisigUtxoData { utxo_commitment } => {
-                let multisig_session = MultisigSession::new(self.resources.clone());
+                let mut query = OutputBackendQuery::default();
+                query.commitments.push(utxo_commitment.clone());
 
-                let output: crate::transaction_service::multisig::types::GetMultisigUtxoDataOutput =
-                    multisig_session.get_multisig_utxo_data(utxo_commitment).await?;
+                query.status.push(OutputStatus::Unspent);
+
+                let utxos = self
+                    .resources
+                    .output_manager_service
+                    .clone()
+                    .get_outputs_by_query(query)
+                    .await
+                    .map_err(TransactionServiceError::OutputManagerError)?;
+
+                let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
+                    "UTXO with commitment {:?} not found",
+                    utxo_commitment
+                )))?;
+
+                let scripts = selected_utxo.wallet_output.script.clone();
+                let mut challenge = Box::new([0; 32]);
+                let mut public_keys = Vec::new();
+
+                let sender_offset_pub_key = selected_utxo.wallet_output.sender_offset_public_key.to_public_key()?;
+
+                for op in scripts.as_slice() {
+                    if let Opcode::CheckMultiSigVerify(_m, _n, k, msg) = op {
+                        challenge.clone_from_slice(msg.as_bytes());
+
+                        public_keys.extend(k.clone());
+                    }
+                }
+
+                let output = GetMultisigUtxoDataOutput {
+                    challenge,
+                    public_keys,
+                    commitment: selected_utxo.commitment.clone(),
+                    sender_offset_pub_key: CompressedPublicKey::new_from_pk(sender_offset_pub_key),
+                };
 
                 Ok(TransactionServiceResponse::GetMultisigUtxoData(Box::new(output)))
             },
@@ -1267,20 +1324,56 @@ where
                 recipient_address,
                 signatures,
             } => {
-                let multisig_session = MultisigSession::new(self.resources.clone());
+                let mut query = OutputBackendQuery::default();
+                query.commitments.push(utxo_commitment.clone());
 
-                let (tx_id, transaction, payment_id, amount, change_hashes, sent_hashes) = multisig_session
-                    .spend_multisig_utxo(utxo_commitment, signatures, recipient_address.clone())
+                query.status.push(OutputStatus::Unspent);
+
+                let utxos = self
+                    .resources
+                    .output_manager_service
+                    .clone()
+                    .get_outputs_by_query(query)
+                    .await
+                    .map_err(TransactionServiceError::OutputManagerError)?;
+
+                let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
+                    "UTXO with utxo_commitment {:?} not found",
+                    utxo_commitment
+                )))?;
+
+                let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+
+                let (finalized_transaction, payment_id, amount) = multisig_session
+                    .spend_multisig_utxo(utxo_commitment, signatures, recipient_address.clone(), selected_utxo)
                     .await?;
+                let (change_hashes, change) = match tx.change {
+                    Some(change_output) => {
+                        let hash = change_output
+                            .hash(&self.resources.transaction_key_manager_service)
+                            .await?;
+                        (vec![hash], Some(vec![change_output]))
+                    },
+                    None => (vec![], None),
+                };
+                let tx_id = TxId::new_random();
+                self.resources
+                    .output_manager_service
+                    .clone()
+                    .confirm_pending_transaction(tx_id, change)
+                    .await
+                    .map_err(|e| {
+                        TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
+                    })?;
 
-                let fee = transaction.body.get_total_fee()?;
+                let fee = finalized_transaction.transacton.body.get_total_fee()?;
 
                 // This event being sent is important, but not critical to the protocol being successful. Send only
                 // fails if there are no subscribers.
                 let _result = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-
+                let sent_hashes = finalized_transaction.sent_hashes.clone();
                 self.submit_transaction(
                     transaction_broadcast_join_handles,
                     CompletedTransaction::new_with_output_hashes(
@@ -1289,7 +1382,7 @@ where
                         recipient_address,
                         amount,
                         fee,
-                        transaction.clone(),
+                        finalized_transaction.transacton,
                         LegacyTransactionStatus::Completed,
                         Utc::now(),
                         TransactionDirection::Outbound,

@@ -35,8 +35,16 @@ use tari_common_types::{
     },
 };
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
-use tari_transaction_components::{
+
+use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    multisig::script::derive_multisig_ephemeral_pubkeys,
+    offline_signing::models::{
+        OneSidedMultisigTransactionInfo,
+        OneSidedTransactionInfo,
+        SignedTransaction,
+        TransactionMetadata,
+    },
     transaction_builder::OutputPair,
     transaction_components::{
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
@@ -51,17 +59,6 @@ use tari_transaction_components::{
     },
     MicroMinotari,
     TransactionBuilderError,
-};
-
-use crate::transaction_service::{
-    error::{TransactionServiceError, TransactionServiceProtocolError},
-    multisig::script::derive_multisig_ephemeral_pubkeys,
-    offline_signing::models::{
-        OneSidedMultisigTransactionInfo,
-        OneSidedTransactionInfo,
-        SignedTransaction,
-        TransactionMetadata,
-    },
 };
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Eq)]
