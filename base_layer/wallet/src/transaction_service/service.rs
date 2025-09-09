@@ -2269,7 +2269,7 @@ where
                     },
                 )
                 .map_err(TransactionServiceError::InvalidPaymentId)?;
-            self.verify_send(&address, TariAddressFeatures::create_one_sided_only())?;
+            self.verify_send(address, TariAddressFeatures::create_one_sided_only())?;
         }
 
         // Prepare sender part of the transaction
