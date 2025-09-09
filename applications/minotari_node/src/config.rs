@@ -31,6 +31,7 @@ use tari_common::{
     configuration::{
         bootstrap::wallet_http_service_default_port,
         serializers,
+        serializers::optional_seconds,
         CommonConfig,
         ConfigList,
         Network,
@@ -150,12 +151,13 @@ pub struct BaseNodeConfig {
     pub state_machine: BaseNodeStateMachineConfig,
     /// Obscure GRPC error responses
     pub report_grpc_error: bool,
-    // Interval to check if the base node is still in sync with the network
+    /// Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_interval: Duration,
-    // Interval to check if the base node is still in sync with the network
-    #[serde(with = "serializers::seconds")]
-    pub tari_pulse_health_check: Duration,
+    /// Interval to check if the seed nodes comms responses are healthy. (Recommended '60 * 10 = 600 s' if you need
+    /// this)
+    #[serde(with = "optional_seconds")]
+    pub tari_pulse_health_check: Option<Duration>,
     /// Wallet HTTP service configuration
     pub http_wallet_query_service: WalletHttpServiceConfig,
 }
@@ -219,7 +221,7 @@ impl Default for BaseNodeConfig {
             state_machine: Default::default(),
             report_grpc_error: false,
             tari_pulse_interval: Duration::from_secs(120),
-            tari_pulse_health_check: Duration::from_secs(60 * 10),
+            tari_pulse_health_check: None,
             http_wallet_query_service: Default::default(),
         }
     }

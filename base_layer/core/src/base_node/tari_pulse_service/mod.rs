@@ -42,7 +42,7 @@ use tokio::{
     sync::{broadcast, broadcast::error::RecvError, watch, Mutex, RwLock},
     task,
     task::JoinHandle,
-    time::{self, timeout, MissedTickBehavior},
+    time::{self, timeout, Instant as TokioInstant, MissedTickBehavior},
 };
 
 use super::LocalNodeCommsInterface;
@@ -52,7 +52,7 @@ const LOG_TARGET: &str = "c::bn::tari_pulse";
 #[serde(deny_unknown_fields)]
 pub struct TariPulseConfig {
     pub dns_check_interval: Duration,
-    pub liveness_interval: Duration,
+    pub liveness_interval: Option<Duration>,
     pub network: Network,
 }
 
@@ -67,7 +67,7 @@ impl Default for TariPulseConfig {
     fn default() -> Self {
         Self {
             dns_check_interval: Duration::from_secs(120),
-            liveness_interval: Duration::from_secs(60 * 10),
+            liveness_interval: None,
             network: Network::default(),
         }
     }
@@ -126,13 +126,17 @@ impl TariPulseService {
     ) {
         tokio::time::sleep(Duration::from_secs(30)).await; // Wait for the node to start up properly
 
+        // DNS interval
         let mut dns_check_interval = time::interval(self.config.dns_check_interval);
         dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::pin!(dns_check_interval);
 
-        let mut health_check_interval = time::interval(self.config.liveness_interval);
-        health_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        tokio::pin!(health_check_interval);
+        // Health chack interval (optional)
+        let mut health_check_interval = self.config.liveness_interval.map(|d| {
+            let mut i = time::interval(d);
+            i.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            i
+        });
 
         let mut shutdown_signal = self.shutdown_signal.clone();
         let mut count = 0u64;
@@ -140,7 +144,7 @@ impl TariPulseService {
 
         loop {
             tokio::select! {
-                _ = health_check_interval.tick() => {
+                _ = tick_optional(health_check_interval.as_mut()) => {
                     let h_check = health_check_in_progress.clone();
                     let liveness_handle = self.liveness_handle.clone();
                     let comms = self.node_comms.clone();
@@ -273,12 +277,12 @@ impl TariPulseHandle {
 
 pub struct TariPulseServiceInitializer {
     dns_interval: Duration,
-    liveness_interval: Duration,
+    liveness_interval: Option<Duration>,
     network: Network,
 }
 
 impl TariPulseServiceInitializer {
-    pub fn new(dns_interval: Duration, liveness_interval: Duration, network: Network) -> Self {
+    pub fn new(dns_interval: Duration, liveness_interval: Option<Duration>, network: Network) -> Self {
         Self {
             dns_interval,
             liveness_interval,
@@ -535,5 +539,14 @@ async fn disconnect_peer(mut comms: ConnectivityRequester, peer_node_id: NodeId)
         Err(_) => {
             warn!(target: LOG_TARGET, "check_health: timeout getting connection for peer {}", peer_node_id);
         },
+    }
+}
+
+async fn tick_optional(interval: Option<&mut time::Interval>) -> TokioInstant {
+    match interval {
+        // If 'interval' is Some, tick it and return the instant
+        Some(i) => i.tick().await,
+        // If 'interval' is None, await a future that never completes
+        None => futures::future::pending::<TokioInstant>().await,
     }
 }
