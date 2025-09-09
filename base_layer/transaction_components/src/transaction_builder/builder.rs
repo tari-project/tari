@@ -530,8 +530,11 @@ where KM: TransactionKeyManagerInterface
         for recipient in &self.recipient_outputs {
             sent_hashes.push(recipient.output.tx_output(&self.key_manager).await?.hash());
         }
-        memo.transaction_info_set_sent_output_hashes(sent_hashes)
-            .map_err(TransactionBuilderError::InvalidMemo)?;
+        // if its too much outputs, we dont track this
+        if sent_hashes.len() <= 2 {
+            memo.transaction_info_set_sent_output_hashes(sent_hashes)
+                .map_err(TransactionBuilderError::InvalidMemo)?;
+        }
         Ok(memo)
     }
 
@@ -978,15 +981,43 @@ impl<KM> Debug for TransactionBuilder<KM> {
 
 #[cfg(test)]
 mod test {
-    use chacha20poly1305::aead::OsRng;
-    use tari_common_types::key_branches::TransactionKeyManagerBranch;
+
+    async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {
+        let cipher = CipherSeed::new();
+        let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
+        OsRng.fill_bytes(key.as_mut());
+        let factory = CryptoFactories::new(64);
+
+        let backend = MemoryKeyManagerBackend::new();
+        TransactionKeyManagerWrapper::new(cipher, backend, factory, Arc::new(WalletType::ProvidedKeys(keys))).await
+    }
+
+    use std::sync::Arc;
+
+    use chacha20poly1305::{
+        aead::{rand_core::RngCore, OsRng},
+        Key,
+    };
+    use tari_common_types::{
+        key_branches::TransactionKeyManagerBranch,
+        seeds::cipher_seed::CipherSeed,
+        wallet_types::{ProvidedKeysWallet, WalletType},
+    };
     use tari_crypto::keys::SecretKey;
     use tari_script::{script, TariScript};
+    use zeroize::Zeroizing;
 
     use super::*;
     use crate::{
         crypto_factories::CryptoFactories,
-        key_manager::{create_memory_key_manager, SecretTransactionKeyManagerInterface},
+        key_manager::{
+            create_memory_key_manager,
+            error::KeyManagerServiceError,
+            memory_key_manager::MemoryKeyManagerBackend,
+            MemoryKeyManager,
+            SecretTransactionKeyManagerInterface,
+            TransactionKeyManagerWrapper,
+        },
         tari_amount::{uT, MicroMinotari},
         test_helpers::{
             create_consensus_constants,
@@ -1448,16 +1479,12 @@ mod test {
         assert_eq!(bob_output.script, script);
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-        let encryption_public_key = CompressedPublicKey::from_secret_key(&encryption_private_key);
-        let encryption_key_id = TariKeyId::Imported {
-            key: encryption_public_key,
-        };
         let bob_tx_output = bob_output.to_transaction_output(&key_manager).await.unwrap();
         assert!(key_manager
             .is_this_output_ours(
                 &bob_tx_output.commitment,
                 &bob_output.encrypted_data,
-                Some(&encryption_key_id)
+                Some(encryption_private_key)
             )
             .await
             .unwrap());
@@ -1535,16 +1562,12 @@ mod test {
         assert_eq!(bob_output.script, script);
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-        let encryption_public_key = CompressedPublicKey::from_secret_key(&encryption_private_key);
-        let encryption_key_id = TariKeyId::Imported {
-            key: encryption_public_key,
-        };
         let bob_tx_output = bob_output.to_transaction_output(&key_manager).await.unwrap();
         assert!(key_manager
             .is_this_output_ours(
                 &bob_tx_output.commitment,
                 &bob_output.encrypted_data,
-                Some(&encryption_key_id)
+                Some(encryption_private_key)
             )
             .await
             .unwrap());
@@ -1660,5 +1683,413 @@ mod test {
             Ok(_) => {},
             Err(e) => panic!("Unexpected error: {e:?}"),
         };
+    }
+
+    #[tokio::test]
+    async fn create_multi_recipients_transaction() {
+        let rules = create_consensus_manager();
+        let factories = CryptoFactories::default();
+        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let carol_key_manager = create_memory_key_manager().await.unwrap();
+
+        let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
+        let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let bob_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let spend_key = carol_key_manager.get_spend_key().await.unwrap().pub_key;
+        let view_key = carol_key_manager.get_view_key().await.unwrap().pub_key;
+        let carol_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let input = create_test_input(MicroMinotari(5000), 0, &alice_key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(
+            consensus_constants.clone(),
+            alice_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .await
+        .unwrap();
+        let fee_per_gram = MicroMinotari(4);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .await
+            .unwrap();
+        builder
+            .add_stealth_recipient(
+                bob_address,
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .await
+            .unwrap();
+        builder
+            .add_stealth_recipient(
+                carol_address,
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .await
+            .unwrap();
+        let finalized = builder.build().await.unwrap();
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.inputs().len(), 1);
+        assert_eq!(tx.body.outputs().len(), 3);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn recover_multi_recipients_transaction() {
+        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let alice_keys = ProvidedKeysWallet {
+            public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
+            private_spend_key: None,
+            private_comms_key: None,
+            view_key: alice_key_manager.get_private_view_key().await.unwrap(),
+            birthday: None,
+        };
+        let alice_view_key_manager = create_view_key_manager(alice_keys).await.unwrap();
+        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_keys = ProvidedKeysWallet {
+            public_spend_key: bob_key_manager.get_spend_key().await.unwrap().pub_key,
+            private_spend_key: None,
+            private_comms_key: None,
+            view_key: bob_key_manager.get_private_view_key().await.unwrap(),
+            birthday: None,
+        };
+        let bob_view_key_manager = create_view_key_manager(bob_keys).await.unwrap();
+        let carol_key_manager = create_memory_key_manager().await.unwrap();
+        let carol_keys = ProvidedKeysWallet {
+            public_spend_key: carol_key_manager.get_spend_key().await.unwrap().pub_key,
+            private_spend_key: None,
+            private_comms_key: None,
+            view_key: carol_key_manager.get_private_view_key().await.unwrap(),
+            birthday: None,
+        };
+        let carol_view_key_manager = create_view_key_manager(carol_keys).await.unwrap();
+
+        let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
+        let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let bob_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let spend_key = carol_key_manager.get_spend_key().await.unwrap().pub_key;
+        let view_key = carol_key_manager.get_view_key().await.unwrap().pub_key;
+        let carol_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let input = create_test_input(MicroMinotari(5000), 0, &alice_key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(
+            consensus_constants.clone(),
+            alice_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .await
+        .unwrap();
+        let fee_per_gram = MicroMinotari(4);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .await
+            .unwrap();
+        builder
+            .add_stealth_recipient(
+                bob_address,
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .await
+            .unwrap();
+        builder
+            .add_stealth_recipient(
+                carol_address,
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .await
+            .unwrap();
+        let finalized = builder.build().await.unwrap();
+        let tx = finalized.transaction;
+        let mut alice_count = 0;
+        let mut bob_count = 0;
+        let mut carol_count = 0;
+        let mut wrong = 0;
+        for output in tx.body.outputs() {
+            // alice change output
+            if alice_key_manager
+                .is_this_output_ours(&output.commitment, &output.encrypted_data, None)
+                .await
+                .unwrap()
+            {
+                alice_count += 1;
+            }
+            // let assume a stealth key for alice
+            let alice_shared_secret = alice_key_manager
+                .get_diffie_hellman_shared_secret(
+                    &alice_key_manager.get_view_key().await.unwrap().key_id,
+                    &output.sender_offset_public_key,
+                )
+                .await
+                .unwrap();
+            let alice_encryption_private_key = shared_secret_to_output_encryption_key(&alice_shared_secret).unwrap();
+            if alice_key_manager
+                .is_this_output_ours(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    Some(alice_encryption_private_key),
+                )
+                .await
+                .unwrap()
+            {
+                wrong += 1;
+            }
+
+            // bob change output
+            if bob_key_manager
+                .is_this_output_ours(&output.commitment, &output.encrypted_data, None)
+                .await
+                .unwrap()
+            {
+                wrong += 1;
+            }
+            // let assume a stealth key for bob
+            let bob_shared_secret = bob_key_manager
+                .get_diffie_hellman_shared_secret(
+                    &bob_key_manager.get_view_key().await.unwrap().key_id,
+                    &output.sender_offset_public_key,
+                )
+                .await
+                .unwrap();
+            let bob_encryption_private_key = shared_secret_to_output_encryption_key(&bob_shared_secret).unwrap();
+            if bob_key_manager
+                .is_this_output_ours(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    Some(bob_encryption_private_key),
+                )
+                .await
+                .unwrap()
+            {
+                bob_count += 1;
+            }
+
+            // carol change output
+            if carol_key_manager
+                .is_this_output_ours(&output.commitment, &output.encrypted_data, None)
+                .await
+                .unwrap()
+            {
+                wrong += 1;
+            }
+            // let assume a stealth key for bob
+            let carol_shared_secret = carol_key_manager
+                .get_diffie_hellman_shared_secret(
+                    &carol_key_manager.get_view_key().await.unwrap().key_id,
+                    &output.sender_offset_public_key,
+                )
+                .await
+                .unwrap();
+            let carol_encryption_private_key = shared_secret_to_output_encryption_key(&carol_shared_secret).unwrap();
+            if carol_key_manager
+                .is_this_output_ours(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    Some(carol_encryption_private_key),
+                )
+                .await
+                .unwrap()
+            {
+                carol_count += 1;
+            }
+        }
+        assert_eq!(alice_count, 1); // alice change output
+        assert_eq!(bob_count, 1); // bob recipient output
+        assert_eq!(carol_count, 1); // carol recipient output
+        assert_eq!(wrong, 0);
+
+        // lets do view only
+        let mut alice_count = 0;
+        let mut bob_count = 0;
+        let mut carol_count = 0;
+        let mut wrong = 0;
+        for output in tx.body.outputs() {
+            // alice change output
+            if alice_view_key_manager
+                .is_this_output_ours(&output.commitment, &output.encrypted_data, None)
+                .await
+                .unwrap()
+            {
+                alice_count += 1;
+            }
+            // let assume a stealth key for alice
+            let alice_shared_secret = alice_view_key_manager
+                .get_diffie_hellman_shared_secret(
+                    &alice_view_key_manager.get_view_key().await.unwrap().key_id,
+                    &output.sender_offset_public_key,
+                )
+                .await
+                .unwrap();
+            let alice_encryption_private_key = shared_secret_to_output_encryption_key(&alice_shared_secret).unwrap();
+            if alice_view_key_manager
+                .is_this_output_ours(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    Some(alice_encryption_private_key),
+                )
+                .await
+                .unwrap()
+            {
+                wrong += 1;
+            }
+
+            // bob change output
+            if bob_view_key_manager
+                .is_this_output_ours(&output.commitment, &output.encrypted_data, None)
+                .await
+                .unwrap()
+            {
+                wrong += 1;
+            }
+            // let assume a stealth key for bob
+            let bob_shared_secret = bob_view_key_manager
+                .get_diffie_hellman_shared_secret(
+                    &bob_view_key_manager.get_view_key().await.unwrap().key_id,
+                    &output.sender_offset_public_key,
+                )
+                .await
+                .unwrap();
+            let bob_encryption_private_key = shared_secret_to_output_encryption_key(&bob_shared_secret).unwrap();
+            if bob_view_key_manager
+                .is_this_output_ours(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    Some(bob_encryption_private_key),
+                )
+                .await
+                .unwrap()
+            {
+                bob_count += 1;
+            }
+
+            // carol change output
+            if carol_view_key_manager
+                .is_this_output_ours(&output.commitment, &output.encrypted_data, None)
+                .await
+                .unwrap()
+            {
+                wrong += 1;
+            }
+            // let assume a stealth key for bob
+            let carol_shared_secret = carol_view_key_manager
+                .get_diffie_hellman_shared_secret(
+                    &carol_view_key_manager.get_view_key().await.unwrap().key_id,
+                    &output.sender_offset_public_key,
+                )
+                .await
+                .unwrap();
+            let carol_encryption_private_key = shared_secret_to_output_encryption_key(&carol_shared_secret).unwrap();
+            if carol_view_key_manager
+                .is_this_output_ours(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    Some(carol_encryption_private_key),
+                )
+                .await
+                .unwrap()
+            {
+                carol_count += 1;
+            }
+        }
+        assert_eq!(alice_count, 1); // alice change output
+        assert_eq!(bob_count, 1); // bob recipient output
+        assert_eq!(carol_count, 1); // carol recipient output
+        assert_eq!(wrong, 0);
+    }
+
+    #[tokio::test]
+    async fn create_very_large_multi_recipients_transaction() {
+        let rules = create_consensus_manager();
+        let factories = CryptoFactories::default();
+        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key_manager = create_memory_key_manager().await.unwrap();
+
+        let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
+        let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let bob_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let input = create_test_input(MicroMinotari(500000), 0, &alice_key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(
+            consensus_constants.clone(),
+            alice_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .await
+        .unwrap();
+        let fee_per_gram = MicroMinotari(4);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .await
+            .unwrap();
+        for _ in 0..100 {
+            builder
+                .add_stealth_recipient(
+                    bob_address.clone(),
+                    MicroMinotari(1000),
+                    OutputFeatures::default(),
+                    MemoField::new_empty(),
+                )
+                .await
+                .unwrap();
+        }
+
+        let finalized = builder.build().await.unwrap();
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.inputs().len(), 1);
+        assert_eq!(tx.body.outputs().len(), 101);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 }
