@@ -258,8 +258,8 @@ impl WalletOutput {
         if let [Opcode::PushPubKey(public_key)] = self.script.as_slice() {
             // first check non stealth direct to spend key outputs
             let spend_key = key_manager.get_spend_key().await?;
-            if &spend_key.pub_key == public_key {
-                return Ok(Some((ExecutionStack::default(), key_manager.get_spend_key_id().await?)));
+            if spend_key.pub_key == **public_key {
+                return Ok(Some((ExecutionStack::default(), spend_key.key_id)));
             }
 
             // next lets check the commitment mask derived keys

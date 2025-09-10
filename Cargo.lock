@@ -4510,7 +4510,6 @@ dependencies = [
  "minotari_node_wallet_client",
  "prost 0.13.4",
  "rand 0.8.5",
- "semver",
  "serde",
  "serde_json",
  "sha2",
