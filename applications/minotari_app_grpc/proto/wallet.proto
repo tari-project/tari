@@ -234,6 +234,7 @@ service Wallet {
   // This call supports standard interactive transactions (Mimblewimble),
   // one-sided transactions, and one-sided-to-stealth-address transactions.
   // Each recipient must include a valid Tari address, amount, fee, and payment type.
+  // SingleTx is used to indicate should this be sent as a single MW tx or multiple, one tx per recipient.
   //
   // ### Example JavaScript gRPC client usage:
   //
@@ -247,6 +248,7 @@ service Wallet {
   //
   // const request = new TransferRequest();
   // request.setRecipientsList([recipient]);
+  // request.setSingleTx(false);
   //
   // client.transfer(request, (err, response) => {
   //   if (err) console.error(err);
@@ -1519,6 +1521,7 @@ message BroadcastSignedOneSidedTransactionResponse {
 // A request to send funds to one or more recipients.
 message TransferRequest {
   repeated PaymentRecipient recipients = 1;
+  bool single_tx = 2;
 }
 
 message SendShaAtomicSwapRequest {

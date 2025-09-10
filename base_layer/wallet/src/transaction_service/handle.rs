@@ -212,6 +212,12 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
     },
+    SendManyOneSidedTransactions {
+        destinations: Vec<(TariAddress, MicroMinotari, MemoField)>,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: Box<OutputFeatures>,
+        fee_per_gram: MicroMinotari,
+    },
     SendOneSidedToStealthAddressTransaction {
         destination: TariAddress,
         amount: MicroMinotari,
@@ -301,6 +307,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions(_) => write!(f, "GetCancelledCompletedTransactions"),
+            Self::SendManyOneSidedTransactions { .. } => write!(f, "SendManyOneSidedTransactions"),
             Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({t})"),
             Self::SignOneSidedDepositMultisigTransaction { request } => {
                 write!(f, "SignOneSidedDepositMultisigTransaction (request {request:?})")
@@ -555,6 +562,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionsSent(Vec<TxId>),
     TransactionSentWithOutputHash(TxId, FixedHash),
     EncumberAggregateUtxo(
         TxId,
@@ -1005,6 +1013,28 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_multi_recipient_transaction(
+        &mut self,
+        destinations: Vec<(TariAddress, MicroMinotari, MemoField)>,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendManyOneSidedTransactions {
+                destinations,
+                selection_criteria,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionsSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
