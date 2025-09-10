@@ -635,8 +635,8 @@ impl PeerDatabaseSql {
             node_id: peer.node_id.to_hex(),
             banned_until: peer.banned_until,
             banned_reason: Some(peer.banned_reason.clone()),
-            supported_protocols: Some(serialize_protocols(&peer.supported_protocols)),
-            user_agent: Some(peer.user_agent.clone()),
+            supported_protocols: serialize_protocols(&peer.supported_protocols),
+            user_agent: peer.user_agent.clone(),
             metadata: serialize_metadata(&peer.metadata)?,
             deleted_at: peer.deleted_at,
         };
@@ -667,10 +667,8 @@ impl PeerDatabaseSql {
                 last_attempted: address.last_attempted(),
                 last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
                 quality_score: address.quality_score(),
-                source: Some(
-                    serde_json::to_string(&address.source())
-                        .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
-                ),
+                source: serde_json::to_string(&address.source())
+                    .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
             });
         }
 
@@ -1692,6 +1690,7 @@ pub struct NewPeerWithAddressesSql {
 
 #[derive(Clone, Debug, Selectable, Queryable, Insertable, AsChangeset, PartialEq, Eq)]
 #[diesel(table_name = peers)]
+#[diesel(treat_none_as_null = true)]
 pub struct NewPeerSql {
     pub peer_id: i64,
     pub public_key: String,
@@ -1710,12 +1709,13 @@ pub struct NewPeerSql {
 
 #[derive(Clone, Debug, Selectable, Queryable, AsChangeset, PartialEq, Eq)]
 #[diesel(table_name = peers)]
+#[diesel(treat_none_as_null = true)]
 pub struct UpdatePeerSql {
     pub node_id: String,
     pub banned_until: Option<chrono::NaiveDateTime>,
     pub banned_reason: Option<String>,
-    pub supported_protocols: Option<String>,
-    pub user_agent: Option<String>,
+    pub supported_protocols: String,
+    pub user_agent: String,
     pub metadata: Option<Vec<u8>>,
     pub deleted_at: Option<chrono::NaiveDateTime>,
 }
@@ -1728,6 +1728,7 @@ pub struct UpdatePeerWithAddressesSql {
 
 #[derive(Clone, Debug, Selectable, Queryable, Insertable, AsChangeset, PartialEq, Eq)]
 #[diesel(table_name = multi_addresses)]
+#[diesel(treat_none_as_null = true)]
 pub struct NewMultiaddrWithStatsSql {
     pub address_id: Option<i32>,
     pub peer_id: i64,
@@ -1747,6 +1748,7 @@ pub struct NewMultiaddrWithStatsSql {
 
 #[derive(Clone, Debug, Selectable, Queryable, AsChangeset, PartialEq, Eq)]
 #[diesel(table_name = multi_addresses)]
+#[diesel(treat_none_as_null = true)]
 pub struct UpdateMultiaddrWithStatsSql {
     pub address: String,
     pub is_external: bool,
@@ -1759,7 +1761,7 @@ pub struct UpdateMultiaddrWithStatsSql {
     pub last_attempted: Option<chrono::NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
-    pub source: Option<String>,
+    pub source: String,
 }
 
 /// Serialize the protocols into a comma-separated string
@@ -1836,7 +1838,7 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             last_attempted: address.last_attempted(),
             last_failed_reason: address.last_failed_reason().map(|v| v.to_string()),
             quality_score: address.quality_score(),
-            source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
+            source: serde_json::to_string(&address.source()).unwrap_or_default(),
         }
     }
 }
@@ -1921,7 +1923,7 @@ impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
             last_attempted: address.last_attempted,
             last_failed_reason: address.last_failed_reason,
             quality_score: address.quality_score,
-            source: address.source.unwrap_or_default(),
+            source: address.source,
         }
     }
 }
@@ -2993,5 +2995,48 @@ mod tests {
         assert_eq!(u32_to_i32_infallible(0u32), 0i32);
         assert_eq!(u32_to_i32_infallible(1234u32), 1234i32);
         assert_eq!(u32_to_i32_infallible(u32::MAX), i32::MAX);
+    }
+
+    #[test]
+    fn it_correctly_updates_none_as_null() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create a new peer and add a failure reason
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let address = peer.last_address_used().unwrap();
+        peer.addresses
+            .mark_failed_connection_attempt(&address, "This has failed".to_string());
+
+        // Add the peer to the db
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        // Ensure the failure reason is still present when read from the db
+        let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        let last_failed_reason = peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .find(|a| a.address() == &address)
+            .and_then(|a| a.last_failed_reason());
+        assert!(last_failed_reason.is_some());
+
+        // Now mark the address as seen, which should clear the failure reason, and update the db
+        peer.addresses.mark_last_seen_now(&address);
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        // Read the peer from the db and ensure the failure reason is cleared
+        let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        let last_failed_reason = peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .find(|a| a.address() == &address)
+            .and_then(|a| a.last_failed_reason());
+        assert!(last_failed_reason.is_none());
     }
 }
