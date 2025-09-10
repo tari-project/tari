@@ -405,7 +405,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key_id: Option<PrivateKey>,
     ) -> Result<bool, TransactionError>;
 
     async fn get_script_offset(

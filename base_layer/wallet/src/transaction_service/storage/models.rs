@@ -586,6 +586,14 @@ impl WalletTransaction {
         }
     }
 
+    pub fn destination_address(&self) -> Option<TariAddress> {
+        match self {
+            WalletTransaction::PendingInbound(_) => None,
+            WalletTransaction::PendingOutbound(tx) => Some(tx.destination_address.clone()),
+            WalletTransaction::Completed(tx) => Some(tx.destination_address.clone()),
+        }
+    }
+
     pub fn is_pending(&self) -> bool {
         match self {
             WalletTransaction::PendingInbound(_) => true,

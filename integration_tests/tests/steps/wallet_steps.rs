@@ -804,6 +804,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -869,6 +870,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -982,6 +984,7 @@ async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -1098,6 +1101,7 @@ async fn send_many_interactive_amount_from_wallet_to_wallet_at_fee(
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let mut tx_ids = Vec::with_capacity(usize::try_from(number_of_transactions).unwrap());
     for i in 0..number_of_transactions {
@@ -1640,6 +1644,7 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
         };
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
+            single_tx: false,
         };
         let transfer_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
         let transfer_res = transfer_res.results.first().unwrap();
@@ -1819,6 +1824,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -2050,6 +2056,7 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
+        single_tx: true,
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -2176,6 +2183,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -2546,6 +2554,7 @@ async fn send_one_sided_stealth_transaction(
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -3081,6 +3090,7 @@ async fn multi_send_txs_from_wallet(
 
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
+            single_tx: false,
         };
         let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
         let tx_res = tx_res.results;
