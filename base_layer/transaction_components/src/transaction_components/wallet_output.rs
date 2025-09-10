@@ -256,7 +256,13 @@ impl WalletOutput {
         }
         // this is push public key script, so lets see if we know the public key
         if let [Opcode::PushPubKey(public_key)] = self.script.as_slice() {
-            // first lets check the commitment mask derived keys
+            // first check non stealth direct to spend key outputs
+            let spend_key = key_manager.get_spend_key().await?;
+            if &spend_key.pub_key == public_key {
+                return Ok(Some((ExecutionStack::default(), key_manager.get_spend_key_id().await?)));
+            }
+
+            // next lets check the commitment mask derived keys
             let result = key_manager
                 .find_script_key_id_from_commitment_mask_key_id(&self.commitment_mask_key_id, Some(public_key))
                 .await?;
