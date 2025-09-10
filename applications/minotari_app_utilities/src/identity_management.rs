@@ -149,34 +149,10 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
             "Filtering addresses for TCP transport. Current addresses: {:?}",
             current_addresses
         );
-        // For TCP transport:
-        // 1. Remove all onion addresses
-        // 2. Remove localhost TCP addresses (they likely have stale ports from previous runs)
-        // 3. Keep external TCP addresses as they're likely intentionally configured
+        // For TCP transport remove all onion addresses
         let filtered_addresses: Vec<Multiaddr> = current_addresses
             .into_iter()
-            .filter(|addr| {
-                // Remove onion addresses
-                if addr.iter().any(|p| matches!(p, Protocol::Onion3(_))) {
-                    return false;
-                }
-                // Remove localhost TCP addresses to avoid stale ports from previous runs
-                // but keep external addresses
-                let is_localhost = addr.iter().any(|p| match p {
-                    Protocol::Ip4(ip) => ip.is_loopback() || ip.is_unspecified(),
-                    Protocol::Ip6(ip) => ip.is_loopback() || ip.is_unspecified(),
-                    _ => false,
-                });
-                if is_localhost && addr.iter().any(|p| matches!(p, Protocol::Tcp(_))) {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Removing localhost TCP address from identity: {}",
-                        addr
-                    );
-                    return false;
-                }
-                true
-            })
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
             .collect();
         debug!(
             target: LOG_TARGET,
@@ -185,6 +161,7 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
             filtered_addresses
         );
         id.set_public_addresses(filtered_addresses);
+        save_as_json(&path, &id)?;
         id
     } else {
         id
