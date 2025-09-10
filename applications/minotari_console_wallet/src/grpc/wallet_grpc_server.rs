@@ -2738,6 +2738,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }),
             kernel: Some(proof.kernel.into()),
             encrypted_data: output.encrypted_data.into_vec(),
+            value: output.value.as_u64(),
         }))
     }
 }

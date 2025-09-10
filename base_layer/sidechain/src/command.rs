@@ -20,7 +20,6 @@ pub enum Command {
     AllAccept,
     SomeAccept,
     ForeignProposal,
-    MintConfidentialOutput,
     EvictNode(EvictNodeAtom),
     EndEpoch,
 }

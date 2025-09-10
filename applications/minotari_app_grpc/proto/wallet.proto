@@ -2071,6 +2071,7 @@ message GetBurnClaimProofResponse {
   EncodedMerkleProof merkle_proof = 2;
   bytes encrypted_data = 3;
   TransactionKernel kernel = 4;
+  uint64 value = 5;
 }
 
 message BurnClaimProof {
