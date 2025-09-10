@@ -34,7 +34,7 @@ use tari_transaction_components::{
         BlockHeader,
         BlockUtxoInfo,
         FeePerGramStat,
-        GenerateUtxoMerkleProofResponse,
+        GenerateKernelMerkleProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
@@ -317,7 +317,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         &self,
         _excess_sig_nonce: &[u8],
         _excess_sig: &[u8],
-    ) -> Result<GenerateUtxoMerkleProofResponse, Error> {
+    ) -> Result<GenerateKernelMerkleProofResponse, Error> {
         panic!("Not implemented")
     }
 }

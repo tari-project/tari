@@ -643,7 +643,7 @@ impl WalletBackend for WalletSqliteDatabase {
         let num_deleted =
             diesel::delete(schema::burn_proofs::table.filter(schema::burn_proofs::id.eq(id))).execute(&mut conn)?;
         if num_deleted == 0 {
-            return Err(WalletStorageError::BurntProofNotFound(id));
+            return Err(WalletStorageError::BurnProofNotFound(id));
         }
         Ok(())
     }

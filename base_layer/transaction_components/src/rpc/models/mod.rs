@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 mod fee_per_gram;
-mod generate_utxo_merkle_proof;
+mod generate_kernel_merkle_proof;
 mod get_header_by_height;
 mod get_tip_info;
 mod get_utxos_by_block;
@@ -13,7 +13,7 @@ mod transaction_query;
 mod tx_submission_response;
 
 pub use fee_per_gram::*;
-pub use generate_utxo_merkle_proof::*;
+pub use generate_kernel_merkle_proof::*;
 pub use get_header_by_height::*;
 pub use get_tip_info::*;
 pub use get_utxos_by_block::*;

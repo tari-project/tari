@@ -6,7 +6,7 @@ use tari_common_types::{serializers, types::FixedHash};
 use utoipa::ToSchema;
 
 #[derive(Serialize, Deserialize, ToSchema)]
-pub struct GenerateUtxoMerkleProofResponse {
+pub struct GenerateKernelMerkleProofResponse {
     #[serde(with = "serializers::base64")]
     pub block_hash: FixedHash,
     #[serde(with = "serializers::base64")]

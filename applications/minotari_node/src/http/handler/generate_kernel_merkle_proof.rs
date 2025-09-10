@@ -20,13 +20,13 @@ use tari_core::{
     base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
-use tari_transaction_components::rpc::models::GenerateUtxoMerkleProofResponse;
+use tari_transaction_components::rpc::models::GenerateKernelMerkleProofResponse;
 use tari_utilities::ByteArray;
 use tonic::service::AxumBody;
 
 use crate::http::handler::{error_handler_with_message, ErrorResponse};
 
-const LOG_TARGET: &str = "c::base_node::rpc::http::handler::generate_utxo_merkle_proof";
+const LOG_TARGET: &str = "c::base_node::rpc::http::handler::generate_kernel_merkle_proof";
 
 #[derive(Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -39,19 +39,19 @@ pub struct GenerateKernelMerkleProofParams {
 
 #[utoipa::path(
     get,
-    operation_id = "generate_utxo_merkle_proof",
+    operation_id = "generate_kernel_merkle_proof",
     params(GenerateKernelMerkleProofParams),
-    path = "/generate_utxo_merkle_proof",
+    path = "/generate_kernel_merkle_proof",
     responses(
-        (status = 200, description = "Merkle proof generated successfully", body = GenerateUtxoMerkleProofResponse),
-        (status = NOT_FOUND, description = "UTXO not found", body = ErrorResponse, example = json!({"error": "UTXO not found"})),
+        (status = 200, description = "Merkle proof generated successfully", body = GenerateKernelMerkleProofResponse),
+        (status = NOT_FOUND, description = "Kernel not found", body = ErrorResponse, example = json!({"error": "Kernel not found"})),
     ),
 )]
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<GenerateKernelMerkleProofParams>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received generate_utxo_merkle_proof request");
+    debug!(target: LOG_TARGET, "Received generate_kernel_merkle_proof request");
 
     let GenerateKernelMerkleProofParams {
         excess_sig_public_nonce,

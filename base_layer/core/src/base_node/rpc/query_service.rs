@@ -6,13 +6,12 @@ use std::cmp;
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
-use tari_comms::types::CompressedSignature;
 use tari_transaction_components::{
     rpc::{
         models,
         models::{
             BlockUtxoInfo,
-            GenerateUtxoMerkleProofResponse,
+            GenerateKernelMerkleProofResponse,
             GetUtxosByBlockRequest,
             GetUtxosByBlockResponse,
             MinimalUtxoSyncInfo,
@@ -514,10 +513,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
 
     async fn generate_kernel_merkle_proof(
         &self,
-        excess_sig: CompressedSignature,
-    ) -> Result<GenerateUtxoMerkleProofResponse, Self::Error> {
+        excess_sig: types::CompressedSignature,
+    ) -> Result<GenerateKernelMerkleProofResponse, Self::Error> {
         let proof = self.db().generate_kernel_merkle_proof(excess_sig).await?;
-        Ok(GenerateUtxoMerkleProofResponse {
+        Ok(GenerateKernelMerkleProofResponse {
             encoded_merkle_proof: bincode::serialize(&proof.merkle_proof).map_err(Error::general)?,
             block_hash: proof.block_hash,
             leaf_index: proof.leaf_index.value() as u64,

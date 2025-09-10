@@ -14,7 +14,7 @@ use tari_transaction_components::{
         models::{
             BlockHeader,
             FeePerGramStat,
-            GenerateUtxoMerkleProofResponse,
+            GenerateKernelMerkleProofResponse,
             GetUtxosDeletedInfoResponse,
             GetUtxosMinedInfoResponse,
             SyncUtxosByBlockResponse,
@@ -530,7 +530,7 @@ impl BaseNodeWalletClient for Client {
         &self,
         excess_sig_nonce: &[u8],
         excess_sig: &[u8],
-    ) -> Result<GenerateUtxoMerkleProofResponse, anyhow::Error> {
+    ) -> Result<GenerateKernelMerkleProofResponse, anyhow::Error> {
         let resp = self
             .send_get_request("/generate_kernel_merkle_proof", &[
                 ("excess_sig_public_nonce", to_hex(excess_sig_nonce)),

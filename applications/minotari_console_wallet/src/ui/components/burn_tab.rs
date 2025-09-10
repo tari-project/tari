@@ -228,7 +228,7 @@ impl BurnTab {
     fn draw_proofs<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            "Burnt Proofs",
+            "Burn Proofs",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
         ));
         f.render_widget(block, area);
@@ -382,7 +382,7 @@ impl BurnTab {
                 match Handle::current().block_on(app_state.delete_burnt_proof(proof_id)) {
                     Err(e) => {
                         self.error_message = Some(format!(
-                            "Failed to delete burnt proof (id={proof_id}):\n{e}\nPress Enter to continue."
+                            "Failed to delete burn proof (id={proof_id}):\n{e}\nPress Enter to continue."
                         ))
                     },
                     Ok(_) => {
@@ -507,7 +507,7 @@ impl BurnTab {
 
                     let Ok(json) = serde_json::to_string_pretty(&confirmed_proof) else {
                         self.error_message = Some(format!(
-                            "Failed to serialize burnt proof payload to JSON for file {}.json.  Press Enter to \
+                            "Failed to serialize burn proof payload to JSON for file {}.json.  Press Enter to \
                              continue.",
                             proof.id
                         ));
@@ -519,7 +519,7 @@ impl BurnTab {
                         .join(format!("{}.json", proof.id));
                     if let Err(e) = fs::write(&path, json) {
                         self.error_message = Some(format!(
-                            "Failed to save burnt proof payload to file {}.json: {}, Press Enter to continue.",
+                            "Failed to save burn proof payload to file {}.json: {}, Press Enter to continue.",
                             proof.id, e
                         ));
                     }
@@ -609,7 +609,7 @@ impl<B: Backend> Component<B> for BurnTab {
                     f,
                     area,
                     "Confirm Delete".to_string(),
-                    "Are you sure you want to delete this burnt proof?\n(Y)es / (N)o".to_string(),
+                    "Are you sure you want to delete this burn proof?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -621,7 +621,7 @@ impl<B: Backend> Component<B> for BurnTab {
                     area,
                     "Success!".to_string(),
                     format!(
-                        "Burnt proof saved successfully at {}!\nPress Enter to continue.",
+                        "Burn proof saved successfully at {}!\nPress Enter to continue.",
                         path.display()
                     ),
                     Color::Green,
