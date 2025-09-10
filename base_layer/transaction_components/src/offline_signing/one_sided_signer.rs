@@ -412,13 +412,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         OsRng.fill_bytes(message.as_mut());
 
         let ephemeral_pubkeys =
-            derive_multisig_ephemeral_pubkeys(self.key_manager, &info.public_keys, &sender_offset_key.key_id)
-                .await
-                .unwrap();
+            derive_multisig_ephemeral_pubkeys(self.key_manager, &info.public_keys, &sender_offset_key.key_id).await?;
 
         let mut script_opcodes = vec![Opcode::CheckMultiSigVerify(
             info.party_number,
-            u8::try_from(ephemeral_pubkeys.len()).unwrap(),
+            u8::try_from(ephemeral_pubkeys.len()).expect("Is checked"),
             ephemeral_pubkeys.clone(),
             message,
         )];

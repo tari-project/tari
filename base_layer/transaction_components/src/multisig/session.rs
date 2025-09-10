@@ -78,6 +78,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         recipient: TariAddress,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         fee_per_gram: MicroMinotari,
+        uuid: Uuid,
     ) -> Result<
         (
             Transaction,
@@ -100,7 +101,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let mut message = Box::new([0u8; 32]);
         OsRng.fill_bytes(message.as_mut());
 
-        let uuid = Uuid::new_v4();
         let user_data = uuid.as_bytes().to_vec();
         let payment_id =
             MemoField::new_address_and_data(recipient.clone(), fee_per_gram, true, TxType::PaymentToOther, user_data)
@@ -134,7 +134,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let mut script_opcodes = vec![Opcode::CheckMultiSigVerify(
             party_number,
-            u8::try_from(ephemeral_pubkeys.len()).unwrap(),
+            u8::try_from(ephemeral_pubkeys.len()).expect("Is checked"),
             ephemeral_pubkeys.clone(),
             message,
         )];

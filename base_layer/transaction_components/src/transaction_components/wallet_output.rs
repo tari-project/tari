@@ -270,7 +270,6 @@ impl WalletOutput {
                 return Ok(Some((ExecutionStack::default(), script_key_id)));
             }
             // now lets try stealth
-            let spend_key = key_manager.get_spend_key().await?;
             let script_spending_key = key_manager
                 .stealth_address_script_spending_key(&self.commitment_mask_key_id, &spend_key.pub_key)
                 .await?;

@@ -1257,6 +1257,7 @@ where
                     )
                     .await?;
                 let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                let uuid = Uuid::new_v4();
                 let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
                     .create_deposit_multisig_transaction(
                         request.amount,
@@ -1265,6 +1266,7 @@ where
                         request.recipient_address.clone(),
                         tx_builter,
                         fee_per_gram,
+                        uuid,
                     )
                     .await?;
 
