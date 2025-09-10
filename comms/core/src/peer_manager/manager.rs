@@ -182,7 +182,6 @@ impl PeerManager {
             excluded_peers,
             features,
             external_addresses_only,
-            &self.transport_protocols,
         )
     }
 

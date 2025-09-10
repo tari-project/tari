@@ -198,7 +198,6 @@ impl PeerStorageSql {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
             n = PEER_MANAGER_SYNC_PEERS;
@@ -213,7 +212,7 @@ impl PeerStorageSql {
             None,
             Some(STALE_PEER_THRESHOLD_DURATION),
             external_addresses_only,
-            transport_protocols,
+            &[],
         )?)
     }
 
