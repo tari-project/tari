@@ -79,7 +79,7 @@ impl SeedStrap {
                         target: LOG_TARGET,
                         "SeedStrap: Failed to communicate with any seed nodes."
                     );
-                } else  if round_info.num_succeeded == 0 && num_added == 0 {
+                } else if round_info.num_succeeded == 0 && num_added == 0 {
                     warn!(
                         target: LOG_TARGET,
                         "SeedStrap: Communicated with {} seed nodes but did not retrieve any peers.",
@@ -219,7 +219,9 @@ impl SeedStrap {
         while let Some(result) = task_stream.next().await {
             let (peers_from_seed, new_peers_this_seed, duplicates_this_seed, spawn_another_task) = match result {
                 Ok((peers, n_new, n_dup, communicated)) => {
-                    if communicated { seeds_communicated_with += 1;}
+                    if communicated {
+                        seeds_communicated_with += 1;
+                    }
                     (peers, n_new, n_dup, false)
                 },
                 Err(e) => {
