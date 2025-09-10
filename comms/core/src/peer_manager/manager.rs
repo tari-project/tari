@@ -177,12 +177,8 @@ impl PeerManager {
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.discovery_syncing(
-            n,
-            excluded_peers,
-            features,
-            external_addresses_only,
-        )
+        self.peer_storage_sql
+            .discovery_syncing(n, excluded_peers, features, external_addresses_only)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
