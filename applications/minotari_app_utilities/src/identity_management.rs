@@ -161,7 +161,6 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
             filtered_addresses
         );
         id.set_public_addresses(filtered_addresses);
-        save_as_json(&path, &id)?;
         id
     } else {
         id
@@ -172,10 +171,12 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
         id.sign();
     }
     debug!(
+        target: LOG_TARGET,
         "Node ID loaded with public key {} and Node id {}",
         id.public_key().to_hex(),
         id.node_id().to_hex()
     );
+    save_as_json(&path, &id)?;
     Ok(id)
 }
 
