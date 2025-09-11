@@ -79,6 +79,8 @@ use tari_transaction_components::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
+    multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
+    offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -90,6 +92,7 @@ use tari_transaction_components::{
         OutputFeatures,
         TemplateType,
         Transaction,
+        TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
         WalletOutputBuilder,
@@ -126,8 +129,6 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
-        multisig::{script::get_multi_sig_script_components, session::MultisigSession},
-        offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
             check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
@@ -405,7 +406,7 @@ where
         let mut reply_channel = Some(reply_channel);
 
         trace!(target: LOG_TARGET, "Handling Service Request: {request}");
-        let response = match request {
+        let response: Result<TransactionServiceResponse, TransactionServiceError> = match request {
             TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
@@ -561,7 +562,8 @@ where
 
                 // Enforce correct signature count and ordering for the multisig script
                 let (_ephemeral_pubkeys, threshold) =
-                    get_multi_sig_script_components(&selected_utxo.wallet_output.script)?;
+                    get_multi_sig_script_components(&selected_utxo.wallet_output.script)
+                        .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
 
                 if signatures.len() < threshold as usize {
                     return Err(TransactionServiceError::Other(format!(
@@ -662,17 +664,17 @@ where
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
                 let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                offline_signing
-                    .sign_locked_transaction(request)
-                    .await
-                    .map(|v| TransactionServiceResponse::SignedOneSidedTransaction(Box::new(v)))
+                let res = offline_signing.sign_locked_transaction(request).await?;
+                Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
             },
             TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request } => {
                 let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                offline_signing
+                let res = offline_signing
                     .sign_locked_deposit_multisig_transaction(request)
-                    .await
-                    .map(|v| TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(Box::new(v)))
+                    .await?;
+                Ok(TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(
+                    Box::new(res),
+                ))
             },
             TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request } => {
                 let key_manager = self.resources.transaction_key_manager_service.clone();
@@ -731,15 +733,20 @@ where
                     // 5) Attach k' so signer uses the correct key
                     input_wallet_output.script_key_id = script_key;
                 }
-                offline_signing
+                let res = offline_signing
                     .sign_locked_withdraw_multisig_transaction(request)
-                    .await
-                    .map(|v| TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(Box::new(v)))
+                    .await?;
+
+                Ok(TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(
+                    Box::new(res),
+                ))
             },
-            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => self
-                .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => {
+                let res = self
+                    .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionSent(res))
+            },
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -747,41 +754,47 @@ where
                 output_features,
                 fee_per_gram,
                 payment_id,
-            } => self
-                .send_one_sided_transaction(
-                    destination,
-                    amount,
-                    selection_criteria,
-                    *output_features,
-                    fee_per_gram,
-                    payment_id,
-                    transaction_broadcast_join_handles,
-                )
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+            } => {
+                let res = self
+                    .send_one_sided_transaction(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        *output_features,
+                        fee_per_gram,
+                        payment_id,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionSent(res))
+            },
             TransactionServiceRequest::SendManyOneSidedTransactions {
                 destinations,
                 selection_criteria,
                 output_features,
                 fee_per_gram,
-            } => self
-                .send_many_one_sided_transactions(
-                    destinations,
-                    selection_criteria,
-                    *output_features,
-                    fee_per_gram,
-                    transaction_broadcast_join_handles,
-                )
-                .await
-                .map(TransactionServiceResponse::TransactionsSent),
+            } => {
+                let res = self
+                    .send_many_one_sided_transactions(
+                        destinations,
+                        selection_criteria,
+                        *output_features,
+                        fee_per_gram,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionsSent(res))
+            },
 
             TransactionServiceRequest::ScrapeWallet {
                 destination,
                 fee_per_gram,
-            } => self
-                .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+            } => {
+                let res = self
+                    .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionSent(res))
+            },
             TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 destination,
                 amount,
@@ -789,18 +802,20 @@ where
                 output_features,
                 fee_per_gram,
                 payment_id,
-            } => self
-                .send_one_sided_to_stealth_address_transaction(
-                    destination,
-                    amount,
-                    selection_criteria,
-                    *output_features,
-                    fee_per_gram,
-                    payment_id,
-                    transaction_broadcast_join_handles,
-                )
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+            } => {
+                let res = self
+                    .send_one_sided_to_stealth_address_transaction(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        *output_features,
+                        fee_per_gram,
+                        payment_id,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionSent(res))
+            },
             TransactionServiceRequest::BurnTari {
                 amount,
                 selection_criteria,
@@ -808,21 +823,23 @@ where
                 payment_id,
                 claim_public_key,
                 sidechain_deployment_key,
-            } => self
-                .burn_tari(
-                    amount,
-                    selection_criteria,
-                    fee_per_gram,
-                    payment_id,
-                    claim_public_key,
-                    sidechain_deployment_key,
-                    transaction_broadcast_join_handles,
-                )
-                .await
-                .map(|(tx_id, proof)| TransactionServiceResponse::BurntTransactionSent {
+            } => {
+                let (tx_id, proof) = self
+                    .burn_tari(
+                        amount,
+                        selection_criteria,
+                        fee_per_gram,
+                        payment_id,
+                        claim_public_key,
+                        sidechain_deployment_key,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::BurntTransactionSent {
                     tx_id,
                     proof: Box::new(proof),
-                }),
+                })
+            },
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 expected_commitment,
@@ -835,56 +852,58 @@ where
                 original_maturity,
                 use_output,
                 payment_id,
-            } => self
-                .encumber_aggregate_tx(
-                    fee_per_gram,
-                    expected_commitment,
-                    script_input_shares,
-                    script_signature_public_nonces,
-                    sender_offset_public_key_shares,
-                    metadata_ephemeral_public_key_shares,
-                    dh_shared_secret_shares,
-                    recipient_address,
-                    original_maturity,
-                    use_output,
-                    payment_id,
-                )
-                .await
-                .map(
-                    |(
+            } => {
+                let (
+                    tx_id,
+                    tx,
+                    total_script_pubkey,
+                    total_metadata_ephemeral_public_key,
+                    total_script_nonce,
+                    shared_secret,
+                ) = self
+                    .encumber_aggregate_tx(
+                        fee_per_gram,
+                        expected_commitment,
+                        script_input_shares,
+                        script_signature_public_nonces,
+                        sender_offset_public_key_shares,
+                        metadata_ephemeral_public_key_shares,
+                        dh_shared_secret_shares,
+                        recipient_address,
+                        original_maturity,
+                        use_output,
+                        payment_id,
+                    )
+                    .await?;
+                Ok({
+                    TransactionServiceResponse::EncumberAggregateUtxo(
                         tx_id,
-                        tx,
-                        total_script_pubkey,
-                        total_metadata_ephemeral_public_key,
-                        total_script_nonce,
-                        shared_secret,
-                    )| {
-                        TransactionServiceResponse::EncumberAggregateUtxo(
-                            tx_id,
-                            Box::new(tx),
-                            Box::new(total_script_pubkey),
-                            Box::new(total_metadata_ephemeral_public_key),
-                            Box::new(total_script_nonce),
-                            Box::new(shared_secret),
-                        )
-                    },
-                ),
+                        Box::new(tx),
+                        Box::new(total_script_pubkey),
+                        Box::new(total_metadata_ephemeral_public_key),
+                        Box::new(total_script_nonce),
+                        Box::new(shared_secret),
+                    )
+                })
+            },
             TransactionServiceRequest::SpendBackupPreMineUtxo {
                 fee_per_gram,
                 output_hash,
                 expected_commitment,
                 recipient_address,
                 payment_id,
-            } => self
-                .spend_backup_pre_mine_utxo(
-                    fee_per_gram,
-                    output_hash,
-                    expected_commitment,
-                    recipient_address,
-                    payment_id,
-                )
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+            } => {
+                let res = self
+                    .spend_backup_pre_mine_utxo(
+                        fee_per_gram,
+                        output_hash,
+                        expected_commitment,
+                        recipient_address,
+                        payment_id,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionSent(res))
+            },
             TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
                 let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
                 Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
@@ -1021,21 +1040,23 @@ where
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
-            ) => Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
-                self.send_sha_atomic_swap_transaction(
-                    destination,
-                    amount,
-                    selection_criteria,
-                    fee_per_gram,
-                    payment_id,
-                    transaction_broadcast_join_handles,
-                )
-                .await?,
-            )),
-            TransactionServiceRequest::CancelTransaction(tx_id) => self
-                .cancel_pending_transaction(tx_id)
-                .await
-                .map(|_| TransactionServiceResponse::TransactionCancelled),
+            ) => {
+                let res = self
+                    .send_sha_atomic_swap_transaction(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        fee_per_gram,
+                        payment_id,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(res))
+            },
+            TransactionServiceRequest::CancelTransaction(tx_id) => {
+                self.cancel_pending_transaction(tx_id).await?;
+                Ok(TransactionServiceResponse::TransactionCancelled)
+            },
             TransactionServiceRequest::GetPendingInboundTransactions => Ok(
                 TransactionServiceResponse::PendingInboundTransactions(self.db.get_pending_inbound_transactions()?),
             ),
@@ -1130,23 +1151,26 @@ where
                 mined_timestamp,
                 scanned_output,
                 payment_id,
-            } => self
-                .add_utxo_import_transaction_with_status(
-                    amount,
-                    source_address,
-                    import_status,
-                    tx_id,
-                    current_height,
-                    mined_timestamp,
-                    scanned_output,
-                    payment_id,
-                )
-                .await
-                .map(TransactionServiceResponse::UtxoImported),
-            TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, payment_id) => self
-                .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, payment_id)
-                .await
-                .map(|_| TransactionServiceResponse::TransactionSubmitted),
+            } => {
+                let res = self
+                    .add_utxo_import_transaction_with_status(
+                        amount,
+                        source_address,
+                        import_status,
+                        tx_id,
+                        current_height,
+                        mined_timestamp,
+                        scanned_output,
+                        payment_id,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::UtxoImported(res))
+            },
+            TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, payment_id) => {
+                self.submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, payment_id)
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionSubmitted)
+            },
             TransactionServiceRequest::SetLowPowerMode => {
                 self.set_power_mode(PowerMode::Low).await?;
                 Ok(TransactionServiceResponse::LowPowerModeSet)
@@ -1155,9 +1179,10 @@ where
                 self.set_power_mode(PowerMode::Normal).await?;
                 Ok(TransactionServiceResponse::NormalPowerModeSet)
             },
-            TransactionServiceRequest::RestartBroadcastProtocols => self
-                .restart_broadcast_protocols(transaction_broadcast_join_handles)
-                .map(|_| TransactionServiceResponse::ProtocolsRestarted),
+            TransactionServiceRequest::RestartBroadcastProtocols => {
+                self.restart_broadcast_protocols(transaction_broadcast_join_handles)?;
+                Ok(TransactionServiceResponse::ProtocolsRestarted)
+            },
             TransactionServiceRequest::GetNumConfirmationsRequired => Ok(
                 TransactionServiceResponse::NumConfirmationsRequired(self.resources.config.num_confirmations_required),
             ),
@@ -1165,18 +1190,24 @@ where
                 self.resources.config.num_confirmations_required = number;
                 Ok(TransactionServiceResponse::NumConfirmationsSet)
             },
-            TransactionServiceRequest::ValidateTransactions => self
-                .start_transaction_validation_protocol(transaction_validation_join_handles)
-                .await
-                .map(TransactionServiceResponse::ValidationStarted),
-            TransactionServiceRequest::ReValidateRejectedTransactions => self
-                .start_rejected_transaction_revalidation(transaction_validation_join_handles)
-                .await
-                .map(TransactionServiceResponse::ValidationStarted),
-            TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => self
-                .replace_by_fee(tx_id, fee_increase, transaction_broadcast_join_handles)
-                .await
-                .map(TransactionServiceResponse::TransactionReplaced),
+            TransactionServiceRequest::ValidateTransactions => {
+                let res = self
+                    .start_transaction_validation_protocol(transaction_validation_join_handles)
+                    .await?;
+                Ok(TransactionServiceResponse::ValidationStarted(res))
+            },
+            TransactionServiceRequest::ReValidateRejectedTransactions => {
+                let res = self
+                    .start_rejected_transaction_revalidation(transaction_validation_join_handles)
+                    .await?;
+                Ok(TransactionServiceResponse::ValidationStarted(res))
+            },
+            TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => {
+                let res = self
+                    .replace_by_fee(tx_id, fee_increase, transaction_broadcast_join_handles)
+                    .await?;
+                Ok(TransactionServiceResponse::TransactionReplaced(res))
+            },
             TransactionServiceRequest::UserPayForFee {
                 tx_id,
                 destination,
@@ -1192,9 +1223,10 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
-            TransactionServiceRequest::GetPaymentByReference { payref } => self
-                .get_payment_by_reference(payref)
-                .map(TransactionServiceResponse::PaymentDetails),
+            TransactionServiceRequest::GetPaymentByReference { payref } => {
+                let res = self.get_payment_by_reference(payref)?;
+                Ok(TransactionServiceResponse::PaymentDetails(res))
+            },
             TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
                 match self.get_transaction_with_payref(payref)? {
                     Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
@@ -1205,13 +1237,36 @@ where
             },
 
             TransactionServiceRequest::CreateMultisigUtxo { request } => {
-                let multisig_session = MultisigSession::new(self.resources.clone());
-                let (tx_id, tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
+                let fee_per_gram = MicroMinotari::from(1);
+                let selected_criteria = UtxoSelectionCriteria {
+                    excluding_multisig: true,
+                    ..Default::default()
+                };
+                let tx_id = TxId::new_random();
+                let tx_builter = self
+                    .resources
+                    .output_manager_service
+                    .prepare_transaction_to_send(
+                        tx_id,
+                        request.amount,
+                        selected_criteria,
+                        OutputFeatures::default(),
+                        fee_per_gram,
+                        push_pubkey_script(&Default::default()),
+                        Covenant::default(),
+                    )
+                    .await?;
+                let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                let uuid = Uuid::new_v4();
+                let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
                     .create_deposit_multisig_transaction(
                         request.amount,
                         request.party_number,
                         request.public_keys,
                         request.recipient_address.clone(),
+                        tx_builter,
+                        fee_per_gram,
+                        uuid,
                     )
                     .await?;
 
@@ -1254,10 +1309,44 @@ where
             },
 
             TransactionServiceRequest::GetMultisigUtxoData { utxo_commitment } => {
-                let multisig_session = MultisigSession::new(self.resources.clone());
+                let mut query = OutputBackendQuery::default();
+                query.commitments.push(utxo_commitment.clone());
 
-                let output: crate::transaction_service::multisig::types::GetMultisigUtxoDataOutput =
-                    multisig_session.get_multisig_utxo_data(utxo_commitment).await?;
+                query.status.push(OutputStatus::Unspent);
+
+                let utxos = self
+                    .resources
+                    .output_manager_service
+                    .clone()
+                    .get_outputs_by_query(query)
+                    .await
+                    .map_err(TransactionServiceError::OutputManagerError)?;
+
+                let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
+                    "UTXO with commitment {:?} not found",
+                    utxo_commitment
+                )))?;
+
+                let scripts = selected_utxo.wallet_output.script.clone();
+                let mut challenge = Box::new([0; 32]);
+                let mut public_keys = Vec::new();
+
+                let sender_offset_pub_key = selected_utxo.wallet_output.sender_offset_public_key.to_public_key()?;
+
+                for op in scripts.as_slice() {
+                    if let Opcode::CheckMultiSigVerify(_m, _n, k, msg) = op {
+                        challenge.clone_from_slice(msg.as_bytes());
+
+                        public_keys.extend(k.clone());
+                    }
+                }
+
+                let output = GetMultisigUtxoDataOutput {
+                    challenge,
+                    public_keys,
+                    commitment: selected_utxo.commitment.clone(),
+                    sender_offset_pub_key: CompressedPublicKey::new_from_pk(sender_offset_pub_key),
+                };
 
                 Ok(TransactionServiceResponse::GetMultisigUtxoData(Box::new(output)))
             },
@@ -1267,20 +1356,62 @@ where
                 recipient_address,
                 signatures,
             } => {
-                let multisig_session = MultisigSession::new(self.resources.clone());
+                let mut query = OutputBackendQuery::default();
+                query.commitments.push(utxo_commitment.clone());
 
-                let (tx_id, transaction, payment_id, amount, change_hashes, sent_hashes) = multisig_session
-                    .spend_multisig_utxo(utxo_commitment, signatures, recipient_address.clone())
+                query.status.push(OutputStatus::Unspent);
+
+                let utxos = self
+                    .resources
+                    .output_manager_service
+                    .clone()
+                    .get_outputs_by_query(query)
+                    .await
+                    .map_err(TransactionServiceError::OutputManagerError)?;
+
+                let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
+                    "UTXO with utxo_commitment {:?} not found",
+                    utxo_commitment
+                )))?;
+
+                let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                let current_height = self.db.get_last_scanned_height()?.unwrap_or(0);
+                let consensus_constants = self.resources.consensus_manager.consensus_constants(current_height);
+                let (finalized_transaction, payment_id, amount) = multisig_session
+                    .spend_multisig_utxo(
+                        signatures,
+                        recipient_address.clone(),
+                        selected_utxo.clone().into(),
+                        consensus_constants,
+                    )
                     .await?;
+                let (change_hashes, change) = match finalized_transaction.change {
+                    Some(change_output) => {
+                        let hash = change_output
+                            .hash(&self.resources.transaction_key_manager_service)
+                            .await?;
+                        (vec![hash], Some(vec![change_output]))
+                    },
+                    None => (vec![], None),
+                };
+                let tx_id = TxId::new_random();
+                self.resources
+                    .output_manager_service
+                    .clone()
+                    .confirm_pending_transaction(tx_id, change)
+                    .await
+                    .map_err(|e| {
+                        TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
+                    })?;
 
-                let fee = transaction.body.get_total_fee()?;
+                let fee = finalized_transaction.transaction.body.get_total_fee()?;
 
                 // This event being sent is important, but not critical to the protocol being successful. Send only
                 // fails if there are no subscribers.
                 let _result = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-
+                let sent_hashes = finalized_transaction.sent_output_hashes.clone();
                 self.submit_transaction(
                     transaction_broadcast_join_handles,
                     CompletedTransaction::new_with_output_hashes(
@@ -1289,7 +1420,7 @@ where
                         recipient_address,
                         amount,
                         fee,
-                        transaction.clone(),
+                        finalized_transaction.transaction,
                         LegacyTransactionStatus::Completed,
                         Utc::now(),
                         TransactionDirection::Outbound,

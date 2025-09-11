@@ -75,6 +75,7 @@ const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
 const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
 const MAX_MEMPOOL_TIMEOUT: u64 = 150;
+#[cfg(feature = "metrics")]
 const DIFF_INDICATOR_LAG: u64 = 25;
 
 /// Events that can be published on the Validated Block Event Stream
