@@ -26,6 +26,7 @@ use std::{
     cmp::Ordering,
     default::Default,
     fmt::{Debug, Formatter},
+    sync::OnceLock,
 };
 
 use serde::{Deserialize, Serialize};
@@ -64,21 +65,27 @@ use crate::{
 /// build both inputs and outputs (every input comes from an output)
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletOutput {
-    pub version: TransactionOutputVersion,
-    pub value: MicroMinotari,
-    pub commitment_mask_key_id: TariKeyId,
-    pub features: OutputFeatures,
-    pub script: TariScript,
-    pub covenant: Covenant,
-    pub input_data: ExecutionStack,
-    pub script_key_id: TariKeyId,
-    pub sender_offset_public_key: CompressedPublicKey,
-    pub metadata_signature: ComAndPubSignature,
-    pub script_lock_height: u64,
-    pub encrypted_data: EncryptedData,
-    pub minimum_value_promise: MicroMinotari,
-    pub range_proof: Option<RangeProof>,
-    pub payment_id: MemoField,
+    version: TransactionOutputVersion,
+    value: MicroMinotari,
+    commitment_mask_key_id: TariKeyId,
+    features: OutputFeatures,
+    script: TariScript,
+    covenant: Covenant,
+    input_data: ExecutionStack,
+    script_key_id: TariKeyId,
+    sender_offset_public_key: CompressedPublicKey,
+    metadata_signature: ComAndPubSignature,
+    script_lock_height: u64,
+    encrypted_data: EncryptedData,
+    minimum_value_promise: MicroMinotari,
+    range_proof: Option<RangeProof>,
+    payment_id: MemoField,
+    output_hash: FixedHash,
+    commitment: CompressedCommitment,
+    #[serde(skip)]
+    input: OnceLock<TransactionInput>,
+    #[serde(skip)]
+    output: OnceLock<TransactionOutput>,
 }
 
 impl WalletOutput {
@@ -110,7 +117,11 @@ impl WalletOutput {
         } else {
             None
         };
-        Ok(Self {
+        let commitment = key_manager
+            .get_commitment(&commitment_mask_key_id, &value.into())
+            .await?;
+        let output_hash = FixedHash::zero();
+        let mut output = Self {
             version,
             value,
             commitment_mask_key_id,
@@ -126,11 +137,17 @@ impl WalletOutput {
             minimum_value_promise,
             range_proof,
             payment_id,
-        })
+            commitment,
+            output_hash,
+            input: OnceLock::new(),
+            output: OnceLock::new(),
+        };
+        output.fix_hash();
+        Ok(output)
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn new_with_rangeproof(
+    pub async fn new_with_rangeproof<KM: TransactionKeyManagerInterface>(
         version: TransactionOutputVersion,
         value: MicroMinotari,
         commitment_mask_key_id: TariKeyId,
@@ -146,6 +163,69 @@ impl WalletOutput {
         minimum_value_promise: MicroMinotari,
         rangeproof: Option<RangeProof>,
         payment_id: MemoField,
+        key_manager: &KM,
+    ) -> Result<Self, TransactionError> {
+        let commitment = key_manager
+            .get_commitment(&commitment_mask_key_id, &value.into())
+            .await?;
+        let rp_hash = match &rangeproof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
+        let output_hash = transaction_components::hash_output(
+            version,
+            &features,
+            &commitment,
+            &rp_hash,
+            &script,
+            &sender_offset_public_key,
+            &metadata_signature,
+            &covenant,
+            &encrypted_data,
+            minimum_value_promise,
+        );
+        Ok(Self {
+            version,
+            value,
+            commitment_mask_key_id,
+            features,
+            script,
+            input_data,
+            script_key_id,
+            sender_offset_public_key,
+            metadata_signature,
+            script_lock_height,
+            covenant,
+            encrypted_data,
+            minimum_value_promise,
+            range_proof: rangeproof,
+            payment_id,
+            commitment,
+            output_hash,
+            input: OnceLock::new(),
+            output: OnceLock::new(),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_from_parts(
+        version: TransactionOutputVersion,
+        value: MicroMinotari,
+        commitment_mask_key_id: TariKeyId,
+        features: OutputFeatures,
+        script: TariScript,
+        input_data: ExecutionStack,
+        script_key_id: TariKeyId,
+        sender_offset_public_key: CompressedPublicKey,
+        metadata_signature: ComAndPubSignature,
+        script_lock_height: u64,
+        covenant: Covenant,
+        encrypted_data: EncryptedData,
+        minimum_value_promise: MicroMinotari,
+        rangeproof: Option<RangeProof>,
+        payment_id: MemoField,
+        output_hash: FixedHash,
+        commitment: CompressedCommitment,
     ) -> Self {
         Self {
             version,
@@ -163,12 +243,15 @@ impl WalletOutput {
             minimum_value_promise,
             range_proof: rangeproof,
             payment_id,
+            commitment,
+            output_hash,
+            input: OnceLock::new(),
+            output: OnceLock::new(),
         }
     }
 
     /// This will create a new wallet output and try and calculate the required script key and input stack to spend this
     /// output, will return None if it cannot calculate the script key or input stack
-    #[allow(clippy::too_many_arguments)]
     pub async fn new_imported<KM: TransactionKeyManagerInterface>(
         value: MicroMinotari,
         commitment_mask_key_id: TariKeyId,
@@ -176,34 +259,55 @@ impl WalletOutput {
         output: TransactionOutput,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let mut output = WalletOutput::new_with_rangeproof(
-            output.version,
-            value,
-            commitment_mask_key_id,
-            output.features,
-            output.script,
-            Default::default(),
-            Default::default(),
-            output.sender_offset_public_key,
-            output.metadata_signature,
-            0,
-            output.covenant,
-            output.encrypted_data,
-            output.minimum_value_promise,
-            output.proof,
-            memo,
-        );
-        let (input_data, script_key) =
-            output
-                .get_script_private_key_id(key_manager)
+        let (input_data, script_key_id) =
+            WalletOutput::calculate_script_private_key_id(&output.script, &commitment_mask_key_id, key_manager)
                 .await?
                 .ok_or(TransactionError::KeyManagerError(
                     "Could not find a valid script key for the script".to_string(),
                 ))?;
-        output.input_data = input_data;
-        output.script_key_id = script_key;
+        let wallet_output = WalletOutput::new_from_transaction_output(
+            value,
+            commitment_mask_key_id,
+            memo,
+            output,
+            input_data,
+            script_key_id,
+        );
+        Ok(wallet_output)
+    }
 
-        Ok(output)
+    pub fn new_from_transaction_output(
+        value: MicroMinotari,
+        commitment_mask_key_id: TariKeyId,
+        memo: MemoField,
+        output: TransactionOutput,
+        input_data: ExecutionStack,
+        script_key_id: TariKeyId,
+    ) -> Self {
+        let output_hash = output.hash();
+        let locked = OnceLock::new();
+        let _unused = locked.set(output.clone());
+        WalletOutput {
+            version: output.version,
+            value,
+            commitment_mask_key_id,
+            features: output.features,
+            script: output.script,
+            input_data,
+            script_key_id,
+            sender_offset_public_key: output.sender_offset_public_key,
+            metadata_signature: output.metadata_signature,
+            script_lock_height: 0,
+            covenant: output.covenant,
+            encrypted_data: output.encrypted_data,
+            minimum_value_promise: output.minimum_value_promise,
+            range_proof: output.proof,
+            payment_id: memo,
+            commitment: output.commitment,
+            output_hash,
+            input: OnceLock::new(),
+            output: locked,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -243,11 +347,12 @@ impl WalletOutput {
         .await
     }
 
-    async fn get_script_private_key_id<KM: TransactionKeyManagerInterface>(
-        &self,
+    async fn calculate_script_private_key_id<KM: TransactionKeyManagerInterface>(
+        script: &TariScript,
+        commitment_mask_key_id: &TariKeyId,
         key_manager: &KM,
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, TransactionError> {
-        if self.script == script!(Nop)? {
+        if *script == script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
             let private_key = PrivateKey::random(&mut rand::thread_rng());
             let key_id = key_manager.import_key(private_key).await?;
@@ -255,7 +360,7 @@ impl WalletOutput {
             return Ok(Some((inputs!(public_key), key_id)));
         }
         // this is push public key script, so lets see if we know the public key
-        if let [Opcode::PushPubKey(public_key)] = self.script.as_slice() {
+        if let [Opcode::PushPubKey(public_key)] = script.as_slice() {
             // first check non stealth direct to spend key outputs
             let spend_key = key_manager.get_spend_key().await?;
             if spend_key.pub_key == **public_key {
@@ -264,19 +369,19 @@ impl WalletOutput {
 
             // next lets check the commitment mask derived keys
             let result = key_manager
-                .find_script_key_id_from_commitment_mask_key_id(&self.commitment_mask_key_id, Some(public_key))
+                .find_script_key_id_from_commitment_mask_key_id(commitment_mask_key_id, Some(public_key))
                 .await?;
             if let Some(script_key_id) = result {
                 return Ok(Some((ExecutionStack::default(), script_key_id)));
             }
             // now lets try stealth
             let script_spending_key = key_manager
-                .stealth_address_script_spending_key(&self.commitment_mask_key_id, &spend_key.pub_key)
+                .stealth_address_script_spending_key(commitment_mask_key_id, &spend_key.pub_key)
                 .await?;
 
             if script_spending_key == **public_key {
                 let script_key = TariKeyId::Derived {
-                    key: SerializedKeyString::from(self.commitment_mask_key_id.to_string()),
+                    key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                 };
                 return Ok(Some((ExecutionStack::default(), script_key)));
             }
@@ -292,14 +397,16 @@ impl WalletOutput {
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
-        let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value).await?;
+        if let Some(input) = self.input.get() {
+            return Ok(input.clone());
+        }
         let rangeproof_hash = match &self.range_proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
         };
         let version = TransactionInputVersion::get_current_version();
         let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        let value = self.value.into();
         let script_signature = key_manager
             .get_script_signature(
                 &self.script_key_id,
@@ -309,11 +416,10 @@ impl WalletOutput {
                 &script_message,
             )
             .await?;
-
-        Ok(TransactionInput::new_current_version(
+        let input = TransactionInput::new_current_version(
             SpentOutput::OutputData {
                 features: self.features.clone(),
-                commitment,
+                commitment: self.commitment.clone(),
                 script: self.script.clone(),
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
                 covenant: self.covenant.clone(),
@@ -325,7 +431,9 @@ impl WalletOutput {
             },
             self.input_data.clone(),
             script_signature,
-        ))
+        );
+        let _unused = self.input.set(input.clone());
+        Ok(input)
     }
 
     /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs
@@ -415,23 +523,20 @@ impl WalletOutput {
         ))
     }
 
-    pub async fn to_transaction_output<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-    ) -> Result<TransactionOutput, TransactionError> {
+    pub fn to_transaction_output(&self) -> Result<TransactionOutput, TransactionError> {
         if self.features.range_proof_type == RangeProofType::RevealedValue && self.minimum_value_promise != self.value {
             return Err(TransactionError::RangeProofError(format!(
                 "Invalid revealed value: Expected {}, received {}",
                 self.value, self.minimum_value_promise
             )));
         }
-        let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value).await?;
-
+        if let Some(output) = self.output.get() {
+            return Ok(output.clone());
+        }
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
-            commitment,
+            self.commitment.clone(),
             self.range_proof.clone(),
             self.script.clone(),
             self.sender_offset_public_key.clone(),
@@ -440,7 +545,7 @@ impl WalletOutput {
             self.encrypted_data.clone(),
             self.minimum_value_promise,
         );
-
+        let _unused = self.output.set(output.clone());
         Ok(output)
     }
 
@@ -450,52 +555,27 @@ impl WalletOutput {
             self.covenant.get_serialized_size()?)
     }
 
-    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
-    // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
-    pub async fn hash<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-    ) -> Result<FixedHash, TransactionError> {
-        let output = self.to_transaction_output(key_manager).await?;
-        let rp_hash = match output.proof {
-            Some(rp) => rp.hash(),
-            None => FixedHash::zero(),
-        };
-        Ok(transaction_components::hash_output(
-            self.version,
-            &self.features,
-            &output.commitment,
-            &rp_hash,
-            &self.script,
-            &self.sender_offset_public_key,
-            &self.metadata_signature,
-            &self.covenant,
-            &self.encrypted_data,
-            self.minimum_value_promise,
-        ))
-    }
-
-    pub async fn commitment<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-    ) -> Result<CompressedCommitment, TransactionError> {
-        Ok(key_manager
-            .get_commitment(&self.commitment_mask_key_id, &self.value.into())
-            .await?)
-    }
-
     /// Is this a burned output kernel?
     pub fn is_burned(&self) -> bool {
         matches!(self.features.output_type, OutputType::Burn)
+    }
+
+    /// helper function to determine if this is a coinbase or not
+    pub fn is_coinbase(&self) -> bool {
+        matches!(self.features.output_type, OutputType::Coinbase)
     }
 
     pub async fn change_encrypted_data<KM: TransactionKeyManagerInterface>(
         &mut self,
         encrypted_data: EncryptedData,
         sender_offset: &TariKeyId,
+        payment_id: MemoField,
         key_manager: &KM,
     ) -> Result<(), TransactionError> {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
         self.encrypted_data = encrypted_data;
+        self.payment_id = payment_id;
         // now we have to update the metadata signature as this has changed
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &self.version,
@@ -517,7 +597,199 @@ impl WalletOutput {
             )
             .await?;
         self.metadata_signature = metadata_sig;
+        self.fix_hash();
         Ok(())
+    }
+
+    fn fix_hash(&mut self) {
+        let rp_hash = match &self.range_proof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
+        let output_hash = transaction_components::hash_output(
+            self.version,
+            &self.features,
+            &self.commitment,
+            &rp_hash,
+            &self.script,
+            &self.sender_offset_public_key,
+            &self.metadata_signature,
+            &self.covenant,
+            &self.encrypted_data,
+            self.minimum_value_promise,
+        );
+        self.output_hash = output_hash;
+    }
+
+    pub fn version(&self) -> TransactionOutputVersion {
+        self.version
+    }
+
+    pub fn set_version(&mut self, version: TransactionOutputVersion) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.version = version;
+        self.fix_hash();
+    }
+
+    pub fn value(&self) -> MicroMinotari {
+        self.value
+    }
+
+    pub async fn set_value<KM: TransactionKeyManagerInterface>(
+        &mut self,
+        value: MicroMinotari,
+        key_manager: &KM,
+    ) -> Result<(), TransactionError> {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.value = value;
+        let commitment = key_manager
+            .get_commitment(&self.commitment_mask_key_id, &self.value.into())
+            .await?;
+        self.commitment = commitment;
+        self.fix_hash();
+        Ok(())
+    }
+
+    pub fn commitment_mask_key_id(&self) -> &TariKeyId {
+        &self.commitment_mask_key_id
+    }
+
+    pub async fn set_commitment_mask_key_id<KM: TransactionKeyManagerInterface>(
+        &mut self,
+        key_id: TariKeyId,
+        key_manager: &KM,
+    ) -> Result<(), TransactionError> {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.commitment_mask_key_id = key_id;
+        let commitment = key_manager
+            .get_commitment(&self.commitment_mask_key_id, &self.value.into())
+            .await?;
+        self.commitment = commitment;
+        self.fix_hash();
+        Ok(())
+    }
+
+    pub fn features(&self) -> &OutputFeatures {
+        &self.features
+    }
+
+    pub fn set_features(&mut self, features: OutputFeatures) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.features = features;
+        self.fix_hash();
+    }
+
+    pub fn script(&self) -> &TariScript {
+        &self.script
+    }
+
+    pub fn set_script(&mut self, script: TariScript) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.script = script;
+        self.fix_hash();
+    }
+
+    pub fn covenant(&self) -> &Covenant {
+        &self.covenant
+    }
+
+    pub fn set_covenant(&mut self, covenant: Covenant) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.covenant = covenant;
+        self.fix_hash();
+    }
+
+    pub fn input_data(&self) -> &ExecutionStack {
+        &self.input_data
+    }
+
+    pub fn set_input_data(&mut self, input_data: ExecutionStack) {
+        self.input = OnceLock::new();
+        self.input_data = input_data;
+    }
+
+    pub fn script_key_id(&self) -> &TariKeyId {
+        &self.script_key_id
+    }
+
+    pub fn set_script_key_id(&mut self, key_id: TariKeyId) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.script_key_id = key_id;
+    }
+
+    pub fn sender_offset_public_key(&self) -> &CompressedPublicKey {
+        &self.sender_offset_public_key
+    }
+
+    pub fn set_sender_offset_public_key(&mut self, pk: CompressedPublicKey) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.sender_offset_public_key = pk;
+        self.fix_hash();
+    }
+
+    pub fn metadata_signature(&self) -> &ComAndPubSignature {
+        &self.metadata_signature
+    }
+
+    pub fn set_metadata_signature(&mut self, sig: ComAndPubSignature) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.metadata_signature = sig;
+        self.fix_hash();
+    }
+
+    pub fn script_lock_height(&self) -> u64 {
+        self.script_lock_height
+    }
+
+    pub fn set_script_lock_height(&mut self, height: u64) {
+        self.script_lock_height = height;
+    }
+
+    pub fn encrypted_data(&self) -> &EncryptedData {
+        &self.encrypted_data
+    }
+
+    pub fn minimum_value_promise(&self) -> MicroMinotari {
+        self.minimum_value_promise
+    }
+
+    pub fn set_minimum_value_promise(&mut self, value: MicroMinotari) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.minimum_value_promise = value;
+        self.fix_hash();
+    }
+
+    pub fn range_proof(&self) -> &Option<RangeProof> {
+        &self.range_proof
+    }
+
+    pub fn set_range_proof(&mut self, proof: Option<RangeProof>) {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.range_proof = proof;
+        self.fix_hash();
+    }
+
+    pub fn payment_id(&self) -> &MemoField {
+        &self.payment_id
+    }
+
+    pub fn output_hash(&self) -> FixedHash {
+        self.output_hash
+    }
+
+    pub fn commitment(&self) -> &CompressedCommitment {
+        &self.commitment
     }
 }
 

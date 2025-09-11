@@ -191,7 +191,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             public_excess = public_excess -
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &input.output_pair.output.commitment_mask_key_id,
+                        input.output_pair.output.commitment_mask_key_id(),
                         &input.output_pair.kernel_nonce,
                     )
                     .await?
@@ -206,7 +206,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &output.output_pair.output.commitment_mask_key_id,
+                        output.output_pair.output.commitment_mask_key_id(),
                         &output.output_pair.kernel_nonce,
                     )
                     .await?
@@ -222,7 +222,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &change.output_pair.output.commitment_mask_key_id,
+                        change.output_pair.output.commitment_mask_key_id(),
                         &change.output_pair.kernel_nonce,
                     )
                     .await?
@@ -286,9 +286,9 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .try_build(self.key_manager)
             .await?;
 
-        let sent_hashes = vec![output.hash(self.key_manager).await?];
+        let sent_hashes = vec![output.output_hash()];
         let change_hashes = match &info.change_output {
-            Some(change_output) => vec![change_output.output_pair.output.hash(self.key_manager).await?],
+            Some(change_output) => vec![change_output.output_pair.output.output_hash()],
             None => vec![],
         };
 
@@ -296,7 +296,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             self.calculate_total_nonce_and_total_public_excess(info).await?;
         let kernel_version = TransactionKernelVersion::get_current_version();
 
-        let transaction_output = output.to_transaction_output(self.key_manager).await?;
+        let transaction_output = output.to_transaction_output()?;
         let public_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -310,7 +310,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -325,7 +325,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let signature = self
             .key_manager
             .get_partial_txo_kernel_signature(
-                &output.commitment_mask_key_id,
+                output.commitment_mask_key_id(),
                 &public_nonce.key_id,
                 &CompressedPublicKey::new_from_pk(total_nonce),
                 &CompressedPublicKey::new_from_pk(total_excess),
@@ -337,7 +337,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
             .await?;
 
         let signed_data = RecipientSignedMessage {
@@ -438,9 +438,9 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .try_build(self.key_manager)
             .await?;
 
-        let sent_hashes = vec![output.hash(self.key_manager).await?];
+        let sent_hashes = vec![output.output_hash()];
         let change_hashes = match &info.change_output {
-            Some(change_output) => vec![change_output.output_pair.output.hash(self.key_manager).await?],
+            Some(change_output) => vec![change_output.output_pair.output.output_hash()],
             None => vec![],
         };
 
@@ -448,7 +448,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             self.calculate_total_nonce_and_total_public_excess(info).await?;
         let kernel_version = TransactionKernelVersion::get_current_version();
 
-        let transaction_output = output.to_transaction_output(self.key_manager).await?;
+        let transaction_output = output.to_transaction_output()?;
         let public_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -462,7 +462,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -478,7 +478,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let signature = self
             .key_manager
             .get_partial_txo_kernel_signature(
-                &output.commitment_mask_key_id,
+                output.commitment_mask_key_id(),
                 &public_nonce.key_id,
                 &CompressedPublicKey::new_from_pk(total_nonce),
                 &CompressedPublicKey::new_from_pk(total_excess),
@@ -490,7 +490,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
             .await?;
 
         let signed_data = RecipientSignedMessage {
@@ -569,13 +569,13 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .try_build(self.key_manager)
             .await?;
 
-        let sent_hashes = vec![output.hash(self.key_manager).await?];
+        let sent_hashes = vec![output.output_hash()];
         let change_hashes = match &info.change_output {
-            Some(change_output) => vec![change_output.output_pair.output.hash(self.key_manager).await?],
+            Some(change_output) => vec![change_output.output_pair.output.output_hash()],
             None => vec![],
         };
 
-        let transaction_output = output.to_transaction_output(self.key_manager).await?;
+        let transaction_output = output.to_transaction_output()?;
         let public_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -589,7 +589,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -604,7 +604,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let signature = self
             .key_manager
             .get_partial_txo_kernel_signature(
-                &output.commitment_mask_key_id,
+                output.commitment_mask_key_id(),
                 &public_nonce.key_id,
                 &CompressedPublicKey::new_from_pk(total_nonce),
                 &CompressedPublicKey::new_from_pk(total_excess),
@@ -616,7 +616,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
             .await?;
 
         let signed_data = RecipientSignedMessage {
@@ -683,7 +683,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &input.output_pair.output.commitment_mask_key_id,
+                        input.output_pair.output.commitment_mask_key_id(),
                         &input.output_pair.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -698,26 +698,20 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(
-                        &input.output_pair.output.commitment_mask_key_id,
+                        input.output_pair.output.commitment_mask_key_id(),
                         &input.output_pair.kernel_nonce,
                     )
                     .await?;
-            script_keys.push(input.output_pair.output.script_key_id.clone());
+            script_keys.push(input.output_pair.output.script_key_id().clone());
         }
 
         for output in &info.outputs {
-            tx_builder.add_output(
-                output
-                    .output_pair
-                    .output
-                    .to_transaction_output(self.key_manager)
-                    .await?,
-            );
+            tx_builder.add_output(output.output_pair.output.to_transaction_output()?);
             signature = &signature +
                 &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &output.output_pair.output.commitment_mask_key_id,
+                        output.output_pair.output.commitment_mask_key_id(),
                         &output.output_pair.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -732,7 +726,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(
-                        &output.output_pair.output.commitment_mask_key_id,
+                        output.output_pair.output.commitment_mask_key_id(),
                         &output.output_pair.kernel_nonce,
                     )
                     .await?;
@@ -751,12 +745,12 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 let change = self
                     .lock_sent_output_in_payment_id(&change.output_pair, signed_message.output.hash())
                     .await?;
-                tx_builder.add_output(change.output.to_transaction_output(self.key_manager).await?);
+                tx_builder.add_output(change.output.to_transaction_output()?);
                 signature = &signature +
                     &self
                         .key_manager
                         .get_partial_txo_kernel_signature(
-                            &change.output.commitment_mask_key_id,
+                            change.output.commitment_mask_key_id(),
                             &change.kernel_nonce,
                             &total_public_nonce,
                             &total_public_excess,
@@ -770,7 +764,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 offset = offset +
                     &self
                         .key_manager
-                        .get_txo_private_kernel_offset(&change.output.commitment_mask_key_id, &change.kernel_nonce)
+                        .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)
                         .await?;
                 let sender_offset_key_id = change
                     .sender_offset_key_id
@@ -808,17 +802,17 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         change: &OutputPair,
         output_hash: FixedHash,
     ) -> Result<OutputPair, TransactionBuilderError> {
-        let mut payment_id = change.output.payment_id.clone();
+        let mut payment_id = change.output.payment_id().clone();
         payment_id
             .transaction_info_set_sent_output_hashes(vec![output_hash])
             .map_err(TransactionBuilderError::InvalidMemo)?;
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(
-                &change.output.commitment_mask_key_id,
+                change.output.commitment_mask_key_id(),
                 None,
-                change.output.value.as_u64(),
-                payment_id,
+                change.output.value().as_u64(),
+                payment_id.clone(),
             )
             .await?;
         let mut change_output = change.output.clone();
@@ -829,6 +823,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                     .sender_offset_key_id
                     .as_ref()
                     .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                payment_id,
                 self.key_manager,
             )
             .await?;

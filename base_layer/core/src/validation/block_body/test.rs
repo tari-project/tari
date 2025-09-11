@@ -260,15 +260,13 @@ async fn it_allows_multiple_coinbases() {
         .with_range_proof_type(RangeProofType::RevealedValue)
         .build_with_reward(
             blockchain.rules().consensus_constants(1),
-            coinbase.value,
+            coinbase.value(),
             MemoField::new_empty(),
         )
         .await
         .unwrap();
 
-    block
-        .body
-        .add_output(coinbase_output.to_transaction_output(&blockchain.km).await.unwrap());
+    block.body.add_output(coinbase_output.to_transaction_output().unwrap());
     block.body.sort();
 
     let (block, _) = blockchain
@@ -349,7 +347,9 @@ async fn it_checks_input_maturity() {
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
     let mut schema = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T]);
-    schema.from[0].features.maturity = 100;
+    let mut features = schema.from[0].features().clone();
+    features.maturity = 100;
+    schema.from[0].set_features(features);
     let (txs, _) = schema_to_transaction(&[schema], &blockchain.km).await;
 
     let (block, _) = blockchain
@@ -472,7 +472,7 @@ async fn it_rejects_invalid_input_metadata() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-    schema1.from[0].sender_offset_public_key = Default::default();
+    schema1.from[0].set_sender_offset_public_key(Default::default());
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
@@ -533,7 +533,7 @@ mod body_only {
         let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
         let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-        schema1.from[0].sender_offset_public_key = Default::default();
+        schema1.from[0].set_sender_offset_public_key(Default::default());
         let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
         let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
         let (block, _) = blockchain

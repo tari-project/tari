@@ -108,9 +108,9 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 
     // 3. Alice attempts horizon sync after header sync (to height 5; includes genesys block UTXO spend)
     println!("\n3. Alice attempts horizon sync after header sync (to height 5; includes genesys block UTXO spend)\n");
-    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    let output_hash = initial_coinbase.output_hash();
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    let commitment = initial_coinbase.commitment().clone();
     assert!(alice_node
         .blockchain_db
         .fetch_unspent_output_hash_by_commitment(commitment.clone())
@@ -208,9 +208,9 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         .take(10) // To current height
         .collect::<Vec<_>>();
     for output in &spent_coinbases {
-        let output_hash = output.hash(&key_manager).await.unwrap();
+        let output_hash = output.output_hash();
         assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-        let commitment = output.commitment(&key_manager).await.unwrap();
+        let commitment = output.commitment().clone();
         assert!(alice_node
             .blockchain_db
             .fetch_unspent_output_hash_by_commitment(commitment)
@@ -236,9 +236,9 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         alice_node.blockchain_db.fetch_last_header().unwrap().height - pruning_horizon
     );
     for output in &spent_coinbases {
-        let output_hash = output.hash(&key_manager).await.unwrap();
+        let output_hash = output.output_hash();
         assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
-        let commitment = output.commitment(&key_manager).await.unwrap();
+        let commitment = output.commitment().clone();
         assert!(alice_node
             .blockchain_db
             .fetch_unspent_output_hash_by_commitment(commitment)
@@ -356,9 +356,9 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     println!(
         "\n1. Alice attempts initial horizon sync from Bob (to pruning height 4; includes genesys block UTXO spend)\n"
     );
-    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    let output_hash = initial_coinbase.output_hash();
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    let commitment = initial_coinbase.commitment().clone();
     assert!(alice_node
         .blockchain_db
         .fetch_unspent_output_hash_by_commitment(commitment.clone())
@@ -727,9 +727,9 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     // 1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)
     println!("\n1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)\n");
 
-    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    let output_hash = initial_coinbase.output_hash();
     assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    let commitment = initial_coinbase.commitment().clone();
     assert!(carol_node
         .blockchain_db
         .fetch_unspent_output_hash_by_commitment(commitment.clone())

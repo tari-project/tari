@@ -233,9 +233,7 @@ async fn fee_estimate() {
     )
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-    backend
-        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
-        .unwrap();
+    backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // minimum fpg
@@ -348,7 +346,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();
-        unspent.push((uo.hash(&key_manager).await.unwrap(), true));
+        unspent.push((uo.output_hash(), true));
     }
     backend.mark_outputs_as_unspent(unspent).unwrap();
 
@@ -370,8 +368,8 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert_eq!(utxos.len(), 8);
     for (index, utxo) in utxos.iter().enumerate() {
         let i = index as u64 + 3;
-        assert_eq!(utxo.wallet_output.features.maturity, i);
-        assert_eq!(utxo.wallet_output.value, i * amount);
+        assert_eq!(utxo.wallet_output.features().maturity, i);
+        assert_eq!(utxo.wallet_output.value(), i * amount);
     }
 
     // test that we can get a fee estimate with no chain metadata
@@ -423,8 +421,8 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert_eq!(utxos.len(), 7);
     for (index, utxo) in utxos.iter().enumerate() {
         let i = index as u64 + 3;
-        assert_eq!(utxo.wallet_output.features.maturity, i);
-        assert_eq!(utxo.wallet_output.value, i * amount);
+        assert_eq!(utxo.wallet_output.features().maturity, i);
+        assert_eq!(utxo.wallet_output.value(), i * amount);
     }
 }
 
@@ -476,7 +474,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();
-        unspent.push((uo.hash(&key_manager).await.unwrap(), true));
+        unspent.push((uo.output_hash(), true));
     }
     backend.mark_outputs_as_unspent(unspent).unwrap();
 
@@ -523,7 +521,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that largest spendable utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 9);
-    let found = utxos.iter().any(|u| u.wallet_output.value == 6 * amount);
+    let found = utxos.iter().any(|u| u.wallet_output.value() == 6 * amount);
     assert!(!found, "An unspendable utxo was selected");
 
     // test transactions
@@ -544,10 +542,10 @@ async fn test_utxo_selection_with_chain_metadata() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
     for utxo in &utxos {
-        assert_ne!(utxo.wallet_output.features.maturity, 1);
-        assert_ne!(utxo.wallet_output.value, amount);
-        assert_ne!(utxo.wallet_output.features.maturity, 2);
-        assert_ne!(utxo.wallet_output.value, 2 * amount);
+        assert_ne!(utxo.wallet_output.features().maturity, 1);
+        assert_ne!(utxo.wallet_output.value(), amount);
+        assert_ne!(utxo.wallet_output.features().maturity, 2);
+        assert_ne!(utxo.wallet_output.value(), 2 * amount);
     }
 
     // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
@@ -568,10 +566,10 @@ async fn test_utxo_selection_with_chain_metadata() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 5);
     for utxo in &utxos {
-        assert_ne!(utxo.wallet_output.features.maturity, 4);
-        assert_ne!(utxo.wallet_output.value, 4 * amount);
-        assert_ne!(utxo.wallet_output.features.maturity, 5);
-        assert_ne!(utxo.wallet_output.value, 5 * amount);
+        assert_ne!(utxo.wallet_output.features().maturity, 4);
+        assert_ne!(utxo.wallet_output.value(), 4 * amount);
+        assert_ne!(utxo.wallet_output.features().maturity, 5);
+        assert_ne!(utxo.wallet_output.value(), 5 * amount);
     }
 }
 
@@ -619,7 +617,7 @@ async fn test_utxo_selection_with_tx_priority() {
         .await
         .unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo_high.hash(&key_manager).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_high.output_hash(), true)])
         .unwrap();
     // Low priority
     let uo_low_2 = make_input_with_features(
@@ -634,7 +632,7 @@ async fn test_utxo_selection_with_tx_priority() {
     .await;
     oms.add_output(uo_low_2.clone(), None).await.unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo_low_2.hash(&key_manager).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_low_2.output_hash(), true)])
         .unwrap();
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -642,18 +640,18 @@ async fn test_utxo_selection_with_tx_priority() {
 
     assert_eq!(utxos[0].spending_priority, SpendingPriority::Normal);
     assert_eq!(
-        utxos[0].wallet_output.commitment_mask_key_id,
-        uo_low_1.commitment_mask_key_id
+        utxos[0].wallet_output.commitment_mask_key_id(),
+        uo_low_1.commitment_mask_key_id()
     );
     assert_eq!(utxos[1].spending_priority, SpendingPriority::HtlcSpendAsap);
     assert_eq!(
-        utxos[1].wallet_output.commitment_mask_key_id,
-        uo_high.commitment_mask_key_id
+        utxos[1].wallet_output.commitment_mask_key_id(),
+        uo_high.commitment_mask_key_id()
     );
     assert_eq!(utxos[2].spending_priority, SpendingPriority::Normal);
     assert_eq!(
-        utxos[2].wallet_output.commitment_mask_key_id,
-        uo_low_2.commitment_mask_key_id
+        utxos[2].wallet_output.commitment_mask_key_id(),
+        uo_low_2.commitment_mask_key_id()
     );
 
     // test transactions
@@ -674,12 +672,12 @@ async fn test_utxo_selection_with_tx_priority() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 2);
     assert_ne!(
-        utxos[0].wallet_output.commitment_mask_key_id,
-        uo_high.commitment_mask_key_id
+        utxos[0].wallet_output.commitment_mask_key_id(),
+        uo_high.commitment_mask_key_id()
     );
     assert_ne!(
-        utxos[1].wallet_output.commitment_mask_key_id,
-        uo_high.commitment_mask_key_id
+        utxos[1].wallet_output.commitment_mask_key_id(),
+        uo_high.commitment_mask_key_id()
     );
 }
 
@@ -700,7 +698,7 @@ async fn send_not_enough_funds() {
         )
         .await;
         oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-        unspent.push((uo.hash(&oms.key_manager_handle).await.unwrap(), true));
+        unspent.push((uo.output_hash(), true));
     }
     backend.mark_outputs_as_unspent(unspent).unwrap();
 
@@ -751,7 +749,7 @@ async fn send_no_change() {
     oms.output_manager_handle.add_output(uo_1.clone(), None).await.unwrap();
 
     backend
-        .mark_outputs_as_unspent(vec![(uo_1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_1.output_hash(), true)])
         .unwrap();
     let value2 = 8000;
     let uo_2 = create_wallet_output_with_data(
@@ -765,7 +763,7 @@ async fn send_no_change() {
     .unwrap();
     oms.output_manager_handle.add_output(uo_2.clone(), None).await.unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_2.output_hash(), true)])
         .unwrap();
 
     let _tx_builder = oms
@@ -813,7 +811,7 @@ async fn send_not_enough_for_change() {
     .unwrap();
     oms.output_manager_handle.add_output(uo_1.clone(), None).await.unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo_1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_1.output_hash(), true)])
         .unwrap();
     let value2 = MicroMinotari(800);
     let uo_2 = create_wallet_output_with_data(
@@ -827,7 +825,7 @@ async fn send_not_enough_for_change() {
     .unwrap();
     oms.output_manager_handle.add_output(uo_2.clone(), None).await.unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_2.output_hash(), true)])
         .unwrap();
 
     match oms
@@ -865,7 +863,7 @@ async fn cancel_transaction() {
         )
         .await;
         oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-        unspent.push((uo.hash(&oms.key_manager_handle).await.unwrap(), true));
+        unspent.push((uo.output_hash(), true));
     }
     backend.mark_outputs_as_unspent(unspent).unwrap();
     let tx_id = TxId::new_random();
@@ -911,9 +909,7 @@ async fn sending_transaction_persisted_while_offline() {
     )
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-    backend
-        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
-        .unwrap();
+    backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
     let uo = make_input(
         &mut OsRng.clone(),
         available_balance / 2,
@@ -922,9 +918,7 @@ async fn sending_transaction_persisted_while_offline() {
     )
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-    backend
-        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
-        .unwrap();
+    backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
@@ -1007,13 +1001,13 @@ async fn coin_split_with_change() {
     assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
     // lets mark them as unspent so we can use them
     backend
-        .mark_outputs_as_unspent(vec![(uo1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo2.output_hash(), true)])
         .unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo3.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo3.output_hash(), true)])
         .unwrap();
 
     let fee_per_gram = MicroMinotari::from(5);
@@ -1071,13 +1065,13 @@ async fn coin_split_no_change() {
     assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
     // lets mark then as unspent so we can use them
     backend
-        .mark_outputs_as_unspent(vec![(uo1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo2.output_hash(), true)])
         .unwrap();
     backend
-        .mark_outputs_as_unspent(vec![(uo3.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo3.output_hash(), true)])
         .unwrap();
     let (_tx_id, coin_split_tx, amount) = oms
         .output_manager_handle
@@ -1100,9 +1094,7 @@ async fn it_handles_large_coin_splits() {
     let uo = make_input(&mut OsRng, val, &OutputFeatures::default(), &oms.key_manager_handle).await;
     assert!(oms.output_manager_handle.add_output(uo.clone(), None).await.is_ok());
     // lets mark them as unspent so we can use them
-    backend
-        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
-        .unwrap();
+    backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
     let split_count = 499;
@@ -2012,18 +2004,12 @@ async fn scan_for_recovery_test() {
     }
     let mut recoverable_outputs = Vec::new();
     for output in &recoverable_wallet_outputs {
-        recoverable_outputs.push((
-            output.to_transaction_output(&oms.key_manager_handle).await.unwrap(),
-            None,
-        ));
+        recoverable_outputs.push((output.to_transaction_output().unwrap(), None));
     }
 
     let mut non_recoverable_outputs = Vec::new();
     for output in non_recoverable_wallet_outputs {
-        non_recoverable_outputs.push((
-            output.to_transaction_output(&oms.key_manager_handle).await.unwrap(),
-            None,
-        ));
+        non_recoverable_outputs.push((output.to_transaction_output().unwrap(), None));
     }
 
     oms.output_manager_handle
@@ -2046,7 +2032,7 @@ async fn scan_for_recovery_test() {
     for o in &recovered_outputs {
         let commitment_branch_public_key = oms
             .key_manager_handle
-            .get_public_key_at_key_id(&o.output.commitment_mask_key_id)
+            .get_public_key_at_key_id(o.output.commitment_mask_key_id())
             .await
             .unwrap();
         recovered_outputs_keys.push(commitment_branch_public_key);
@@ -2059,7 +2045,7 @@ async fn scan_for_recovery_test() {
     for o in recoverable_wallet_outputs.iter().skip(1) {
         let commitment_branch_public_key = oms
             .key_manager_handle
-            .get_public_key_at_key_id(&o.commitment_mask_key_id)
+            .get_public_key_at_key_id(o.commitment_mask_key_id())
             .await
             .unwrap();
         assert!(recovered_outputs_keys.contains(&commitment_branch_public_key));
@@ -2081,7 +2067,7 @@ async fn recovered_output_key_not_in_keychain() {
     )
     .await;
 
-    let rewindable_output = uo.to_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let rewindable_output = uo.to_transaction_output().unwrap();
 
     let result = oms
         .output_manager_handle
