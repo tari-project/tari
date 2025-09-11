@@ -163,6 +163,8 @@ impl DbConnection {
         );
         pool.create_pool()?;
 
+        debug!(target: LOG_TARGET, "{}", pool);
+
         Ok(Self::new(pool))
     }
 
@@ -173,6 +175,14 @@ impl DbConnection {
                 "Failed to acquire write lock for database migration: {err}"
             ))),
         }
+    }
+
+    /// Returns true **if** the migration write lock is currently held by *some* writer in this
+    /// process. We detect this by attempting a non-blocking read; it fails while a write lock is
+    /// held.
+    #[inline]
+    pub fn migration_lock_active() -> bool {
+        DB_WRITE_LOCK.try_read().is_err()
     }
 
     /// Connect and migrate the database, once complete, then return a handle to the migrated database.
@@ -270,8 +280,16 @@ impl PooledDbConnection for DbConnection {
 
 #[cfg(test)]
 mod test {
-    use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
+    use std::sync::Arc;
+
+    use diesel::{
+        connection::SimpleConnection,
+        dsl::sql,
+        sql_types::{Integer, Text},
+        RunQueryDsl,
+    };
     use diesel_migrations::embed_migrations;
+    use tokio::{sync::Barrier, task::JoinSet};
 
     use super::*;
 
@@ -292,5 +310,87 @@ mod test {
         drop(pool_conn);
         drop(db_conn);
         assert!(!path.exists());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn stress_connect_and_migrate_contention() {
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
+        let db = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+
+        // Force very frequent WAL checkpoints to increase write pressure.
+        // The SQLite "PRAGMA wal_autocheckpoint = 1;" executes a SQLite PRAGMA that will checkpoint
+        // the Write-Ahead Log (WAL) after every transaction. This increases the frequency of
+        // checkpointing, which can help test write contention and durability in high-concurrency
+        // scenarios.
+        let mut c = db.get_pooled_connection().unwrap();
+        sql::<Integer>("PRAGMA wal_autocheckpoint = 1;")
+            .execute(&mut c)
+            .unwrap();
+        let mode: String = sql::<Text>("PRAGMA journal_mode;").get_result(&mut c).unwrap();
+        assert!(mode.eq_ignore_ascii_case("wal"));
+
+        let busy: String = sql::<Text>("PRAGMA busy_timeout;").get_result(&mut c).unwrap();
+        assert!(busy.parse::<u64>().unwrap() >= 60_000); // or whatever you set
+
+        // We have 'sqlite_pool_size = Some(10))', so '160 writers + 320 readers' must queue.
+        const WRITERS: usize = 160;
+        const READERS: usize = 320;
+        const HOLD_MS: u64 = 100;
+
+        let barrier = Arc::new(Barrier::new(WRITERS + READERS));
+        let mut tasks = JoinSet::new();
+
+        // Writers
+        for _ in 0..WRITERS {
+            let b = barrier.clone();
+            let db2 = db.clone();
+            tasks.spawn(async move {
+                b.wait().await;
+                // IMPORTANT: await the blocking job
+                tokio::task::spawn_blocking(move || {
+                    let mut conn = db2.get_pooled_connection().expect("writer checkout");
+                    // Or use immediate_transaction; but if you keep EXCLUSIVE, this is fine for the test
+                    conn.batch_execute("BEGIN EXCLUSIVE;").unwrap();
+                    sql::<Integer>("INSERT INTO test_table DEFAULT VALUES;")
+                        .execute(&mut conn)
+                        .unwrap();
+                    std::thread::sleep(std::time::Duration::from_millis(HOLD_MS));
+                    conn.batch_execute("COMMIT;").unwrap();
+                })
+                .await
+                .expect("writer join");
+            });
+        }
+        // Readers
+        for _ in 0..READERS {
+            let b = barrier.clone();
+            let db2 = db.clone();
+            tasks.spawn(async move {
+                b.wait().await;
+                tokio::task::spawn_blocking(move || {
+                    let mut conn = db2.get_pooled_connection().expect("reader checkout");
+                    for _ in 0..3 {
+                        let _: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
+                            .get_result(&mut conn)
+                            .expect("reader select");
+                        // small pause between reads (async sleep outside blocking isn’t usable here)
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                })
+                .await
+                .expect("reader join");
+            });
+        }
+
+        while let Some(res) = tasks.join_next().await {
+            res.expect("task panicked");
+        }
+
+        // Verify row count
+        let mut c = db.get_pooled_connection().unwrap();
+        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
+            .get_result(&mut c)
+            .unwrap();
+        assert_eq!(count as usize, WRITERS);
     }
 }

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::time::Duration;
-use std::{convert::TryFrom, path::PathBuf};
+use std::{convert::TryFrom, fmt::Display, path::PathBuf};
 
 use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
@@ -33,15 +33,41 @@ use crate::{connection_options::ConnectionOptions, error::SqliteStorageError};
 
 const LOG_TARGET: &str = "common_sqlite::sqlite_connection_pool";
 
+/// Thin wrapper around an r2d2 `Pool<SqliteConnection>` with standard SQLite
+/// configuration (WAL, FKs, busy timeout) applied to each connection.
+///
+/// The pool is created lazily by calling [`create_pool`] once. After that,
+/// callers can obtain connections via [`get_pooled_connection`], a timed
+/// variant, or a non-blocking `try_get_pooled_connection`.
+///
+/// # Concurrency notes
+/// SQLite allows only a single writer at a time (even in WAL mode). Keep write
+/// transactions short and consider limiting concurrent writers at the
+/// application layer (e.g. a semaphore) to reduce lock contention.
+///
+/// # Timeout interplay
+/// The r2d2 **pool checkout** timeout is configured via
+/// `Pool::builder().connection_timeout(...)` inside [`create_pool`]. This is
+/// separate from SQLite’s `PRAGMA busy_timeout` set by [`ConnectionOptions`].
+/// Prefer `connection_timeout >= busy_timeout` (plus a little headroom) to
+/// avoid premature pool timeouts while connections are waiting on SQLite locks.
 #[derive(Clone)]
 pub struct SqliteConnectionPool {
+    /// The underlying r2d2 pool. `None` until [`create_pool`] is called.
     pool: Option<Pool<ConnectionManager<SqliteConnection>>>,
+    /// Database path / connection string (`:memory:`, filesystem path, or
+    /// `file:NAME?mode=memory&cache=shared`).
     db_path: String,
+    /// Maximum number of concurrently open connections managed by the pool.
     pool_size: usize,
+    /// Per-connection SQLite options applied on acquisition.
     connection_options: ConnectionOptions,
 }
 
 impl SqliteConnectionPool {
+    /// Create a wrapper with the given target database, pool size and
+    /// connection options (WAL, FKs, busy timeout). The r2d2 pool is not built
+    /// until [`create_pool`] is called.
     pub fn new(
         db_path: String,
         pool_size: usize,
@@ -60,12 +86,18 @@ impl SqliteConnectionPool {
     /// Create an sqlite connection pool managed by the pool connection manager
     pub fn create_pool(&mut self) -> Result<(), SqliteStorageError> {
         if self.pool.is_none() {
-            let pool = Pool::builder()
+            let mut builder = Pool::builder()
                 .max_size(u32::try_from(self.pool_size)?)
-                .connection_customizer(Box::new(self.connection_options.clone()))
+                .connection_customizer(Box::new(self.connection_options.clone()));
+            if let Some(timeout) = self.connection_options.get_busy_timeout() {
+                builder = builder.connection_timeout(timeout + Duration::from_secs(10));
+            } else {
+                builder = builder.connection_timeout(Duration::from_secs(30));
+            }
+            let pool = builder
                 .build(ConnectionManager::<SqliteConnection>::new(self.db_path.as_str()))
-                .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()));
-            self.pool = Some(pool?);
+                .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()))?;
+            self.pool = Some(pool);
         } else {
             warn!(
                 target: LOG_TARGET,
@@ -136,7 +168,7 @@ impl SqliteConnectionPool {
         }
     }
 
-    /// Return the database path
+    /// Returns the database path / connection string used by this pool.
     pub fn db_path(&self) -> PathBuf {
         PathBuf::from(&self.db_path)
     }
@@ -152,7 +184,25 @@ impl SqliteConnectionPool {
     }
 }
 
+impl Display for SqliteConnectionPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pool_state = if let Some(pool) = self.pool.clone() {
+            format!("{:?}", pool.state())
+        } else {
+            "None".to_string()
+        };
+        write!(
+            f,
+            "SqliteConnectionPool {{ pool state: {}, db_path: {}, pool_size: {}, connection_options: {:?} }}",
+            pool_state, self.db_path, self.pool_size, self.connection_options
+        )
+    }
+}
+
+/// Helper trait for components that need a pooled SQLite connection.
 pub trait PooledDbConnection: Send + Sync + Clone {
+    /// Acquire a pooled connection, or return an error if the pool is
+    /// unavailable or the checkout times out.
     type Error;
 
     fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, Self::Error>;
