@@ -19,7 +19,13 @@ use tari_core::{
 use tari_transaction_components::rpc::models;
 use tonic::service::AxumBody;
 
-use crate::http::handler::{error_handler_with_message, util::from_hex, ErrorResponse};
+use crate::{
+    http::{
+        cache_config::{apply_cache_control, RouteKey},
+        handler::{error_handler_with_message, util::from_hex, ErrorResponse},
+    },
+    HttpCacheConfig,
+};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::transaction_query";
 
@@ -43,6 +49,7 @@ impl From<TransactionQueryQueryParams> for models::Signature {
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<TransactionQueryQueryParams>,
+    Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received transaction_query request: {params:?}");
     let request = params.into();
@@ -54,11 +61,6 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     let body = Json(response);
     let mut response = body.into_response();
-    response.headers_mut().insert(
-        "Cache-Control",
-        "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
-            .parse()
-            .expect("should be a valid header value"),
-    );
+    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::TransactionQuery);
     Ok(response)
 }
