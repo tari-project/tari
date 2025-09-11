@@ -19,7 +19,10 @@ use tari_core::{
 use tari_transaction_components::rpc::models::BlockHeader;
 use tonic::service::AxumBody;
 
-use crate::http::handler::{error_handler_with_message, ErrorResponse};
+use crate::http::{
+    cache_config::{apply_cache_control, HttpCacheConfig, RouteKey},
+    handler::{error_handler_with_message, ErrorResponse},
+};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";
 
@@ -42,6 +45,7 @@ pub struct GetHeaderByHeightQueryParams {
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<GetHeaderByHeightQueryParams>,
+    Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received get_header_by_height request: {}", params.height);
 
@@ -51,11 +55,6 @@ pub async fn handle<B: BlockchainBackend + 'static>(
         .map_err(error_handler_with_message)?;
     let body = Json(response);
     let mut response = body.into_response();
-    response.headers_mut().insert(
-        "Cache-Control",
-        "public, max-age=120, s-maxage=60, stale-while-revalidate=15"
-            .parse()
-            .expect("should be a valid header value"),
-    );
+    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetHeaderByHeight);
     Ok(response)
 }

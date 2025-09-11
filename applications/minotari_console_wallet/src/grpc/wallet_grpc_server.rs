@@ -129,7 +129,6 @@ use minotari_wallet::{
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        offline_signing::models::SignedOneSidedTransactionResult,
         storage::models::{self, WalletTransaction},
     },
     WalletKeyManager,
@@ -155,6 +154,7 @@ use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
+    offline_signing::models::SignedOneSidedTransactionResult,
     transaction_components::{
         memo_field::{MemoField, TxType},
         OutputFeatures,
