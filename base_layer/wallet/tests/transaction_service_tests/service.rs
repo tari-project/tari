@@ -1761,9 +1761,10 @@ async fn test_update_faux_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
-        let _result = alice_ts_interface
+        alice_ts_interface
             .oms_db
-            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)]);
+            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+            .unwrap();
         alice_ts_interface
             .oms_db
             .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {

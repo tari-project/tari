@@ -1206,7 +1206,7 @@ where
             );
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
-        let amount = input.value() - fee;
+        let amount = input.value().saturating_sub(fee);
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script, with fee {fee}");
 
         // Create sender transaction protocol builder with recipient data and no change
@@ -1491,7 +1491,7 @@ where
             );
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
-        let amount = input.value() - fee;
+        let amount = input.value().saturating_sub(fee);
 
         // Create sender transaction protocol builder with recipient data and no change
         let mut tx_builder = TransactionBuilder::new(

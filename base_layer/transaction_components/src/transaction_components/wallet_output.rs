@@ -625,13 +625,6 @@ impl WalletOutput {
         self.version
     }
 
-    pub fn set_version(&mut self, version: TransactionOutputVersion) {
-        self.input = OnceLock::new();
-        self.output = OnceLock::new();
-        self.version = version;
-        self.fix_hash();
-    }
-
     pub fn value(&self) -> MicroMinotari {
         self.value
     }
@@ -648,6 +641,20 @@ impl WalletOutput {
             .get_commitment(&self.commitment_mask_key_id, &self.value.into())
             .await?;
         self.commitment = commitment;
+        let range_proof = if self.features.range_proof_type == RangeProofType::BulletProofPlus {
+            Some(
+                key_manager
+                    .construct_range_proof(
+                        &self.commitment_mask_key_id,
+                        self.value.into(),
+                        self.minimum_value_promise.into(),
+                    )
+                    .await?,
+            )
+        } else {
+            None
+        };
+        self.range_proof = range_proof;
         self.fix_hash();
         Ok(())
     }
