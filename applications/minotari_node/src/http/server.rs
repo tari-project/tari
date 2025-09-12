@@ -22,14 +22,17 @@ use tower_http::limit::RequestBodyLimitLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::http::{
-    handler,
-    handler::{
-        __path_get_header_by_height,
-        __path_get_height_at_time,
-        __path_get_tip_info,
-        __path_sync_utxos_by_block,
+use crate::{
+    http::{
+        handler,
+        handler::{
+            __path_get_header_by_height,
+            __path_get_height_at_time,
+            __path_get_tip_info,
+            __path_sync_utxos_by_block,
+        },
     },
+    HttpCacheConfig,
 };
 
 const LOG_TARGET: &str = "c::bn::rpc::http::server";
@@ -49,15 +52,23 @@ pub struct Server<S> {
     query_service: Arc<S>,
     mempool_handle: MempoolHandle,
     shutdown_signal: ShutdownSignal,
+    cache_cfg: HttpCacheConfig,
 }
 
 impl<S: BaseNodeWalletQueryService> Server<S> {
-    pub fn new(port: u16, query_service: S, mempool: MempoolHandle, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(
+        port: u16,
+        query_service: S,
+        mempool: MempoolHandle,
+        shutdown_signal: ShutdownSignal,
+        cache_cfg: HttpCacheConfig,
+    ) -> Self {
         Self {
             port,
             query_service: Arc::new(query_service),
             mempool_handle: mempool,
             shutdown_signal,
+            cache_cfg,
         }
     }
 
@@ -92,7 +103,8 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .layer(RequestBodyLimitLayer::new(4 * 1024 * 1024))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
-            .layer(Extension(self.mempool_handle.clone()));
+            .layer(Extension(self.mempool_handle.clone()))
+            .layer(Extension(Arc::new(self.cache_cfg.clone())));
 
         let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 

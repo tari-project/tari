@@ -627,7 +627,7 @@ where KM: TransactionKeyManagerInterface
             .call(OutputManagerRequest::GetOutputsByQuery(query))
             .await??
         {
-            OutputManagerResponse::SpentOutputs(s) => Ok(s),
+            OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

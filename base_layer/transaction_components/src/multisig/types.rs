@@ -25,7 +25,8 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey},
 };
 use tari_script::CompressedCheckSigSchnorrSignature;
-use tari_transaction_components::tari_amount::MicroMinotari;
+
+use crate::tari_amount::MicroMinotari;
 
 #[derive(Debug, Clone)]
 pub struct CreateMultisigUtxo {

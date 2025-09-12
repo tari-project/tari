@@ -23,15 +23,9 @@
 use std::str::FromStr;
 
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
-use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{MemoField, OutputFeatures},
-    MicroMinotari,
-    TransactionBuilder,
-};
 
-use crate::transaction_service::{
-    error::TransactionServiceError,
+use crate::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     offline_signing::{
         marshal_output_pair::MarshalOutputPair,
         models::{
@@ -49,6 +43,10 @@ use crate::transaction_service::{
         },
         one_sided_signer::OneSidedSigner,
     },
+    transaction_components::{MemoField, OutputFeatures, TransactionError},
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
 };
 
 pub struct OfflineSigner<TKeyManagerInterface> {
@@ -71,7 +69,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output_features: OutputFeatures,
         payment_id: MemoField,
         sender_address: TariAddress,
-    ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
+    ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionBuilderError> {
         // we do this to ensure the fee is calculated correctly
         tx_builder
             .add_stealth_recipient(
@@ -88,7 +86,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             input.output.script_key_id = self
                 .make_key_id_export_safe(&input.output.script_key_id)
                 .await
-                .map_err(TransactionServiceError::NotSupported)?;
+                .map_err(TransactionError::BuilderError)?;
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
 
@@ -98,7 +96,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             output.output.script_key_id = self
                 .make_key_id_export_safe(&output.output.script_key_id)
                 .await
-                .map_err(TransactionServiceError::NotSupported)?;
+                .map_err(TransactionError::BuilderError)?;
             outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
@@ -107,7 +105,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 change_output.output.script_key_id = self
                     .make_key_id_export_safe(&change_output.output.script_key_id)
                     .await
-                    .map_err(TransactionServiceError::NotSupported)?;
+                    .map_err(TransactionError::BuilderError)?;
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
@@ -151,7 +149,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         public_keys: Vec<CompressedPublicKey>,
         sender: TariAddress,
         recipient: TariAddress,
-    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionServiceError> {
+    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
         // we do this to ensure the fee is calculated correctly
         tx_builder
             .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
@@ -163,7 +161,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             input.output.script_key_id = self
                 .make_key_id_export_safe(&input.output.script_key_id)
                 .await
-                .map_err(TransactionServiceError::NotSupported)?;
+                .map_err(TransactionError::BuilderError)?;
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
         let outputs = Vec::new();
@@ -173,7 +171,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 change_output.output.script_key_id = self
                     .make_key_id_export_safe(&change_output.output.script_key_id)
                     .await
-                    .map_err(TransactionServiceError::NotSupported)?;
+                    .map_err(TransactionError::BuilderError)?;
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
@@ -221,7 +219,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         output_features: OutputFeatures,
         sender: TariAddress,
         recipient: TariAddress,
-    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionServiceError> {
+    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
         tx_builder
             .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
             .await?;
@@ -232,7 +230,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             input.output.script_key_id = self
                 .make_key_id_export_safe(&input.output.script_key_id)
                 .await
-                .map_err(TransactionServiceError::NotSupported)?;
+                .map_err(TransactionError::BuilderError)?;
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
         let mut outputs = Vec::new();
@@ -241,7 +239,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             output.output.script_key_id = self
                 .make_key_id_export_safe(&output.output.script_key_id)
                 .await
-                .map_err(TransactionServiceError::NotSupported)?;
+                .map_err(TransactionError::BuilderError)?;
             outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
@@ -250,7 +248,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 change_output.output.script_key_id = self
                     .make_key_id_export_safe(&change_output.output.script_key_id)
                     .await
-                    .map_err(TransactionServiceError::NotSupported)?;
+                    .map_err(TransactionError::BuilderError)?;
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
@@ -288,7 +286,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn sign_locked_transaction(
         &self,
         request: PrepareOneSidedTransactionForSigningResult,
-    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
+    ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
         let signer = OneSidedSigner::new(&self.key_manager);
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
@@ -302,7 +300,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn sign_locked_deposit_multisig_transaction(
         &self,
         request: PrepareDepositMultisigTransactionResult,
-    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionServiceError> {
+    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
         let signer = OneSidedSigner::new(&self.key_manager);
         let signed_transaction = signer
             .sign_multisig_transaction(request.tx_id, request.info.clone())
@@ -318,7 +316,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn sign_locked_withdraw_multisig_transaction(
         &self,
         request: PrepareWithdrawMultisigTransactionResult,
-    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionServiceError> {
+    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
         let signer = OneSidedSigner::new(&self.key_manager);
 
         let signed_transaction = signer
