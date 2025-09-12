@@ -115,20 +115,30 @@ impl PeerDatabaseSql {
                     return Ok(());
                 } else {
                     // Update the database with the current node identity
+                    let old_row = node_identity_indexes.first().expect("already checked");
                     warn!(target: LOG_TARGET,
                         "Node ID mismatch detected: {} (from file) vs {} (from DB). \
                          This may occur if the base_node_id file was deleted without updating the database. \
                          Updating database identity to match the file.",
                         self.this_peer_identity.node_id.to_hex(),
-                        node_identity_indexes.first().expect("already checked").node_id
+                        old_row.node_id
                     );
-                    diesel::update(node_identity::table)
-                        .set((
-                            node_identity::public_key.eq(self.this_peer_identity.public_key.to_hex()),
-                            node_identity::node_id.eq(self.this_peer_identity.node_id.to_hex()),
-                            node_identity::features.eq(self.this_peer_identity.features.to_i32()),
-                        ))
-                        .execute(conn)?;
+                    let affected =
+                        diesel::update(node_identity::table.filter(node_identity::node_id.eq(old_row.node_id.clone())))
+                            .set((
+                                node_identity::public_key.eq(self.this_peer_identity.public_key.to_hex()),
+                                node_identity::node_id.eq(self.this_peer_identity.node_id.to_hex()),
+                                node_identity::features.eq(self.this_peer_identity.features.to_i32()),
+                            ))
+                            .execute(conn)?;
+                    if affected != 1 {
+                        return Err(StorageError::UnexpectedResult(format!(
+                            "Expected to update 1 node_identity row, updated {}",
+                            affected
+                        )));
+                    }
+                    // Re-index distance_to_self for all peers to reflect the new local NodeId.
+                    self.reindex_all_peer_distances_in_tx(conn, &self.this_peer_identity.node_id)?;
                     return Ok(());
                 }
             }
@@ -151,6 +161,38 @@ impl PeerDatabaseSql {
 
             Ok(())
         })
+    }
+
+    /// Re-indexes the distance_to_self field for all peers in the database based on a new local NodeId.
+    /// This is necessary when the node's identity changes to maintain accurate distance calculations
+    /// for DHT routing and peer selection.
+    ///
+    /// # Arguments
+    /// * `conn` - The database connection to use for the transaction
+    /// * `new_node_id` - The new local NodeId to calculate distances from
+    ///
+    /// # Returns
+    /// * `Ok(())` if all peer distances were successfully updated
+    /// * `Err(StorageError)` if there was a database error during the update
+    fn reindex_all_peer_distances_in_tx(
+        &self,
+        conn: &mut SqliteConnection,
+        new_node_id: &NodeId,
+    ) -> Result<(), StorageError> {
+        use crate::peer_manager::storage::schema::peers;
+        let rows: Vec<(i64, String)> = peers::table
+            .select((peers::peer_id, peers::node_id))
+            .load::<(i64, String)>(conn)?;
+        for (peer_id, node_id_hex) in rows {
+            let Ok(node_id) = NodeId::from_hex(&node_id_hex) else {
+                continue;
+            };
+            let distance = format!("{:032}", new_node_id.distance(&node_id).as_u128());
+            diesel::update(peers::table.filter(peers::peer_id.eq(peer_id)))
+                .set(peers::distance_to_self.eq(distance))
+                .execute(conn)?;
+        }
+        Ok(())
     }
 
     // Note: This function is not properly working at the moment, but must be kept here for in its commented out form
