@@ -528,7 +528,7 @@ impl PeerDatabaseSql {
             ),
             flags: peer.flags.to_i32(),
             banned_until: peer.banned_until,
-            banned_reason: Some(peer.banned_reason.clone()),
+            banned_reason: peer.banned_reason.clone(),
             features: peer.features.to_i32(),
             supported_protocols: serialize_protocols(&peer.supported_protocols),
             added_at: peer.added_at,
@@ -545,23 +545,11 @@ impl PeerDatabaseSql {
                 address: address.address().to_string(),
                 is_external: address.is_external(),
                 last_seen: address.last_seen(),
-                connection_attempts: if address.connection_attempts() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.connection_attempts())?)
-                },
+                connection_attempts: i32::try_from(address.connection_attempts())?,
                 avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
-                initial_dial_time_sample_count: if address.initial_dial_time_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.initial_dial_time_sample_count())?)
-                },
+                initial_dial_time_sample_count: i32::try_from(address.initial_dial_time_sample_count())?,
                 avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
-                latency_sample_count: if address.latency_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.latency_sample_count())?)
-                },
+                latency_sample_count: i32::try_from(address.latency_sample_count())?,
                 last_attempted: address.last_attempted(),
                 last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
                 quality_score: address.quality_score(),
@@ -632,41 +620,29 @@ impl PeerDatabaseSql {
     // Helper function to convert a Peer to an UpdatePeerWithAddressesSql
     fn update_peer_sql(peer: Peer) -> Result<UpdatePeerWithAddressesSql, StorageError> {
         let update_peer_sql = UpdatePeerSql {
-            node_id: peer.node_id.to_hex(),
-            banned_until: peer.banned_until,
+            node_id: Some(peer.node_id.to_hex()),
+            banned_until: Some(peer.banned_until),
             banned_reason: Some(peer.banned_reason.clone()),
             supported_protocols: Some(serialize_protocols(&peer.supported_protocols)),
             user_agent: Some(peer.user_agent.clone()),
-            metadata: serialize_metadata(&peer.metadata)?,
-            deleted_at: peer.deleted_at,
+            metadata: Some(serialize_metadata(&peer.metadata)?),
+            deleted_at: Some(peer.deleted_at),
         };
 
         let mut update_addresses_sql = Vec::with_capacity(peer.addresses.len());
         for address in peer.addresses.iter() {
             update_addresses_sql.push(UpdateMultiaddrWithStatsSql {
-                address: address.address().to_string(),
-                is_external: address.is_external(),
-                last_seen: address.last_seen(),
-                connection_attempts: if address.connection_attempts() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.connection_attempts())?)
-                },
-                avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
-                initial_dial_time_sample_count: if address.initial_dial_time_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.initial_dial_time_sample_count())?)
-                },
-                avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
-                latency_sample_count: if address.latency_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.latency_sample_count())?)
-                },
-                last_attempted: address.last_attempted(),
-                last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
-                quality_score: address.quality_score(),
+                address: Some(address.address().to_string()),
+                is_external: Some(address.is_external()),
+                last_seen: Some(address.last_seen()),
+                connection_attempts: Some(i32::try_from(address.connection_attempts())?),
+                avg_initial_dial_time: Some(duration_to_i64_ms_infallible(address.avg_initial_dial_time())),
+                initial_dial_time_sample_count: Some(i32::try_from(address.initial_dial_time_sample_count())?),
+                avg_latency: Some(duration_to_i64_ms_infallible(address.avg_latency())),
+                latency_sample_count: Some(i32::try_from(address.latency_sample_count())?),
+                last_attempted: Some(address.last_attempted()),
+                last_failed_reason: Some(address.last_failed_reason().map(|s| s.to_string())),
+                quality_score: Some(address.quality_score()),
                 source: Some(
                     serde_json::to_string(&address.source())
                         .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
@@ -689,11 +665,13 @@ impl PeerDatabaseSql {
         conn: &mut SqliteConnection,
     ) -> Result<(), StorageError> {
         // Update the peer
-        diesel::update(peers::table.filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone())))
-            .set(&update_peer_sql.peer)
-            .execute(conn)?;
+        diesel::update(
+            peers::table.filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone().unwrap_or_default())),
+        )
+        .set(&update_peer_sql.peer)
+        .execute(conn)?;
         let peer_id = peers::table
-            .filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone()))
+            .filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone().unwrap_or_default()))
             .select(peers::peer_id)
             .first::<i64>(conn)?;
 
@@ -701,7 +679,7 @@ impl PeerDatabaseSql {
         for address_update in update_peer_sql.addresses {
             let updated = diesel::update(
                 multi_addresses::table
-                    .filter(multi_addresses::address.eq(address_update.address.clone()))
+                    .filter(multi_addresses::address.eq(address_update.address.clone().unwrap_or_default()))
                     .filter(multi_addresses::peer_id.eq(peer_id)),
             )
             .set(&address_update)
@@ -829,7 +807,7 @@ impl PeerDatabaseSql {
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
                 .set((
                     peers::banned_until.eq(None::<NaiveDateTime>),
-                    peers::banned_reason.eq(None::<String>),
+                    peers::banned_reason.eq(String::new()),
                 ))
                 .execute(conn)?;
             if affected > 0 {
@@ -848,7 +826,7 @@ impl PeerDatabaseSql {
             let affected = diesel::update(peers::table.filter(peers::banned_until.is_not_null()))
                 .set((
                     peers::banned_until.eq(None::<NaiveDateTime>),
-                    peers::banned_reason.eq(None::<String>),
+                    peers::banned_reason.eq(String::new()),
                 ))
                 .execute(conn)?;
             Ok(affected)
@@ -1676,7 +1654,7 @@ fn sql_escape(input: &str) -> String {
     input.replace('\'', "''")
 }
 
-#[derive(Clone, Debug, Selectable, Queryable, Insertable, AsChangeset, PartialEq, Eq)]
+#[derive(Clone, Debug, Selectable, Queryable, Insertable, PartialEq, Eq)]
 #[diesel(table_name = node_identity)]
 pub struct NewThisPeerIdentitySql {
     pub public_key: String,
@@ -1690,7 +1668,7 @@ pub struct NewPeerWithAddressesSql {
     pub addresses: Vec<NewMultiaddrWithStatsSql>,
 }
 
-#[derive(Clone, Debug, Selectable, Queryable, Insertable, AsChangeset, PartialEq, Eq)]
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq, Eq)]
 #[diesel(table_name = peers)]
 pub struct NewPeerSql {
     pub peer_id: i64,
@@ -1698,26 +1676,26 @@ pub struct NewPeerSql {
     pub node_id: String,
     pub distance_to_self: String,
     pub flags: i32,
-    pub banned_until: Option<chrono::NaiveDateTime>,
-    pub banned_reason: Option<String>,
+    pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
     pub features: i32,
     pub supported_protocols: String,
-    pub added_at: chrono::NaiveDateTime,
+    pub added_at: NaiveDateTime,
     pub user_agent: String,
     pub metadata: Option<Vec<u8>>,
-    pub deleted_at: Option<chrono::NaiveDateTime>,
+    pub deleted_at: Option<NaiveDateTime>,
 }
 
-#[derive(Clone, Debug, Selectable, Queryable, AsChangeset, PartialEq, Eq)]
+#[derive(Clone, Debug, AsChangeset, PartialEq, Eq)]
 #[diesel(table_name = peers)]
 pub struct UpdatePeerSql {
-    pub node_id: String,
-    pub banned_until: Option<chrono::NaiveDateTime>,
+    pub node_id: Option<String>,
+    pub banned_until: Option<Option<NaiveDateTime>>,
     pub banned_reason: Option<String>,
     pub supported_protocols: Option<String>,
     pub user_agent: Option<String>,
-    pub metadata: Option<Vec<u8>>,
-    pub deleted_at: Option<chrono::NaiveDateTime>,
+    pub metadata: Option<Option<Vec<u8>>>,
+    pub deleted_at: Option<Option<NaiveDateTime>>,
 }
 
 #[derive(Clone, Debug)]
@@ -1726,39 +1704,39 @@ pub struct UpdatePeerWithAddressesSql {
     pub addresses: Vec<UpdateMultiaddrWithStatsSql>,
 }
 
-#[derive(Clone, Debug, Selectable, Queryable, Insertable, AsChangeset, PartialEq, Eq)]
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq, Eq)]
 #[diesel(table_name = multi_addresses)]
 pub struct NewMultiaddrWithStatsSql {
     pub address_id: Option<i32>,
     pub peer_id: i64,
     pub address: String,
     pub is_external: bool,
-    pub last_seen: Option<chrono::NaiveDateTime>,
-    pub connection_attempts: Option<i32>,
+    pub last_seen: Option<NaiveDateTime>,
+    pub connection_attempts: i32,
     pub avg_initial_dial_time: Option<i64>,
-    pub initial_dial_time_sample_count: Option<i32>,
+    pub initial_dial_time_sample_count: i32,
     pub avg_latency: Option<i64>,
-    pub latency_sample_count: Option<i32>,
-    pub last_attempted: Option<chrono::NaiveDateTime>,
+    pub latency_sample_count: i32,
+    pub last_attempted: Option<NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
     pub source: String,
 }
 
-#[derive(Clone, Debug, Selectable, Queryable, AsChangeset, PartialEq, Eq)]
+#[derive(Clone, Debug, AsChangeset, PartialEq, Eq)]
 #[diesel(table_name = multi_addresses)]
 pub struct UpdateMultiaddrWithStatsSql {
-    pub address: String,
-    pub is_external: bool,
-    pub last_seen: Option<chrono::NaiveDateTime>,
+    pub address: Option<String>,
+    pub is_external: Option<bool>,
+    pub last_seen: Option<Option<NaiveDateTime>>,
     pub connection_attempts: Option<i32>,
-    pub avg_initial_dial_time: Option<i64>,
+    pub avg_initial_dial_time: Option<Option<i64>>,
     pub initial_dial_time_sample_count: Option<i32>,
-    pub avg_latency: Option<i64>,
+    pub avg_latency: Option<Option<i64>>,
     pub latency_sample_count: Option<i32>,
-    pub last_attempted: Option<chrono::NaiveDateTime>,
-    pub last_failed_reason: Option<String>,
-    pub quality_score: Option<i32>,
+    pub last_attempted: Option<Option<NaiveDateTime>>,
+    pub last_failed_reason: Option<Option<String>>,
+    pub quality_score: Option<Option<i32>>,
     pub source: Option<String>,
 }
 
@@ -1825,17 +1803,17 @@ fn u32_to_i32_infallible(value: u32) -> i32 {
 impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
     fn from(address: &MultiaddrWithStats) -> Self {
         UpdateMultiaddrWithStatsSql {
-            address: address.to_string(),
-            is_external: address.is_external(),
-            last_seen: address.last_seen(),
+            address: Some(address.to_string()),
+            is_external: Some(address.is_external()),
+            last_seen: Some(address.last_seen()),
             connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
-            avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
+            avg_initial_dial_time: Some(duration_to_i64_ms_infallible(address.avg_initial_dial_time())),
             initial_dial_time_sample_count: Some(u32_to_i32_infallible(address.initial_dial_time_sample_count())),
-            avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
+            avg_latency: Some(duration_to_i64_ms_infallible(address.avg_latency())),
             latency_sample_count: Some(u32_to_i32_infallible(address.latency_sample_count())),
-            last_attempted: address.last_attempted(),
-            last_failed_reason: address.last_failed_reason().map(|v| v.to_string()),
-            quality_score: address.quality_score(),
+            last_attempted: Some(address.last_attempted()),
+            last_failed_reason: Some(address.last_failed_reason().map(|v| v.to_string())),
+            quality_score: Some(address.quality_score()),
             source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
         }
     }
@@ -1859,7 +1837,7 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
             PeerFlags::from_bits(u8::try_from(peer_query.flags)?)
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer flags are invalid".to_string()))?,
             peer_query.banned_until,
-            peer_query.banned_reason.unwrap_or_default(),
+            peer_query.banned_reason,
             PeerFeatures::from_bits(u32::try_from(peer_query.features)?)
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer features are invalid".to_string()))?,
             deserialize_protocols(&peer_query.supported_protocols),
@@ -1889,11 +1867,11 @@ impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
             let address = MultiaddrWithStats::new_with_stats(
                 Multiaddr::from_str(&addr.address).map_err(|e| StorageError::UnexpectedResult(e.to_string()))?,
                 addr.last_seen,
-                u32::try_from(addr.connection_attempts.unwrap_or_default())?,
+                u32::try_from(addr.connection_attempts)?,
                 i64_to_duration(addr.avg_initial_dial_time)?,
-                u32::try_from(addr.initial_dial_time_sample_count.unwrap_or_default())?,
+                u32::try_from(addr.initial_dial_time_sample_count)?,
                 i64_to_duration(addr.avg_latency)?,
-                u32::try_from(addr.latency_sample_count.unwrap_or_default())?,
+                u32::try_from(addr.latency_sample_count)?,
                 addr.last_attempted,
                 addr.last_failed_reason,
                 addr.quality_score,
@@ -1910,17 +1888,17 @@ impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
         NewMultiaddrWithStatsSql {
             address_id: None,
             peer_id,
-            address: address.address,
-            is_external: address.is_external,
-            last_seen: address.last_seen,
-            connection_attempts: address.connection_attempts,
-            avg_initial_dial_time: address.avg_initial_dial_time,
-            initial_dial_time_sample_count: address.initial_dial_time_sample_count,
-            avg_latency: address.avg_latency,
-            latency_sample_count: address.latency_sample_count,
-            last_attempted: address.last_attempted,
-            last_failed_reason: address.last_failed_reason,
-            quality_score: address.quality_score,
+            address: address.address.unwrap_or_default(),
+            is_external: address.is_external.unwrap_or_default(),
+            last_seen: address.last_seen.unwrap_or_default(),
+            connection_attempts: address.connection_attempts.unwrap_or_default(),
+            avg_initial_dial_time: address.avg_initial_dial_time.unwrap_or_default(),
+            initial_dial_time_sample_count: address.initial_dial_time_sample_count.unwrap_or_default(),
+            avg_latency: address.avg_latency.unwrap_or_default(),
+            latency_sample_count: address.latency_sample_count.unwrap_or_default(),
+            last_attempted: address.last_attempted.unwrap_or_default(),
+            last_failed_reason: address.last_failed_reason.unwrap_or_default(),
+            quality_score: address.quality_score.unwrap_or_default(),
             source: address.source.unwrap_or_default(),
         }
     }
@@ -2993,5 +2971,48 @@ mod tests {
         assert_eq!(u32_to_i32_infallible(0u32), 0i32);
         assert_eq!(u32_to_i32_infallible(1234u32), 1234i32);
         assert_eq!(u32_to_i32_infallible(u32::MAX), i32::MAX);
+    }
+
+    #[test]
+    fn it_correctly_updates_none_as_null() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create a new peer and add a failure reason
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let address = peer.last_address_used().unwrap();
+        peer.addresses
+            .mark_failed_connection_attempt(&address, "This has failed".to_string());
+
+        // Add the peer to the db
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        // Ensure the failure reason is still present when read from the db
+        let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        let last_failed_reason = peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .find(|a| a.address() == &address)
+            .and_then(|a| a.last_failed_reason());
+        assert!(last_failed_reason.is_some());
+
+        // Now mark the address as seen, which should clear the failure reason, and update the db
+        peer.addresses.mark_last_seen_now(&address);
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        // Read the peer from the db and ensure the failure reason is cleared
+        let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        let last_failed_reason = peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .find(|a| a.address() == &address)
+            .and_then(|a| a.last_failed_reason());
+        assert!(last_failed_reason.is_none());
     }
 }
