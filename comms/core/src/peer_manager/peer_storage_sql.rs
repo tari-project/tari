@@ -198,7 +198,6 @@ impl PeerStorageSql {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
-        transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
             n = PEER_MANAGER_SYNC_PEERS;
@@ -213,7 +212,7 @@ impl PeerStorageSql {
             None,
             Some(STALE_PEER_THRESHOLD_DURATION),
             external_addresses_only,
-            transport_protocols,
+            &[],
         )?)
     }
 
@@ -832,20 +831,14 @@ mod test {
         assert_eq!(peer_storage.all(None).unwrap().len(), 5);
         assert_eq!(
             peer_storage
-                .discovery_syncing(
-                    100,
-                    &[good_seed.node_id],
-                    Some(PeerFeatures::COMMUNICATION_NODE),
-                    false,
-                    &[]
-                )
+                .discovery_syncing(100, &[good_seed.node_id], Some(PeerFeatures::COMMUNICATION_NODE), false,)
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false, &[])
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
                 .unwrap()
                 .len(),
             2
@@ -868,7 +861,7 @@ mod test {
 
         // Assert that peers have internal and external addresses
         let nodes_all_addresses = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false, &[])
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
             .unwrap();
         assert!(nodes_all_addresses
             .iter()
@@ -879,7 +872,7 @@ mod test {
 
         // Assert that peers have external addresses only
         let nodes_external_addresses_only = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true, &[])
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
             .unwrap();
         assert!(nodes_external_addresses_only
             .iter()
