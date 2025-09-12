@@ -114,11 +114,21 @@ impl PeerDatabaseSql {
                 {
                     return Ok(());
                 } else {
-                    return Err(StorageError::UnexpectedResult(format!(
-                        "This peer node identity does not match, expected '{}', found '{}'",
+                    // Update the database with the current node identity
+                    warn!(target: LOG_TARGET, "Provided node ID did not match expected one: {} from DB: {}. \
+                        This could be caused by deletion of base_node_id file without updating database. \
+                        Updating node identity in database to match it's from the file",
                         self.this_peer_identity.node_id.to_hex(),
                         node_identity_indexes.first().expect("already checked").node_id
-                    )));
+                    );
+                    diesel::update(node_identity::table)
+                        .set((
+                            node_identity::public_key.eq(self.this_peer_identity.public_key.to_hex()),
+                            node_identity::node_id.eq(self.this_peer_identity.node_id.to_hex()),
+                            node_identity::features.eq(self.this_peer_identity.features.to_i32()),
+                        ))
+                        .execute(conn)?;
+                    return Ok(());
                 }
             }
 

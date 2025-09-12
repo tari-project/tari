@@ -216,10 +216,8 @@ pub async fn configure_and_initialize_node(
 /// and state machine
 /// ## Parameters
 /// `backend` - Backend interface
-/// `network` - The NetworkType (rincewind, mainnet, local)
+/// `app_config` - The configuration for the base node
 /// `base_node_identity` - The node identity information of the base node
-/// `wallet_node_identity` - The node identity information of the base node's wallet
-/// `config` - The configuration for the base node
 /// `interrupt_signal` - The signal used to stop the application
 /// ## Returns
 /// Result containing the BaseNodeContext, String will contain the reason on error
