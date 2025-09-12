@@ -528,7 +528,7 @@ impl PeerDatabaseSql {
             ),
             flags: peer.flags.to_i32(),
             banned_until: peer.banned_until,
-            banned_reason: Some(peer.banned_reason.clone()),
+            banned_reason: peer.banned_reason.clone(),
             features: peer.features.to_i32(),
             supported_protocols: serialize_protocols(&peer.supported_protocols),
             added_at: peer.added_at,
@@ -545,23 +545,11 @@ impl PeerDatabaseSql {
                 address: address.address().to_string(),
                 is_external: address.is_external(),
                 last_seen: address.last_seen(),
-                connection_attempts: if address.connection_attempts() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.connection_attempts())?)
-                },
+                connection_attempts: i32::try_from(address.connection_attempts())?,
                 avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
-                initial_dial_time_sample_count: if address.initial_dial_time_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.initial_dial_time_sample_count())?)
-                },
+                initial_dial_time_sample_count: i32::try_from(address.initial_dial_time_sample_count())?,
                 avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
-                latency_sample_count: if address.latency_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.latency_sample_count())?)
-                },
+                latency_sample_count: i32::try_from(address.latency_sample_count())?,
                 last_attempted: address.last_attempted(),
                 last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
                 quality_score: address.quality_score(),
@@ -634,7 +622,7 @@ impl PeerDatabaseSql {
         let update_peer_sql = UpdatePeerSql {
             node_id: peer.node_id.to_hex(),
             banned_until: peer.banned_until,
-            banned_reason: Some(peer.banned_reason.clone()),
+            banned_reason: peer.banned_reason.clone(),
             supported_protocols: serialize_protocols(&peer.supported_protocols),
             user_agent: peer.user_agent.clone(),
             metadata: serialize_metadata(&peer.metadata)?,
@@ -647,23 +635,11 @@ impl PeerDatabaseSql {
                 address: address.address().to_string(),
                 is_external: address.is_external(),
                 last_seen: address.last_seen(),
-                connection_attempts: if address.connection_attempts() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.connection_attempts())?)
-                },
+                connection_attempts: i32::try_from(address.connection_attempts())?,
                 avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
-                initial_dial_time_sample_count: if address.initial_dial_time_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.initial_dial_time_sample_count())?)
-                },
+                initial_dial_time_sample_count: i32::try_from(address.initial_dial_time_sample_count())?,
                 avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
-                latency_sample_count: if address.latency_sample_count() == 0 {
-                    None
-                } else {
-                    Some(i32::try_from(address.latency_sample_count())?)
-                },
+                latency_sample_count: i32::try_from(address.latency_sample_count())?,
                 last_attempted: address.last_attempted(),
                 last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
                 quality_score: address.quality_score(),
@@ -827,7 +803,7 @@ impl PeerDatabaseSql {
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
                 .set((
                     peers::banned_until.eq(None::<NaiveDateTime>),
-                    peers::banned_reason.eq(None::<String>),
+                    peers::banned_reason.eq(String::new()),
                 ))
                 .execute(conn)?;
             if affected > 0 {
@@ -846,7 +822,7 @@ impl PeerDatabaseSql {
             let affected = diesel::update(peers::table.filter(peers::banned_until.is_not_null()))
                 .set((
                     peers::banned_until.eq(None::<NaiveDateTime>),
-                    peers::banned_reason.eq(None::<String>),
+                    peers::banned_reason.eq(String::new()),
                 ))
                 .execute(conn)?;
             Ok(affected)
@@ -1697,14 +1673,14 @@ pub struct NewPeerSql {
     pub node_id: String,
     pub distance_to_self: String,
     pub flags: i32,
-    pub banned_until: Option<chrono::NaiveDateTime>,
-    pub banned_reason: Option<String>,
+    pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
     pub features: i32,
     pub supported_protocols: String,
-    pub added_at: chrono::NaiveDateTime,
+    pub added_at: NaiveDateTime,
     pub user_agent: String,
     pub metadata: Option<Vec<u8>>,
-    pub deleted_at: Option<chrono::NaiveDateTime>,
+    pub deleted_at: Option<NaiveDateTime>,
 }
 
 #[derive(Clone, Debug, Selectable, Queryable, AsChangeset, PartialEq, Eq)]
@@ -1712,12 +1688,12 @@ pub struct NewPeerSql {
 #[diesel(treat_none_as_null = true)]
 pub struct UpdatePeerSql {
     pub node_id: String,
-    pub banned_until: Option<chrono::NaiveDateTime>,
-    pub banned_reason: Option<String>,
+    pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
     pub supported_protocols: String,
     pub user_agent: String,
     pub metadata: Option<Vec<u8>>,
-    pub deleted_at: Option<chrono::NaiveDateTime>,
+    pub deleted_at: Option<NaiveDateTime>,
 }
 
 #[derive(Clone, Debug)]
@@ -1734,13 +1710,13 @@ pub struct NewMultiaddrWithStatsSql {
     pub peer_id: i64,
     pub address: String,
     pub is_external: bool,
-    pub last_seen: Option<chrono::NaiveDateTime>,
-    pub connection_attempts: Option<i32>,
+    pub last_seen: Option<NaiveDateTime>,
+    pub connection_attempts: i32,
     pub avg_initial_dial_time: Option<i64>,
-    pub initial_dial_time_sample_count: Option<i32>,
+    pub initial_dial_time_sample_count: i32,
     pub avg_latency: Option<i64>,
-    pub latency_sample_count: Option<i32>,
-    pub last_attempted: Option<chrono::NaiveDateTime>,
+    pub latency_sample_count: i32,
+    pub last_attempted: Option<NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
     pub source: String,
@@ -1752,13 +1728,13 @@ pub struct NewMultiaddrWithStatsSql {
 pub struct UpdateMultiaddrWithStatsSql {
     pub address: String,
     pub is_external: bool,
-    pub last_seen: Option<chrono::NaiveDateTime>,
-    pub connection_attempts: Option<i32>,
+    pub last_seen: Option<NaiveDateTime>,
+    pub connection_attempts: i32,
     pub avg_initial_dial_time: Option<i64>,
-    pub initial_dial_time_sample_count: Option<i32>,
+    pub initial_dial_time_sample_count: i32,
     pub avg_latency: Option<i64>,
-    pub latency_sample_count: Option<i32>,
-    pub last_attempted: Option<chrono::NaiveDateTime>,
+    pub latency_sample_count: i32,
+    pub last_attempted: Option<NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
     pub source: String,
@@ -1830,11 +1806,11 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             address: address.to_string(),
             is_external: address.is_external(),
             last_seen: address.last_seen(),
-            connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
+            connection_attempts: u32_to_i32_infallible(address.connection_attempts()),
             avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
-            initial_dial_time_sample_count: Some(u32_to_i32_infallible(address.initial_dial_time_sample_count())),
+            initial_dial_time_sample_count: u32_to_i32_infallible(address.initial_dial_time_sample_count()),
             avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
-            latency_sample_count: Some(u32_to_i32_infallible(address.latency_sample_count())),
+            latency_sample_count: u32_to_i32_infallible(address.latency_sample_count()),
             last_attempted: address.last_attempted(),
             last_failed_reason: address.last_failed_reason().map(|v| v.to_string()),
             quality_score: address.quality_score(),
@@ -1861,7 +1837,7 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
             PeerFlags::from_bits(u8::try_from(peer_query.flags)?)
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer flags are invalid".to_string()))?,
             peer_query.banned_until,
-            peer_query.banned_reason.unwrap_or_default(),
+            peer_query.banned_reason,
             PeerFeatures::from_bits(u32::try_from(peer_query.features)?)
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer features are invalid".to_string()))?,
             deserialize_protocols(&peer_query.supported_protocols),
@@ -1891,11 +1867,11 @@ impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
             let address = MultiaddrWithStats::new_with_stats(
                 Multiaddr::from_str(&addr.address).map_err(|e| StorageError::UnexpectedResult(e.to_string()))?,
                 addr.last_seen,
-                u32::try_from(addr.connection_attempts.unwrap_or_default())?,
+                u32::try_from(addr.connection_attempts)?,
                 i64_to_duration(addr.avg_initial_dial_time)?,
-                u32::try_from(addr.initial_dial_time_sample_count.unwrap_or_default())?,
+                u32::try_from(addr.initial_dial_time_sample_count)?,
                 i64_to_duration(addr.avg_latency)?,
-                u32::try_from(addr.latency_sample_count.unwrap_or_default())?,
+                u32::try_from(addr.latency_sample_count)?,
                 addr.last_attempted,
                 addr.last_failed_reason,
                 addr.quality_score,
