@@ -115,9 +115,10 @@ impl PeerDatabaseSql {
                     return Ok(());
                 } else {
                     // Update the database with the current node identity
-                    warn!(target: LOG_TARGET, "Provided node ID did not match expected one: {} from DB: {}. \
-                        This could be caused by deletion of base_node_id file without updating database. \
-                        Updating node identity in database to match it's from the file",
+                    warn!(target: LOG_TARGET,
+                        "Node ID mismatch detected: {} (from file) vs {} (from DB). \
+                         This may occur if the base_node_id file was deleted without updating the database. \
+                         Updating database identity to match the file.",
                         self.this_peer_identity.node_id.to_hex(),
                         node_identity_indexes.first().expect("already checked").node_id
                     );
