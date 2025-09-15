@@ -60,13 +60,13 @@ pub(crate) struct BurntProofSql {
     pub updated_at: chrono::NaiveDateTime,
 }
 
-fn encrypt_domain(commitment: &[u8], field_name: &'static str) -> Vec<u8> {
+fn get_encryption_domain(commitment: &[u8], field_name: &'static str) -> Vec<u8> {
     [BurntProofSql::BURNT_PROOF, commitment, field_name.as_bytes()].concat()
 }
 
 impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        encrypt_domain(&self.commitment, field_name)
+        get_encryption_domain(&self.commitment, field_name)
     }
 
     fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
@@ -103,7 +103,7 @@ impl<'a> NewBurntProofSql<'a> {
     ) -> Result<Self, WalletStorageError> {
         let burn_proof = encrypt_bytes_integral_nonce(
             cipher,
-            encrypt_domain(commitment, "encoded_burn_proof"),
+            get_encryption_domain(commitment, "encoded_burn_proof"),
             Hidden::hide(burn_proof),
         )
         .map_err(WalletStorageError::AeadError)?;
