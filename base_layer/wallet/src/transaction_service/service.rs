@@ -3169,12 +3169,12 @@ where
             };
         };
 
-        self.db.cancel_pending_transaction(tx_id).inspect_err(|e| {
+        let _unused = self.db.cancel_pending_transaction(tx_id).inspect_err(|e| {
             warn!(
                 target: LOG_TARGET,
                 "Pending Transaction does not exist and could not be cancelled: {e:?}"
             );
-        })?;
+        });
 
         self.resources.output_manager_service.cancel_transaction(tx_id).await?;
 
