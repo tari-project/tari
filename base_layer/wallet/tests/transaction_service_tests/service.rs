@@ -79,7 +79,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsDHKE,
     PeerConnection,
 };
 use tari_core::base_node::{
@@ -102,15 +101,12 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
         ConfidentialOutputHasher,
-        SecretTransactionKeyManagerInterface,
-        TariKeyId,
         TransactionKeyManagerInitializer,
         TransactionKeyManagerInterface,
     },
     tari_amount::*,
     transaction_components::{
         memo_field::{MemoField, TxType},
-        one_sided::shared_secret_to_output_encryption_key,
         KernelBuilder,
         OutputFeatures,
         RangeProofType,
@@ -190,7 +186,7 @@ async fn setup_transaction_service(
             Network::LocalNet.into(),
         ))
         .add_initializer(
-            TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new(
+            TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new_with_legacy_storage(
                 kms_backend,
                 cipher,
                 factories.clone(),
@@ -536,7 +532,7 @@ async fn single_transaction_burn_tari() {
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     let burn_value = 10000.into();
-    let (claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let (_claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
     let (tx_id, burn_proof) = alice_ts
         .burn_tari(
             burn_value,
@@ -589,27 +585,18 @@ async fn single_transaction_burn_tari() {
 
     // Verify recovery of burned output
 
-    let shared_secret = CommsDHKE::new(
-        &claim_private_key,
-        &burn_proof.reciprocal_claim_public_key.to_public_key().unwrap(),
-    );
-    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-    let recovery_key_id = TariKeyId::Imported {
-        key: CompressedPublicKey::from_secret_key(&encryption_key),
-    };
-    let recovery_key = key_manager_handle.get_private_key(&recovery_key_id).await.unwrap();
     let mut found_burned_output = false;
     for output in completed_tx.transaction.body.outputs() {
         if output.is_burned() {
             found_burned_output = true;
             match key_manager_handle
-                .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(recovery_key.clone()))
+                .try_output_key_recovery(output.commitment(), output.encrypted_data(), &output.sender_offset_public_key)
                 .await
             {
-                Ok((_spending_key_id, value, _)) => {
+                Ok(Some((_spending_key_id, value, _))) => {
                     assert_eq!(value, burn_value);
                 },
-                Err(e) => panic!("{}", e),
+                _ => panic!("Should have recovered the burned output"),
             }
         }
     }
@@ -787,7 +774,7 @@ async fn recover_one_sided_transaction() {
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
         script_key_id: bob_key_manager_handle
-            .import_key(bob_node_identity.secret_key().clone())
+            .import_key(bob_node_identity.secret_key().clone(), None)
             .await
             .unwrap(),
         script,

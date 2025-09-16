@@ -366,15 +366,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             },
             TariKeyId::Derived { key } => {
                 let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
-                let public_key = self
-                    .key_manager
-                    .get_public_key_at_key_id(&inner_key)
-                    .await
-                    .map_err(|err| err.to_string())?;
-                let modified_key = TariKeyId::Imported {
-                    key: CompressedPublicKey::new_from_pk(public_key.to_public_key().map_err(|err| err.to_string())?),
-                };
+                let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
                 let key = TariKeyId::Derived {
+                    key: modified_key.into(),
+                };
+                Ok(key)
+            },
+            TariKeyId::DHCommitmentMask { .. } => Ok(key_id.clone()),
+            TariKeyId::DHEncryptedData {..} => Ok(key_id.clone()),
+            TariKeyId::Encrypted { encrypted, key } => {
+                let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
+                let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
+                let key = TariKeyId::Encrypted {
+                    encrypted: *encrypted,
                     key: modified_key.into(),
                 };
                 Ok(key)

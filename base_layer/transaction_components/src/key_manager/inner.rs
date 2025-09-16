@@ -93,7 +93,11 @@ use crate::{
         TariKeyId,
     },
     transaction_components::{
-        one_sided::diffie_hellman_stealth_domain_hasher,
+        one_sided::{
+            diffie_hellman_stealth_domain_hasher,
+            shared_secret_to_output_encryption_key,
+            shared_secret_to_output_spending_key,
+        },
         EncryptedData,
         KernelFeatures,
         MemoField,
@@ -111,7 +115,7 @@ use crate::{
 
 pub struct TransactionKeyManagerInner<TBackend> {
     key_managers: HashMap<String, RwLock<TariKeyManager<KeyDigest>>>,
-    db: TBackend,
+    db: Option<TBackend>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
@@ -120,13 +124,9 @@ pub struct TransactionKeyManagerInner<TBackend> {
 impl<TBackend> TransactionKeyManagerInner<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
-    // -----------------------------------------------------------------------------------------------------------------
-    // Key manager section
-    // -----------------------------------------------------------------------------------------------------------------
-
     pub async fn new(
         master_seed: CipherSeed,
-        db: TBackend,
+        db: Option<TBackend>,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
@@ -140,6 +140,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         km.add_standard_core_branches().await?;
         Ok(km)
     }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Key manager section
+    // -----------------------------------------------------------------------------------------------------------------
 
     pub fn master_seed(&self) -> &CipherSeed {
         &self.master_seed
@@ -158,16 +162,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
         } else {
             AddResult::NewEntry
         };
-        let state = match self.db.get_key_manager(branch).await? {
-            None => {
-                let starting_state = KeyManagerState {
-                    branch_seed: branch.to_string(),
-                    primary_key_index: 0,
-                };
-                self.db.add_key_manager(starting_state.clone()).await?;
-                starting_state
-            },
-            Some(km) => km,
+        let state = KeyManagerState {
+            branch_seed: branch.to_string(),
+            primary_key_index: 0,
         };
         self.key_managers.insert(
             branch.to_string(),
@@ -190,7 +187,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
                         .write()
                         .await;
-                    self.db.increment_key_index(branch).await?;
                     km.increment_key_index(1)
                 },
                 _ => OsRng.next_u64(),
@@ -234,7 +230,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             },
             _ => {
                 let random_private_key = PrivateKey::random(&mut OsRng);
-                let key_id = self.import_key(random_private_key).await?;
+                let key_id = self.import_key(random_private_key, None).await?;
                 let public_key = self.get_public_key_at_key_id(&key_id).await?;
                 Ok(TariKeyAndId {
                     key_id,
@@ -279,11 +275,39 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 Ok(CompressedPublicKey::new_from_pk(public_key))
             },
             TariKeyId::Imported { key } => Ok(key.clone()),
+            TariKeyId::DHCommitmentMask {
+                public_key,
+                private_key,
+            } => {
+                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+
+                let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key).await?;
+                let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
+                Ok(CompressedPublicKey::from_secret_key(&commitment_mask_private_key))
+            },
+            TariKeyId::DHEncryptedData {
+                public_key,
+                private_key,
+            } => {
+                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+
+                let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key).await?;
+                let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                Ok(CompressedPublicKey::from_secret_key(&encryption_private_key))
+            },
+            TariKeyId::Encrypted { encrypted, key } => {
+                let key = TariKeyId::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let private_key = self.decrypt_encrypted_key(encrypted, key).await?;
+                Ok(CompressedPublicKey::from_secret_key(&private_key))
+            },
             TariKeyId::Zero => Ok(CompressedPublicKey::default()),
         }
     }
 
-    pub async fn get_managed_public_key_at_key_id(
+    async fn get_managed_public_key_at_key_id(
         &self,
         key_id: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
@@ -394,8 +418,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let shared_secret_private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
 
         secret = secret + shared_secret_private_key;
-
-        let shared_secret_key = self.import_key(secret).await?;
+        let shared_secret_key = self.import_key(secret, None).await?;
 
         Ok(shared_secret_key)
     }
@@ -405,8 +428,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
         match key_id {
             TariKeyId::Zero => Ok(PrivateKey::default()),
             TariKeyId::Imported { key } => {
-                let pvt_key = self.db.get_imported_key(key).await?;
-                Ok(pvt_key)
+                if let Some(db) = &self.db {
+                    let pvt_key = db.get_imported_key(key).await?;
+                    return Ok(pvt_key);
+                }
+                Err(KeyManagerServiceError::NoStorage)
             },
             TariKeyId::Managed { branch, index } => {
                 match &*self.wallet_type {
@@ -503,7 +529,66 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     },
                 }
             },
+            TariKeyId::DHCommitmentMask {
+                public_key,
+                private_key,
+            } => {
+                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
+                let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
+                Ok(commitment_mask_private_key)
+            },
+            TariKeyId::DHEncryptedData {
+                public_key,
+                private_key,
+            } => {
+                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
+                let commitment_mask_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                Ok(commitment_mask_private_key)
+            },
+            TariKeyId::Encrypted { encrypted, key } => {
+                let key = TariKeyId::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let private_key = Box::pin(self.decrypt_encrypted_key(encrypted, key)).await?;
+                Ok(private_key)
+            },
         }
+    }
+
+    async fn created_encrypted_key(
+        &self,
+        private_key: PrivateKey,
+        encryption_key: TariKeyId,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        let pvt_bytes = private_key.to_vec();
+        let private_encryption_key = self.get_private_key(&encryption_key).await?.to_vec();
+        let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
+        let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_encryption_key));
+        let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(pvt_bytes))
+            .map_err(|e| KeyManagerServiceError::EncryptionFailed(e.to_string()))?;
+        let encrypted = TryFrom::try_from(encrypted_vec.as_slice())
+            .map_err(|_| KeyManagerServiceError::EncryptionFailed("invalid encrypted bytes length".to_string()))?;
+        Ok(TariKeyId::Encrypted {
+            encrypted,
+            key: encryption_key.into(),
+        })
+    }
+
+    async fn decrypt_encrypted_key(
+        &self,
+        bytes: &[u8],
+        decryption_key: TariKeyId,
+    ) -> Result<PrivateKey, KeyManagerServiceError> {
+        let private_decryption_key = self.get_private_key(&decryption_key).await?.to_vec();
+        let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
+        let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_decryption_key));
+        let decrypted_bytes = decrypt_bytes_integral_nonce(&cipher, domain, bytes)
+            .map_err(|e| KeyManagerServiceError::EncryptionFailed(e.to_string()))?;
+        let pvt_key = PrivateKey::from_vec(&decrypted_bytes)?;
+        Ok(pvt_key)
     }
 
     pub fn get_wallet_type(&self) -> Arc<WalletType> {
@@ -564,11 +649,19 @@ where TBackend: TransactionKeyManagerBackend + 'static
         }))
     }
 
-    pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
-        let public_key = CompressedPublicKey::from_secret_key(&private_key);
-        self.db.insert_imported_key(public_key.clone(), private_key).await?;
-        let key_id = TariKeyId::Imported { key: public_key };
-        Ok(key_id)
+    pub async fn import_key(
+        &self,
+        private_key: PrivateKey,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        let encryption_key = match encryption_key {
+            Some(key) => key,
+            None => self
+                .get_view_key()
+                .await?.key_id
+        };
+        let key = self.created_encrypted_key(private_key, encryption_key).await?;
+        Ok(key)
     }
 
     pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
@@ -681,7 +774,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
-    ) -> Result<CommsDHKE, TransactionError> {
+    ) -> Result<CommsDHKE, KeyManagerServiceError> {
         if let WalletType::Ledger(ledger) = &*self.wallet_type {
             if let TariKeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
@@ -702,7 +795,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 TransactionKeyManagerBranch::from_key(branch),
                                 public_key,
                             )
-                            .map_err(TransactionError::LedgerDeviceError);
+                            .map_err(KeyManagerServiceError::LedgerDeviceError);
                         }
                     },
                     _ => {},
@@ -1029,7 +1122,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 let k = self.get_private_key(&key_id).await?;
                                 derived_script_keys.push(k);
                             },
-                            TariKeyId::Imported { .. } => {
+                            TariKeyId::Imported { .. } |
+                            TariKeyId::Encrypted { .. } |
+                            TariKeyId::DHCommitmentMask { .. } |
+                            TariKeyId::DHEncryptedData { .. } => {
                                 partial_script_offset =
                                     &partial_script_offset + self.get_private_key(script_key_id).await?
                             },
@@ -1064,7 +1160,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 let k = self.get_private_key(&key_id).await?;
                                 derived_offset_keys.push(k);
                             },
-                            TariKeyId::Imported { .. } => {
+                            TariKeyId::Imported { .. } |
+                            TariKeyId::Encrypted { .. } |
+                            TariKeyId::DHCommitmentMask { .. } |
+                            TariKeyId::DHEncryptedData { .. } => {
                                 partial_script_offset =
                                     partial_script_offset - self.get_private_key(sender_offset_key_id).await?;
                             },
@@ -1629,22 +1728,48 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key: Option<PrivateKey>,
-    ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError> {
-        let recovery_key = if let Some(key) = custom_recovery_key {
-            key
-        } else {
-            self.get_private_view_key().await?
-        };
-        let (value, private_key, payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        sender_offset_public_key: &CompressedPublicKey,
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, TransactionError> {
+        let (value, private_key, payment_id, key_id) =
+            match EncryptedData::decrypt_data(&self.get_private_view_key().await?, commitment, encrypted_data) {
+                Ok((value, private_key, payment_id)) => {
+                    let key = self
+                        .import_key(private_key.clone(), None)
+                        .await?;
+                    (value, private_key, payment_id, key)
+                },
+                Err(_) => {
+                    // so this is not change, lets try with the offset key
+                    let view_key = self.get_view_key().await?.key_id;
+                    let shared_secret = self
+                        .get_diffie_hellman_shared_secret(&view_key, sender_offset_public_key)
+                        .await?;
+
+                    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                    match EncryptedData::decrypt_data(&encryption_key, commitment, encrypted_data) {
+                        Ok((value, private_key, payment_id)) => {
+                            let key = TariKeyId::DHCommitmentMask {
+                                public_key: sender_offset_public_key.clone(),
+                                private_key: view_key.into(),
+                            };
+                            if self.get_private_key(&key).await? == private_key{
+                                (value, private_key, payment_id, key)
+                            } else{
+                                let key = self
+                                    .import_key(private_key.clone(), None)
+                                    .await?;
+                                (value, private_key, payment_id, key)
+                            }
+                        },
+                        Err(_) => return Ok(None),
+                    }
+                },
+            };
         self.crypto_factories
             .range_proof
             .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
-        let public_key = CompressedPublicKey::from_secret_key(&private_key);
-        self.import_key(private_key).await?;
-        let key = TariKeyId::Imported { key: public_key };
 
-        Ok((key, value, payment_id))
+        Ok(Some((key_id, value, payment_id)))
     }
 
     pub async fn is_this_output_ours(
@@ -1738,8 +1863,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .map_err(|err| KeyManagerServiceError::DecryptionFailed(err.to_string()))?;
 
         decrypted_data.zeroize();
-
-        let imported_key = self.import_key(key).await?;
+        let imported_key = self.import_key(key, None).await?;
         Ok(imported_key)
     }
 }

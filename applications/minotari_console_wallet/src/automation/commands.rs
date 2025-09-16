@@ -1510,7 +1510,7 @@ pub async fn command_runner(
                         },
                     };
                     let commitment_mask_key_id = &key_manager_service
-                        .import_key(commitment_mask_private_key.clone())
+                        .import_key(commitment_mask_private_key.clone(), None)
                         .await?;
                     match key_manager_service
                         .verify_mask(

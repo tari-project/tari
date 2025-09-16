@@ -22,6 +22,7 @@
 
 // use diesel::result::Error as DieselError;
 // use tari_common_sqlite::error::{SqliteStorageError, StorageError};
+use minotari_ledger_wallet_comms::error::LedgerDeviceError;
 use tari_common_types::tari_address::TariAddressError;
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -86,6 +87,10 @@ pub enum KeyManagerServiceError {
     EncryptionFailed(String),
     #[error("Failed to decrypt: `{0}`")]
     DecryptionFailed(String),
+    #[error("Ledger device error: {0}")]
+    LedgerDeviceError(#[from] LedgerDeviceError),
+    #[error("Key manager does not have storage")]
+    NoStorage,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {
