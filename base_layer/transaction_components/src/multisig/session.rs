@@ -178,13 +178,13 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let (change_hashes, change) = match finalized_builder.change {
             Some(change_output) => {
-                let hash = change_output.hash(&self.key_manager).await?;
+                let hash = change_output.output_hash();
                 (vec![hash], Some(vec![change_output]))
             },
             None => (vec![], None),
         };
 
-        let sent_hashes = vec![output.hash(&self.key_manager).await?];
+        let sent_hashes = vec![output.output_hash()];
 
         Ok((
             finalized_builder.transaction,
@@ -204,7 +204,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         consensus_constants: &ConsensusConstants,
     ) -> Result<(FinalizedTransaction, MemoField, MicroMinotari), TransactionBuilderError> {
         // Enforce correct signature count and ordering for the multisig script
-        let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(&output.script)
+        let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(output.script())
             .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
         if signatures.len() < threshold as usize {
             return Err(TransactionError::BuilderError(format!(
@@ -223,10 +223,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
 
         let mut input_wallet_output = output.clone();
-        input_wallet_output.input_data = input_stack;
+        input_wallet_output.set_input_data(input_stack);
 
         let key_manager = self.key_manager.clone();
-        let amount = output.value;
+        let amount = output.value();
 
         let mut tx_builder =
             TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), recipient.network()).await?;

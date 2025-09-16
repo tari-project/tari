@@ -429,7 +429,7 @@ where
                 None,
                 None,
                 None,
-                wallet_output.to_transaction_output(&self.key_manager_service).await?,
+                wallet_output.to_transaction_output()?,
                 payment_id,
             )
             .await?;
@@ -440,8 +440,8 @@ where
         info!(
             target: LOG_TARGET,
             "UTXO (Commitment: {}, value: {}, txID: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
-            wallet_output.commitment(&self.key_manager_service).await?.to_hex(),
-            wallet_output.value,
+            wallet_output.commitment().to_hex(),
+            wallet_output.value(),
             tx_id,
         );
 

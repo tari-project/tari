@@ -562,7 +562,7 @@ where
 
                 // Enforce correct signature count and ordering for the multisig script
                 let (_ephemeral_pubkeys, threshold) =
-                    get_multi_sig_script_components(&selected_utxo.wallet_output.script)
+                    get_multi_sig_script_components(selected_utxo.wallet_output.script())
                         .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
 
                 if signatures.len() < threshold as usize {
@@ -581,9 +581,9 @@ where
                 }
 
                 let mut input_wallet_output = selected_utxo.wallet_output.clone();
-                input_wallet_output.input_data = input_stack;
+                input_wallet_output.set_input_data(input_stack);
 
-                let amount = selected_utxo.wallet_output.value;
+                let amount = selected_utxo.wallet_output.value();
 
                 let tx_id: TxId = TxId::new_random();
                 let fee_per_gram = MicroMinotari::from(1);
@@ -689,7 +689,7 @@ where
                     let shared_secret = key_manager
                         .get_diffie_hellman_shared_secret(
                             &view_key.key_id,
-                            &input_wallet_output.sender_offset_public_key,
+                            input_wallet_output.sender_offset_public_key(),
                         )
                         .await?;
 
@@ -704,7 +704,7 @@ where
                     };
 
                     let pushed_pk = input_wallet_output
-                        .script
+                        .script()
                         .as_slice()
                         .iter()
                         .find_map(|op| {
@@ -724,14 +724,14 @@ where
                         )));
                     }
 
-                    if input_wallet_output.commitment_mask_key_id == TariKeyId::Zero {
+                    if *input_wallet_output.commitment_mask_key_id() == TariKeyId::Zero {
                         return Err(TransactionServiceError::ServiceError(
                             "Input commitment mask key id is zero".into(),
                         ));
                     }
 
                     // 5) Attach k' so signer uses the correct key
-                    input_wallet_output.script_key_id = script_key;
+                    input_wallet_output.set_script_key_id(script_key);
                 }
                 let res = offline_signing
                     .sign_locked_withdraw_multisig_transaction(request)
@@ -1327,11 +1327,11 @@ where
                     utxo_commitment
                 )))?;
 
-                let scripts = selected_utxo.wallet_output.script.clone();
+                let scripts = selected_utxo.wallet_output.script().clone();
                 let mut challenge = Box::new([0; 32]);
                 let mut public_keys = Vec::new();
 
-                let sender_offset_pub_key = selected_utxo.wallet_output.sender_offset_public_key.to_public_key()?;
+                let sender_offset_pub_key = selected_utxo.wallet_output.sender_offset_public_key().to_public_key()?;
 
                 for op in scripts.as_slice() {
                     if let Opcode::CheckMultiSigVerify(_m, _n, k, msg) = op {
@@ -1387,9 +1387,7 @@ where
                     .await?;
                 let (change_hashes, change) = match finalized_transaction.change {
                     Some(change_output) => {
-                        let hash = change_output
-                            .hash(&self.resources.transaction_key_manager_service)
-                            .await?;
+                        let hash = change_output.output_hash();
                         (vec![hash], Some(vec![change_output]))
                     },
                     None => (vec![], None),
@@ -2026,9 +2024,7 @@ where
         )
         .await?;
 
-        let tx_output = output
-            .to_transaction_output(&self.resources.transaction_key_manager_service)
-            .await?;
+        let tx_output = output.to_transaction_output()?;
 
         Ok(Box::new((tx_id, pre_image, tx_output)))
     }
@@ -2641,8 +2637,7 @@ where
             .first()
             .expect("Should exist")
             .output
-            .to_transaction_output(&self.resources.transaction_key_manager_service)
-            .await?
+            .to_transaction_output()?
             .proof_result()?
             .clone();
         let mut ownership_proof = None;
@@ -2651,8 +2646,7 @@ where
             .first()
             .expect("Should exist")
             .output
-            .to_transaction_output(&self.resources.transaction_key_manager_service)
-            .await?
+            .to_transaction_output()?
             .commitment
             .clone();
 
@@ -3964,7 +3958,12 @@ where
         ) {
             (Some(change), Some(original)) => {
                 let mut change = change.clone();
-                change.commitment_mask_key_id = original.output_pair.output.commitment_mask_key_id;
+                change
+                    .set_commitment_mask_key_id(
+                        original.output_pair.output.commitment_mask_key_id().clone(),
+                        &self.resources.transaction_key_manager_service,
+                    )
+                    .await?;
                 Some(vec![change])
             },
             _ => None,

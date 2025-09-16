@@ -416,12 +416,12 @@ impl TransactionOutput {
     /// outside of the signing keys and nonces.
     pub fn metadata_signature_message(wallet_output: &WalletOutput) -> [u8; 32] {
         TransactionOutput::metadata_signature_message_from_parts(
-            &wallet_output.version,
-            &wallet_output.script,
-            &wallet_output.features,
-            &wallet_output.covenant,
-            &wallet_output.encrypted_data,
-            &wallet_output.minimum_value_promise,
+            &wallet_output.version(),
+            wallet_output.script(),
+            wallet_output.features(),
+            wallet_output.covenant(),
+            wallet_output.encrypted_data(),
+            &wallet_output.minimum_value_promise(),
         )
     }
 
@@ -808,10 +808,7 @@ mod test {
                 key_manager,
             )
             .await;
-        utxo?
-            .to_transaction_output(key_manager)
-            .await
-            .map_err(|e| e.to_string())
+        utxo?.to_transaction_output().map_err(|e| e.to_string())
     }
 
     async fn create_invalid_output<KM: TransactionKeyManagerInterface>(

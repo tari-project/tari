@@ -876,12 +876,7 @@ pub async fn create_pre_mine_genesis_block_info(
             .try_build(&key_manager)
             .await
             .map_err(|e| e.to_string())?;
-        outputs.push(
-            output
-                .to_transaction_output(&key_manager)
-                .await
-                .map_err(|e| e.to_string())?,
-        );
+        outputs.push(output.to_transaction_output().map_err(|e| e.to_string())?);
     }
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);

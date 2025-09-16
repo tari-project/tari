@@ -1290,7 +1290,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            private_keys.push((wallet_output.commitment_mask_key_id, new_nonce.key_id));
+            private_keys.push((wallet_output.commitment_mask_key_id().clone(), new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -1533,7 +1533,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            private_keys.push((wallet_output.commitment_mask_key_id, new_nonce.key_id));
+            private_keys.push((wallet_output.commitment_mask_key_id().clone(), new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,

@@ -723,17 +723,19 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
             .await
             .unwrap();
         let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
-        utxo.metadata_signature = key_manager
-            .get_metadata_signature(
-                &utxo.commitment_mask_key_id,
-                &utxo.value.into(),
-                &sender_offset.key_id,
-                &utxo.version,
-                &metadata_message,
-                utxo.features.range_proof_type,
-            )
-            .await
-            .unwrap();
+        utxo.set_metadata_signature(
+            key_manager
+                .get_metadata_signature(
+                    utxo.commitment_mask_key_id(),
+                    &(utxo.value()).into(),
+                    &sender_offset.key_id,
+                    &utxo.version(),
+                    &metadata_message,
+                    utxo.features().range_proof_type,
+                )
+                .await
+                .unwrap(),
+        );
 
         tx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
     }
