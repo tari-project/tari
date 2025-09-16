@@ -108,7 +108,7 @@ pub enum TariKeyId {
         private_key: SerializedKeyString,
     },
     Encrypted {
-        encrypted: [u8; 32],
+        encrypted: Vec<u8>,
         key: SerializedKeyString,
     },
 }
@@ -223,14 +223,9 @@ impl FromStr for TariKeyId {
                     }
                     let encrypted: Vec<u8> = from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid encrypted bytes".to_string())?;
-                    if encrypted.len() != 32 {
-                        return Err("Invalid encrypted key length".to_string());
-                    }
-                    let mut encrypted_array = [0u8; 32];
-                    encrypted_array.copy_from_slice(&encrypted);
                     let key = parts.get(2..).expect("Already checked").join(".");
                     Ok(TariKeyId::Encrypted {
-                        encrypted: encrypted_array,
+                        encrypted,
                         key: SerializedKeyString::from(key),
                     })
                 },

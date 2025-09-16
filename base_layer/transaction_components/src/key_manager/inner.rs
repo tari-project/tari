@@ -656,9 +656,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<TariKeyId, KeyManagerServiceError> {
         let encryption_key = match encryption_key {
             Some(key) => key,
-            None => self
-                .get_view_key()
-                .await?.key_id
+            None => self.get_view_key().await?.key_id,
         };
         let key = self.created_encrypted_key(private_key, encryption_key).await?;
         Ok(key)
@@ -781,7 +779,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                         #[cfg(not(feature = "ledger"))]
                         {
-                            return Err(TransactionError::LedgerNotSupported(format!(
+                            return Err(KeyManagerServiceError::LedgerError(format!(
                                 "{} 'get_diffie_hellman_shared_secret' was called. ({} (has index {}))",
                                 LEDGER_NOT_SUPPORTED, ledger, index
                             )));
@@ -795,7 +793,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 TransactionKeyManagerBranch::from_key(branch),
                                 public_key,
                             )
-                            .map_err(KeyManagerServiceError::LedgerDeviceError);
+                            .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()));
                         }
                     },
                     _ => {},
@@ -1733,9 +1731,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let (value, private_key, payment_id, key_id) =
             match EncryptedData::decrypt_data(&self.get_private_view_key().await?, commitment, encrypted_data) {
                 Ok((value, private_key, payment_id)) => {
-                    let key = self
-                        .import_key(private_key.clone(), None)
-                        .await?;
+                    let key = self.import_key(private_key.clone(), None).await?;
                     (value, private_key, payment_id, key)
                 },
                 Err(_) => {
@@ -1752,12 +1748,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 public_key: sender_offset_public_key.clone(),
                                 private_key: view_key.into(),
                             };
-                            if self.get_private_key(&key).await? == private_key{
+                            if self.get_private_key(&key).await? == private_key {
                                 (value, private_key, payment_id, key)
-                            } else{
-                                let key = self
-                                    .import_key(private_key.clone(), None)
-                                    .await?;
+                            } else {
+                                let key = self.import_key(private_key.clone(), None).await?;
                                 (value, private_key, payment_id, key)
                             }
                         },

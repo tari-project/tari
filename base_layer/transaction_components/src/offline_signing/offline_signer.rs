@@ -373,12 +373,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 Ok(key)
             },
             TariKeyId::DHCommitmentMask { .. } => Ok(key_id.clone()),
-            TariKeyId::DHEncryptedData {..} => Ok(key_id.clone()),
+            TariKeyId::DHEncryptedData { .. } => Ok(key_id.clone()),
             TariKeyId::Encrypted { encrypted, key } => {
                 let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
                 let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
                 let key = TariKeyId::Encrypted {
-                    encrypted: *encrypted,
+                    encrypted: encrypted.clone(),
                     key: modified_key.into(),
                 };
                 Ok(key)

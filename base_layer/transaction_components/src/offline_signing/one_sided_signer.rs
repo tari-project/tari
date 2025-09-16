@@ -245,7 +245,9 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info.recipient.address
+            public_key: info
+                .recipient
+                .address
                 .public_view_key()
                 .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
                 .clone(),
@@ -253,7 +255,9 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
         let encryption_key = TariKeyId::DHEncryptedData {
             private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info.recipient.address
+            public_key: info
+                .recipient
+                .address
                 .public_view_key()
                 .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
                 .clone(),
@@ -370,7 +374,6 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
 
-
         let sender_offset_public_key = self
             .key_manager
             .get_public_key_at_key_id(&sender_offset_key.key_id)
@@ -380,14 +383,12 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let recipient_spend_key = info.recipient.address.public_spend_key();
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_key.key_id.clone().into(),
-            public_key: recipient_view_key
-                .clone(),
+            public_key: recipient_view_key.clone(),
         };
 
         let encryption_key = TariKeyId::DHEncryptedData {
             private_key: sender_offset_key.key_id.clone().into(),
-            public_key: recipient_view_key
-                .clone(),
+            public_key: recipient_view_key.clone(),
         };
         let script_pubkey = self
             .key_manager
@@ -518,13 +519,21 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info.recipient.address.public_view_key().ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
+            public_key: info
+                .recipient
+                .address
+                .public_view_key()
+                .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
                 .clone(),
         };
 
         let encryption_key = TariKeyId::DHEncryptedData {
             private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info.recipient.address.public_view_key().ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
+            public_key: info
+                .recipient
+                .address
+                .public_view_key()
+                .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
                 .clone(),
         };
 

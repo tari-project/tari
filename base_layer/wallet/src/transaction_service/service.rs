@@ -686,11 +686,9 @@ where
                     let view_key = key_manager.get_view_key().await?;
                     let spend_key = key_manager.get_spend_key().await?;
 
-
                     let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
                         private_key: view_key.key_id.clone().into(),
-                        public_key: input_wallet_output.sender_offset_public_key()
-                            .clone(),
+                        public_key: input_wallet_output.sender_offset_public_key().clone(),
                     };
                     let script_pubkey = key_manager
                         .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)
@@ -2570,6 +2568,11 @@ where
             .await?
             .key_id;
 
+        let sender_offset_private_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await?;
         let recovery_key_id = match claim_public_key {
             Some(ref claim_public_key) => {
                 // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
@@ -2578,25 +2581,17 @@ where
                 let shared_secret = self
                     .resources
                     .transaction_key_manager_service
-                    .get_diffie_hellman_shared_secret(&commitment_mask_key.key_id, claim_public_key)
+                    .get_diffie_hellman_shared_secret(&sender_offset_private_key.key_id, claim_public_key)
                     .await?;
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                 self.resources
                     .transaction_key_manager_service
                     .import_key(encryption_key.clone(), None)
-                    .await?;
-                TariKeyId::Imported {
-                    key: CompressedPublicKey::from_secret_key(&encryption_key),
-                }
+                    .await?
             },
             // No claim key provided, no shared secret or encryption key needed
             None => recovery_key_id,
         };
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
         let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)

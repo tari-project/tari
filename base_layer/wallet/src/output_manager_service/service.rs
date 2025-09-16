@@ -1264,7 +1264,11 @@ where
         let spending_key_id = self.resources.key_manager.import_key(spending_key, None).await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key, None).await?;
+        let encryption_key_id = self
+            .resources
+            .key_manager
+            .import_key(encryption_private_key, None)
+            .await?;
 
         let sender_offset_public_key_self = self
             .resources
@@ -1537,7 +1541,11 @@ where
         let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask_key, None).await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key, None).await?;
+        let encryption_key_id = self
+            .resources
+            .key_manager
+            .import_key(encryption_private_key, None)
+            .await?;
 
         let sender_offset_public_key = self
             .resources
@@ -2767,7 +2775,6 @@ where
         for (output, tx_id) in outputs {
             if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                 if let Some(matched_key) = known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
-
                     let shared_secret = self
                         .resources
                         .key_manager
@@ -2785,7 +2792,8 @@ where
                             &spending_key,
                             committed_value.into(),
                         )? {
-                            let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key, None).await?;
+                            let commitment_mask_key_id =
+                                self.resources.key_manager.import_key(spending_key, None).await?;
 
                             let rewound_output = WalletOutput::new_from_transaction_output(
                                 committed_value,
@@ -2881,13 +2889,14 @@ where
                     pubkeys
                 );
 
-
-
-
                 if let Some((commitment_mask_key_id, committed_value, payment_id)) = self
                     .resources
                     .key_manager
-                    .try_output_key_recovery(output.commitment(), output.encrypted_data(), &output.sender_offset_public_key)
+                    .try_output_key_recovery(
+                        output.commitment(),
+                        output.encrypted_data(),
+                        &output.sender_offset_public_key,
+                    )
                     .await?
                 {
                     let script_spending_key = self

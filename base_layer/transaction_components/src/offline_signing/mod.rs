@@ -68,7 +68,7 @@ mod test {
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
             covenants::Covenant,
-            one_sided::{shared_secret_to_output_encryption_key},
+            one_sided::shared_secret_to_output_encryption_key,
             EncryptedData,
             MemoField,
             OutputFeatures,
@@ -443,10 +443,10 @@ mod test {
             message,
         )];
 
-
-        let commitment_mask_private_key = TariKeyId::DHCommitmentMask {private_key: sender_offset_key.key_id.clone().into(), public_key: alice_spend_key.pub_key.clone()};
-
-
+        let commitment_mask_private_key = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: alice_spend_key.pub_key.clone(),
+        };
 
         let script_pubkey = alice_key_manager
             .stealth_address_script_spending_key(&commitment_mask_private_key, &alice_spend_key.pub_key)

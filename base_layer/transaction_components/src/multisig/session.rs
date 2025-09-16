@@ -110,7 +110,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-
         let recipient_spend_key = recipient.public_spend_key();
 
         let sender_offset_public_key = sender_offset_key.pub_key;

@@ -99,11 +99,7 @@ use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
-    key_manager::{
-        ConfidentialOutputHasher,
-        TransactionKeyManagerInitializer,
-        TransactionKeyManagerInterface,
-    },
+    key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
     tari_amount::*,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -590,7 +586,11 @@ async fn single_transaction_burn_tari() {
         if output.is_burned() {
             found_burned_output = true;
             match key_manager_handle
-                .try_output_key_recovery(output.commitment(), output.encrypted_data(), &output.sender_offset_public_key)
+                .try_output_key_recovery(
+                    output.commitment(),
+                    output.encrypted_data(),
+                    &output.sender_offset_public_key,
+                )
                 .await
             {
                 Ok(Some((_spending_key_id, value, _))) => {

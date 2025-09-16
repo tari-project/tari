@@ -80,7 +80,6 @@ impl<T> ServiceInitializer for TransactionKeyManagerInitializer<T>
 where T: TransactionKeyManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-
         let key_manager = match self.backend.take() {
             Some(backend) => {
                 let key_manager: TransactionKeyManagerWrapper<T> =

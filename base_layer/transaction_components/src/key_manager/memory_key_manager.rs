@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ mem::size_of, sync::Arc};
+use std::{mem::size_of, sync::Arc};
 
 use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
@@ -68,14 +68,11 @@ pub async fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerS
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct MemoryKeyManagerBackend {
-
-}
+pub struct MemoryKeyManagerBackend {}
 
 impl MemoryKeyManagerBackend {
     pub fn new() -> Self {
-        Self {
-        }
+        Self {}
     }
 }
 

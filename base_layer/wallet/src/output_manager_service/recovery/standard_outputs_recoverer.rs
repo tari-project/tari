@@ -282,7 +282,11 @@ where
         };
         let (key, committed_value, payment_id) = match self
             .master_key_manager
-            .try_output_key_recovery(output.commitment(), output.encrypted_data(), &output.sender_offset_public_key)
+            .try_output_key_recovery(
+                output.commitment(),
+                output.encrypted_data(),
+                &output.sender_offset_public_key,
+            )
             .await?
         {
             Some(value) => value,

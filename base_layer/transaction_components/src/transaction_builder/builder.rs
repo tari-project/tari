@@ -979,8 +979,10 @@ impl<KM> Debug for TransactionBuilder<KM> {
 
 #[cfg(test)]
 mod test {
-    use crate::transaction_components::one_sided::shared_secret_to_output_spending_key;
-    use crate::transaction_components::one_sided::shared_secret_to_output_encryption_key;
+    use crate::transaction_components::one_sided::{
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_spending_key,
+    };
 
     async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {
         let cipher = CipherSeed::new();

@@ -100,9 +100,14 @@ async fn key_manager_input() {
 
     assert_eq!(*input.features().unwrap(), OutputFeatures::default());
     let (_, value, _) = key_manager
-        .try_output_key_recovery(output.commitment(), output.encrypted_data(), &output.sender_offset_public_key)
+        .try_output_key_recovery(
+            output.commitment(),
+            output.encrypted_data(),
+            &output.sender_offset_public_key,
+        )
         .await
-        .unwrap().unwrap();
+        .unwrap()
+        .unwrap();
     assert_eq!(value, i.value());
 }
 
@@ -574,9 +579,14 @@ async fn test_output_recover_openings() {
     let output = wallet_output.to_transaction_output().unwrap();
 
     let (_mask, value, _) = key_manager
-        .try_output_key_recovery(output.commitment(), output.encrypted_data(), &output.sender_offset_public_key)
+        .try_output_key_recovery(
+            output.commitment(),
+            output.encrypted_data(),
+            &output.sender_offset_public_key,
+        )
         .await
-        .unwrap().unwrap();
+        .unwrap()
+        .unwrap();
     assert_eq!(value, wallet_output.value());
 }
 
