@@ -2606,11 +2606,11 @@ where
             EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key).await?;
 
-                let rewound_output = WalletOutput::new_from_transaction_output(
+                let recovered_output = WalletOutput::new_from_transaction_output(
                     amount,
-                    spending_key_id,
+                    commitment_mask_key_id,
                     payment_id,
                     output,
                     inputs!(pre_image),
@@ -2634,7 +2634,7 @@ where
                     .with_tx_type(TxType::ClaimAtomicSwap)
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-                    .with_input(rewound_output)
+                    .with_input(recovered_output)
                     .await?;
 
                 let mut outputs = Vec::new();
@@ -2784,11 +2784,11 @@ where
                             &spending_key,
                             committed_value.into(),
                         )? {
-                            let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                            let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key).await?;
 
                             let rewound_output = WalletOutput::new_from_transaction_output(
                                 committed_value,
-                                spending_key_id,
+                                commitment_mask_key_id,
                                 payment_id,
                                 output,
                                 ExecutionStack::new(vec![]),
@@ -2839,7 +2839,7 @@ where
                                 key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                             };
 
-                            let rewound_output = WalletOutput::new_from_transaction_output(
+                            let recovered_output = WalletOutput::new_from_transaction_output(
                                 committed_value,
                                 commitment_mask_key_id.clone(),
                                 payment_id,
@@ -2848,7 +2848,7 @@ where
                                 script_key,
                             );
 
-                            scanned_outputs.push((rewound_output, OutputSource::StealthOneSided, tx_id));
+                            scanned_outputs.push((recovered_output, OutputSource::StealthOneSided, tx_id));
                         }
                     }
                 }
@@ -2890,7 +2890,7 @@ where
 
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
-                if let Ok((spending_key_id, committed_value, payment_id)) = self
+                if let Ok((commitment_mask_key_id, committed_value, payment_id)) = self
                     .resources
                     .key_manager
                     .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(encryption_key))
@@ -2900,7 +2900,7 @@ where
                         .resources
                         .key_manager
                         .stealth_address_script_spending_key(
-                            &spending_key_id,
+                            &commitment_mask_key_id,
                             &self.resources.key_manager.get_spend_key().await?.pub_key,
                         )
                         .await?;
@@ -2910,18 +2910,18 @@ where
                     }
 
                     let script_key = TariKeyId::Derived {
-                        key: SerializedKeyString::from(spending_key_id.to_string()),
+                        key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                     };
 
-                    let rewound_output = WalletOutput::new_from_transaction_output(
+                    let recovered_output = WalletOutput::new_from_transaction_output(
                         committed_value,
-                        spending_key_id,
+                        commitment_mask_key_id,
                         payment_id,
                         output,
                         ExecutionStack::new(vec![]),
                         script_key,
                     );
-                    scanned_outputs.push((rewound_output, OutputSource::Multisig, tx_id));
+                    scanned_outputs.push((recovered_output, OutputSource::Multisig, tx_id));
                 }
             }
         }

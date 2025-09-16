@@ -142,7 +142,7 @@ impl WalletOutput {
             input: OnceLock::new(),
             output: OnceLock::new(),
         };
-        output.fix_hash();
+        output.recalculate_hash();
         Ok(output)
     }
 
@@ -597,11 +597,11 @@ impl WalletOutput {
             )
             .await?;
         self.metadata_signature = metadata_sig;
-        self.fix_hash();
+        self.recalculate_hash();
         Ok(())
     }
 
-    fn fix_hash(&mut self) {
+    fn recalculate_hash(&mut self) {
         let rp_hash = match &self.range_proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
@@ -655,7 +655,7 @@ impl WalletOutput {
             None
         };
         self.range_proof = range_proof;
-        self.fix_hash();
+        self.recalculate_hash();
         Ok(())
     }
 
@@ -675,7 +675,7 @@ impl WalletOutput {
             .get_commitment(&self.commitment_mask_key_id, &self.value.into())
             .await?;
         self.commitment = commitment;
-        self.fix_hash();
+        self.recalculate_hash();
         Ok(())
     }
 
@@ -687,7 +687,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.features = features;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn script(&self) -> &TariScript {
@@ -698,7 +698,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.script = script;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn covenant(&self) -> &Covenant {
@@ -709,7 +709,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.covenant = covenant;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn input_data(&self) -> &ExecutionStack {
@@ -739,7 +739,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.sender_offset_public_key = pk;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn metadata_signature(&self) -> &ComAndPubSignature {
@@ -750,7 +750,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.metadata_signature = sig;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn script_lock_height(&self) -> u64 {
@@ -773,7 +773,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.minimum_value_promise = value;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn range_proof(&self) -> &Option<RangeProof> {
@@ -784,7 +784,7 @@ impl WalletOutput {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
         self.range_proof = proof;
-        self.fix_hash();
+        self.recalculate_hash();
     }
 
     pub fn payment_id(&self) -> &MemoField {
