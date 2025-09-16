@@ -124,7 +124,10 @@ impl TariPulseService {
         notify_passed_checkpoints: watch::Sender<bool>,
         notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
     ) {
-        tokio::time::sleep(Duration::from_secs(30)).await; // Wait for the node to start up properly
+        // Wait for the node comms to start up properly
+        if let Ok(false) = self.wait_for_first_liveness_event().await {
+            return;
+        }
 
         // DNS interval
         let mut dns_check_interval = time::interval(self.config.dns_check_interval);
@@ -190,6 +193,44 @@ impl TariPulseService {
                         "Tari Pulse shutting down because the shutdown signal was received"
                     );
                     break;
+                },
+            }
+        }
+    }
+
+    async fn wait_for_first_liveness_event(&mut self) -> Result<bool, anyhow::Error> {
+        let mut liveness_events = self.liveness_handle.get_event_stream();
+        let mut shutdown_signal = self.shutdown_signal.clone();
+
+        loop {
+            tokio::select! {
+                event_result = liveness_events.recv() => {
+                    match event_result {
+                        Ok(event) => {
+                            if let LivenessEvent::ReceivedPing(val) |
+                                LivenessEvent::ReceivedPong(val) = &*event
+                            {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Received liveness event, pulse service can continue ({:?})",
+                                    val
+                                );
+                                return Ok(true);
+                            }
+                        },
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Error receiving liveness event: {}", e);
+                            return Err(e.into());
+                        },
+                    }
+                },
+
+                _ = shutdown_signal.wait() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Tari Pulse shutting down because the shutdown signal was received"
+                    );
+                    return Ok(false);
                 },
             }
         }
