@@ -159,10 +159,10 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             GetBalance => write!(f, "GetBalance"),
             GetBalancePaymentId(_) => write!(f, "GetBalance for user payment id"),
-            AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
-            AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value()),
+            AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value()),
             AddUnvalidatedOutput((t, v, _)) => {
-                write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value)
+                write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value())
             },
             UpdateOutputMetadataSignature(v) => write!(
                 f,
@@ -627,7 +627,7 @@ where KM: TransactionKeyManagerInterface
             .call(OutputManagerRequest::GetOutputsByQuery(query))
             .await??
         {
-            OutputManagerResponse::SpentOutputs(s) => Ok(s),
+            OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

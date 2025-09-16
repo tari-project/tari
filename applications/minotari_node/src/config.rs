@@ -52,9 +52,9 @@ use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 use url::Url;
 
-use crate::grpc_method::GrpcMethod;
 #[cfg(feature = "metrics")]
 use crate::metrics::MetricsConfig;
+use crate::{grpc_method::GrpcMethod, HttpCacheConfig};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {
@@ -170,6 +170,9 @@ pub struct WalletHttpServiceConfig {
     /// This must be accessible (if set) from the internet to let other peers connect to that.
     /// Also this address will be sent to peers when requesting for the query service URL (via RPC call).
     pub external_address: Option<Url>,
+    /// Configuration for setting Cache-Control headers on wallet HTTP responses.
+    #[serde(default)]
+    pub http_cache: HttpCacheConfig,
 }
 
 impl Default for WalletHttpServiceConfig {
@@ -180,6 +183,7 @@ impl Default for WalletHttpServiceConfig {
             external_address: Some(
                 Url::parse(format!("http://127.0.0.1:{port}").as_str()).expect("This should be a valid URL"),
             ),
+            http_cache: Default::default(),
         }
     }
 }

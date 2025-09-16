@@ -370,13 +370,13 @@ async fn test_retrieve() {
 
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![outputs[1][0].value /2], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![outputs[1][1].value /2], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![outputs[1][2].value /2], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![outputs[1][3].value /2], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![outputs[1][4].value /2], fee: 2*uT, lock: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![outputs[1][0].value() /2], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![outputs[1][1].value() /2], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![outputs[1][2].value() /2], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![outputs[1][3].value() /2], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![outputs[1][4].value() /2], fee: 2*uT, lock: 2, features: OutputFeatures::default()),
         // will get rejected as its time-locked
-        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![outputs[1][5].value /2], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![outputs[1][5].value() /2], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
             features: OutputFeatures{
@@ -434,9 +434,9 @@ async fn test_retrieve() {
     // Create transactions wih time-locked inputs
     // Only one will be allowed into the mempool as the one still as a maturity lock on the input.
     let txs = vec![
-        txn_schema!(from: vec![outputs[2][12].clone()], to: vec![outputs[2][12].value /2], fee: 80*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][12].clone()], to: vec![outputs[2][12].value() /2], fee: 80*uT, lock: 0, features: OutputFeatures::default()),
         // account for change output
-        txn_schema!(from: vec![outputs[2][15].clone()], to: vec![outputs[2][15].value /2], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][15].clone()], to: vec![outputs[2][15].value() /2], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (tx2, _) = schema_to_transaction(&txs, &key_manager).await;
     for t in &tx2 {
@@ -971,9 +971,9 @@ async fn test_reorg() {
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
     // "Mine" block 2
     let schemas = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![outputs[1][0].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![outputs[1][1].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![outputs[1][2].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![outputs[1][0].value()/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![outputs[1][1].value()/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![outputs[1][2].value()/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns2, utxos) = schema_to_transaction(&schemas, &key_manager).await;
     outputs.push(utxos);
@@ -990,9 +990,9 @@ async fn test_reorg() {
 
     // "Mine" block 3
     let schemas = vec![
-        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![outputs[2][0].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![outputs[2][1].value/2], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![outputs[2][1].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![outputs[2][0].value()/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![outputs[2][1].value()/2], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![outputs[2][1].value()/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns3, utxos) = schema_to_transaction(&schemas, &key_manager).await;
     outputs.push(utxos);
@@ -1211,7 +1211,7 @@ async fn consensus_validation_large_tx() {
 
     let input = outputs[1][0].clone();
     let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
-    let input_script_keys = vec![input.script_key_id];
+    let input_script_keys = vec![input.script_key_id().clone()];
 
     let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight_params()).calculate(
         fee_per_gram.into(),
@@ -1229,7 +1229,7 @@ async fn consensus_validation_large_tx() {
         .unwrap();
     let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
-            .get_txo_kernel_signature_excess_with_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(input.commitment_mask_key_id(), &input_kernel_nonce.key_id)
             .await
             .unwrap()
             .to_public_key()
@@ -1255,7 +1255,7 @@ async fn consensus_validation_large_tx() {
         pub_excess = pub_excess +
             key_manager
                 .get_txo_kernel_signature_excess_with_offset(
-                    &output.commitment_mask_key_id,
+                    output.commitment_mask_key_id(),
                     &test_params.kernel_nonce_key_id,
                 )
                 .await
@@ -1275,15 +1275,15 @@ async fn consensus_validation_large_tx() {
     let kernel_message =
         TransactionKernel::build_kernel_signature_message(&kernel_version, fee, 0, &KernelFeatures::empty(), &None);
     for (output, nonce_id) in wallet_outputs {
-        outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
+        outputs.push(output.to_transaction_output().unwrap());
         offset = &offset +
             &key_manager
-                .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &nonce_id)
+                .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &nonce_id)
                 .await
                 .unwrap();
         let sig = key_manager
             .get_partial_txo_kernel_signature(
-                &output.commitment_mask_key_id,
+                output.commitment_mask_key_id(),
                 &nonce_id,
                 &CompressedPublicKey::new_from_pk(pub_nonce.clone()),
                 &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1299,12 +1299,12 @@ async fn consensus_validation_large_tx() {
 
     offset = &offset -
         &key_manager
-            .get_txo_private_kernel_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
+            .get_txo_private_kernel_offset(input.commitment_mask_key_id(), &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &input.commitment_mask_key_id,
+            input.commitment_mask_key_id(),
             &input_kernel_nonce.key_id,
             &CompressedPublicKey::new_from_pk(pub_nonce),
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1389,7 +1389,7 @@ async fn validation_reject_min_fee() {
     // build huge 0 fee tx manually
     let input = outputs[1][0].clone();
     let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
-    let input_script_keys = vec![input.script_key_id];
+    let input_script_keys = vec![input.script_key_id().clone()];
 
     let fee = 0.into();
 
@@ -1399,7 +1399,7 @@ async fn validation_reject_min_fee() {
         .unwrap();
     let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
-            .get_txo_kernel_signature_excess_with_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(input.commitment_mask_key_id(), &input_kernel_nonce.key_id)
             .await
             .unwrap()
             .to_public_key()
@@ -1411,7 +1411,7 @@ async fn validation_reject_min_fee() {
         script!(Nop).unwrap(),
         OutputFeatures::default(),
         &test_params,
-        input.value,
+        input.value(),
         &key_manager,
     )
     .await
@@ -1419,7 +1419,7 @@ async fn validation_reject_min_fee() {
     pub_excess = pub_excess +
         key_manager
             .get_txo_kernel_signature_excess_with_offset(
-                &wallet_output.commitment_mask_key_id,
+                wallet_output.commitment_mask_key_id(),
                 &test_params.kernel_nonce_key_id,
             )
             .await
@@ -1436,15 +1436,15 @@ async fn validation_reject_min_fee() {
     let kernel_message =
         TransactionKernel::build_kernel_signature_message(&kernel_version, fee, 0, &KernelFeatures::empty(), &None);
 
-    let tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+    let tx_output = wallet_output.to_transaction_output().unwrap();
     offset = &offset +
         &key_manager
-            .get_txo_private_kernel_offset(&wallet_output.commitment_mask_key_id, &test_params.kernel_nonce_key_id)
+            .get_txo_private_kernel_offset(wallet_output.commitment_mask_key_id(), &test_params.kernel_nonce_key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &wallet_output.commitment_mask_key_id,
+            wallet_output.commitment_mask_key_id(),
             &test_params.kernel_nonce_key_id,
             &CompressedPublicKey::new_from_pk(pub_nonce.clone()),
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1459,12 +1459,12 @@ async fn validation_reject_min_fee() {
 
     offset = &offset -
         &key_manager
-            .get_txo_private_kernel_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
+            .get_txo_private_kernel_offset(input.commitment_mask_key_id(), &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &input.commitment_mask_key_id,
+            input.commitment_mask_key_id(),
             &input_kernel_nonce.key_id,
             &CompressedPublicKey::new_from_pk(pub_nonce),
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1553,15 +1553,15 @@ async fn consensus_validation_versions() {
     let test_params = TestParams::new(&key_manager).await;
     let params = UtxoTestParams::with_value(1 * T);
     let output_v0_features_v0 = test_params.create_output(params, &key_manager).await.unwrap();
-    assert_eq!(output_v0_features_v0.version, TransactionOutputVersion::V0);
-    assert_eq!(output_v0_features_v0.features.version, OutputFeaturesVersion::V0);
+    assert_eq!(output_v0_features_v0.version(), TransactionOutputVersion::V0);
+    assert_eq!(output_v0_features_v0.features().version, OutputFeaturesVersion::V0);
 
     let test_params = TestParams::new(&key_manager).await;
     let mut params = UtxoTestParams::with_value(1 * T);
     params.output_version = Some(TransactionOutputVersion::V1);
     let output_v1_features_v0 = test_params.create_output(params, &key_manager).await.unwrap();
-    assert_eq!(output_v1_features_v0.version, TransactionOutputVersion::V1);
-    assert_eq!(output_v1_features_v0.features.version, OutputFeaturesVersion::V0);
+    assert_eq!(output_v1_features_v0.version(), TransactionOutputVersion::V1);
+    assert_eq!(output_v1_features_v0.features().version, OutputFeaturesVersion::V0);
 
     let features_v1 = OutputFeatures::new(
         OutputFeaturesVersion::V1,
@@ -1576,16 +1576,16 @@ async fn consensus_validation_versions() {
     let mut params = UtxoTestParams::with_value(1 * T);
     params.features = features_v1.clone();
     let output_v0_features_v1 = test_params.create_output(params, &key_manager).await.unwrap();
-    assert_eq!(output_v0_features_v1.version, TransactionOutputVersion::V0);
-    assert_eq!(output_v0_features_v1.features.version, OutputFeaturesVersion::V1);
+    assert_eq!(output_v0_features_v1.version(), TransactionOutputVersion::V0);
+    assert_eq!(output_v0_features_v1.features().version, OutputFeaturesVersion::V1);
 
     let test_params = TestParams::new(&key_manager).await;
     let mut params = UtxoTestParams::with_value(1 * T);
     params.features = features_v1;
-    let mut output_v1_features_v1 = test_params.create_output(params, &key_manager).await.unwrap();
-    output_v1_features_v1.version = TransactionOutputVersion::V1;
-    assert_eq!(output_v1_features_v1.version, TransactionOutputVersion::V1);
-    assert_eq!(output_v1_features_v1.features.version, OutputFeaturesVersion::V1);
+    params.output_version = Some(TransactionOutputVersion::V1);
+    let output_v1_features_v1 = test_params.create_output(params, &key_manager).await.unwrap();
+    assert_eq!(output_v1_features_v1.version(), TransactionOutputVersion::V1);
+    assert_eq!(output_v1_features_v1.features().version, OutputFeaturesVersion::V1);
 
     let schema = txn_schema!(
         from: vec![outputs[0][0].clone()],

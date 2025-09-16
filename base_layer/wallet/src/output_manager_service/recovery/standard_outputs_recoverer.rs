@@ -110,22 +110,13 @@ where
             };
 
             let hash = output.hash();
-            let uo = WalletOutput::new_with_rangeproof(
-                output.version,
+            let uo = WalletOutput::new_from_transaction_output(
                 committed_value,
                 commitment_mask,
-                output.features,
-                output.script,
+                payment_id,
+                output,
                 input_data,
                 script_key,
-                output.sender_offset_public_key,
-                output.metadata_signature,
-                0,
-                output.covenant,
-                output.encrypted_data,
-                output.minimum_value_promise,
-                output.proof.clone(),
-                payment_id,
             );
 
             rewound_outputs.push((uo, known_script_index.is_some(), hash, tx_id));
@@ -143,13 +134,11 @@ where
         for (output, has_known_script, hash, tx_id) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
-                &self.master_key_manager,
                 None,
                 Self::output_source(output, *has_known_script),
                 None,
                 None,
-            )
-            .await?;
+            );
             let tx_id = match tx_id {
                 Some(id) => *id,
                 None => {
@@ -200,8 +189,8 @@ where
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
                 output_hex,
-                output.value,
-                output.features,
+                output.value(),
+                output.features(),
             );
         }
 
@@ -210,8 +199,8 @@ where
 
     // Helper function to get the output source for a given output
     fn output_source(output: &WalletOutput, has_known_script: bool) -> OutputSource {
-        match output.features.output_type {
-            OutputType::Standard => match *output.script.as_slice() {
+        match output.features().output_type {
+            OutputType::Standard => match *output.script().as_slice() {
                 [Opcode::Nop] => OutputSource::Standard,
                 [Opcode::PushPubKey(_), Opcode::Drop, Opcode::PushPubKey(_)] => OutputSource::StealthOneSided,
                 [Opcode::PushPubKey(_)] => {

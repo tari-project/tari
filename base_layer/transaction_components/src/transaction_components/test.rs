@@ -65,10 +65,10 @@ async fn input_and_output_and_wallet_output_hash_match() {
         .create_output(Default::default(), &key_manager)
         .await
         .unwrap();
-    let output = i.to_transaction_output(&key_manager).await.unwrap();
+    let output = i.to_transaction_output().unwrap();
     let input = i.to_transaction_input(&key_manager).await.unwrap();
     assert_eq!(output.hash(), input.output_hash());
-    assert_eq!(output.hash(), i.hash(&key_manager).await.unwrap());
+    assert_eq!(output.hash(), i.output_hash());
 }
 
 #[test]
@@ -95,8 +95,7 @@ async fn key_manager_input() {
         .expect("Should be able to create transaction input");
 
     let output = i
-        .to_transaction_output(&key_manager)
-        .await
+        .to_transaction_output()
         .expect("Should be able to create transaction output");
 
     assert_eq!(*input.features().unwrap(), OutputFeatures::default());
@@ -104,7 +103,7 @@ async fn key_manager_input() {
         .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
         .await
         .unwrap();
-    assert_eq!(value, i.value);
+    assert_eq!(value, i.value());
 }
 
 #[tokio::test]
@@ -126,7 +125,7 @@ async fn range_proof_verification() {
         )
         .await
         .unwrap();
-    let tx_output1 = wallet_output1.to_transaction_output(&key_manager).await.unwrap();
+    let tx_output1 = wallet_output1.to_transaction_output().unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
     let input_data = inputs!(test_params_2.script_key_pk.clone());
     let wallet_output2 = WalletOutputBuilder::new(
@@ -185,7 +184,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output1 = wallet_output1.to_transaction_output(&key_manager).await.unwrap();
+    let tx_output1 = wallet_output1.to_transaction_output().unwrap();
     assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output2 = TestParams::new(&key_manager)
@@ -199,7 +198,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output2 = wallet_output2.to_transaction_output(&key_manager).await.unwrap();
+    let tx_output2 = wallet_output2.to_transaction_output().unwrap();
     assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output3 = TestParams::new(&key_manager)
@@ -213,7 +212,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output3 = wallet_output3.to_transaction_output(&key_manager).await.unwrap();
+    let tx_output3 = wallet_output3.to_transaction_output().unwrap();
     assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output4 = TestParams::new(&key_manager)
@@ -227,7 +226,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output4 = wallet_output4.to_transaction_output(&key_manager).await.unwrap();
+    let tx_output4 = wallet_output4.to_transaction_output().unwrap();
     assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output5 = TestParams::new(&key_manager)
@@ -241,7 +240,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let mut tx_output5 = wallet_output5.to_transaction_output(&key_manager).await.unwrap();
+    let mut tx_output5 = wallet_output5.to_transaction_output().unwrap();
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
     // The batch should pass
@@ -271,17 +270,17 @@ async fn sender_signature_verification() {
         .await
         .unwrap();
 
-    let mut tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+    let mut tx_output = wallet_output.to_transaction_output().unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.script = TariScript::default();
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+    tx_output = wallet_output.to_transaction_output().unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.features = OutputFeatures::create_coinbase(0, None, RangeProofType::BulletProofPlus);
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+    tx_output = wallet_output.to_transaction_output().unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.sender_offset_public_key = CompressedPublicKey::default();
     assert!(tx_output.verify_metadata_signature().is_err());
@@ -537,7 +536,7 @@ async fn inputs_not_malleable() {
     )
     .await
     .expect("Failed to create wallet outputs");
-    let mut stack = inputs[0].input_data.clone();
+    let mut stack = inputs[0].input_data().clone();
     let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager).await;
 
     stack
@@ -572,13 +571,13 @@ async fn test_output_recover_openings() {
         )
         .await
         .unwrap();
-    let output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+    let output = wallet_output.to_transaction_output().unwrap();
 
     let (_mask, value, _) = key_manager
         .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
         .await
         .unwrap();
-    assert_eq!(value, wallet_output.value);
+    assert_eq!(value, wallet_output.value());
 }
 
 mod validate_internal_consistency {
@@ -612,9 +611,9 @@ mod validate_internal_consistency {
         )
         .await
         .expect("Failed to create wallet outputs");
-        inputs[0].features = input_params.features.clone();
-        inputs[0].covenant = input_params.covenant.clone();
-        inputs[0].script = input_params.script.clone();
+        inputs[0].set_features(input_params.features.clone());
+        inputs[0].set_covenant(input_params.covenant.clone());
+        inputs[0].set_script(input_params.script.clone());
         let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager).await;
         // Otherwise if this passes check again with the height
         let rules = ConsensusManager::builder(Network::LocalNet).build();

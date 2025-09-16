@@ -199,6 +199,7 @@ fn main_inner() -> Result<(), ExitError> {
         config.base_node.p2p.public_addresses.clone().into_vec(),
         cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
+        config.base_node.p2p.transport.transport_type,
     )?;
 
     if cli.init {

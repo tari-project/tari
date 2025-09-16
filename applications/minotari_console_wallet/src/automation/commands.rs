@@ -43,14 +43,6 @@ use minotari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
-        multisig::script::is_multisig_utxo,
-        offline_signing::models::{
-            PrepareDepositMultisigTransactionResult,
-            PrepareOneSidedTransactionForSigningResult,
-            PrepareWithdrawMultisigTransactionResult,
-            SignedOneSidedTransactionResult,
-            TransactionResult,
-        },
         storage::models::WalletTransaction,
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
@@ -89,6 +81,14 @@ use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    multisig::script::is_multisig_utxo,
+    offline_signing::models::{
+        PrepareDepositMultisigTransactionResult,
+        PrepareOneSidedTransactionForSigningResult,
+        PrepareWithdrawMultisigTransactionResult,
+        SignedOneSidedTransactionResult,
+        TransactionResult,
+    },
     tari_amount::{uT, MicroMinotari, Minotari},
     transaction_components::{
         covenants::Covenant,
@@ -1946,7 +1946,7 @@ pub async fn command_runner(
                 Ok(utxos) => {
                     let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
                     let count = utxos.len();
-                    let values: Vec<MicroMinotari> = utxos.iter().map(|utxo| utxo.value).collect();
+                    let values: Vec<MicroMinotari> = utxos.iter().map(|utxo| utxo.value()).collect();
                     let sum: MicroMinotari = values.iter().sum();
                     println!("Total number of UTXOs: {count}");
                     println!("Total value of UTXOs : {sum}");

@@ -624,7 +624,7 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, anyhow::Error> {
-                    let status = if ro.output.features.is_coinbase() {
+                    let status = if ro.output.is_coinbase() {
                         LegacyImportStatus::CoinbaseUnconfirmed
                     } else {
                         LegacyImportStatus::OneSidedUnconfirmed
@@ -676,7 +676,7 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, anyhow::Error> {
-                    let status = if ro.output.features.is_coinbase() {
+                    let status = if ro.output.is_coinbase() {
                         LegacyImportStatus::CoinbaseUnconfirmed
                     } else {
                         LegacyImportStatus::Imported
@@ -709,12 +709,12 @@ where
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
         for (wo, import_status, tx_id, to) in utxos {
-            let source_address = if wo.features.is_coinbase() {
+            let source_address = if wo.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
-            } else if let Some(address) = wo.payment_id.get_sender_address() {
+            } else if let Some(address) = wo.payment_id().get_sender_address() {
                 address
-            } else if wo.payment_id.is_transaction_info() {
+            } else if wo.payment_id().is_transaction_info() {
                 self.resources.one_sided_tari_address.clone()
             } else {
                 TariAddress::default()
@@ -733,7 +733,7 @@ where
             {
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
-                    total_amount += wo.value;
+                    total_amount += wo.value();
                 },
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
                     TransactionStorageError::DuplicateOutput,
@@ -784,21 +784,21 @@ where
             .resources
             .transaction_service
             .import_utxo_with_status(
-                wallet_output.value,
+                wallet_output.value(),
                 source_address,
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
                 Some(mined_timestamp),
                 scanned_output,
-                wallet_output.payment_id,
+                wallet_output.payment_id().clone(),
             )
             .await?;
 
         info!(
             target: LOG_TARGET,
             "{:?}: UTXO with value {},  imported into wallet as 'ImportStatus::{}'",
-            self.mode, wallet_output.value, import_status
+            self.mode, wallet_output.value(), import_status
         );
 
         Ok(tx_id)

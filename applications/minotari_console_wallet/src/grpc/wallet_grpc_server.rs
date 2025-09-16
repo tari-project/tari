@@ -129,7 +129,6 @@ use minotari_wallet::{
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        offline_signing::models::SignedOneSidedTransactionResult,
         storage::models::{self, WalletTransaction},
     },
     WalletKeyManager,
@@ -154,7 +153,7 @@ use tari_hashing::WalletMessageSigningDomain;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
-    key_manager::TransactionKeyManagerInterface,
+    offline_signing::models::SignedOneSidedTransactionResult,
     transaction_components::{
         memo_field::{MemoField, TxType},
         OutputFeatures,
@@ -315,12 +314,7 @@ impl WalletGrpcServer {
                 Status::not_found(format!("Transaction {id} not found within timeout"))
             })?;
             let address = wallet_tx.destination_address().expect("cannot fail").to_string();
-            let final_tx = convert_wallet_transaction_into_transaction_info(
-                wallet_tx,
-                &wallet_address,
-                &self.wallet.key_manager_service,
-            )
-            .await;
+            let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
             results.push(minotari_app_grpc::tari_rpc::TransferResult {
                 address,
                 transaction_id: id.into(),
@@ -546,7 +540,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()
-                .map(|o| o.wallet_output.value.as_u64())
+                .map(|o| o.wallet_output.value().as_u64())
                 .filter(|&a| a > 0)
                 .collect(),
         }))
@@ -683,12 +677,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .await
                             .map_err(|e| Status::internal(format!("{e:?}")))?
                             .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
-                        let final_tx = convert_wallet_transaction_into_transaction_info(
-                            wallet_tx,
-                            &wallet_address,
-                            &self.wallet.key_manager_service,
-                        )
-                        .await;
+                        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
                         TransferResult {
                             address: Default::default(),
                             transaction_id: tx_id.as_u64(),
@@ -760,12 +749,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .await
                             .map_err(|e| Status::internal(format!("{e:?}")))?
                             .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
-                        let final_tx = convert_wallet_transaction_into_transaction_info(
-                            wallet_tx,
-                            &wallet_address,
-                            &self.wallet.key_manager_service,
-                        )
-                        .await;
+                        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
                         TransferResult {
                             address: Default::default(),
                             transaction_id: tx_id.as_u64(),
@@ -1160,12 +1144,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         error!(target: LOG_TARGET, "Transaction {tx_id} not found within timeout");
                         Status::not_found(format!("Transaction {tx_id} not found within timeout"))
                     })?;
-                    let final_tx = convert_wallet_transaction_into_transaction_info(
-                        wallet_tx,
-                        &wallet_address,
-                        &self.wallet.key_manager_service,
-                    )
-                    .await;
+                    let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
                     results.push(TransferResult {
                         address,
                         transaction_id: tx_id.into(),
@@ -1280,14 +1259,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transactions = Vec::new();
         for (tx_id, tx) in all_transactions {
             transactions.push(match tx {
-                Some(tx) => {
-                    convert_wallet_transaction_into_transaction_info(
-                        tx,
-                        &wallet_address,
-                        &self.wallet.key_manager_service,
-                    )
-                    .await
-                },
+                Some(tx) => convert_wallet_transaction_into_transaction_info(tx, &wallet_address),
                 None => TransactionInfo::not_found(tx_id),
             });
         }
@@ -2601,12 +2573,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         error!(target: LOG_TARGET, "Transaction {tx_id} not found within timeout");
                         Status::not_found(format!("Transaction {tx_id} not found within timeout"))
                     })?;
-                    let final_tx = convert_wallet_transaction_into_transaction_info(
-                        wallet_tx,
-                        &wallet_address,
-                        &self.wallet.key_manager_service,
-                    )
-                    .await;
+                    let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
                     results.push(TransferResult {
                         address: address.to_string(),
                         transaction_id: tx_id.into(),
@@ -2739,10 +2706,9 @@ fn simple_event(event: &str) -> TransactionEvent {
 }
 
 #[allow(clippy::too_many_lines)]
-async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyManagerInterface>(
+fn convert_wallet_transaction_into_transaction_info(
     tx: models::WalletTransaction,
     wallet_address: &TariAddress,
-    key_manager: &KM,
 ) -> TransactionInfo {
     use models::WalletTransaction::{Completed, PendingInbound, PendingOutbound};
     match tx {
@@ -2773,14 +2739,14 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
             }
         },
         PendingOutbound(tx) => {
-            let output_commitments = match tx.sender_protocol.get_output_commitments(key_manager).await {
+            let output_commitments = match tx.sender_protocol.get_output_commitments() {
                 Ok(v) => v.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
                 Err(e) => {
                     warn!(target: LOG_TARGET, "Failed to get output commitments: {e}");
                     vec![]
                 },
             };
-            let input_commitments = match tx.sender_protocol.get_input_commitments(key_manager).await {
+            let input_commitments = match tx.sender_protocol.get_input_commitments() {
                 Ok(v) => v.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
                 Err(e) => {
                     warn!(target: LOG_TARGET, "Failed to get output commitments: {e}");

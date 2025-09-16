@@ -39,12 +39,12 @@ mod recovery;
 mod utils;
 
 mod http;
-
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 pub use grpc_method::GrpcMethod;
+pub use http::HttpCacheConfig;
 use log::*;
 use minotari_app_grpc::{
     authentication::ServerAuthenticationInterceptor,

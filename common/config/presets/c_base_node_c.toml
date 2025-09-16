@@ -172,7 +172,7 @@ listener_self_liveness_check_interval = 15
 # If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
-#pub cull_oldest_peer_rpc_connection_on_full = true
+#cull_oldest_peer_rpc_connection_on_full = true
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -366,3 +366,38 @@ excluded_dial_addresses = []
 [base_node.http_wallet_query_service]
 #port = 9000
 #external_address = "http://127.0.0.1:9000"
+
+# If not enabled (false), no Cache-Control header is set anywhere. [Default: true]
+#http_cache.enabled - true
+
+# The Cache-Control string to use for the 'get_tip_info' handler.
+# [Default: "public, max-age=15, s-maxage=15, stale-while-revalidate=15"]
+#http_cache.get_tip_info = "public, max-age=15, s-maxage=15, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_header_by_height' handler.
+# [Default: "public, max-age=120, s-maxage=60, stale-while-revalidate=15"]
+#http_cache.get_header_by_height = "public, max-age=120, s-maxage=60, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.get_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'sync_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.sync_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'get_height_at_time' handler.
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_height_at_time = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'transaction_query' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.transaction_query = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_deleted_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_deleted_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_mined_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_mined_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
