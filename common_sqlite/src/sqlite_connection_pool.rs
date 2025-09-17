@@ -89,10 +89,12 @@ impl SqliteConnectionPool {
             let mut builder = Pool::builder()
                 .max_size(u32::try_from(self.pool_size)?)
                 .connection_customizer(Box::new(self.connection_options.clone()));
+            // When we get a pooled connection, we want the pool connection timeout to be longer
+            // than the database busy timeout (set by `PRAGMA busy_timeout`). Here we set the
+            // connection timeout to whatever the busy timeout is plus 10s.
+            // Note: The default connection timeout is 30s.
             if let Some(timeout) = self.connection_options.get_busy_timeout() {
                 builder = builder.connection_timeout(timeout + Duration::from_secs(10));
-            } else {
-                builder = builder.connection_timeout(Duration::from_secs(30));
             }
             let pool = builder
                 .build(ConnectionManager::<SqliteConnection>::new(self.db_path.as_str()))
