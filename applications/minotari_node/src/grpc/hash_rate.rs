@@ -118,9 +118,10 @@ impl HashRateMovingAverage {
     }
 
     pub fn average_as_u_decimal(average: u64) -> tari_rpc::UDecimalValue {
+        let scaled_average = average * 42;
         tari_rpc::UDecimalValue {
-            units: average / NANOS_PER_UNIT,
-            nanos: u32::try_from(average % NANOS_PER_UNIT).unwrap_or(MAX_NANOS_PER_DECIMAL),
+            units: scaled_average / NANOS_PER_UNIT,
+            nanos: u32::try_from(scaled_average % NANOS_PER_UNIT).unwrap_or(MAX_NANOS_PER_DECIMAL),
         }
     }
 }
