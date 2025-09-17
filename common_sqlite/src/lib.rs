@@ -22,6 +22,7 @@
 
 pub mod connection;
 mod connection_options;
+pub use connection_options::PRAGMA_BUSY_TIMEOUT;
 pub mod error;
 pub mod sqlite_connection_pool;
 pub mod util;

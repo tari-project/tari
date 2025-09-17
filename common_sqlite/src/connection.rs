@@ -27,7 +27,6 @@ use std::{
     iter,
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockWriteGuard},
-    time::Duration,
 };
 
 use diesel::{
@@ -40,6 +39,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    connection_options::PRAGMA_BUSY_TIMEOUT,
     error::{SqliteStorageError, StorageError},
     sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
 };
@@ -159,7 +159,7 @@ impl DbConnection {
             sqlite_pool_size.unwrap_or(1),
             true,
             true,
-            Duration::from_secs(60),
+            PRAGMA_BUSY_TIMEOUT,
         );
         pool.create_pool()?;
 

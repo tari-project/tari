@@ -33,6 +33,12 @@ use crate::{connection_options::ConnectionOptions, error::SqliteStorageError};
 
 const LOG_TARGET: &str = "common_sqlite::sqlite_connection_pool";
 
+/// The default timeout for acquiring an R2D2 pool connection over and above the PRAGMA busy timeout.
+pub const R2D2_POOL_CONNECTION_DELTA: Duration = Duration::from_secs(5);
+/// The default timeout for acquiring an R2D2 pool connection.
+/// Note: The default R2D2 connection timeout is 30s.
+pub const R2D2_POOL_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Thin wrapper around an r2d2 `Pool<SqliteConnection>` with standard SQLite
 /// configuration (WAL, FKs, busy timeout) applied to each connection.
 ///
@@ -89,22 +95,21 @@ impl SqliteConnectionPool {
             let mut builder = Pool::builder()
                 .max_size(u32::try_from(self.pool_size)?)
                 .connection_customizer(Box::new(self.connection_options.clone()));
-            // When we get a pooled connection, we want the pool connection timeout to be longer
-            // than the database busy timeout (set by `PRAGMA busy_timeout`). Here we set the
-            // connection timeout to whatever the busy timeout is plus 10s.
-            // Note: The default connection timeout is 30s.
             if let Some(timeout) = self.connection_options.get_busy_timeout() {
-                builder = builder.connection_timeout(timeout + Duration::from_secs(10));
+                // When we get a pooled connection, we want the pool connection timeout to be longer
+                // than the database busy timeout (set by `PRAGMA busy_timeout`). Here we set the
+                // connection timeout to whatever the busy timeout is plus a delta (5s).
+                builder = builder.connection_timeout(timeout + R2D2_POOL_CONNECTION_DELTA);
+            } else {
+                // If no busy timeout is set, we use the default value.
+                builder = builder.connection_timeout(R2D2_POOL_CONNECTION_TIMEOUT);
             }
             let pool = builder
                 .build(ConnectionManager::<SqliteConnection>::new(self.db_path.as_str()))
                 .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()))?;
             self.pool = Some(pool);
         } else {
-            warn!(
-                target: LOG_TARGET,
-                "Connection pool for {} already exists", self.db_path
-            );
+            warn!(target: LOG_TARGET, "Connection pool for {} already exists", self.db_path);
         }
         Ok(())
     }
@@ -115,15 +120,13 @@ impl SqliteConnectionPool {
         &self,
     ) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, SqliteStorageError> {
         if let Some(pool) = self.pool.as_ref() {
-            pool.get().map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Connection pool state {:?}: {}",
-                    pool.state(),
-                    e
-                );
+            let start = std::time::Instant::now();
+            let connection = pool.get().map_err(|e| {
+                warn!(target: LOG_TARGET, "Connection pool state {:?}: {}", pool.state(), e);
                 SqliteStorageError::DieselR2d2Error(e.to_string())
-            })
+            });
+            trace!(target: LOG_TARGET, "Acquired 'get_pooled_connection' from pool in {:.2?}", start.elapsed());
+            connection
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
         }
@@ -136,15 +139,13 @@ impl SqliteConnectionPool {
         timeout: Duration,
     ) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, SqliteStorageError> {
         if let Some(pool) = self.pool.clone() {
-            pool.get_timeout(timeout).map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Connection pool state {:?}: {}",
-                    pool.state(),
-                    e
-                );
+            let start = std::time::Instant::now();
+            let connection = pool.get_timeout(timeout).map_err(|e| {
+                warn!(target: LOG_TARGET, "Connection pool state {:?}: {}", pool.state(), e);
                 SqliteStorageError::DieselR2d2Error(e.to_string())
-            })
+            });
+            trace!(target: LOG_TARGET, "Acquired 'get_pooled_connection_timeout' from pool in {:.2?}", start.elapsed());
+            connection
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
         }
@@ -156,14 +157,13 @@ impl SqliteConnectionPool {
         &self,
     ) -> Result<Option<PooledConnection<ConnectionManager<SqliteConnection>>>, SqliteStorageError> {
         if let Some(pool) = self.pool.clone() {
+            let start = std::time::Instant::now();
             let connection = pool.try_get();
             if connection.is_none() {
-                warn!(
-                    target: LOG_TARGET,
-                    "No connections available, pool state {:?}",
-                    pool.state()
-                );
-            };
+                warn!(target: LOG_TARGET, "No connections available, pool state {:?}", pool.state());
+            } else {
+                trace!(target: LOG_TARGET, "Acquired 'try_get_pooled_connection' from pool in {:.2?}", start.elapsed());
+            }
             Ok(connection)
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))

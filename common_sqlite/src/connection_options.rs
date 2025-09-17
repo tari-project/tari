@@ -23,8 +23,14 @@
 use core::time::Duration;
 
 use diesel::{connection::SimpleConnection, dsl::sql, sql_types::Text, RunQueryDsl, SqliteConnection};
+use log::trace;
 
 use crate::connection::DbConnection;
+
+const LOG_TARGET: &str = "common_sqlite::connection_options";
+
+/// A default busy timeout for SQLite pool connection to throw a 'database is locked' error.
+pub const PRAGMA_BUSY_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Connection-level options that are applied to **every** SQLite connection
 /// as it is acquired from the r2d2 pool (via the `CustomizeConnection` hook).
@@ -79,6 +85,7 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
     /// - `PRAGMA foreign_keys = ON;` (if enabled)
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
         (|| {
+            let start = std::time::Instant::now();
             if let Some(d) = self.busy_timeout {
                 conn.batch_execute(&format!("PRAGMA busy_timeout = {};", d.as_millis()))?;
             }
@@ -103,6 +110,8 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
             if self.enable_foreign_keys {
                 conn.batch_execute("PRAGMA foreign_keys = ON;")?;
             }
+
+            trace!(target: LOG_TARGET, "Applied SQLite PRAGMAs on_acquire in {:.2?}", start.elapsed());
             Ok(())
         })()
         .map_err(diesel::r2d2::Error::QueryError)
