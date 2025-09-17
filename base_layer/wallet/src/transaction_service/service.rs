@@ -3176,7 +3176,17 @@ where
             );
         });
 
-        self.resources.output_manager_service.cancel_transaction(tx_id).await?;
+        let _unused = self
+            .resources
+            .output_manager_service
+            .cancel_transaction(tx_id)
+            .await
+            .inspect_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Locked UTXO's could not be unlocked: {e:?}"
+                );
+            });
 
         if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
             let _result = cancellation_sender.send(());
