@@ -354,8 +354,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         )
         .await?;
         let output = wallet_output
-            .to_transaction_output(&self.key_manager)
-            .await
+            .to_transaction_output()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
@@ -850,12 +849,12 @@ mod test {
             &None,
         );
         let excess = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.commitment_mask_key_id, &new_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &new_nonce.key_id)
             .await
             .unwrap();
         let sig = key_manager
             .get_partial_txo_kernel_signature(
-                &output.commitment_mask_key_id,
+                output.commitment_mask_key_id(),
                 &new_nonce.key_id,
                 &new_nonce.pub_key,
                 &excess,
@@ -868,7 +867,7 @@ mod test {
             .unwrap();
         // we verify that the created signature is correct
         let offset = key_manager
-            .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &new_nonce.key_id)
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &new_nonce.key_id)
             .await
             .unwrap();
         let sig_challenge = TransactionKernel::finalize_kernel_signature_challenge(
@@ -1020,7 +1019,7 @@ mod test {
 
         let mut kernel_signature = key_manager
             .get_partial_txo_kernel_signature(
-                &wo1.commitment_mask_key_id,
+                wo1.commitment_mask_key_id(),
                 &new_nonce1.key_id,
                 &CompressedPublicKey::new_from_pk(nonce.clone()),
                 &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1036,7 +1035,7 @@ mod test {
         kernel_signature = &kernel_signature +
             &key_manager
                 .get_partial_txo_kernel_signature(
-                    &wo2.commitment_mask_key_id,
+                    wo2.commitment_mask_key_id(),
                     &new_nonce2.key_id,
                     &CompressedPublicKey::new_from_pk(nonce.clone()),
                     &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1148,7 +1147,7 @@ mod test {
 
         let mut kernel_signature = key_manager
             .get_partial_txo_kernel_signature(
-                &wo1.commitment_mask_key_id,
+                wo1.commitment_mask_key_id(),
                 &new_nonce1.key_id,
                 &CompressedPublicKey::new_from_pk(nonce.clone()),
                 &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1164,7 +1163,7 @@ mod test {
         kernel_signature = &kernel_signature +
             &key_manager
                 .get_partial_txo_kernel_signature(
-                    &wo2.commitment_mask_key_id,
+                    wo2.commitment_mask_key_id(),
                     &new_nonce2.key_id,
                     &CompressedPublicKey::new_from_pk(nonce),
                     &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1242,7 +1241,7 @@ mod test {
         .unwrap();
 
         assert_eq!(
-            coinbase_wallet_output.payment_id.payment_id_as_string(),
+            coinbase_wallet_output.payment_id().payment_id_as_string(),
             MemoField::stringify_bytes(payment_id_user_data)
         );
     }

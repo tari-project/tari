@@ -47,8 +47,11 @@ pub async fn make_fake_input_from_copy(
     key_manager: &MemoryDbKeyManager,
 ) -> WalletOutput {
     let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
-    wallet_output.commitment_mask_key_id = commitment_mask_key.key_id;
-    wallet_output.script_key_id = script_key.key_id;
+    wallet_output
+        .set_commitment_mask_key_id(commitment_mask_key.key_id, key_manager)
+        .await
+        .unwrap();
+    wallet_output.set_script_key_id(script_key.key_id);
     wallet_output.clone()
 }
 

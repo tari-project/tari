@@ -1,21 +1,12 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::sync::OnceLock;
-
 use serde::{Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
 use crate::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{
-        MemoField,
-        Transaction,
-        TransactionError,
-        TransactionInput,
-        TransactionOutput,
-        WalletOutput,
-    },
+    key_manager::TariKeyId,
+    transaction_components::{MemoField, Transaction, WalletOutput},
     MicroMinotari,
 };
 
@@ -30,10 +21,6 @@ pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
     pub sender_offset_key_id: Option<TariKeyId>,
-    #[serde(skip)]
-    tx_input: OnceLock<TransactionInput>,
-    #[serde(skip)]
-    tx_output: OnceLock<TransactionOutput>,
 }
 
 impl OutputPair {
@@ -42,33 +29,7 @@ impl OutputPair {
             output,
             kernel_nonce,
             sender_offset_key_id,
-            tx_input: OnceLock::new(),
-            tx_output: OnceLock::new(),
         }
-    }
-
-    pub async fn tx_input<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-    ) -> Result<TransactionInput, TransactionError> {
-        if let Some(input) = self.tx_input.get() {
-            return Ok(input.clone());
-        }
-        let input = self.output.to_transaction_input(key_manager).await?;
-        let _unused = self.tx_input.set(input.clone());
-        Ok(input)
-    }
-
-    pub async fn tx_output<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-    ) -> Result<TransactionOutput, TransactionError> {
-        if let Some(output) = self.tx_output.get() {
-            return Ok(output.clone());
-        }
-        let output = self.output.to_transaction_output(key_manager).await?;
-        let _unused = self.tx_output.set(output.clone());
-        Ok(output)
     }
 }
 

@@ -119,7 +119,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     .unwrap();
     // Block 3
     let txs = vec![
-        txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![outputs[2][2].value/2]),
+        txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![outputs[2][2].value()/2]),
         txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
     ];
     generate_new_block(

@@ -1946,7 +1946,7 @@ pub async fn command_runner(
                 Ok(utxos) => {
                     let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
                     let count = utxos.len();
-                    let values: Vec<MicroMinotari> = utxos.iter().map(|utxo| utxo.value).collect();
+                    let values: Vec<MicroMinotari> = utxos.iter().map(|utxo| utxo.value()).collect();
                     let sum: MicroMinotari = values.iter().sum();
                     println!("Total number of UTXOs: {count}");
                     println!("Total value of UTXOs : {sum}");

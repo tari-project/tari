@@ -63,10 +63,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             &key_manager,
         )
         .await;
-        let mut kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-            .await
-            .unwrap();
-        kmo.wallet_output.features.maturity = i;
+        let mut kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        let mut features = kmo.wallet_output.features().clone();
+        features.maturity = i;
+        kmo.wallet_output.set_features(features);
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent.push((kmo.hash, true));
         unspent_outputs.push(kmo);
@@ -78,13 +78,13 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(unspent_outputs[4], time_locked_outputs[0]);
     let time_locked_outputs = db.get_timelocked_outputs(4).unwrap();
     assert_eq!(time_locked_outputs.len(), 0);
-    let time_locked_balance = unspent_outputs[4].wallet_output.value;
+    let time_locked_balance = unspent_outputs[4].wallet_output.value();
 
     for i in 0..4usize {
         let balance = db.get_balance(Some(i as u64)).unwrap();
         let mut sum = MicroMinotari::from(0);
         for output in unspent_outputs.iter().take(5).skip(i + 1) {
-            sum += output.wallet_output.value;
+            sum += output.wallet_output.value();
         }
         assert_eq!(balance.time_locked_balance.unwrap(), sum);
     }
@@ -116,9 +116,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &key_manager,
             )
             .await;
-            let kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Standard, None, None)
-                .await
-                .unwrap();
+            let kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
             db.add_unspent_output(kmo.clone()).unwrap();
             db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
@@ -131,9 +129,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &key_manager,
             )
             .await;
-            let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-                .await
-                .unwrap();
+            let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             pending_tx.outputs_to_be_received.push(kmo);
         }
         db.encumber_outputs(
@@ -148,18 +144,18 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Test balance calc
     let available_balance = unspent_outputs
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
     let mut pending_incoming_balance = MicroMinotari(0);
     let mut pending_outgoing_balance = MicroMinotari(0);
     for v in &pending_txs {
         pending_outgoing_balance += v
             .outputs_to_be_spent
             .iter()
-            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
         pending_incoming_balance += v
             .outputs_to_be_received
             .iter()
-            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
     }
 
     let balance = db.get_balance(None).unwrap();
@@ -249,31 +245,31 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Balance with confirmed second pending tx
     let mut available_balance = unspent_outputs
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
     let mut pending_incoming_balance = MicroMinotari(0);
     let mut pending_outgoing_balance = MicroMinotari(0);
 
     pending_outgoing_balance += pending_txs[0]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
     pending_outgoing_balance += pending_txs[2]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
     pending_incoming_balance += pending_txs[0]
         .outputs_to_be_received
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
     pending_incoming_balance += pending_txs[2]
         .outputs_to_be_received
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
 
     available_balance += pending_txs[1]
         .outputs_to_be_received
         .iter()
-        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value());
 
     let balance = db.get_balance(None).unwrap();
     assert_eq!(
@@ -295,13 +291,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         &key_manager,
     )
     .await;
-    let output_to_be_received =
-        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-            .await
-            .unwrap();
+    let output_to_be_received = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
     db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone())
         .unwrap();
-    pending_incoming_balance += output_to_be_received.wallet_output.value;
+    pending_incoming_balance += output_to_be_received.wallet_output.value();
 
     let balance = db.get_balance(None).unwrap();
     assert_eq!(
@@ -397,9 +390,7 @@ pub async fn test_must_include_filter() {
             &key_manager,
         )
         .await;
-        let output = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-            .await
-            .unwrap();
+        let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
         db.add_unspent_output(output.clone()).unwrap();
         unspent.push((output.hash, true));
         outputs.push(output);
@@ -416,7 +407,7 @@ pub async fn test_must_include_filter() {
     // Should return only the must-include output since 500 >= 400
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].commitment, outputs[3].commitment);
-    assert_eq!(selected[0].wallet_output.value, MicroMinotari::from(500));
+    assert_eq!(selected[0].wallet_output.value(), MicroMinotari::from(500));
 
     // Test 2: MustInclude with insufficient amount
     let must_include_commitments = vec![outputs[0].commitment.clone()]; // 100 value
@@ -428,7 +419,7 @@ pub async fn test_must_include_filter() {
     // Should return the must-include output plus additional outputs to meet the requirement
     assert!(selected.len() > 1);
     assert!(selected.iter().any(|o| o.commitment == outputs[0].commitment));
-    let total_value: MicroMinotari = selected.iter().map(|o| o.wallet_output.value).sum();
+    let total_value: MicroMinotari = selected.iter().map(|o| o.wallet_output.value()).sum();
     assert!(total_value >= MicroMinotari::from(800));
 
     // Test 3: MustInclude with multiple outputs
@@ -451,7 +442,7 @@ pub async fn test_must_include_filter() {
 
     // Should return outputs using standard selection logic
     assert!(!selected.is_empty());
-    let total_value: MicroMinotari = selected.iter().map(|o| o.wallet_output.value).sum();
+    let total_value: MicroMinotari = selected.iter().map(|o| o.wallet_output.value()).sum();
     assert!(total_value >= MicroMinotari::from(500));
 }
 
@@ -474,10 +465,10 @@ pub async fn test_raw_custom_queries_regression() {
             &key_manager,
         )
         .await;
-        let mut kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-            .await
-            .unwrap();
-        kmo.wallet_output.features.maturity = i;
+        let mut kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        let mut features = kmo.wallet_output.features().clone();
+        features.maturity = i;
+        kmo.wallet_output.set_features(features);
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent.push((kmo.hash, true));
         unspent_outputs.push(kmo);
@@ -512,9 +503,7 @@ pub async fn test_raw_custom_queries_regression() {
                 &key_manager,
             )
             .await;
-            let kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Standard, None, None)
-                .await
-                .unwrap();
+            let kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
             db.add_unspent_output(kmo.clone()).unwrap();
             db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
@@ -527,9 +516,7 @@ pub async fn test_raw_custom_queries_regression() {
                 &key_manager,
             )
             .await;
-            let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-                .await
-                .unwrap();
+            let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             pending_tx.outputs_to_be_received.push(kmo);
         }
         db.encumber_outputs(
@@ -569,9 +556,7 @@ pub async fn test_raw_custom_queries_regression() {
         &key_manager,
     )
     .await;
-    let unknown = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-        .await
-        .unwrap();
+    let unknown = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
     let mut updates_info_with_unknown = updates_info.clone();
     updates_info_with_unknown.push(ReceivedOutputInfoForBatch {
         commitment: unknown.commitment.clone(),
@@ -658,10 +643,10 @@ pub async fn test_short_term_encumberance() {
             &key_manager,
         )
         .await;
-        let mut kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Standard, None, None)
-            .await
-            .unwrap();
-        kmo.wallet_output.features.maturity = i;
+        let mut kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
+        let mut features = kmo.wallet_output.features().clone();
+        features.maturity = i;
+        kmo.wallet_output.set_features(features);
         db.add_unspent_output(kmo.clone()).unwrap();
         db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
         unspent_outputs.push(kmo);
@@ -675,7 +660,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs[3..5]
             .iter()
-            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value)
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value())
     );
 
     db.clear_short_term_encumberances().unwrap();
@@ -685,7 +670,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs
             .iter()
-            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value)
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value())
     );
 
     db.encumber_outputs(2u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
@@ -699,7 +684,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs[3..5]
             .iter()
-            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value)
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value())
     );
 }
 
@@ -718,9 +703,7 @@ pub async fn test_no_duplicate_outputs() {
         &key_manager,
     )
     .await;
-    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-        .await
-        .unwrap();
+    let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
 
     // add it to the database
     let result = db.add_unspent_output(kmo.clone());
@@ -766,9 +749,7 @@ pub async fn test_mark_as_unmined() {
         &key_manager,
     )
     .await;
-    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-        .await
-        .unwrap();
+    let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
 
     // add it to the database
     db.add_unspent_output(kmo.clone()).unwrap();
@@ -803,9 +784,7 @@ pub async fn test_mark_as_unmined() {
             &key_manager,
         )
         .await;
-        let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
-            .await
-            .unwrap();
+        let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
         db.add_unspent_output(kmo.clone()).unwrap();
         batch_hashes.push(kmo.hash);
         batch_info.push(ReceivedOutputInfoForBatch {

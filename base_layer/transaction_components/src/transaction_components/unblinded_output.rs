@@ -165,7 +165,9 @@ impl UnblindedOutput {
             self.minimum_value_promise,
             self.range_proof,
             payment_id,
-        );
+            key_manager,
+        )
+        .await?;
         Ok(wallet_output)
     }
 
@@ -173,27 +175,27 @@ impl UnblindedOutput {
         output: WalletOutput,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let commitment_mask_key = key_manager.get_private_key(&output.commitment_mask_key_id).await?;
-        let script_private_key = key_manager.get_private_key(&output.script_key_id).await?;
-        let range_proof = if output.features.range_proof_type == RangeProofType::BulletProofPlus {
-            output.range_proof
+        let commitment_mask_key = key_manager.get_private_key(output.commitment_mask_key_id()).await?;
+        let script_private_key = key_manager.get_private_key(output.script_key_id()).await?;
+        let range_proof = if output.features().range_proof_type == RangeProofType::BulletProofPlus {
+            output.range_proof().clone()
         } else {
             None
         };
         let unblinded_output = UnblindedOutput {
-            version: output.version,
-            value: output.value,
+            version: output.version(),
+            value: output.value(),
             commitment_mask_key,
-            features: output.features,
-            script: output.script,
-            covenant: output.covenant,
-            input_data: output.input_data,
+            features: output.features().clone(),
+            script: output.script().clone(),
+            covenant: output.covenant().clone(),
+            input_data: output.input_data().clone(),
             script_private_key,
-            sender_offset_public_key: output.sender_offset_public_key,
-            metadata_signature: output.metadata_signature,
-            script_lock_height: output.script_lock_height,
-            encrypted_data: output.encrypted_data,
-            minimum_value_promise: output.minimum_value_promise,
+            sender_offset_public_key: output.sender_offset_public_key().clone(),
+            metadata_signature: output.metadata_signature().clone(),
+            script_lock_height: output.script_lock_height(),
+            encrypted_data: output.encrypted_data().clone(),
+            minimum_value_promise: output.minimum_value_promise(),
             range_proof,
         };
         Ok(unblinded_output)
