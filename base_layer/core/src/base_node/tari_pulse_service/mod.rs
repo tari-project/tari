@@ -212,8 +212,9 @@ impl TariPulseService {
                             {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "Received liveness event, pulse service can continue ({:?})",
-                                    val
+                                    "Received liveness event, pulse service can continue \
+                                    (PingPongEvent {{ node_id: {}, latency: {:?}, nonce: {} }})",
+                                    val.node_id, val.latency, val.nonce
                                 );
                                 return Ok(true);
                             }
