@@ -330,7 +330,7 @@ mod test {
         assert!(mode.eq_ignore_ascii_case("wal"));
 
         let busy: String = sql::<Text>("PRAGMA busy_timeout;").get_result(&mut c).unwrap();
-        assert!(busy.parse::<u64>().unwrap() >= 60_000); // or whatever you set
+        assert!(busy.parse::<u128>().unwrap() >= PRAGMA_BUSY_TIMEOUT.as_millis());
 
         // We have 'sqlite_pool_size = Some(10))', so '160 writers + 320 readers' must queue.
         const WRITERS: usize = 160;
@@ -342,14 +342,17 @@ mod test {
 
         // Writers
         for _ in 0..WRITERS {
-            let b = barrier.clone();
+            // Let each spawned async task gets its own reference to the same synchronization barrier.
+            let synchronization_barrier = barrier.clone();
             let db2 = db.clone();
             tasks.spawn(async move {
-                b.wait().await;
+                // The synchronization barrier allows all tasks to wait at the barrier and proceed together once all
+                // have reached it, enabling coordinated concurrent execution for this test.
+                synchronization_barrier.wait().await;
                 // IMPORTANT: await the blocking job
                 tokio::task::spawn_blocking(move || {
                     let mut conn = db2.get_pooled_connection().expect("writer checkout");
-                    // Or use immediate_transaction; but if you keep EXCLUSIVE, this is fine for the test
+                    // Acquires an immediate exclusive lock on the database for this write
                     conn.batch_execute("BEGIN EXCLUSIVE;").unwrap();
                     sql::<Integer>("INSERT INTO test_table DEFAULT VALUES;")
                         .execute(&mut conn)
@@ -373,7 +376,7 @@ mod test {
                         let _: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
                             .get_result(&mut conn)
                             .expect("reader select");
-                        // small pause between reads (async sleep outside blocking isn’t usable here)
+                        // Small pause between reads (async sleep outside blocking isn’t usable here)
                         std::thread::sleep(std::time::Duration::from_millis(10));
                     }
                 })
