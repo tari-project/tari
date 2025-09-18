@@ -2573,25 +2573,6 @@ where
             .transaction_key_manager_service
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
-        let recovery_key_id = match claim_public_key {
-            Some(ref claim_public_key) => {
-                // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
-                // this case a new spend key from the key manager) and the provided claim public key. The public
-                // nonce/commitment_mask_key is returned back to the caller.
-                let shared_secret = self
-                    .resources
-                    .transaction_key_manager_service
-                    .get_diffie_hellman_shared_secret(&sender_offset_private_key.key_id, claim_public_key)
-                    .await?;
-                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                self.resources
-                    .transaction_key_manager_service
-                    .import_key(encryption_key.clone(), None)
-                    .await?
-            },
-            // No claim key provided, no shared secret or encryption key needed
-            None => recovery_key_id,
-        };
         let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)

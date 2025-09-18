@@ -662,6 +662,20 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(key)
     }
 
+    pub async fn create_encrypted_key_from_existing_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        let private_key = self.get_private_key(key_id).await?;
+        let encryption_key = match encryption_key {
+            Some(key) => key,
+            None => self.get_view_key().await?.key_id,
+        };
+        let key = self.created_encrypted_key(private_key, encryption_key).await?;
+        Ok(key)
+    }
+
     pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         match &*self.wallet_type {
             WalletType::DerivedKeys => {

@@ -176,6 +176,18 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
+    async fn create_encrypted_key_from_existing_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .create_encrypted_key_from_existing_key(key_id, encryption_key)
+            .await
+    }
+
     async fn get_commitment(
         &self,
         commitment_mask_key_id: &TariKeyId,

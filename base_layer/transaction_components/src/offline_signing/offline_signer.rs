@@ -384,15 +384,11 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 Ok(key)
             },
             TariKeyId::Managed { .. } => {
-                let key = self
-                    .key_manager
-                    .get_public_key_at_key_id(key_id)
+                let key = self.key_manager.create_encrypted_key_from_existing_key(key_id, None)
                     .await
                     .map_err(|err| err.to_string())?;
 
-                Ok(TariKeyId::Imported {
-                    key: CompressedPublicKey::new_from_pk(key.to_public_key().map_err(|err| err.to_string())?),
-                })
+                Ok(key)
             },
         }
     }

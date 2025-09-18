@@ -194,7 +194,7 @@ impl FromStr for TariKeyId {
                     })
                 },
                 DH_COMMITMENT_MASK_BRANCH => {
-                    if parts.len() != 3 {
+                    if parts.len() < 3 {
                         return Err("Wrong dh_commitment_mask format".to_string());
                     }
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
@@ -206,7 +206,7 @@ impl FromStr for TariKeyId {
                     })
                 },
                 DH_ENCRYPTED_DATA_BRANCH => {
-                    if parts.len() != 3 {
+                    if parts.len() < 3 {
                         return Err("Wrong encryted data format".to_string());
                     }
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
@@ -335,6 +335,12 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     async fn import_key(
         &self,
         private_key: PrivateKey,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError>;
+
+    async fn create_encrypted_key_from_existing_key(
+        &self,
+        key_id: &TariKeyId,
         encryption_key: Option<TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerServiceError>;
 
