@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.0.1"
+version = "5.1.0-pre.0"
 edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
