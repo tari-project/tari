@@ -71,11 +71,19 @@ impl HashRateMovingAverage {
         }
 
         // add the new hash rate to the list
-        let current_hash_rate = if self.use_scaling {
+        let mut current_hash_rate = if self.use_scaling {
             difficulty.as_u64().saturating_mul(NANOS_PER_UNIT) / target_time
         } else {
             difficulty.as_u64() / target_time
         };
+        // cuckoo is special as we need to multiply by the cycle length to get the hash rate
+        if self.pow_algo == PowAlgorithm::Cuckaroo {
+            current_hash_rate = current_hash_rate.saturating_mul(u64::from(
+                self.consensus_manager
+                    .consensus_constants(height)
+                    .cuckaroo_cycle_length(),
+            ));
+        }
         self.hash_rates.push_front(current_hash_rate);
 
         // after adding the hash rate we need to recalculate the average
@@ -118,10 +126,9 @@ impl HashRateMovingAverage {
     }
 
     pub fn average_as_u_decimal(average: u64) -> tari_rpc::UDecimalValue {
-        let scaled_average = average * 42;
         tari_rpc::UDecimalValue {
-            units: scaled_average / NANOS_PER_UNIT,
-            nanos: u32::try_from(scaled_average % NANOS_PER_UNIT).unwrap_or(MAX_NANOS_PER_DECIMAL),
+            units: average / NANOS_PER_UNIT,
+            nanos: u32::try_from(average % NANOS_PER_UNIT).unwrap_or(MAX_NANOS_PER_DECIMAL),
         }
     }
 }
@@ -283,8 +290,8 @@ mod test {
         assert_eq!(decimal.nanos, 176666666);
         let decimal = c29_hash_rate_ma.u_decimal_average();
         assert_eq!(decimal.units, c29_hash_rate_ma.average());
-        assert_eq!(decimal.units, 0);
-        assert_eq!(decimal.nanos, 61666666);
+        assert_eq!(decimal.units, 2);
+        assert_eq!(decimal.nanos, 590000000);
     }
 
     #[test]
