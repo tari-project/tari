@@ -2588,7 +2588,7 @@ impl PayrefSql {
 
 #[cfg(test)]
 mod test {
-    use std::{mem::size_of, time::Duration};
+    use std::mem::size_of;
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
@@ -2596,7 +2596,7 @@ mod test {
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
-    use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+    use tari_common_sqlite::{sqlite_connection_pool::SqliteConnectionPool, PRAGMA_BUSY_TIMEOUT};
     use tari_common_types::{
         encryption::Encryptable,
         tari_address::TariAddress,
@@ -3193,7 +3193,7 @@ mod test {
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, Duration::from_secs(60));
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, PRAGMA_BUSY_TIMEOUT);
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
@@ -3346,7 +3346,7 @@ mod test {
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
         // Note: For this test the connection pool is setup with a pool size of 2; a pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
-        let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, true, true, Duration::from_secs(60));
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, true, true, PRAGMA_BUSY_TIMEOUT);
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
         let mut conn = pool

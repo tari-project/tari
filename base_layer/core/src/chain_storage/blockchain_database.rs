@@ -33,7 +33,7 @@ use std::{
         RwLockReadGuard,
         RwLockWriteGuard,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use blake2::Blake2b;
@@ -417,6 +417,9 @@ where B: BlockchainBackend
 
             let mut height = start_height;
             loop {
+                // Add a small tokio sleep to allow other tasks to run more freely - this will push out the rebuild a
+                // bit, for example, 80_000 blocks will take at least 8_000 seconds longer, just over two hours.
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 let db = db_rw_lock.clone();
                 let difficulty_calculator = difficulty_calculator.clone();
                 // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
@@ -494,6 +497,9 @@ where B: BlockchainBackend
 
             let mut initialize_stats = Some(metadata_at_start.best_block_height());
             for height in start_height..=metadata_at_start.best_block_height() {
+                // Add a small tokio sleep to allow other tasks to run more freely - this will push out the rebuild a
+                // bit, for example, 80_000 blocks will take at least 8_000 seconds longer, just over two hours.
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 let finalize = height == metadata_at_start.best_block_height();
                 let metadata = metadata_at_start.clone();
                 let db = db_rw_lock.clone();

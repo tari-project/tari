@@ -435,113 +435,133 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .consensus_rules
             .get_block_reward_at(metadata.best_block_height())
             .as_u64();
+        let enabled_algos = self
+            .consensus_rules
+            .consensus_constants(metadata.best_block_height())
+            .current_permitted_pow_algos();
         let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
-        let sha3x_estimated_hash_rate = match self
-            .data_cache
-            .get_sha3x_estimated_hash_rate(metadata.best_block_hash())
-            .await
-        {
-            Some(hash_rate) => hash_rate,
-            None => {
-                let target_difficulty = handler
-                    .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
-                    .await
-                    .inspect_err(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not get target difficulty for Sha3x: {e}"
-                        );
-                    })
-                    .unwrap_or(Difficulty::min());
-                let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
-                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
-                self.data_cache
-                    .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
-                    .await;
-                estimated_hash_rate
-            },
+        let sha3x_estimated_hash_rate = if enabled_algos.contains(&PowAlgorithm::Sha3x) {
+            match self
+                .data_cache
+                .get_sha3x_estimated_hash_rate(metadata.best_block_hash())
+                .await
+            {
+                Some(hash_rate) => hash_rate,
+                None => {
+                    let target_difficulty = handler
+                        .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
+                        .await
+                        .inspect_err(|e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not get target difficulty for Sha3x: {e}"
+                            );
+                        })
+                        .unwrap_or(Difficulty::min());
+                    let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
+                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    self.data_cache
+                        .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                        .await;
+                    estimated_hash_rate
+                },
+            }
+        } else {
+            0
         };
-        let monero_randomx_estimated_hash_rate = match self
-            .data_cache
-            .get_monero_randomx_estimated_hash_rate(metadata.best_block_hash())
-            .await
-        {
-            Some(hash_rate) => hash_rate,
-            None => {
-                let target_difficulty = handler
-                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomXM)
-                    .await
-                    .inspect_err(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not get target difficulty for Monero RandomX: {e}"
-                        );
-                    })
-                    .unwrap_or(Difficulty::min());
-                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
-                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
-                self.data_cache
-                    .set_monero_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
-                    .await;
-                estimated_hash_rate
-            },
-        };
-
-        let tari_randomx_estimated_hash_rate = match self
-            .data_cache
-            .get_tari_randomx_estimated_hash_rate(metadata.best_block_hash())
-            .await
-        {
-            Some(hash_rate) => hash_rate,
-            None => {
-                let target_difficulty = handler
-                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomXT)
-                    .await
-                    .inspect_err(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not get target difficulty for Tari RandomX: {e}"
-                        );
-                    })
-                    .unwrap_or(Difficulty::min());
-                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
-                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
-                self.data_cache
-                    .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
-                    .await;
-                estimated_hash_rate
-            },
+        let monero_randomx_estimated_hash_rate = if enabled_algos.contains(&PowAlgorithm::RandomXM) {
+            match self
+                .data_cache
+                .get_monero_randomx_estimated_hash_rate(metadata.best_block_hash())
+                .await
+            {
+                Some(hash_rate) => hash_rate,
+                None => {
+                    let target_difficulty = handler
+                        .get_target_difficulty_for_next_block(PowAlgorithm::RandomXM)
+                        .await
+                        .inspect_err(|e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not get target difficulty for Monero RandomX: {e}"
+                            );
+                        })
+                        .unwrap_or(Difficulty::min());
+                    let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
+                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    self.data_cache
+                        .set_monero_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                        .await;
+                    estimated_hash_rate
+                },
+            }
+        } else {
+            0
         };
 
-        let cuckaroo_estimated_hash_rate = match self
-            .data_cache
-            .get_cuckaroo_estimated_hash_rate(metadata.best_block_hash())
-            .await
-        {
-            Some(hash_rate) => hash_rate,
-            None => {
-                let target_difficulty = handler
-                    .get_target_difficulty_for_next_block(PowAlgorithm::Cuckaroo)
-                    .await
-                    .inspect_err(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not get target difficulty for Cuckaroo: {e}"
-                        );
-                    })
-                    .unwrap_or(Difficulty::min());
-                let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
-                let estimated_hash_rate_scaled = target_difficulty
-                    .as_u64()
-                    .saturating_mul(NANOS_PER_UNIT) // We have to add scaling as this value can be < 1
-                    .checked_div(target_time)
-                    .unwrap_or(0);
-                let estimated_hash_rate = HashRateMovingAverage::average_as_u_decimal(estimated_hash_rate_scaled);
-                self.data_cache
-                    .set_cuckaroo_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
-                    .await;
-                estimated_hash_rate
-            },
+        let tari_randomx_estimated_hash_rate = if enabled_algos.contains(&PowAlgorithm::RandomXT) {
+            match self
+                .data_cache
+                .get_tari_randomx_estimated_hash_rate(metadata.best_block_hash())
+                .await
+            {
+                Some(hash_rate) => hash_rate,
+                None => {
+                    let target_difficulty = handler
+                        .get_target_difficulty_for_next_block(PowAlgorithm::RandomXT)
+                        .await
+                        .inspect_err(|e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not get target difficulty for Tari RandomX: {e}"
+                            );
+                        })
+                        .unwrap_or(Difficulty::min());
+                    let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
+                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    self.data_cache
+                        .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                        .await;
+                    estimated_hash_rate
+                },
+            }
+        } else {
+            0
+        };
+
+        let cuckaroo_estimated_hash_rate = if enabled_algos.contains(&PowAlgorithm::Cuckaroo) {
+            match self
+                .data_cache
+                .get_cuckaroo_estimated_hash_rate(metadata.best_block_hash())
+                .await
+            {
+                Some(hash_rate) => hash_rate,
+                None => {
+                    let target_difficulty = handler
+                        .get_target_difficulty_for_next_block(PowAlgorithm::Cuckaroo)
+                        .await
+                        .inspect_err(|e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Could not get target difficulty for Cuckaroo: {e}"
+                            );
+                        })
+                        .unwrap_or(Difficulty::min());
+                    let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
+                    let estimated_hash_rate_scaled = target_difficulty
+                        .as_u64()
+                        .saturating_mul(NANOS_PER_UNIT) // We have to add scaling as this value can be < 1
+                        .checked_div(target_time)
+                        .unwrap_or(0);
+                    let estimated_hash_rate = HashRateMovingAverage::average_as_u_decimal(estimated_hash_rate_scaled);
+                    self.data_cache
+                        .set_cuckaroo_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                        .await;
+                    estimated_hash_rate
+                },
+            }
+        } else {
+            tari_rpc::UDecimalValue { units: 0, nanos: 0 }
         };
 
         let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
@@ -559,8 +579,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         for data in liveness_results {
             let liveness_check = tari_rpc::LivenessResult {
                 peer_node_id: data.peer.to_string().into_bytes(),
-                discover_latency: data.discovery_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
-                ping_latency: data.ping_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
+                discover_latency: data
+                    .discovery_latency
+                    .map(|v| u64::try_from(v.as_millis()).unwrap_or(u64::MAX))
+                    .unwrap_or_else(|| u64::MAX),
+                ping_latency: data
+                    .ping_latency
+                    .map(|v| u64::try_from(v.as_millis()).unwrap_or(u64::MAX))
+                    .unwrap_or_else(|| u64::MAX),
             };
             liveness.push(liveness_check);
         }

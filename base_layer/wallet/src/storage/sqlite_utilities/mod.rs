@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs::File, ops::DerefMut, path::Path, time::Duration};
+use std::{fs::File, ops::DerefMut, path::Path};
 
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
 use log::*;
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+use tari_common_sqlite::{sqlite_connection_pool::SqliteConnectionPool, PRAGMA_BUSY_TIMEOUT};
 use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
@@ -60,7 +60,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
         sqlite_pool_size,
         true,
         true,
-        Duration::from_secs(60),
+        PRAGMA_BUSY_TIMEOUT,
     );
     pool.create_pool()?;
     let mut connection = pool.get_pooled_connection()?;
@@ -75,7 +75,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
 
 pub fn run_migration_and_create_sqlite_memory_connection() -> Result<WalletDbConnection, WalletStorageError> {
     // Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
-    let mut pool = SqliteConnectionPool::new(String::from(":memory:"), 1, false, true, Duration::from_secs(60));
+    let mut pool = SqliteConnectionPool::new(String::from(":memory:"), 1, false, true, PRAGMA_BUSY_TIMEOUT);
     pool.create_pool()?;
     let mut connection = pool.get_pooled_connection()?;
 
@@ -158,7 +158,7 @@ pub fn get_last_version<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, Wa
         .to_str()
         .ok_or(WalletStorageError::InvalidUnicodePath)?;
 
-    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, Duration::from_secs(60));
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, PRAGMA_BUSY_TIMEOUT);
     pool.create_pool()?;
 
     WalletSettingSql::get(&DbKey::LastAccessedVersion, pool.get_pooled_connection()?.deref_mut())
@@ -170,7 +170,7 @@ pub fn get_last_network<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, Wa
         .to_str()
         .ok_or(WalletStorageError::InvalidUnicodePath)?;
 
-    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, Duration::from_secs(60));
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, PRAGMA_BUSY_TIMEOUT);
     pool.create_pool()?;
 
     WalletSettingSql::get(&DbKey::LastAccessedNetwork, pool.get_pooled_connection()?.deref_mut())
