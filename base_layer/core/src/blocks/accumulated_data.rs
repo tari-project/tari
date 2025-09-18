@@ -174,7 +174,8 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             })?;
         let total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
             U512::from(tari_randomx_diff.as_u128()) *
-            U512::from(sha3x_diff.as_u128());
+            U512::from(sha3x_diff.as_u128()) *
+            U512::from(cuckaroo_diff.as_u128());
 
         let result = BlockHeaderAccumulatedData {
             hash,
