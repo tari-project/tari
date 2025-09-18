@@ -384,7 +384,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 Ok(key)
             },
             TariKeyId::Managed { .. } => {
-                let key = self.key_manager.create_encrypted_key_from_existing_key(key_id, None)
+                let key = self
+                    .key_manager
+                    .create_encrypted_key_from_existing_key(key_id, None)
                     .await
                     .map_err(|err| err.to_string())?;
 

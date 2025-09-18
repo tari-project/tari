@@ -655,14 +655,33 @@ mod test {
             key: managed_key_id.clone().into(),
         };
 
+        let dh_commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            public_key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            private_key: managed_key_id.clone().into(),
+        };
+        let dh_encrypted_data_key_id = TariKeyId::DHEncryptedData {
+            public_key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            private_key: managed_key_id.clone().into(),
+        };
+
         let managed_key_id_str = managed_key_id.to_string();
         let imported_key_id_str = imported_key_id.to_string();
         let zero_key_id_str = zero_key_id.to_string();
         let derived_key_id_str = derived_key_id.to_string();
+        let dh_commitment_mask_key_id_str = dh_commitment_mask_key_id.to_string();
+        let dh_encrypted_data_key_id_str = dh_encrypted_data_key_id.to_string();
 
         assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
         assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
         assert_eq!(derived_key_id, TariKeyId::from_str(&derived_key_id_str).unwrap());
+        assert_eq!(
+            dh_commitment_mask_key_id,
+            TariKeyId::from_str(&dh_commitment_mask_key_id_str).unwrap()
+        );
+        assert_eq!(
+            dh_encrypted_data_key_id,
+            TariKeyId::from_str(&dh_encrypted_data_key_id_str).unwrap()
+        );
     }
 }

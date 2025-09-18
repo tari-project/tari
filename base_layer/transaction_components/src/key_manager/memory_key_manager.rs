@@ -79,19 +79,19 @@ impl MemoryKeyManagerBackend {
 #[async_trait::async_trait]
 impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
     async fn get_key_manager(&self, _branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
-        unimplemented!()
+        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 
     async fn add_key_manager(&self, _key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
-        unimplemented!()
+        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 
     async fn increment_key_index(&self, _branch: &str) -> Result<(), KeyManagerStorageError> {
-        unimplemented!()
+        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 
     async fn set_key_index(&self, _branch: &str, _index: u64) -> Result<(), KeyManagerStorageError> {
-        unimplemented!()
+        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 
     async fn insert_imported_key(
@@ -99,10 +99,10 @@ impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
         _public_key: CompressedPublicKey,
         _private_key: PrivateKey,
     ) -> Result<(), KeyManagerStorageError> {
-        unimplemented!()
+        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 
     async fn get_imported_key(&self, _public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
-        unimplemented!()
+        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 }
