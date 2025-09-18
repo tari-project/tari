@@ -186,14 +186,12 @@ impl FromStr for MicroMinotari {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let processed = s.replace([',', ' '], "").to_ascii_lowercase();
+
         // Is this Tari or MicroMinotari
-        let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
-            true
-        } else if processed.ends_with('t') {
-            false
-        } else {
-            !processed.contains('.')
-        };
+        let is_micro_tari = matches!(
+            processed.as_str(),
+            s if s.ends_with("ut") || s.ends_with("µt")
+        ) || (!processed.ends_with('t') && !processed.contains('.'));
 
         let processed = processed.replace("ut", "").replace("µt", "").replace('t', "");
         if is_micro_tari {

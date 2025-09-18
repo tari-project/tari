@@ -179,11 +179,10 @@ impl BaseNodeContext {
 
 /// Sets up and initializes the base node, creating the context and database
 /// ## Parameters
-/// `config` - The configuration for the base node
+/// `app_config` - The configuration for the base node
 /// `node_identity` - The node identity information of the base node
-/// `wallet_node_identity` - The node identity information of the base node's wallet
 /// `interrupt_signal` - The signal used to stop the application
-/// `readiness_status` - The readiness status of the base node
+/// `readiness_status_handler` - Handles readiness status reporting for the base node
 /// ## Returns
 /// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
@@ -216,10 +215,8 @@ pub async fn configure_and_initialize_node(
 /// and state machine
 /// ## Parameters
 /// `backend` - Backend interface
-/// `network` - The NetworkType (rincewind, mainnet, local)
+/// `app_config` - The configuration for the base node
 /// `base_node_identity` - The node identity information of the base node
-/// `wallet_node_identity` - The node identity information of the base node's wallet
-/// `config` - The configuration for the base node
 /// `interrupt_signal` - The signal used to stop the application
 /// ## Returns
 /// Result containing the BaseNodeContext, String will contain the reason on error

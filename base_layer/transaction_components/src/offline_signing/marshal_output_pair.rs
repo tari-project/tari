@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_transaction_components::{
-    key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
-    transaction_builder::OutputPair,
-};
 use tari_utilities::hex::{from_hex, Hex};
 
-use crate::transaction_service::error::TransactionServiceError;
+use crate::{
+    key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
+    transaction_builder::OutputPair,
+    transaction_components::TransactionError,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MarshalOutputPair {
@@ -40,14 +40,14 @@ impl MarshalOutputPair {
     pub async fn marshal<KM: TransactionKeyManagerInterface>(
         key_manager: &KM,
         output_pair: OutputPair,
-    ) -> Result<Self, TransactionServiceError> {
+    ) -> Result<Self, TransactionError> {
         let encrypted_kernel_nonce = MarshalOutputPair::encrypt_key(key_manager, &output_pair.kernel_nonce).await?;
         let encrypted_sender_offset_key = match &output_pair.sender_offset_key_id {
             Some(key) => Some(MarshalOutputPair::encrypt_key(key_manager, key).await?),
             None => None,
         };
         let encrypted_output_commitment_mask =
-            MarshalOutputPair::encrypt_key(key_manager, &output_pair.output.commitment_mask_key_id).await?;
+            MarshalOutputPair::encrypt_key(key_manager, output_pair.output.commitment_mask_key_id()).await?;
 
         Ok(MarshalOutputPair {
             output_pair,
@@ -60,15 +60,20 @@ impl MarshalOutputPair {
     pub async fn unmarshal<KM: TransactionKeyManagerInterface>(
         &mut self,
         key_manager: &KM,
-    ) -> Result<(), TransactionServiceError> {
+    ) -> Result<(), TransactionError> {
         self.output_pair.kernel_nonce =
             MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_kernel_nonce).await?;
         if let Some(sender_offset_key_id) = &self.encrypted_sender_offset_key {
             self.output_pair.sender_offset_key_id =
                 Some(MarshalOutputPair::import_encrypted_key(key_manager, sender_offset_key_id).await?);
         }
-        self.output_pair.output.commitment_mask_key_id =
-            MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_commitment_mask).await?;
+        self.output_pair
+            .output
+            .set_commitment_mask_key_id(
+                MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_commitment_mask).await?,
+                key_manager,
+            )
+            .await?;
         Ok(())
     }
 

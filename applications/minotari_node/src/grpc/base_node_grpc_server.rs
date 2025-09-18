@@ -559,8 +559,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         for data in liveness_results {
             let liveness_check = tari_rpc::LivenessResult {
                 peer_node_id: data.peer.to_string().into_bytes(),
-                discover_latency: data.discovery_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
-                ping_latency: data.ping_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
+                discover_latency: data
+                    .discovery_latency
+                    .map(|v| u64::try_from(v.as_millis()).unwrap_or(u64::MAX))
+                    .unwrap_or_else(|| u64::MAX),
+                ping_latency: data
+                    .ping_latency
+                    .map(|v| u64::try_from(v.as_millis()).unwrap_or(u64::MAX))
+                    .unwrap_or_else(|| u64::MAX),
             };
             liveness.push(liveness_check);
         }
@@ -1290,7 +1296,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            private_keys.push((wallet_output.commitment_mask_key_id, new_nonce.key_id));
+            private_keys.push((wallet_output.commitment_mask_key_id().clone(), new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -1533,7 +1539,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            private_keys.push((wallet_output.commitment_mask_key_id, new_nonce.key_id));
+            private_keys.push((wallet_output.commitment_mask_key_id().clone(), new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,

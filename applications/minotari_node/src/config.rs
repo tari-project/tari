@@ -31,6 +31,7 @@ use tari_common::{
     configuration::{
         bootstrap::wallet_http_service_default_port,
         serializers,
+        serializers::optional_seconds,
         CommonConfig,
         ConfigList,
         Network,
@@ -51,9 +52,9 @@ use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 use url::Url;
 
-use crate::grpc_method::GrpcMethod;
 #[cfg(feature = "metrics")]
 use crate::metrics::MetricsConfig;
+use crate::{grpc_method::GrpcMethod, HttpCacheConfig};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {
@@ -150,12 +151,13 @@ pub struct BaseNodeConfig {
     pub state_machine: BaseNodeStateMachineConfig,
     /// Obscure GRPC error responses
     pub report_grpc_error: bool,
-    // Interval to check if the base node is still in sync with the network
+    /// Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_interval: Duration,
-    // Interval to check if the base node is still in sync with the network
-    #[serde(with = "serializers::seconds")]
-    pub tari_pulse_health_check: Duration,
+    /// Interval to check if the seed nodes comms responses are healthy. (Recommended '60 * 10 = 600 s' if you need
+    /// this)
+    #[serde(with = "optional_seconds")]
+    pub tari_pulse_health_check: Option<Duration>,
     /// Wallet HTTP service configuration
     pub http_wallet_query_service: WalletHttpServiceConfig,
 }
@@ -168,6 +170,9 @@ pub struct WalletHttpServiceConfig {
     /// This must be accessible (if set) from the internet to let other peers connect to that.
     /// Also this address will be sent to peers when requesting for the query service URL (via RPC call).
     pub external_address: Option<Url>,
+    /// Configuration for setting Cache-Control headers on wallet HTTP responses.
+    #[serde(default)]
+    pub http_cache: HttpCacheConfig,
 }
 
 impl Default for WalletHttpServiceConfig {
@@ -178,6 +183,7 @@ impl Default for WalletHttpServiceConfig {
             external_address: Some(
                 Url::parse(format!("http://127.0.0.1:{port}").as_str()).expect("This should be a valid URL"),
             ),
+            http_cache: Default::default(),
         }
     }
 }
@@ -219,7 +225,7 @@ impl Default for BaseNodeConfig {
             state_machine: Default::default(),
             report_grpc_error: false,
             tari_pulse_interval: Duration::from_secs(120),
-            tari_pulse_health_check: Duration::from_secs(60 * 10),
+            tari_pulse_health_check: None,
             http_wallet_query_service: Default::default(),
         }
     }

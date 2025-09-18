@@ -318,15 +318,15 @@ impl From<DbWalletOutput> for TariUtxo {
             commitment: CString::new(x.commitment.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            value: x.wallet_output.value.as_u64(),
+            value: x.wallet_output.value().as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
-            lock_height: x.wallet_output.features.maturity,
+            lock_height: x.wallet_output.features().maturity,
             mined_timestamp: x
                 .mined_timestamp
                 .map(|ts| ts.timestamp_millis() as u64)
                 .unwrap_or_default(),
             status: x.status.as_u8(),
-            coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
+            coinbase_extra: CString::new(x.wallet_output.features().coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
             raw_payment_id: CString::new(format!("{}", x.payment_id))
@@ -10708,18 +10708,12 @@ mod test {
             for utxo in utxos {
                 let output = test_outputs
                     .iter()
-                    .find(|val| {
-                        alice_wallet_runtime
-                            .block_on(val.commitment(key_manager))
-                            .unwrap()
-                            .to_hex() ==
-                            CStr::from_ptr(utxo.commitment).to_str().unwrap()
-                    })
+                    .find(|val| val.commitment().to_hex() == CStr::from_ptr(utxo.commitment).to_str().unwrap())
                     .unwrap();
-                assert_eq!(output.value.as_u64(), utxo.value);
-                assert_eq!(output.features.maturity, utxo.lock_height);
+                assert_eq!(output.value().as_u64(), utxo.value);
+                assert_eq!(output.features().maturity, utxo.lock_height);
                 assert_eq!(
-                    output.features.coinbase_extra.to_hex(),
+                    output.features().coinbase_extra.to_hex(),
                     CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
                 );
 
@@ -10889,13 +10883,7 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_outputs_as_unspent(vec![(
-                        (*alice_wallet)
-                            .runtime
-                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
-                            .unwrap(),
-                        true,
-                    )])
+                    .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
                     .unwrap();
             }
 
@@ -11038,11 +11026,8 @@ mod test {
                         vec![],
                         Some(payment_id.clone()),
                     ));
-                    assert_eq!(wallet_output.payment_id, payment_id);
-                    let utxo = (*alice_wallet)
-                        .runtime
-                        .block_on(wallet_output.to_transaction_output(&(*alice_wallet).wallet.key_manager_service))
-                        .unwrap();
+                    assert_eq!(*wallet_output.payment_id(), payment_id);
+                    let utxo = wallet_output.to_transaction_output().unwrap();
                     let commitment_bytes = Box::into_raw(Box::new(ByteVector(utxo.commitment.to_vec())));
                     let encrypted_data_ptr = Box::into_raw(Box::new(utxo.encrypted_data));
                     let transaction_type_extracted = transaction_type_from_encrypted_data(
@@ -11147,13 +11132,7 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_outputs_as_unspent(vec![(
-                        (*alice_wallet)
-                            .runtime
-                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
-                            .unwrap(),
-                        true,
-                    )])
+                    .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
                     .unwrap();
             }
 
@@ -11225,7 +11204,7 @@ mod test {
                             .wallet
                             .key_manager_service
                             .extract_payment_id_from_encrypted_data(
-                                &utxo.wallet_output.encrypted_data,
+                                utxo.wallet_output.encrypted_data(),
                                 &utxo.commitment,
                                 None,
                             ),
@@ -11243,7 +11222,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<MicroMinotari>>();
 
             let new_pending_outputs = (*alice_wallet)
@@ -11255,7 +11234,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<MicroMinotari>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -11401,13 +11380,7 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_outputs_as_unspent(vec![(
-                        (*alice_wallet)
-                            .runtime
-                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
-                            .unwrap(),
-                        true,
-                    )])
+                    .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
                     .unwrap();
             }
 
@@ -11482,7 +11455,7 @@ mod test {
                             .wallet
                             .key_manager_service
                             .extract_payment_id_from_encrypted_data(
-                                &utxo.wallet_output.encrypted_data,
+                                utxo.wallet_output.encrypted_data(),
                                 &utxo.commitment,
                                 None,
                             ),
@@ -11500,7 +11473,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<_>>();
 
             let new_pending_outputs = (*alice_wallet)
@@ -11512,7 +11485,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<_>>();
 
             let post_split_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -11779,23 +11752,24 @@ mod test {
             )
             .await
             .unwrap();
-            let amount = utxo_1.value.as_u64();
+            let amount = utxo_1.value().as_u64();
             let spending_key = key_manager
-                .get_private_key(&utxo_1.commitment_mask_key_id)
+                .get_private_key(utxo_1.commitment_mask_key_id())
                 .await
                 .unwrap();
-            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).await.unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
-            let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
-            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features().clone()));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature().clone()));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key().clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
-            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant().clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data().clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise().as_u64();
             let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
-            let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr =
+                CString::into_raw(CString::new(utxo_1.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(
                 amount,
@@ -11815,7 +11789,10 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            assert_eq!((*tari_utxo).sender_offset_public_key, utxo_1.sender_offset_public_key);
+            assert_eq!(
+                (*tari_utxo).sender_offset_public_key,
+                *utxo_1.sender_offset_public_key()
+            );
             tari_unblinded_output_destroy(tari_utxo);
 
             // Cleanup
@@ -11915,17 +11892,17 @@ mod test {
             {
                 // - Range proof from hex
                 let proof_char_ptr =
-                    CString::into_raw(CString::new(utxo_1.range_proof.as_ref().unwrap().to_hex()).unwrap())
+                    CString::into_raw(CString::new(utxo_1.range_proof().as_ref().unwrap().to_hex()).unwrap())
                         as *const c_char;
                 let ptr_a = range_proof_from_hex(proof_char_ptr, error_ptr);
                 // - Range proof from bytes
                 let proof_bytes_ptr =
-                    Box::into_raw(Box::new(ByteVector(utxo_1.range_proof.as_ref().unwrap().to_vec())));
+                    Box::into_raw(Box::new(ByteVector(utxo_1.range_proof().as_ref().unwrap().to_vec())));
                 let ptr_b = range_proof_from_bytes(proof_bytes_ptr, error_ptr);
                 // - Verify
                 let ptr_a_bytes = range_proof_get_bytes(ptr_a, error_ptr);
                 let ptr_b_bytes = range_proof_get_bytes(ptr_b, error_ptr);
-                for i in 0..utxo_1.range_proof.as_ref().unwrap().0.len() {
+                for i in 0..utxo_1.range_proof().as_ref().unwrap().0.len() {
                     let byte_a = byte_vector_get_at(ptr_a_bytes, i.try_into().unwrap(), error_ptr);
                     let byte_b = byte_vector_get_at(ptr_b_bytes, i.try_into().unwrap(), error_ptr);
                     assert_eq!(byte_a, byte_b);
@@ -11939,26 +11916,26 @@ mod test {
                 range_proof_destroy(ptr_b);
             };
 
-            let amount = utxo_1.value.as_u64();
+            let amount = utxo_1.value().as_u64();
             let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.commitment_mask_key_id))
+                .block_on(key_manager.get_private_key(utxo_1.commitment_mask_key_id()))
                 .unwrap();
             let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .block_on(key_manager.get_private_key(utxo_1.script_key_id()))
                 .unwrap();
             let spending_key_ptr_1 = Box::into_raw(Box::new(spending_key));
-            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
-            let features_ptr_1 = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let metadata_signature_ptr_1 = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr_1 = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
+            let features_ptr_1 = Box::into_raw(Box::new(utxo_1.features().clone()));
+            let metadata_signature_ptr_1 = Box::into_raw(Box::new(utxo_1.metadata_signature().clone()));
+            let sender_offset_public_key_ptr_1 = Box::into_raw(Box::new(utxo_1.sender_offset_public_key().clone()));
             let script_private_key_ptr_1 = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data));
-            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant().clone()));
+            let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data().clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise().as_u64();
             let script_ptr_1 =
                 CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_1 =
-                CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+                CString::into_raw(CString::new(utxo_1.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo_ptr_1 = create_tari_unblinded_output(
                 amount,
@@ -12006,26 +11983,26 @@ mod test {
                 ))
                 .unwrap();
 
-            let amount = utxo_2.value.as_u64();
+            let amount = utxo_2.value().as_u64();
             let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_2.commitment_mask_key_id))
+                .block_on(key_manager.get_private_key(utxo_2.commitment_mask_key_id()))
                 .unwrap();
             let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_2.script_key_id))
+                .block_on(key_manager.get_private_key(utxo_2.script_key_id()))
                 .unwrap();
             let spending_key_ptr_2 = Box::into_raw(Box::new(spending_key));
-            let features_ptr_2 = Box::into_raw(Box::new(utxo_2.features.clone()));
+            let features_ptr_2 = Box::into_raw(Box::new(utxo_2.features().clone()));
             let proof_ptr_2 = range_proof_default();
-            let metadata_signature_ptr_2 = Box::into_raw(Box::new(utxo_2.metadata_signature.clone()));
-            let sender_offset_public_key_ptr_2 = Box::into_raw(Box::new(utxo_2.sender_offset_public_key.clone()));
+            let metadata_signature_ptr_2 = Box::into_raw(Box::new(utxo_2.metadata_signature().clone()));
+            let sender_offset_public_key_ptr_2 = Box::into_raw(Box::new(utxo_2.sender_offset_public_key().clone()));
             let script_private_key_ptr_2 = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant.clone()));
-            let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data));
-            let minimum_value_promise = utxo_2.minimum_value_promise.as_u64();
+            let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant().clone()));
+            let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data().clone()));
+            let minimum_value_promise = utxo_2.minimum_value_promise().as_u64();
             let script_ptr_2 =
                 CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_2 =
-                CString::into_raw(CString::new(utxo_2.input_data.to_hex()).unwrap()) as *const c_char;
+                CString::into_raw(CString::new(utxo_2.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo_ptr_2 = create_tari_unblinded_output(
                 amount,
@@ -12141,25 +12118,26 @@ mod test {
             )
             .await
             .unwrap();
-            let amount = utxo_1.value.as_u64();
+            let amount = utxo_1.value().as_u64();
             let spending_key = key_manager
-                .get_private_key(&utxo_1.commitment_mask_key_id)
+                .get_private_key(utxo_1.commitment_mask_key_id())
                 .await
                 .unwrap();
-            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).await.unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
-            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
-            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
+            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features().clone()));
             let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
-            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature().clone()));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key().clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
-            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant().clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data().clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise().as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
             let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
-            let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr =
+                CString::into_raw(CString::new(utxo_1.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(
                 amount,

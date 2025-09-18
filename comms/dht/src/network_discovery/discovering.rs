@@ -196,7 +196,7 @@ impl Discovering {
             rpc_get_peers_stream_timeout,
             client.get_peers(GetPeersRequest {
                 n: self.params.num_peers_to_request,
-                include_clients: true,
+                include_clients: false,
                 max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
                     error!(
                         target: LOG_TARGET,

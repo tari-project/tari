@@ -642,11 +642,11 @@ message GetNetworkStateResponse {
 }
 
 message LivenessResult{
-    // node id
+    // Node id
     bytes peer_node_id = 1;
-    // time to discover
+    // Time to discover (in ms) - 18446744073709551615 if timed out
     uint64 discover_latency = 2;
-    // Dial latency
+    // Ping latency (in ms) - 18446744073709551615 if timed out
     uint64 ping_latency = 3;
 }
 

@@ -69,7 +69,12 @@ use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::crypto_factories::CryptoFactories;
 
-use crate::{config::WalletHttpServiceConfig, http::create_base_node_wallet_http_server, ApplicationConfig};
+use crate::{
+    config::WalletHttpServiceConfig,
+    http::create_base_node_wallet_http_server,
+    ApplicationConfig,
+    HttpCacheConfig,
+};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -93,6 +98,7 @@ where B: BlockchainBackend + 'static
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
         let mut base_node_config = self.app_config.base_node.clone();
         let mut p2p_config = self.app_config.base_node.p2p.clone();
+        let http_cache_cfg = self.app_config.base_node.http_wallet_query_service.http_cache.clone();
         let peer_seeds = &self.app_config.peer_seeds;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, base_node_config.buffer_size);
@@ -190,6 +196,7 @@ where B: BlockchainBackend + 'static
             &p2p_config,
             &self.app_config.base_node.http_wallet_query_service,
             self.interrupt_signal.clone(),
+            http_cache_cfg,
         )
         .await;
 
@@ -245,6 +252,7 @@ where B: BlockchainBackend + 'static
         p2p_config: &P2pConfig,
         wallet_query_service_config: &WalletHttpServiceConfig,
         shutdown_signal: ShutdownSignal,
+        http_cache_cfg: HttpCacheConfig,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -280,6 +288,7 @@ where B: BlockchainBackend + 'static
             handles.expect_handle::<StateMachineHandle>(),
             handles.expect_handle::<MempoolHandle>(),
             shutdown_signal.clone(),
+            http_cache_cfg,
         );
         match wallet_http_server.start::<B>().await {
             Ok(_) => {

@@ -78,10 +78,10 @@ impl TestTransactionBuilder {
     }
 
     pub async fn add_input(&mut self, u: WalletOutput, key_manager: &MemoryDbKeyManager) -> &mut Self {
-        self.update_amount(u.value);
+        self.update_amount(u.value());
 
-        if u.features.maturity > self.inputs_max_height {
-            self.update_inputs_max_height(u.features.maturity);
+        if u.features().maturity > self.inputs_max_height {
+            self.update_inputs_max_height(u.features().maturity);
         }
 
         self.inputs.push((
@@ -124,10 +124,7 @@ impl TestTransactionBuilder {
             .try_build(key_manager)
             .await
             .expect("Get output from wallet output");
-        let utxo = wallet_output
-            .to_transaction_output(key_manager)
-            .await
-            .expect("wallet into output");
+        let utxo = wallet_output.to_transaction_output().expect("wallet into output");
 
         self.output = Some((utxo, wallet_output, self.keys.sender_offset_key_id.clone()));
     }

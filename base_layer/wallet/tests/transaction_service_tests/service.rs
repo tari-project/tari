@@ -444,7 +444,7 @@ async fn large_coin_split_transaction() {
 
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
@@ -527,7 +527,7 @@ async fn single_transaction_burn_tari() {
     // Burn output
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     let burn_value = 10000.into();
     let (claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
@@ -660,7 +660,7 @@ async fn send_one_sided_transaction_to_other() {
     let mut alice_oms_clone = alice_oms.clone();
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
     let value = 10000.into();
@@ -795,7 +795,7 @@ async fn recover_one_sided_transaction() {
     let mut alice_oms_clone = alice_oms;
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
     let value = 10000.into();
@@ -831,7 +831,7 @@ async fn recover_one_sided_transaction() {
         .unwrap();
     // Bob should be able to claim 1 output.
     assert_eq!(1, recovered_outputs_1.len());
-    assert_eq!(value, recovered_outputs_1[0].output.value);
+    assert_eq!(value, recovered_outputs_1[0].output.value());
 
     // Should ignore already existing outputs
     let recovered_outputs_2 = bob_oms
@@ -907,7 +907,7 @@ async fn recover_stealth_one_sided_transaction() {
     let mut alice_oms_clone = alice_oms;
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
     let value = 10000.into();
@@ -943,7 +943,7 @@ async fn recover_stealth_one_sided_transaction() {
         .unwrap();
     // Bob should be able to claim 1 output.
     assert_eq!(1, recovered_outputs_1.len());
-    assert_eq!(value, recovered_outputs_1[0].output.value);
+    assert_eq!(value, recovered_outputs_1[0].output.value());
 
     // Should ignore already existing outputs
     let recovered_outputs_2 = bob_oms
@@ -1014,7 +1014,7 @@ async fn test_htlc_send_and_claim() {
     .await;
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
     let value = 10000.into();
@@ -1708,9 +1708,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             None,
             None,
-            uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
-                .await
-                .unwrap(),
+            uo_1.to_transaction_output().unwrap(),
             MemoField::open_from_string("blah", TxType::PaymentToOther),
         )
         .await
@@ -1724,9 +1722,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             None,
             None,
-            uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
-                .await
-                .unwrap(),
+            uo_2.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-sided 1", TxType::PaymentToOther),
         )
         .await
@@ -1740,9 +1736,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             None,
             None,
-            uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
-                .await
-                .unwrap(),
+            uo_3.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-sided 2", TxType::PaymentToOther),
         )
         .await
@@ -1754,14 +1748,14 @@ async fn test_update_faux_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
-        let _result = alice_ts_interface.oms_db.mark_outputs_as_unspent(vec![(
-            uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
-            true,
-        )]);
+        alice_ts_interface
+            .oms_db
+            .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+            .unwrap();
         alice_ts_interface
             .oms_db
             .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
-                commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                commitment: uo.commitment().clone(),
                 mined_height: height,
                 mined_in_block: FixedHash::zero(),
                 confirmed: false,
@@ -1894,9 +1888,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             None,
             None,
-            uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
-                .await
-                .unwrap(),
+            uo_1.to_transaction_output().unwrap(),
             MemoField::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
         )
         .await
@@ -1910,9 +1902,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             None,
             None,
-            uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
-                .await
-                .unwrap(),
+            uo_2.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
         )
         .await
@@ -1926,9 +1916,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             None,
             None,
-            uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
-                .await
-                .unwrap(),
+            uo_3.to_transaction_output().unwrap(),
             MemoField::open_from_string("Coinbase_not_mined", TxType::PaymentToOther),
         )
         .await
@@ -1940,11 +1928,11 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
-        if uo.value == MicroMinotari::from(10000) {
+        if uo.value() == MicroMinotari::from(10000) {
             alice_ts_interface
                 .oms_db
                 .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
-                    commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                    commitment: uo.commitment().clone(),
                     mined_height: 5,
                     mined_in_block: FixedHash::zero(),
                     confirmed: false,
@@ -1952,11 +1940,11 @@ async fn test_update_coinbase_tx_on_oms_validation() {
                 }])
                 .unwrap();
         }
-        if uo.value == MicroMinotari::from(20000) {
+        if uo.value() == MicroMinotari::from(20000) {
             alice_ts_interface
                 .oms_db
                 .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
-                    commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                    commitment: uo.commitment().clone(),
                     mined_height: 10,
                     mined_in_block: FixedHash::zero(),
                     confirmed: false,

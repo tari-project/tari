@@ -30,14 +30,11 @@ use tari_common_types::{
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::TariKeyId,
     transaction_components::{MemoField, WalletOutput},
 };
 
-use crate::output_manager_service::{
-    error::OutputManagerStorageError,
-    storage::{OutputSource, OutputStatus},
-};
+use crate::output_manager_service::storage::{OutputSource, OutputStatus};
 
 // ---------------------------------------------------------------------------
 
@@ -60,19 +57,17 @@ pub struct DbWalletOutput {
 }
 
 impl DbWalletOutput {
-    pub async fn from_wallet_output<KM: TransactionKeyManagerInterface>(
+    pub fn from_wallet_output(
         output: WalletOutput,
-        key_manager: &KM,
         spend_priority: Option<SpendingPriority>,
         source: OutputSource,
         received_in_tx_id: Option<TxId>,
         spent_in_tx_id: Option<TxId>,
-    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
-        let tx_output = output.to_transaction_output(key_manager).await?;
-        let payment_id = output.payment_id.clone();
-        Ok(DbWalletOutput {
-            hash: tx_output.hash(),
-            commitment: tx_output.commitment,
+    ) -> DbWalletOutput {
+        let payment_id = output.payment_id().clone();
+        DbWalletOutput {
+            hash: output.output_hash(),
+            commitment: output.commitment().clone(),
             wallet_output: output,
             status: OutputStatus::NotStored,
             mined_height: None,
@@ -85,7 +80,7 @@ impl DbWalletOutput {
             received_in_tx_id,
             spent_in_tx_id,
             payment_id,
-        })
+        }
     }
 }
 
@@ -97,7 +92,7 @@ impl From<DbWalletOutput> for WalletOutput {
 
 impl PartialEq for DbWalletOutput {
     fn eq(&self, other: &DbWalletOutput) -> bool {
-        self.wallet_output.value == other.wallet_output.value
+        self.wallet_output.value() == other.wallet_output.value()
     }
 }
 
@@ -109,7 +104,7 @@ impl PartialOrd<DbWalletOutput> for DbWalletOutput {
 
 impl Ord for DbWalletOutput {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.wallet_output.value.cmp(&other.wallet_output.value)
+        self.wallet_output.value().cmp(&other.wallet_output.value())
     }
 }
 

@@ -4215,6 +4215,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_features",
+ "tari_p2p",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -4510,7 +4511,6 @@ dependencies = [
  "minotari_node_wallet_client",
  "prost 0.13.4",
  "rand 0.8.5",
- "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -8065,6 +8065,7 @@ name = "tari_transaction_components"
 version = "5.0.1"
 dependencies = [
  "anyhow",
+ "argon2 0.4.1",
  "async-trait",
  "bitflags 2.6.0",
  "blake2",
@@ -8085,6 +8086,7 @@ dependencies = [
  "num-traits",
  "primitive-types",
  "rand 0.8.5",
+ "semver",
  "serde",
  "serde_json",
  "serde_repr",
@@ -8106,6 +8108,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "utoipa",
+ "uuid",
  "wasm-bindgen",
  "zeroize",
 ]

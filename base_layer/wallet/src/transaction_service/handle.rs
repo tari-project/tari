@@ -41,6 +41,15 @@ use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
+    multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
+    offline_signing::models::{
+        PrepareDepositMultisigTransactionResult,
+        PrepareOneSidedTransactionForSigningResult,
+        PrepareWithdrawMultisigTransactionResult,
+        SignedOneSidedDepositMultisigTransactionResult,
+        SignedOneSidedTransactionResult,
+        SignedOneSidedWithdrawMultisigTransactionResult,
+    },
     rpc::models::FeePerGramStat,
     transaction_components::{
         BuildInfo,
@@ -61,15 +70,6 @@ use crate::{
     output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
-        multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
-        offline_signing::models::{
-            PrepareDepositMultisigTransactionResult,
-            PrepareOneSidedTransactionForSigningResult,
-            PrepareWithdrawMultisigTransactionResult,
-            SignedOneSidedDepositMultisigTransactionResult,
-            SignedOneSidedTransactionResult,
-            SignedOneSidedWithdrawMultisigTransactionResult,
-        },
         storage::models::{
             CompletedTransaction,
             InboundTransaction,
