@@ -54,7 +54,6 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     operation_id: OperationId,
     db: TransactionDatabase<TTransactionBackend>,
     connectivity: TWalletConnectivity,
-    key_manager: TKeyManagerInterface,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
     output_manager: OutputManagerHandle<TKeyManagerInterface>,
@@ -75,7 +74,6 @@ where
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
         output_manager: OutputManagerHandle<TKeyManagerInterface>,
-        key_manager: TKeyManagerInterface,
     ) -> Self {
         Self {
             operation_id,
@@ -84,7 +82,6 @@ where
             config,
             event_publisher,
             output_manager,
-            key_manager,
         }
     }
 
@@ -111,7 +108,6 @@ where
         if !confirmed_burnt.is_empty() {
             tokio::spawn(fetch_claim_burn_merkle_proofs::execute(
                 self.db.clone(),
-                self.key_manager.clone(),
                 self.output_manager.clone(),
                 self.connectivity.clone(),
                 confirmed_burnt,

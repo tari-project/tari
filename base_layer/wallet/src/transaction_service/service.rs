@@ -2632,13 +2632,6 @@ where
             .await?;
 
         let finalized = tx_builder.build().await?;
-        let tx_output = finalized
-            .sent_outputs
-            .first()
-            .expect("Should exist")
-            .output
-            .to_transaction_output(&self.resources.transaction_key_manager_service)
-            .await?;
 
         self.resources
             .output_manager_service
@@ -2696,16 +2689,22 @@ where
         // Generate claim proof if needed
         let mut burn_proof = None;
         if let Some(claim_public_key) = claim_public_key {
+            let tx_output = finalized
+                .sent_outputs
+                .first()
+                .expect("a recipient was added, so there must be at least one output");
+            let output_hash = tx_output.output.output_hash();
+            let commitment = tx_output.output.commitment().clone();
+
             let ownership_proof = self
                 .resources
                 .transaction_key_manager_service
                 .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)
                 .await?;
-            let output_hash = tx_output.hash();
             let proof = BurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 reciprocal_claim_public_key: commitment_mask_key.pub_key,
-                commitment: tx_output.commitment,
+                commitment,
                 ownership_proof,
             };
 
@@ -3309,7 +3308,6 @@ where
             self.resources.config.clone(),
             self.event_publisher.clone(),
             self.resources.output_manager_service.clone(),
-            self.resources.transaction_key_manager_service.clone(),
         );
 
         let validation_in_progress = self.validation_in_progress.clone();

@@ -2704,8 +2704,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 leaf_index: p.leaf_index,
             }),
             kernel: Some(proof.kernel.into()),
-            encrypted_data: output.encrypted_data.into_vec(),
-            value: output.value.as_u64(),
+            encrypted_data: output.encrypted_data().to_byte_vec(),
+            value: output.value().as_u64(),
         }))
     }
 }

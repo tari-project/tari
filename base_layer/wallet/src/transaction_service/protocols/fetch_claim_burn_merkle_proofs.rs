@@ -17,7 +17,6 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::sync_claim_bur
 
 pub async fn execute<TBackend, KM, TConnectivity>(
     db: TransactionDatabase<TBackend>,
-    key_manager: KM,
     output_manager: OutputManagerHandle<KM>,
     connectivity: TConnectivity,
     confirmed_burns: Vec<FixedHash>,
@@ -31,7 +30,7 @@ pub async fn execute<TBackend, KM, TConnectivity>(
         "Starting sync_claim_burn_merkle_proofs with {} confirmed burns",
         confirmed_burns.len()
     );
-    if let Err(err) = execute_inner(db, &key_manager, output_manager, connectivity, confirmed_burns).await {
+    if let Err(err) = execute_inner(db, output_manager, connectivity, confirmed_burns).await {
         // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
         error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
     }
@@ -39,7 +38,6 @@ pub async fn execute<TBackend, KM, TConnectivity>(
 
 async fn execute_inner<TBackend, KM, TConnectivity>(
     db: TransactionDatabase<TBackend>,
-    key_manager: &KM,
     mut output_manager: OutputManagerHandle<KM>,
     connectivity: TConnectivity,
     confirmed_burns: Vec<FixedHash>,
@@ -74,17 +72,16 @@ where
     }
 
     for output in outputs {
-        if !output.features.output_type.is_burn() {
+        if !output.features().output_type.is_burn() {
             warn!(
                 target: LOG_TARGET,
                 "NEVER HAPPEN: Output with key id {} is not a burn output, skipping",
-                output.commitment_mask_key_id
+                output.commitment_mask_key_id()
             );
             continue;
         }
 
-        let output = output.to_transaction_output(key_manager).await?;
-        let output_hash = output.hash();
+        let output_hash = output.output_hash();
         let Some(burn) = db.fetch_burn_proof(&output_hash)? else {
             // OK - UTXO not burnt with claim key, so no burn proof
             debug!(

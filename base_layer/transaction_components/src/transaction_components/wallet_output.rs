@@ -45,6 +45,7 @@ use super::TransactionOutputVersion;
 use crate::{
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
+    transaction_components,
     transaction_components::{
         covenants::Covenant,
         transaction_input::{SpentOutput, TransactionInput},
