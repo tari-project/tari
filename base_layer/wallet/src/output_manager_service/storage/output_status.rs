@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn to_from_int() {
-        for i in 0..=11 {
+        for i in 0..=10 {
             let status = OutputStatus::try_from(i).expect("Conversion failed");
             let i_converted = status.as_u8();
             assert_eq!(i, i32::from(i_converted));

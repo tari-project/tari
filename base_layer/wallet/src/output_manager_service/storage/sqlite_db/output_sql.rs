@@ -572,15 +572,15 @@ impl OutputSql {
             category: String,
         }
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
-            let balance_query = sql_query(
+            sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
+                 FROM outputs WHERE status = ? AND (maturity > ? OR script_lock_height > ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? \
+                 FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ?",
@@ -589,43 +589,48 @@ impl OutputSql {
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_outgoing_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
-            balance_query.load::<BalanceQueryResult>(conn)?
+                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32)
+                .load::<BalanceQueryResult>(conn)?
         } else {
-            let balance_query = sql_query(
+            sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? \
+                 FROM outputs WHERE status = ? AND output_type != ?\
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? \
+                 FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ?",
             )
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_outgoing_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
-            balance_query.load::<BalanceQueryResult>(conn)?
+                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32)
+                .load::<BalanceQueryResult>(conn)?
         };
         let mut available_balance = None;
         let mut time_locked_balance = Some(None);
