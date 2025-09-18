@@ -220,6 +220,7 @@ where
             self.resources.db.clear_scanned_blocks()?;
             let wallet_birthday = match self.resources.db.get_wallet_type()? {
                 Some(WalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
+                Some(WalletType::Ledger(_)) => Some(0), // Ledger wallets have no birthday, so start from genesis
                 _ => None,
             };
             let scanning_start_height_hash = self
