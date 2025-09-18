@@ -59,31 +59,29 @@ impl HashRateMovingAverage {
 
     /// Adds a new hash rate entry in the moving average and recalculates the average
     pub fn add(&mut self, height: u64, difficulty: Difficulty) {
+        let consensus_constants = self.consensus_manager.consensus_constants(height);
         // target block time for the current block is provided by the consensus rules
-        let target_time = self
-            .consensus_manager
-            .consensus_constants(height)
-            .pow_target_block_interval(self.pow_algo);
+        let target_time = consensus_constants.pow_target_block_interval(self.pow_algo);
 
         // remove old entries if we are at max block window
         if self.is_full() {
             self.hash_rates.pop_back();
         }
 
-        // add the new hash rate to the list
-        let mut current_hash_rate = if self.use_scaling {
-            difficulty.as_u64().saturating_mul(NANOS_PER_UNIT) / target_time
-        } else {
-            difficulty.as_u64() / target_time
+        let additional_multiplier = match self.pow_algo {
+            // Cuckaroo is special as we need to multiply by the cycle length to get the hash rate
+            PowAlgorithm::Cuckaroo => u128::from(consensus_constants.cuckaroo_cycle_length()),
+            _ => 1,
         };
-        // cuckoo is special as we need to multiply by the cycle length to get the hash rate
-        if self.pow_algo == PowAlgorithm::Cuckaroo {
-            current_hash_rate = current_hash_rate.saturating_mul(u64::from(
-                self.consensus_manager
-                    .consensus_constants(height)
-                    .cuckaroo_cycle_length(),
-            ));
-        }
+        // add the new hash rate to the list
+        let nominator = if self.use_scaling {
+            u128::from(difficulty.as_u64())
+                .saturating_mul(u128::from(NANOS_PER_UNIT))
+                .saturating_mul(additional_multiplier)
+        } else {
+            u128::from(difficulty.as_u64()).saturating_mul(additional_multiplier)
+        };
+        let current_hash_rate = u64::try_from(nominator / u128::from(target_time)).unwrap_or(u64::MAX);
         self.hash_rates.push_front(current_hash_rate);
 
         // after adding the hash rate we need to recalculate the average
