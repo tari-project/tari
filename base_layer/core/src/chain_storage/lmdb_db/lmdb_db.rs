@@ -3823,7 +3823,7 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 6;
+    const MIGRATION_VERSION: u64 = 7;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -4155,7 +4155,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                             target: LOG_TARGET,
                             "[MIGRATIONS] v{migrate_from_version}: No need to reset accumulated data rebuilding, below fork height for c29",
                         );
-                        continue;
                     } else {
                         info!(
                             target: LOG_TARGET,
