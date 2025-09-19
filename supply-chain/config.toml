@@ -2308,7 +2308,7 @@ version = "0.8.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rpassword]]
-version = "5.0.3"
+version = "5.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.rsa]]
@@ -3274,7 +3274,7 @@ version = "4.4.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.which]]
-version = "5.0.3"
+version = "5.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.widestring]]
