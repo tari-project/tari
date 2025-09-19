@@ -108,6 +108,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
+            BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             BlockHeaderSyncError::PeerNotFound => None,
             BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 
@@ -128,7 +129,6 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::InvalidProtocolResponse(_) |
             err @ BlockHeaderSyncError::ChainLinkBroken { .. } |
             err @ BlockHeaderSyncError::BlockError(_) |
-            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,
