@@ -47,7 +47,7 @@ pub async fn create_memory_db_key_manager_with_range_proof_size(
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
     let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))
         .map_err(|e| KeyManagerServiceError::StorageError(e.to_string()))?;
-    let cipher = CipherSeed::new();
+    let cipher = CipherSeed::random();
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
     OsRng.fill_bytes(key.as_mut());
@@ -55,7 +55,7 @@ pub async fn create_memory_db_key_manager_with_range_proof_size(
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(size);
     TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
-        cipher,
+        Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),
@@ -78,7 +78,7 @@ pub async fn create_memory_db_key_manager_from_seed(
     let factory = CryptoFactories::new(rangeproof_size);
 
     TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
-        cipher,
+        Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),

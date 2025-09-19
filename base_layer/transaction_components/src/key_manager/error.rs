@@ -86,6 +86,8 @@ pub enum KeyManagerServiceError {
     EncryptionFailed(String),
     #[error("Failed to decrypt: `{0}`")]
     DecryptionFailed(String),
+    #[error("Initialization error: `{0}`")]
+    InitializationError(String),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

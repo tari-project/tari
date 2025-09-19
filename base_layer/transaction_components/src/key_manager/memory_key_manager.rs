@@ -46,7 +46,7 @@ pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend
 pub async fn create_memory_key_manager_with_range_proof_size(
     size: usize,
 ) -> Result<MemoryKeyManager, KeyManagerServiceError> {
-    let cipher = CipherSeed::new();
+    let cipher = CipherSeed::random();
 
     create_memory_key_manager_from_seed(cipher, size).await
 }
@@ -62,7 +62,7 @@ pub async fn create_memory_key_manager_from_seed(
     let factory = CryptoFactories::new(rangeproof_size);
 
     let backend = MemoryKeyManagerBackend::new();
-    TransactionKeyManagerWrapper::new(cipher, backend, factory, Arc::new(WalletType::default())).await
+    TransactionKeyManagerWrapper::new(Some(cipher), backend, factory, Arc::new(WalletType::default())).await
 }
 
 pub async fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {

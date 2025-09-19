@@ -152,7 +152,7 @@ where
         output_manager_backend: V,
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
-        master_seed: CipherSeed,
+        master_seed: Option<CipherSeed>,
         wallet_type: Option<WalletType>,
     ) -> Result<Self, WalletError> {
         let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
@@ -637,7 +637,7 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
     let master_seed = match recovery_seed {
         None => match db_master_seed {
             None => {
-                let seed = CipherSeed::new();
+                let seed = CipherSeed::random();
                 db.set_master_seed(seed.clone())?;
                 seed
             },

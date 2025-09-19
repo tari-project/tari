@@ -112,7 +112,7 @@ use crate::{
 pub struct TransactionKeyManagerInner<TBackend> {
     key_managers: HashMap<String, RwLock<TariKeyManager<KeyDigest>>>,
     db: TBackend,
-    master_seed: CipherSeed,
+    master_seed: Option<CipherSeed>,
     crypto_factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
 }
@@ -125,11 +125,17 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // -----------------------------------------------------------------------------------------------------------------
 
     pub async fn new(
-        master_seed: CipherSeed,
+        master_seed: Option<CipherSeed>,
         db: TBackend,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
+        if master_seed.is_none() && !wallet_type.is_provided_keys() {
+            return Err(KeyManagerServiceError::InitializationError(
+                "A master seed must be provided unless wallet type is provided keys.".to_string(),
+            ));
+        }
+        let create_standard_branches = master_seed.is_some() && !wallet_type.is_provided_keys();
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
             db,
@@ -137,12 +143,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
             crypto_factories,
             wallet_type,
         };
-        km.add_standard_core_branches().await?;
+        if create_standard_branches {
+            km.add_standard_core_branches().await?;
+        }
         Ok(km)
     }
 
-    pub fn master_seed(&self) -> &CipherSeed {
-        &self.master_seed
+    pub fn master_seed(&self) -> Option<&CipherSeed> {
+        self.master_seed.as_ref()
     }
 
     async fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
@@ -153,6 +161,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub async fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
+        if self.master_seed.is_none() {
+            return Err(self.branch_not_supported_error("add_key_manager_branch", branch));
+        }
+        let seed = self.master_seed.as_ref().unwrap().clone();
         let result = if self.key_managers.contains_key(branch) {
             AddResult::AlreadyExists
         } else {
@@ -172,7 +184,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.key_managers.insert(
             branch.to_string(),
             RwLock::new(TariKeyManager::<KeyDigest>::from(
-                self.master_seed.clone(),
+                seed,
                 state.branch_seed,
                 state.primary_key_index,
             )),

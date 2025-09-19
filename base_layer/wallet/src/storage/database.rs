@@ -443,7 +443,7 @@ mod test {
 
         // Test wallet settings
         assert!(db.get_master_seed().unwrap().is_none());
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         db.set_master_seed(seed.clone()).unwrap();
         let stored_seed = db.get_master_seed().unwrap().unwrap();
         assert_eq!(seed, stored_seed);

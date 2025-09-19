@@ -42,7 +42,7 @@ pub struct TransactionKeyManagerInitializer<T>
 where T: TransactionKeyManagerBackend
 {
     backend: Option<T>,
-    master_seed: CipherSeed,
+    master_seed: Option<CipherSeed>,
     crypto_factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
 }
@@ -53,7 +53,7 @@ where T: TransactionKeyManagerBackend + 'static
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
     pub fn new(
         backend: T,
-        master_seed: CipherSeed,
+        master_seed: Option<CipherSeed>,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
     ) -> Self {

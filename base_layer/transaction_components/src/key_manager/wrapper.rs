@@ -86,7 +86,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
     /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
     pub async fn new(
-        master_seed: CipherSeed,
+        master_seed: Option<CipherSeed>,
         db: TBackend,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
@@ -104,8 +104,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     /// Get the birthday of the wallet seed
-    pub async fn get_birthday(&self) -> u16 {
-        self.transaction_key_manager_inner.read().await.master_seed().birthday()
+    pub async fn get_birthday(&self) -> Option<u16> {
+        let lock = self.transaction_key_manager_inner.read().await;
+        lock.master_seed()
+            .and_then(|s| Some(s.birthday()))
+            .or_else(|| match lock.get_wallet_type().as_ref() {
+                WalletType::ProvidedKeys(keys) => keys.birthday,
+                _ => None,
+            })
     }
 }
 

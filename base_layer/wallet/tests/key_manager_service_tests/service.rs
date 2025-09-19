@@ -36,7 +36,7 @@ use crate::support::data::get_temp_sqlite_database_connection;
 #[tokio::test]
 async fn get_key_at_test_with_encryption() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let cipher = CipherSeed::new();
+    let cipher = CipherSeed::random();
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
@@ -72,7 +72,7 @@ async fn get_key_at_test_with_encryption() {
 #[tokio::test]
 async fn key_manager_multiple_branches() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let cipher = CipherSeed::new();
+    let cipher = CipherSeed::random();
 
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);

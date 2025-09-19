@@ -321,7 +321,7 @@ pub async fn init_wallet(
         output_manager_backend,
         key_manager_backend,
         shutdown_signal,
-        master_seed,
+        Some(master_seed),
         wallet_type,
     )
     .await

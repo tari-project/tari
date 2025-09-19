@@ -983,7 +983,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
 mod test {
 
     async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {
-        let cipher = CipherSeed::new();
+        let cipher = CipherSeed::random();
         let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
         OsRng.fill_bytes(key.as_mut());
         let factory = CryptoFactories::new(64);

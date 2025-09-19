@@ -38,6 +38,20 @@ pub enum WalletType {
     ProvidedKeys(ProvidedKeysWallet),
 }
 
+impl WalletType {
+    pub fn is_derived_keys(&self) -> bool {
+        matches!(self, WalletType::DerivedKeys)
+    }
+
+    pub fn is_ledger(&self) -> bool {
+        matches!(self, WalletType::Ledger(_))
+    }
+
+    pub fn is_provided_keys(&self) -> bool {
+        matches!(self, WalletType::ProvidedKeys(_))
+    }
+}
+
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

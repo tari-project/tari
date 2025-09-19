@@ -6023,7 +6023,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         key_manager_backend,
         shutdown.to_signal(),
-        master_seed,
+        Some(master_seed),
         Some(WalletType::default()),
     ));
 
@@ -9731,7 +9731,7 @@ mod test {
     #[allow(clippy::cast_possible_truncation)]
     fn test_seed_words_create() {
         unsafe {
-            let cipher = CipherSeed::new();
+            let cipher = CipherSeed::random();
             let ciper_bytes = cipher.encipher(None).unwrap();
             let cipher_string = ciper_bytes.to_monero_base58();
 

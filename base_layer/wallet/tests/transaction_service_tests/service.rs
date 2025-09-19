@@ -162,7 +162,7 @@ async fn setup_transaction_service(
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone());
 
     let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5)).unwrap();
-    let cipher = CipherSeed::new();
+    let cipher = CipherSeed::random();
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
