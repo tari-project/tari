@@ -72,6 +72,7 @@ mod transaction_builder;
 mod transaction_input;
 mod transaction_input_version;
 mod transaction_kernel;
+pub use transaction_kernel::BurntCommitmentInfo;
 mod transaction_kernel_version;
 pub mod transaction_output;
 mod transaction_output_version;

@@ -609,12 +609,100 @@ mod validator_node_merkle_root {
         blocks::genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
         chain_storage::calculate_validator_node_mr,
     };
+
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_memory_db_key_manager().await.unwrap();
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
         assert_eq!(blocks[0].header.validator_node_mr, VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH);
+    }
+
+    #[tokio::test]
+    async fn it_fetches_all_burnt_commitments_info() {
+        let db = setup();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
+        let (blocks, outputs) = add_many_chained_blocks(10, &db, &key_manager).await;
+
+        // Add some burn transactions
+        let features = OutputFeatures::create_burn_output();
+        let (burn_txns, _outputs) = schema_to_transaction(
+            &[
+                txn_schema!(
+                    from: vec![outputs[0].clone()],
+                    to: vec![50 * T],
+                    features: features
+                ),
+                txn_schema!(
+                    from: vec![outputs[2].clone()],
+                    to: vec![50 * T],
+                    features: features
+                ),
+                txn_schema!(
+                    from: vec![outputs[4].clone()],
+                    to: vec![50 * T],
+                    features: features
+                ),
+                txn_schema!(
+                    from: vec![outputs[6].clone()],
+                    to: vec![50 * T],
+                    features: features
+                ),
+            ],
+            &key_manager,
+        )
+        .await;
+
+        let burnt_commitments = burn_txns
+            .iter()
+            .flat_map(|tx| {
+                tx.body
+                    .outputs()
+                    .iter()
+                    .filter(|o| o.is_burned())
+                    .map(|o| o.commitment().clone())
+            })
+            .collect::<Vec<_>>();
+
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
+        let (block, _) = create_next_block(
+            &db,
+            blocks.last().unwrap(),
+            burn_txns.clone(),
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        )
+        .await;
+
+        let last_block_height = block.header.height;
+        db.add_block(block).unwrap().assert_added();
+
+        // Verify we can fetch burnt commitments info from the last block
+        let burnt_commitments_info_from_db = db
+            .fetch_burnt_commitments_info(Some(last_block_height..=last_block_height))
+            .unwrap();
+        assert_eq!(burnt_commitments_info_from_db.len(), burnt_commitments.len());
+        for commitment in burnt_commitments.clone() {
+            assert!(burnt_commitments_info_from_db
+                .iter()
+                .any(|info| info.commitment == commitment));
+        }
+
+        // Verify we can fetch all burnt commitments info - all blocks
+        let burnt_commitments_info_from_db = db.fetch_burnt_commitments_info(None).unwrap();
+        assert_eq!(burnt_commitments_info_from_db.len(), burnt_commitments.len());
+        for commitment in burnt_commitments {
+            assert!(burnt_commitments_info_from_db
+                .iter()
+                .any(|info| info.commitment == commitment));
+        }
+
+        // Verify fetch burnt commitments info form a block that does not contain any returns empty
+        let burnt_commitments_info_from_db = db
+            .fetch_burnt_commitments_info(Some(last_block_height - 1..=last_block_height - 1))
+            .unwrap();
+        assert!(burnt_commitments_info_from_db.is_empty());
     }
 
     #[tokio::test]

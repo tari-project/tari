@@ -19,7 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
+use std::{
+    mem,
+    ops::{RangeBounds, RangeInclusive},
+    sync::Arc,
+    time::Instant,
+};
 
 use log::*;
 use primitive_types::U512;
@@ -48,7 +53,7 @@ use tari_node_components::blocks::{
 };
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
-    transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction_components::{BurntCommitmentInfo, OutputType, TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -182,6 +187,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: CompressedSignature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
+
+    make_async_fn!(fetch_burnt_commitments_info(block_height_range: Option<RangeInclusive<u64>>) -> Vec<BurntCommitmentInfo>, "fetch_all_burnt_commitment_info");
 
     make_async_fn!(fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>, "fetch_kernels_in_block");
 

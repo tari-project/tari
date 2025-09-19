@@ -32,7 +32,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput};
 use tari_hashing::TransactionHashDomain;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
@@ -249,4 +249,14 @@ impl Ord for TransactionKernel {
     fn cmp(&self, other: &Self) -> Ordering {
         self.excess_sig.cmp(&other.excess_sig)
     }
+}
+
+/// Information about a burned commitment that can be stored in the database
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Default)]
+pub struct BurntCommitmentInfo {
+    pub header_height: u64,
+    pub header_hash: HashOutput,
+    pub kernel_mmr_position: u64,
+    pub kernel_hash: HashOutput,
+    pub commitment: CompressedCommitment,
 }

@@ -22,7 +22,7 @@
 use std::{
     collections::HashMap,
     fs,
-    ops::Deref,
+    ops::{Deref, RangeInclusive},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -49,7 +49,14 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::TariKeyId,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
-    transaction_components::{RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
+    transaction_components::{
+        BurntCommitmentInfo,
+        RangeProofType,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+        WalletOutput,
+    },
 };
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::ByteArray;
@@ -64,6 +71,7 @@ use crate::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        BurnCommitmentIndexRebuildStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -293,6 +301,16 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
 
+    fn fetch_burnt_commitments_info(
+        &self,
+        block_height_range: Option<RangeInclusive<u64>>,
+    ) -> Result<Vec<BurntCommitmentInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_burnt_commitments_info(block_height_range)
+    }
+
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
@@ -374,6 +392,12 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_accumulated_data_rebuild_status()
     }
 
+    fn fetch_burn_commitments_index_rebuild_status(
+        &self,
+    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_burn_commitments_index_rebuild_status()
+    }
+
     fn build_payref_indexes_for_height(
         &self,
         height: u64,
@@ -397,6 +421,17 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .update_accumulated_difficulty(height, header_accum_data, last_chain_header)
+    }
+
+    fn update_burn_commitments_index(
+        &self,
+        height: u64,
+        last_chain_header: ChainHeader,
+    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .update_burn_commitments_index(height, last_chain_header)
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {

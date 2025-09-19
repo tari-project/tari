@@ -90,7 +90,7 @@ use std::{
     convert::TryFrom,
     fmt,
     fs::{self, File},
-    ops::Deref,
+    ops::{Deref, RangeInclusive},
     path::Path,
     sync::Arc,
     time::Instant,
@@ -135,6 +135,7 @@ use tari_transaction_components::{
     consensus::{consensus_constants::BlockVersion, ConsensusConstants},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
+        BurntCommitmentInfo,
         OutputType,
         SideChainFeatureData,
         SideChainId,
@@ -254,6 +255,7 @@ const LMDB_DB_TXOS_HASH_TO_INDEX: &str = "txos_hash_to_index";
 const LMDB_DB_KERNELS: &str = "kernels";
 const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
 const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
+const LMDB_DB_KERNEL_BURN_COMMITMENT_INDEX: &str = "kernel_burn_commitment_index";
 const LMDB_DB_KERNEL_MMR_SIZE_INDEX: &str = "kernel_mmr_size_index";
 const LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX: &str = "deleted_txo_hash_to_header_index";
 const LMDB_DB_UTXO_COMMITMENT_INDEX: &str = "utxo_commitment_index";
@@ -294,6 +296,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_KERNELS,
         LMDB_DB_KERNEL_EXCESS_INDEX,
         LMDB_DB_KERNEL_EXCESS_SIG_INDEX,
+        LMDB_DB_KERNEL_BURN_COMMITMENT_INDEX,
         LMDB_DB_KERNEL_MMR_SIZE_INDEX,
         LMDB_DB_UTXO_COMMITMENT_INDEX,
         LMDB_DB_CONTRACT_ID_INDEX,
@@ -350,6 +353,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         .add_database(LMDB_DB_KERNELS, flags)
         .add_database(LMDB_DB_KERNEL_EXCESS_INDEX, flags)
         .add_database(LMDB_DB_KERNEL_EXCESS_SIG_INDEX, flags)
+        .add_database(LMDB_DB_KERNEL_BURN_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_KERNEL_MMR_SIZE_INDEX, flags)
         .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
@@ -463,6 +467,8 @@ pub struct LMDBDatabase {
     kernel_excess_index: DatabaseRef,
     /// Maps excess_sig -> <block_hash, mmr_pos, kernel_hash>
     kernel_excess_sig_index: DatabaseRef,
+    /// Maps the optional burn commitment -> <block_hash, kernel_hash>
+    kernel_burn_commitment_index: DatabaseRef,
     /// Maps kernel_mmr_size -> height
     kernel_mmr_size_index: DatabaseRef,
     /// Maps commitment -> output_hash
@@ -541,6 +547,7 @@ impl LMDBDatabase {
             kernels_db: get_database(store, LMDB_DB_KERNELS)?,
             kernel_excess_index: get_database(store, LMDB_DB_KERNEL_EXCESS_INDEX)?,
             kernel_excess_sig_index: get_database(store, LMDB_DB_KERNEL_EXCESS_SIG_INDEX)?,
+            kernel_burn_commitment_index: get_database(store, LMDB_DB_KERNEL_BURN_COMMITMENT_INDEX)?,
             kernel_mmr_size_index: get_database(store, LMDB_DB_KERNEL_MMR_SIZE_INDEX)?,
             utxo_commitment_index: get_database(store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
             unique_id_index: get_database(store, LMDB_DB_UNIQUE_ID_INDEX)?,
@@ -784,7 +791,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 35] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 36] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -801,6 +808,7 @@ impl LMDBDatabase {
             (LMDB_DB_KERNELS, &self.kernels_db),
             (LMDB_DB_KERNEL_EXCESS_INDEX, &self.kernel_excess_index),
             (LMDB_DB_KERNEL_EXCESS_SIG_INDEX, &self.kernel_excess_sig_index),
+            (LMDB_DB_KERNEL_BURN_COMMITMENT_INDEX, &self.kernel_burn_commitment_index),
             (LMDB_DB_KERNEL_MMR_SIZE_INDEX, &self.kernel_mmr_size_index),
             (LMDB_DB_UTXO_COMMITMENT_INDEX, &self.utxo_commitment_index),
             (LMDB_DB_CONTRACT_ID_INDEX, &self.contract_index),
@@ -931,6 +939,66 @@ impl LMDBDatabase {
             hash.as_slice(),
         ])?;
 
+        if let Some(burn_commitment) = &kernel.burn_commitment {
+            let rebuild_status: Option<MetadataValue> = lmdb_get(
+                txn,
+                &self.metadata_db,
+                &MetadataKey::BurnCommitmentIndexRebuildStatus.as_u32(),
+            )?;
+            let (is_rebuilt, last_rebuild_height) = match rebuild_status {
+                Some(MetadataValue::BurnCommitmentIndexRebuildStatus(s)) => (s.is_rebuilt, s.last_rebuild_height),
+                _ => (false, None),
+            };
+
+            if is_rebuilt {
+                lmdb_insert(
+                    txn,
+                    &self.kernel_burn_commitment_index,
+                    burn_commitment.as_bytes(),
+                    &(*header_hash, hash),
+                    "kernel_burn_commitment_index",
+                )?;
+            } else {
+                // Does it exist in this block?
+                let rows = lmdb_fetch_matching_after::<TransactionKernelRowData>(
+                    txn,
+                    &self.kernels_db,
+                    header_hash.as_slice(),
+                )?;
+                if rows
+                    .into_iter()
+                    .any(|(_, row)| row.kernel.burn_commitment.as_ref() == Some(burn_commitment))
+                {
+                    return Err(ChainStorageError::KeyExists {
+                        table_name: "kernel_burn_commitment_index",
+                        key: burn_commitment.to_hex(),
+                    });
+                }
+
+                // Does it exist in the chain history?
+                if self.burn_commitment_exists_in_history_before_height_full_search(
+                    txn,
+                    header_hash,
+                    burn_commitment,
+                    last_rebuild_height,
+                )? {
+                    return Err(ChainStorageError::KeyExists {
+                        table_name: "kernel_burn_commitment_index",
+                        key: burn_commitment.to_hex(),
+                    });
+                }
+
+                // Safe to insert without creating a potential duplicate
+                lmdb_insert(
+                    txn,
+                    &self.kernel_burn_commitment_index,
+                    burn_commitment.as_bytes(),
+                    &(*header_hash, hash),
+                    "kernel_burn_commitment_index",
+                )?;
+            }
+        }
+
         lmdb_insert(
             txn,
             &self.kernel_excess_index,
@@ -962,6 +1030,46 @@ impl LMDBDatabase {
             },
             "kernels_db",
         )
+    }
+
+    // Scans from genesis or last rebuild height (if provided) to current height for the burn commitment
+    fn burn_commitment_exists_in_history_before_height_full_search(
+        &self,
+        txn: &ConstTransaction<'_>,
+        header_hash: &HashOutput,
+        burn_commitment: &CompressedCommitment,
+        last_rebuild_height: Option<u64>,
+    ) -> Result<bool, ChainStorageError> {
+        // Quick check
+        if lmdb_exists(txn, &self.kernel_burn_commitment_index, burn_commitment.as_bytes())? {
+            return Ok(true);
+        }
+
+        // Full scan
+        let current_height =
+            self.fetch_height_from_hash(txn, header_hash)?
+                .ok_or_else(|| ChainStorageError::InvalidArguments {
+                    func: "burn_commitment_exists_in_history_before_height_full_search",
+                    arg: "header_hash",
+                    message: format!("Could not determine header height from hash '{}'", header_hash),
+                })?;
+        let scan_from_height = last_rebuild_height.map(|h| h.saturating_add(1)).unwrap_or(0);
+        for h in scan_from_height..current_height {
+            if let Some(header) = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &h)? {
+                let rows = lmdb_fetch_matching_after::<TransactionKernelRowData>(
+                    txn,
+                    &self.kernels_db,
+                    header.hash().as_slice(),
+                )?;
+                if rows
+                    .into_iter()
+                    .any(|(_, row)| row.kernel.burn_commitment.as_ref() == Some(burn_commitment))
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 
     fn input_with_output_data(
@@ -1518,6 +1626,21 @@ impl LMDBDatabase {
                 excess_sig_key.as_slice(),
                 "kernel_excess_sig_index",
             )?;
+            if let Some(burn_commitment) = kernel.kernel.burn_commitment {
+                trace!(
+                    target: LOG_TARGET,
+                    "Deleting burn commitment `{}`",
+                    burn_commitment.to_hex()
+                );
+                // This index is not guaranteed to be present due to rebuilding/creating initial burn commitments index
+                // is running as a background task.
+                let _unused = lmdb_delete(
+                    txn,
+                    &self.kernel_burn_commitment_index,
+                    burn_commitment.as_bytes(),
+                    "kernel_burn_commitment_index",
+                );
+            }
         }
         Ok(())
     }
@@ -2759,6 +2882,61 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    fn fetch_burnt_commitments_info(
+        &self,
+        block_height_range: Option<RangeInclusive<u64>>,
+    ) -> Result<Vec<BurntCommitmentInfo>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let mut result = Vec::new();
+
+        let best_block_height = self.fetch_chain_metadata()?.best_block_height();
+        let burnt_commitments_info_range = if let Some(range) = block_height_range {
+            if range.is_empty() {
+                return Err(ChainStorageError::InvalidArguments {
+                    message: "The provided block height range is empty".to_string(),
+                    func: "fetch_burnt_commitments_info",
+                    arg: "block_height_range",
+                });
+            }
+            if range.end() > &best_block_height {
+                return Err(ChainStorageError::InvalidArguments {
+                    message: format!(
+                        "The provided block height range end {} exceeds the best block height {}",
+                        range.end(),
+                        best_block_height
+                    ),
+                    func: "fetch_burnt_commitments_info",
+                    arg: "block_height_range",
+                });
+            }
+            range
+        } else {
+            0..=best_block_height
+        };
+
+        for height in burnt_commitments_info_range {
+            // Fetch header to get its hash
+            if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &self.headers_db, &height)? {
+                let header_hash = header.hash();
+                // Fetch all kernels in this block
+                let kernels =
+                    lmdb_fetch_matching_after::<TransactionKernelRowData>(&txn, &self.kernels_db, header_hash.deref())?;
+                for (_, kernel_row) in kernels {
+                    if let Some(burn_commitment) = kernel_row.kernel.burn_commitment {
+                        result.push(BurntCommitmentInfo {
+                            header_height: height,
+                            header_hash: kernel_row.header_hash,
+                            kernel_mmr_position: kernel_row.mmr_position,
+                            kernel_hash: kernel_row.hash,
+                            commitment: burn_commitment,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
@@ -2960,6 +3138,23 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    // Returns the accumulated data rebuild status.
+    fn fetch_burn_commitments_index_rebuild_status(
+        &self,
+    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
+        let txn = self.read_transaction()?;
+
+        let val: Option<MetadataValue> = lmdb_get(
+            &txn,
+            &self.metadata_db,
+            &MetadataKey::BurnCommitmentIndexRebuildStatus.as_u32(),
+        )?;
+        match val {
+            Some(MetadataValue::BurnCommitmentIndexRebuildStatus(status)) => Ok(status),
+            _ => Ok(BurnCommitmentIndexRebuildStatus::default()),
+        }
+    }
+
     // Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
@@ -3065,6 +3260,63 @@ impl BlockchainBackend for LMDBDatabase {
             &self.metadata_db,
             &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
             &MetadataValue::AccumulatedDataRebuildStatus(status.clone()),
+            None,
+        )?;
+
+        write_txn.commit()?;
+
+        Ok(status)
+    }
+
+    fn update_burn_commitments_index(
+        &self,
+        height: u64,
+        last_chain_header: ChainHeader,
+    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
+        unsafe {
+            LMDBStore::resize_if_required(&self.env, &self.env_config, None)?;
+        }
+        let write_txn = self.write_transaction()?;
+        let header = self.fetch_chain_header_by_height(height)?;
+
+        let rows = lmdb_fetch_matching_after::<TransactionKernelRowData>(
+            &write_txn,
+            &self.kernels_db,
+            header.hash().as_slice(),
+        )?;
+        for (_, kernel_row_data) in &rows {
+            if let Some(burn_commitment) = &kernel_row_data.kernel.burn_commitment {
+                if let Err(err) = lmdb_insert(
+                    &write_txn,
+                    &self.kernel_burn_commitment_index,
+                    burn_commitment.as_bytes(),
+                    &(*header.hash(), kernel_row_data.hash),
+                    "kernel_burn_commitment_index",
+                ) {
+                    match err {
+                        ChainStorageError::KeyExists { .. } => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Burn commitment index already had entry for '{}'",
+                                burn_commitment.to_hex()
+                            );
+                        },
+                        _ => return Err(err),
+                    }
+                }
+            }
+        }
+
+        // Update the status in the metadata database
+        let status = BurnCommitmentIndexRebuildStatus {
+            is_rebuilt: height == last_chain_header.height(),
+            last_rebuild_height: Some(height),
+        };
+        lmdb_replace(
+            &write_txn,
+            &self.metadata_db,
+            &MetadataKey::BurnCommitmentIndexRebuildStatus.as_u32(),
+            &MetadataValue::BurnCommitmentIndexRebuildStatus(status.clone()),
             None,
         )?;
 
@@ -3737,6 +3989,7 @@ pub enum MetadataKey {
     MigrationVersion,
     PayrefRebuildStatus,
     AccumulatedDataRebuildStatus,
+    BurnCommitmentIndexRebuildStatus,
 }
 
 impl MetadataKey {
@@ -3759,6 +4012,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
             MetadataKey::PayrefRebuildStatus => write!(f, "Payref bebuild status"),
             MetadataKey::AccumulatedDataRebuildStatus => write!(f, "Accumulated data rebuild status"),
+            MetadataKey::BurnCommitmentIndexRebuildStatus => write!(f, "Burn commitment rebuild status"),
         }
     }
 }
@@ -3785,6 +4039,16 @@ pub struct AccumulatedDataRebuildStatus {
     pub last_rebuild_height: Option<u64>,
 }
 
+/// Accumulated difficulty rebuild status - for new base nodes or once rebuilt, this will be set to true
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+pub struct BurnCommitmentIndexRebuildStatus {
+    /// Whether burn commitments index has been rebuilt fully - it only need to be rebuilt once
+    /// and up to the current chain height. This will automatically be added to new blocks.
+    pub is_rebuilt: bool,
+    /// The height of the block at which the last rebuild was done
+    pub last_rebuild_height: Option<u64>,
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum MetadataValue {
@@ -3798,6 +4062,7 @@ pub enum MetadataValue {
     MigrationVersion(u64),
     PayrefRebuildStatus(PayrefRebuildStatus),
     AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus),
+    BurnCommitmentIndexRebuildStatus(BurnCommitmentIndexRebuildStatus),
 }
 
 impl fmt::Display for MetadataValue {
@@ -3817,13 +4082,16 @@ impl fmt::Display for MetadataValue {
             MetadataValue::AccumulatedDataRebuildStatus(status) => {
                 write!(f, "Accumulated data has been rebuilt - {}", status.is_rebuilt)
             },
+            MetadataValue::BurnCommitmentIndexRebuildStatus(status) => {
+                write!(f, "Burn commitment index has been rebuilt - {}", status.is_rebuilt)
+            },
         }
     }
 }
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 7;
+    const MIGRATION_VERSION: u64 = 8;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -4195,6 +4463,49 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     txn.commit()?;
                 },
             }
+        }
+
+        if migrate_from_version == 7 {
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{migrate_from_version}: Starting burn commitments index migration management");
+
+            // Set the burn commitment index rebuild status to done for new databases or to default for existing
+            // databases
+            let write_txn = db.write_transaction()?;
+            match fetch_chain_height(&write_txn, &db.metadata_db) {
+                Ok(_) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Resetting burn commitments index rebuild status to enable the background task to run"
+                    );
+                    lmdb_replace(
+                        &write_txn,
+                        &db.metadata_db,
+                        &MetadataKey::BurnCommitmentIndexRebuildStatus.as_u32(),
+                        &MetadataValue::BurnCommitmentIndexRebuildStatus(BurnCommitmentIndexRebuildStatus::default()),
+                        None,
+                    )?;
+                },
+                Err(_) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Setting burn commitments index rebuild status as rebuilt for new blockchains"
+                    );
+                    lmdb_replace(
+                        &write_txn,
+                        &db.metadata_db,
+                        &MetadataKey::BurnCommitmentIndexRebuildStatus.as_u32(),
+                        &MetadataValue::BurnCommitmentIndexRebuildStatus(BurnCommitmentIndexRebuildStatus {
+                            is_rebuilt: true,
+                            ..Default::default()
+                        }),
+                        None,
+                    )?;
+                },
+            };
+            write_txn.commit()?;
+
+            payref_index_done = true;
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{migrate_from_version}: Burn commitments index migration management completed");
         }
 
         // Let's update the migration version

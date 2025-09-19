@@ -33,7 +33,13 @@ use tari_common_types::{
 use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_transaction_components::{
     tari_proof_of_work::Difficulty,
-    transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+    transaction_components::{
+        BurntCommitmentInfo,
+        Transaction,
+        TransactionKernel,
+        TransactionOutput,
+        ValidatorNodeRegistration,
+    },
     MicroMinotari,
 };
 
@@ -50,6 +56,7 @@ use crate::chain_storage::{
 pub enum NodeCommsResponse {
     ChainMetadata(ChainMetadata),
     TransactionKernels(Vec<TransactionKernel>),
+    BurntCommitmentsInfo(Vec<BurntCommitmentInfo>),
     BlockHeaders(Vec<ChainHeader>),
     BlockHeader(Option<ChainHeader>),
     Block(Box<Option<Block>>),
@@ -82,6 +89,7 @@ impl Display for NodeCommsResponse {
         match self {
             ChainMetadata(_) => write!(f, "ChainMetadata"),
             TransactionKernels(_) => write!(f, "TransactionKernel"),
+            BurntCommitmentsInfo(_) => write!(f, "BurntCommitmentsInfo"),
             BlockHeaders(_) => write!(f, "BlockHeaders"),
             BlockHeader(_) => write!(f, "BlockHeader"),
             Block(_) => write!(f, "Block"),

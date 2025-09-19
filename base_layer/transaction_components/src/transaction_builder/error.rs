@@ -49,6 +49,10 @@ pub enum TransactionBuilderError {
     SenderOffsetKeyIdMissing,
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
+    #[error("TxType specified burn, but burn commitment was not found")]
+    TxTypeBurnWithNoBurnCommitment,
+    #[error("TxType is not burn, but burn commitment was found")]
+    BurnCommitmentWithoutTxTypeBurn,
 }
 
 impl From<ByteArrayError> for TransactionBuilderError {

@@ -40,6 +40,7 @@ use crate::{
     transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,
+        memo_field::TxType,
         CoinBaseExtra,
         KernelBuilder,
         KernelFeatures,
@@ -714,6 +715,12 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
             .await
             .unwrap();
 
+        if output.is_burned() {
+            tx_builder.with_burn_commitment(Some(output.commitment().clone()));
+            tx_builder.with_tx_type(TxType::Burn);
+            tx_builder.with_kernel_features(KernelFeatures::BURN_KERNEL);
+        }
+
         outputs.push(output.clone());
         tx_builder.with_output(output, sender_offset.key_id).await.unwrap();
     }
@@ -736,6 +743,12 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
                 .await
                 .unwrap(),
         );
+
+        if utxo.is_burned() {
+            tx_builder.with_burn_commitment(Some(utxo.commitment().clone()));
+            tx_builder.with_tx_type(TxType::Burn);
+            tx_builder.with_kernel_features(KernelFeatures::BURN_KERNEL);
+        }
 
         tx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
     }

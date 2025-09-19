@@ -29,6 +29,7 @@ mod create_tls_certs;
 mod dial_peer;
 mod discover_peer;
 mod get_block;
+mod get_burnt_commitments;
 mod get_chain_metadata;
 mod get_db_stats;
 mod get_mempool_state;
@@ -139,6 +140,7 @@ pub enum Command {
     SearchUtxo(search_utxo::Args),
     SearchPayref(search_payref::Args),
     SearchKernel(search_kernel::Args),
+    GetBurntCommitments(get_burnt_commitments::ArgsGetBurnCommitments),
     GetMempoolStats(get_mempool_stats::Args),
     GetMempoolState(get_mempool_state::Args),
     GetMempoolTx(get_mempool_state::ArgsTx),
@@ -238,6 +240,7 @@ impl CommandContext {
                 Command::SearchUtxo(_) |
                 Command::SearchPayref(_) |
                 Command::SearchKernel(_) |
+                Command::GetBurntCommitments(_) |
                 Command::GetMempoolStats(_) |
                 Command::GetMempoolState(_) |
                 Command::GetMempoolTx(_) |
@@ -306,6 +309,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::SearchUtxo(args) => self.handle_command(args).await,
             Command::SearchPayref(args) => self.handle_command(args).await,
             Command::SearchKernel(args) => self.handle_command(args).await,
+            Command::GetBurntCommitments(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,
             Command::GetMempoolState(args) => self.handle_command(args).await,

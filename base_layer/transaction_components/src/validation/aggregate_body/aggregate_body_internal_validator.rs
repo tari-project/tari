@@ -641,6 +641,45 @@ mod test {
         assert!(check_total_burned(&body2).is_err());
     }
 
+    #[tokio::test]
+    async fn it_fails_if_multiple_burnt_outputs_with_single_burn_kernel() {
+        let key_manager = create_memory_key_manager().await.unwrap();
+
+        // Create two burnt outputs
+        let (output1, _, _) = test_helpers::create_utxo(
+            100.into(),
+            &key_manager,
+            &OutputFeatures::create_burn_output(),
+            &script!(Nop).unwrap(),
+            &Covenant::default(),
+            0.into(),
+        )
+        .await;
+        let (output2, _, _) = test_helpers::create_utxo(
+            101.into(),
+            &key_manager,
+            &OutputFeatures::create_burn_output(),
+            &script!(Nop).unwrap(),
+            &Covenant::default(),
+            0.into(),
+        )
+        .await;
+
+        // Create a single burn kernel referencing the first output's commitment
+        let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+        kernel.burn_commitment = Some(output1.commitment.clone());
+
+        // Create an aggregate body with both burnt outputs and one burn kernel
+        let body = AggregateBody::new(Vec::new(), vec![output1, output2], vec![kernel]);
+
+        // The check_total_burned function should fail
+        println!("Validate: {:?}", check_total_burned(&body));
+        assert!(check_total_burned(&body)
+            .unwrap_err()
+            .to_string()
+            .contains("Burned output has no matching burned kernel"));
+    }
+
     mod transaction_ordering {
         use super::*;
 

@@ -36,6 +36,7 @@ use crate::{
         KernelBuilder,
         KernelFeatures,
         OutputFeatures,
+        OutputType,
         TransactionKernel,
         TransactionKernelVersion,
         TransactionOutput,
@@ -686,6 +687,19 @@ where KM: TransactionKeyManagerInterface
         ))
     }
 
+    fn verify_burn(&mut self, output: &WalletOutput) -> Result<(), TransactionBuilderError> {
+        if output.features().output_type == OutputType::Burn {
+            if let Some(burn_commitment) = self.burn_commitment.clone() {
+                if &burn_commitment != output.commitment() {
+                    return Err(TransactionBuilderError::MultipleBurnCommitments);
+                }
+            } else {
+                self.burn_commitment = Some(output.commitment().clone());
+            }
+        }
+        Ok(())
+    }
+
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
@@ -707,28 +721,23 @@ where KM: TransactionKeyManagerInterface
         for input in &self.inputs {
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager).await?.clone());
         }
-        for output in &self.custom_outputs {
+        for output in &self.custom_outputs.clone() {
+            self.verify_burn(&output.output)?;
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &self.recipient_outputs {
+        for recipient in self.recipient_outputs.clone() {
+            self.verify_burn(&recipient.output.output)?;
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
-            if self.tx_type == TxType::Burn {
-                // lets do some burn logic
-                if output.is_burned() {
-                    match self.burn_commitment {
-                        Some(_burn_commitment) => {
-                            // we can only have a single burn commitment here, so we error here
-                            return Err(TransactionBuilderError::MultipleBurnCommitments);
-                        },
-                        None => {
-                            self.burn_commitment = Some(output.commitment.clone());
-                        },
-                    }
-                }
-            }
             core_tx_builder.add_output(output);
+        }
+        if self.tx_type == TxType::Burn && self.burn_commitment.is_none() {
+            return Err(TransactionBuilderError::TxTypeBurnWithNoBurnCommitment);
+        } else if self.tx_type != TxType::Burn && self.burn_commitment.is_some() {
+            return Err(TransactionBuilderError::BurnCommitmentWithoutTxTypeBurn);
+        } else {
+            // Nothing to do here
         }
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(

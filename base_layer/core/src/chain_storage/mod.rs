@@ -71,6 +71,7 @@ pub use lmdb_db::{
     get_all_database_names,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     AccumulatedDataRebuildStatus,
+    BurnCommitmentIndexRebuildStatus,
     DatabaseStats,
     LMDBDatabase,
     PayrefRebuildStatus,
