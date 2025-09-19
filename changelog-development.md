@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.3](https://github.com/tari-project/tari/compare/v5.0.1...v5.0.3) (2025-09-19)
+
+
+### Bug Fixes
+
+* remove ban for wrong accumulated difficulty ([54e57df](https://github.com/tari-project/tari/commit/54e57dff9fe827ac9953247102160e1e8890b7b7))
+
 ### [5.0.1](https://github.com/tari-project/tari/compare/v5.0.0...v5.0.1) (2025-09-02)
 
 
