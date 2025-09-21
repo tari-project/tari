@@ -65,11 +65,7 @@ pub struct PeerMetadata {
 
 impl PeerMetadata {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let size = usize::try_from(bincode::serialized_size(self).unwrap())
-            .expect("The serialized size is larger than the platform allows");
-        let mut buf = Vec::with_capacity(size);
-        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
-        buf
+        bincode::serialize(self).expect("PeerMetadata serialization failed")
     }
 }
 
