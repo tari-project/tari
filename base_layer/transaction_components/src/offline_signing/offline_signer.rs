@@ -83,29 +83,32 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let mut inputs = Vec::new();
         for input_pair in tx_builder.inputs() {
             let mut input = input_pair.clone();
-            input.output.script_key_id = self
-                .make_key_id_export_safe(&input.output.script_key_id)
-                .await
-                .map_err(TransactionError::BuilderError)?;
+            input.output.set_script_key_id(
+                self.make_key_id_export_safe(input.output.script_key_id())
+                    .await
+                    .map_err(TransactionError::BuilderError)?,
+            );
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
 
         let mut outputs = Vec::new();
         for output_pair in tx_builder.custom_outputs() {
             let mut output = output_pair.clone();
-            output.output.script_key_id = self
-                .make_key_id_export_safe(&output.output.script_key_id)
-                .await
-                .map_err(TransactionError::BuilderError)?;
+            output.output.set_script_key_id(
+                self.make_key_id_export_safe(output.output.script_key_id())
+                    .await
+                    .map_err(TransactionError::BuilderError)?,
+            );
             outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
         let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
             (fee, Some(mut change_output)) => {
-                change_output.output.script_key_id = self
-                    .make_key_id_export_safe(&change_output.output.script_key_id)
-                    .await
-                    .map_err(TransactionError::BuilderError)?;
+                change_output.output.set_script_key_id(
+                    self.make_key_id_export_safe(change_output.output.script_key_id())
+                        .await
+                        .map_err(TransactionError::BuilderError)?,
+                );
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
@@ -158,20 +161,22 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let mut inputs = Vec::new();
         for input_ref in tx_builder.inputs() {
             let mut input = input_ref.clone();
-            input.output.script_key_id = self
-                .make_key_id_export_safe(&input.output.script_key_id)
-                .await
-                .map_err(TransactionError::BuilderError)?;
+            input.output.set_script_key_id(
+                self.make_key_id_export_safe(input.output.script_key_id())
+                    .await
+                    .map_err(TransactionError::BuilderError)?,
+            );
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
         let outputs = Vec::new();
 
         let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
             (fee, Some(mut change_output)) => {
-                change_output.output.script_key_id = self
-                    .make_key_id_export_safe(&change_output.output.script_key_id)
-                    .await
-                    .map_err(TransactionError::BuilderError)?;
+                change_output.output.set_script_key_id(
+                    self.make_key_id_export_safe(change_output.output.script_key_id())
+                        .await
+                        .map_err(TransactionError::BuilderError)?,
+                );
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
@@ -227,28 +232,31 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let mut inputs = Vec::new();
         for input_ref in tx_builder.inputs() {
             let mut input = input_ref.clone();
-            input.output.script_key_id = self
-                .make_key_id_export_safe(&input.output.script_key_id)
-                .await
-                .map_err(TransactionError::BuilderError)?;
+            input.output.set_script_key_id(
+                self.make_key_id_export_safe(input.output.script_key_id())
+                    .await
+                    .map_err(TransactionError::BuilderError)?,
+            );
             inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
         }
         let mut outputs = Vec::new();
         for output_pair in tx_builder.custom_outputs() {
             let mut output = output_pair.clone();
-            output.output.script_key_id = self
-                .make_key_id_export_safe(&output.output.script_key_id)
-                .await
-                .map_err(TransactionError::BuilderError)?;
+            output.output.set_script_key_id(
+                self.make_key_id_export_safe(output.output.script_key_id())
+                    .await
+                    .map_err(TransactionError::BuilderError)?,
+            );
             outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
         let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
             (fee, Some(mut change_output)) => {
-                change_output.output.script_key_id = self
-                    .make_key_id_export_safe(&change_output.output.script_key_id)
-                    .await
-                    .map_err(TransactionError::BuilderError)?;
+                change_output.output.set_script_key_id(
+                    self.make_key_id_export_safe(change_output.output.script_key_id())
+                        .await
+                        .map_err(TransactionError::BuilderError)?,
+                );
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),

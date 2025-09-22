@@ -3823,7 +3823,7 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 6;
+    const MIGRATION_VERSION: u64 = 7;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -4131,6 +4131,70 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 None,
             )?;
             write_txn.commit()?;
+        }
+
+        // Migration Total accumulated difficulty migration - re-calculate accumulated difficultie for c29
+        if migrate_from_version == 6 {
+            let txn = db.write_transaction()?;
+            let rebuild_status = {
+                let val: Option<MetadataValue> = lmdb_get(
+                    &txn,
+                    &db.metadata_db,
+                    &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                )
+                .unwrap_or_default();
+                match val {
+                    Some(MetadataValue::AccumulatedDataRebuildStatus(status)) => status,
+                    _ => AccumulatedDataRebuildStatus::default(),
+                }
+            };
+            match (rebuild_status.is_rebuilt, rebuild_status.last_rebuild_height) {
+                (_, Some(val)) => {
+                    if val < 95000 {
+                        info!(
+                            target: LOG_TARGET,
+                            "[MIGRATIONS] v{migrate_from_version}: No need to reset accumulated data rebuilding, below fork height for c29",
+                        );
+                    } else {
+                        info!(
+                            target: LOG_TARGET,
+                            "[MIGRATIONS] v{migrate_from_version}: Already past accumulated rebuild already past fork height of c29, need to rebuild"
+                        );
+                        let status = AccumulatedDataRebuildStatus {
+                            is_rebuilt: false,
+                            last_rebuild_height: Some(94999),
+                        };
+                        lmdb_replace(
+                            &txn,
+                            &db.metadata_db,
+                            &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                            &MetadataValue::AccumulatedDataRebuildStatus(status),
+                            None,
+                        )?;
+                        txn.commit()?;
+                    }
+                },
+                (_, None) => {
+                    let height = fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0);
+
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Already past accumulated rebuild already past fork height of c29, need to rebuild"
+                    );
+                    let status = AccumulatedDataRebuildStatus {
+                        is_rebuilt: false,
+                        last_rebuild_height: Some(std::cmp::min(94999, height)),
+                    };
+                    lmdb_replace(
+                        &txn,
+                        &db.metadata_db,
+                        &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                        &MetadataValue::AccumulatedDataRebuildStatus(status),
+                        None,
+                    )?;
+                    txn.commit()?;
+                },
+            }
         }
 
         // Let's update the migration version

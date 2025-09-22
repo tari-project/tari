@@ -30,7 +30,7 @@ use tari_common_types::{
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::TariKeyId,
     tari_amount::*,
     transaction_components::{
         covenants::Covenant,
@@ -267,10 +267,10 @@ impl SenderTransactionProtocol {
                 let mut amount = info
                     .change_output
                     .as_ref()
-                    .map(|output| output.output.value)
+                    .map(|output| output.output.value())
                     .unwrap_or(MicroMinotari::zero());
                 for output in &info.outputs {
-                    amount += output.output.value
+                    amount += output.output.value()
                 }
                 Ok(amount)
             },
@@ -288,7 +288,7 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => Ok(info
                 .change_output
                 .as_ref()
-                .map(|output| output.output.value)
+                .map(|output| output.output.value())
                 .unwrap_or(MicroMinotari::zero())),
             SenderState::FinalizedTransaction {
                 final_transaction: _,
@@ -296,7 +296,7 @@ impl SenderTransactionProtocol {
             } => Ok(change
                 .as_ref()
                 .as_ref()
-                .map(|o| o.output.value)
+                .map(|o| o.output.value())
                 .unwrap_or(MicroMinotari::zero())),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -427,10 +427,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub async fn get_output_commitments<KM: TransactionKeyManagerInterface>(
-        &self,
-        km: &KM,
-    ) -> Result<Vec<CompressedCommitment>, TPE> {
+    pub fn get_output_commitments(&self) -> Result<Vec<CompressedCommitment>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
@@ -438,10 +435,10 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => {
                 let mut commitments = Vec::new();
                 for output in &info.outputs {
-                    commitments.push(output.output.to_transaction_output(km).await?.commitment);
+                    commitments.push(output.output.to_transaction_output()?.commitment);
                 }
                 if let Some(change) = info.change_output.as_ref() {
-                    commitments.push(change.output.to_transaction_output(km).await?.commitment);
+                    commitments.push(change.output.to_transaction_output()?.commitment);
                 }
                 if let Some(recipient) = info.recipient_output.as_ref() {
                     commitments.push(recipient.commitment.clone());
@@ -456,10 +453,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub async fn get_input_commitments<KM: TransactionKeyManagerInterface>(
-        &self,
-        km: &KM,
-    ) -> Result<Vec<CompressedCommitment>, TPE> {
+    pub fn get_input_commitments(&self) -> Result<Vec<CompressedCommitment>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
@@ -467,7 +461,7 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => {
                 let mut commitments = Vec::new();
                 for output in &info.inputs {
-                    commitments.push(output.output.to_transaction_output(km).await?.commitment);
+                    commitments.push(output.output.to_transaction_output()?.commitment);
                 }
                 Ok(commitments)
             },

@@ -382,7 +382,7 @@ mod test {
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
             Ok(val) => {
-                let output = val.to_transaction_output(&key_manager).await.unwrap();
+                let output = val.to_transaction_output().unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
                 assert!(key_manager
                     .verify_mask(output.commitment(), &commitment_mask_key.key_id, value.into())
@@ -429,7 +429,7 @@ mod test {
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
             Ok(wallet_output) => {
-                let mut output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+                let mut output = wallet_output.to_transaction_output().unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
 
                 // Now we can swap out the metadata signature for one built from partial sender and receiver signatures
@@ -441,19 +441,19 @@ mod test {
 
                 let receiver_metadata_signature = key_manager
                     .get_receiver_partial_metadata_signature(
-                        &wallet_output.commitment_mask_key_id,
-                        &wallet_output.value.into(),
-                        &wallet_output.sender_offset_public_key,
+                        wallet_output.commitment_mask_key_id(),
+                        &(wallet_output.value().into()),
+                        wallet_output.sender_offset_public_key(),
                         &ephemeral_key.pub_key,
-                        &wallet_output.version,
+                        &wallet_output.version(),
                         &metadata_message,
-                        wallet_output.features.range_proof_type,
+                        wallet_output.features().range_proof_type,
                     )
                     .await
                     .unwrap();
 
                 let commitment = key_manager
-                    .get_commitment(&wallet_output.commitment_mask_key_id, &wallet_output.value.into())
+                    .get_commitment(wallet_output.commitment_mask_key_id(), &wallet_output.value().into())
                     .await
                     .unwrap();
                 let sender_metadata_signature = key_manager
@@ -462,7 +462,7 @@ mod test {
                         &sender_offset.key_id,
                         &commitment,
                         receiver_metadata_signature.ephemeral_commitment(),
-                        &wallet_output.version,
+                        &wallet_output.version(),
                         &metadata_message,
                     )
                     .await

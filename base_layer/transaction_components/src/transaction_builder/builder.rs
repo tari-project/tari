@@ -350,7 +350,7 @@ where KM: TransactionKeyManagerInterface
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
         self.inputs
             .iter()
-            .map(|i| i.output.value)
+            .map(|i| i.output.value())
             .try_fold(MicroMinotari::zero(), |acc, x| {
                 acc.checked_add(x)
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
@@ -412,7 +412,7 @@ where KM: TransactionKeyManagerInterface
         let total_being_spent =
             self.inputs
                 .iter()
-                .map(|i| i.output.value)
+                .map(|i| i.output.value())
                 .try_fold(MicroMinotari::zero(), |acc, x| {
                     acc.checked_add(x)
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
@@ -420,18 +420,19 @@ where KM: TransactionKeyManagerInterface
         let mut total_sent =
             self.custom_outputs
                 .iter()
-                .map(|o| o.output.value)
+                .map(|o| o.output.value())
                 .try_fold(MicroMinotari::zero(), |acc, x| {
                     acc.checked_add(x)
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
-        total_sent += self.recipient_outputs.iter().map(|o| o.output.output.value).try_fold(
-            MicroMinotari::zero(),
-            |acc, x| {
+        total_sent += self
+            .recipient_outputs
+            .iter()
+            .map(|o| o.output.output.value())
+            .try_fold(MicroMinotari::zero(), |acc, x| {
                 acc.checked_add(x)
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-            },
-        )?;
+            })?;
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let fee_without_change = self.get_fee_estimate()?;
         let temp_script = script!(PushPubKey(Box::default()))?;
@@ -505,7 +506,7 @@ where KM: TransactionKeyManagerInterface
 
         // we only set for the first output, otherwise the extra data gets too large
         if let Some(recipient) = self.recipient_outputs.first() {
-            memo.transaction_info_set_amount(recipient.output.output.value);
+            memo.transaction_info_set_amount(recipient.output.output.value());
             match memo.get_type() {
                 TxType::PaymentToOther => memo
                     .transaction_info_set_address(recipient.recipient_address.clone())
@@ -528,7 +529,7 @@ where KM: TransactionKeyManagerInterface
         }
         let mut sent_hashes = Vec::new();
         for recipient in &self.recipient_outputs {
-            sent_hashes.push(recipient.output.tx_output(&self.key_manager).await?.hash());
+            sent_hashes.push(recipient.output.output.output_hash());
         }
         // if its too much outputs, we dont track this
         if sent_hashes.len() <= 2 {
@@ -626,7 +627,7 @@ where KM: TransactionKeyManagerInterface
             public_excess = public_excess -
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &input.output.commitment_mask_key_id,
+                        input.output.commitment_mask_key_id(),
                         &input.kernel_nonce,
                     )
                     .await?
@@ -641,7 +642,7 @@ where KM: TransactionKeyManagerInterface
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &output.output.commitment_mask_key_id,
+                        output.output.commitment_mask_key_id(),
                         &output.kernel_nonce,
                     )
                     .await?
@@ -657,7 +658,7 @@ where KM: TransactionKeyManagerInterface
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &output.output.output.commitment_mask_key_id,
+                        output.output.output.commitment_mask_key_id(),
                         &output.output.kernel_nonce,
                     )
                     .await?
@@ -673,7 +674,7 @@ where KM: TransactionKeyManagerInterface
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &change.output.commitment_mask_key_id,
+                        change.output.commitment_mask_key_id(),
                         &change.kernel_nonce,
                     )
                     .await?
@@ -704,14 +705,14 @@ where KM: TransactionKeyManagerInterface
 
         let kernel_version = TransactionKernelVersion::get_current_version();
         for input in &self.inputs {
-            core_tx_builder.add_input(input.tx_input(&self.key_manager).await?.clone());
+            core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager).await?.clone());
         }
         for output in &self.custom_outputs {
-            core_tx_builder.add_output(output.tx_output(&self.key_manager).await?);
+            core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
         for recipient in &self.recipient_outputs {
-            let output = recipient.output.tx_output(&self.key_manager).await?;
+            let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
                 // lets do some burn logic
@@ -743,7 +744,7 @@ where KM: TransactionKeyManagerInterface
                 &(self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &input.output.commitment_mask_key_id,
+                        input.output.commitment_mask_key_id(),
                         &input.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -756,16 +757,16 @@ where KM: TransactionKeyManagerInterface
                     .to_schnorr_signature()?);
             offset = offset -
                 self.key_manager
-                    .get_txo_private_kernel_offset(&input.output.commitment_mask_key_id, &input.kernel_nonce)
+                    .get_txo_private_kernel_offset(input.output.commitment_mask_key_id(), &input.kernel_nonce)
                     .await?;
-            script_keys.push(input.output.script_key_id.clone());
+            script_keys.push(input.output.script_key_id().clone());
         }
 
         for output in &self.custom_outputs {
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
-                        &output.output.commitment_mask_key_id,
+                        output.output.commitment_mask_key_id(),
                         &output.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -779,7 +780,7 @@ where KM: TransactionKeyManagerInterface
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(&output.output.commitment_mask_key_id, &output.kernel_nonce)
+                    .get_txo_private_kernel_offset(output.output.commitment_mask_key_id(), &output.kernel_nonce)
                     .await?;
             let sender_offset_key_id = output
                 .sender_offset_key_id
@@ -792,7 +793,7 @@ where KM: TransactionKeyManagerInterface
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
-                        &output.output.output.commitment_mask_key_id,
+                        output.output.output.commitment_mask_key_id(),
                         &output.output.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -807,7 +808,7 @@ where KM: TransactionKeyManagerInterface
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(
-                        &output.output.output.commitment_mask_key_id,
+                        output.output.output.commitment_mask_key_id(),
                         &output.output.kernel_nonce,
                     )
                     .await?;
@@ -820,12 +821,12 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &change_output {
-            core_tx_builder.add_output(change.output.to_transaction_output(&self.key_manager).await?);
+            core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &change.output.commitment_mask_key_id,
+                        change.output.commitment_mask_key_id(),
                         &change.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -839,7 +840,7 @@ where KM: TransactionKeyManagerInterface
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(&change.output.commitment_mask_key_id, &change.kernel_nonce)
+                    .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)
                     .await?;
             let sender_offset_key_id = change
                 .sender_offset_key_id
@@ -874,31 +875,32 @@ where KM: TransactionKeyManagerInterface
             .map(|r| r.recipient_address.clone())
             .collect::<Vec<TariAddress>>();
 
-        let mut amount = self.recipient_outputs.iter().map(|r| r.output.output.value).try_fold(
-            MicroMinotari::zero(),
-            |acc, x| {
+        let mut amount = self
+            .recipient_outputs
+            .iter()
+            .map(|r| r.output.output.value())
+            .try_fold(MicroMinotari::zero(), |acc, x| {
                 acc.checked_add(x)
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-            },
-        )?;
+            })?;
         amount += self
             .custom_outputs
             .iter()
-            .map(|o| o.output.value)
+            .map(|o| o.output.value())
             .try_fold(MicroMinotari::zero(), |acc, x| {
                 acc.checked_add(x)
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
             })?;
         let mut sent_hashes = Vec::new();
         for recipient in &self.recipient_outputs {
-            sent_hashes.push(recipient.output.tx_output(&self.key_manager).await?.hash());
+            sent_hashes.push(recipient.output.output.output_hash());
         }
         let mut received_hashes = Vec::new();
         for output in &self.custom_outputs {
-            received_hashes.push(output.tx_output(&self.key_manager).await?.hash());
+            received_hashes.push(output.output.output_hash());
         }
         let change_output_hash = match &change_output {
-            Some(o) => vec![o.output.to_transaction_output(&self.key_manager).await?.hash()],
+            Some(o) => vec![o.output.output_hash()],
             None => vec![],
         };
         Ok(FinalizedTransaction {
@@ -1465,25 +1467,25 @@ mod test {
             .unwrap();
         let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
         let commitment_mask_pvt = key_manager
-            .get_private_key(&bob_output.commitment_mask_key_id)
+            .get_private_key(bob_output.commitment_mask_key_id())
             .await
             .unwrap();
         assert_eq!(commitment_mask_private_key, commitment_mask_pvt);
 
         let script_spending_key = key_manager
-            .stealth_address_script_spending_key(&bob_output.commitment_mask_key_id, bob_address.public_spend_key())
+            .stealth_address_script_spending_key(bob_output.commitment_mask_key_id(), bob_address.public_spend_key())
             .await
             .unwrap();
         let script = push_pubkey_script(&script_spending_key);
 
-        assert_eq!(bob_output.script, script);
+        assert_eq!(*bob_output.script(), script);
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-        let bob_tx_output = bob_output.to_transaction_output(&key_manager).await.unwrap();
+        let bob_tx_output = bob_output.to_transaction_output().unwrap();
         assert!(key_manager
             .is_this_output_ours(
-                &bob_tx_output.commitment,
-                &bob_output.encrypted_data,
+                bob_tx_output.commitment(),
+                bob_output.encrypted_data(),
                 Some(encryption_private_key)
             )
             .await
@@ -1552,21 +1554,21 @@ mod test {
             .unwrap();
         let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
         let commitment_mask_pvt = key_manager
-            .get_private_key(&bob_output.commitment_mask_key_id)
+            .get_private_key(bob_output.commitment_mask_key_id())
             .await
             .unwrap();
         assert_eq!(commitment_mask_private_key, commitment_mask_pvt);
 
         let script = push_pubkey_script(bob_address.public_spend_key());
 
-        assert_eq!(bob_output.script, script);
+        assert_eq!(*bob_output.script(), script);
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-        let bob_tx_output = bob_output.to_transaction_output(&key_manager).await.unwrap();
+        let bob_tx_output = bob_output.to_transaction_output().unwrap();
         assert!(key_manager
             .is_this_output_ours(
-                &bob_tx_output.commitment,
-                &bob_output.encrypted_data,
+                bob_tx_output.commitment(),
+                bob_output.encrypted_data(),
                 Some(encryption_private_key)
             )
             .await

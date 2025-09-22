@@ -69,7 +69,6 @@ use crate::{
     },
     schema::outputs,
 };
-
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 #[derive(Clone, Derivative, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
@@ -926,8 +925,17 @@ impl OutputSql {
             Some(bytes) => MemoField::from_bytes(&bytes),
             None => MemoField::new_empty(),
         };
-
-        let wallet_output = WalletOutput::new_with_rangeproof(
+        let commitment = CompressedCommitment::from_vec(&self.commitment)?;
+        let hash = match <Vec<u8> as TryInto<FixedHash>>::try_into(self.hash) {
+            Ok(v) => v,
+            Err(e) => {
+                error!(target: LOG_TARGET, "Malformed output hash: {e}");
+                return Err(OutputManagerStorageError::ConversionError {
+                    reason: "Malformed output hash".to_string(),
+                });
+            },
+        };
+        let wallet_output = WalletOutput::new_from_parts(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
             TariKeyId::from_str(&self.spending_key).map_err(|e| {
@@ -1016,18 +1024,10 @@ impl OutputSql {
                 None => None,
             },
             payment_id.clone(),
+            hash,
+            commitment.clone(),
         );
 
-        let commitment = CompressedCommitment::from_vec(&self.commitment)?;
-        let hash = match <Vec<u8> as TryInto<FixedHash>>::try_into(self.hash) {
-            Ok(v) => v,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Malformed output hash: {e}");
-                return Err(OutputManagerStorageError::ConversionError {
-                    reason: "Malformed output hash".to_string(),
-                });
-            },
-        };
         let spending_priority = SpendingPriority::try_from(self.spending_priority as u32).map_err(|e| {
             OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert spending priority from i32: {e}"),

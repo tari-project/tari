@@ -562,9 +562,9 @@ mod test {
                 RangeProofType::RevealedValue,
                 &key_manager,
             ));
-            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
+                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -588,10 +588,12 @@ mod test {
                 &key_manager,
             )
             .await;
-            coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
+            let mut features = coinbase.features().clone();
+            features.maturity = 0;
+            coinbase.set_features(features);
+            let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
+                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -618,10 +620,10 @@ mod test {
                 &key_manager,
             )
             .await;
-            coinbase.value = 123.into();
-            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
+            coinbase.set_value(123.into(), &key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
+                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();

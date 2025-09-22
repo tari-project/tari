@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.1.0-pre.1](https://github.com/tari-project/tari/compare/v5.1.0-pre.0...v5.1.0-pre.1) (2025-09-18)
+
+
+### Bug Fixes
+
+* accumulated data in c29 ([#7507](https://github.com/tari-project/tari/issues/7507)) ([840c6d2](https://github.com/tari-project/tari/commit/840c6d24e02923453ec77dab70073c7d1d9569cc))
+
+## [5.1.0-pre.0](https://github.com/tari-project/tari/compare/v5.0.1...v5.1.0-pre.0) (2025-09-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove comms from wallet (#7432)
+
+### Features
+
+* add http cache config ([#7477](https://github.com/tari-project/tari/issues/7477)) ([ed0e19f](https://github.com/tari-project/tari/commit/ed0e19f76592ceb1676ed814a77b9fb5f9a13fe7))
+* add prometheus difficulty gauges for expanded metrics export ([#7472](https://github.com/tari-project/tari/issues/7472)) ([0cb76bf](https://github.com/tari-project/tari/commit/0cb76bf5887ef4900dba1639c1c33cb6e27b9f78))
+* add sqlite concurrency and pool hardening ([#7492](https://github.com/tari-project/tari/issues/7492)) ([40974c3](https://github.com/tari-project/tari/commit/40974c303a9bbdebeca0bd753660c21707310e43))
+* add timeouts to health check ([#7482](https://github.com/tari-project/tari/issues/7482)) ([a5cb9c0](https://github.com/tari-project/tari/commit/a5cb9c09020c97cfbb4e8052bc5512850f14e16f))
+* clear bad blocks on startup ([#7465](https://github.com/tari-project/tari/issues/7465)) ([c4cc8fe](https://github.com/tari-project/tari/commit/c4cc8fe408800cbd394e6c5c994dfa1c33be00a1))
+* improve header sync ([#7421](https://github.com/tari-project/tari/issues/7421)) ([6fb8d66](https://github.com/tari-project/tari/commit/6fb8d66c20efe20d9ba71db70213e46332f9e8f5))
+* multi recipient support ([#7480](https://github.com/tari-project/tari/issues/7480)) ([18921ca](https://github.com/tari-project/tari/commit/18921ca5b69c33fad9e98550557b61c0ae7930bb))
+* performance improvement of wallet output ([#7490](https://github.com/tari-project/tari/issues/7490)) ([84f2961](https://github.com/tari-project/tari/commit/84f296178d432e0aba5218a25d5192b0ee8faa61))
+* remove comms from wallet ([#7432](https://github.com/tari-project/tari/issues/7432)) ([cf89f14](https://github.com/tari-project/tari/commit/cf89f147ef8cafbc9e2bf546b1f39e90640ea52d))
+* throttle background rebuild tasks ([#7502](https://github.com/tari-project/tari/issues/7502)) ([fe781fb](https://github.com/tari-project/tari/commit/fe781fb3e807ddf02cef10d97dcd94b57892b7de))
+* wallet multisignature feature ([#7481](https://github.com/tari-project/tari/issues/7481)) ([ab82dd1](https://github.com/tari-project/tari/commit/ab82dd1f088e82a4f6de7c16856b250d7bae2c8e))
+
+
+### Bug Fixes
+
+* always cancel transactions ([#7500](https://github.com/tari-project/tari/issues/7500)) ([b54bb67](https://github.com/tari-project/tari/commit/b54bb677ee7fc60dc36a87d5c4b38fb6a03fd8e1))
+* ambiguous seedstrap warning log ([#7483](https://github.com/tari-project/tari/issues/7483)) ([72ec64e](https://github.com/tari-project/tari/commit/72ec64e2289750251879ec70b0cab7c6f4aa7bf9))
+* correctly scale c29 ([#7503](https://github.com/tari-project/tari/issues/7503)) ([e2b148b](https://github.com/tari-project/tari/commit/e2b148b4ee37682f69d3b299aea054e8afc24bdc))
+* discovery syncing regression bug ([#7488](https://github.com/tari-project/tari/issues/7488)) ([38081b2](https://github.com/tari-project/tari/commit/38081b2d33a681158b2a9bd7da520c7f99e5fff6))
+* false negative retrieving seed peers in connectivity manager at startup ([#7474](https://github.com/tari-project/tari/issues/7474)) ([36fd93f](https://github.com/tari-project/tari/commit/36fd93f14afb542534dfef88de2002a6928d3fa5))
+* filter node identity onion address when running TCP node ([#7486](https://github.com/tari-project/tari/issues/7486)) ([ec0a9f7](https://github.com/tari-project/tari/commit/ec0a9f744afaedea0f5eadccaa5ce16a82cb7d83))
+* peer_db null update where none should be written as null ([#7489](https://github.com/tari-project/tari/issues/7489)) ([e07801f](https://github.com/tari-project/tari/commit/e07801febf5968e6362e80b6cccc9096e5e625fc))
+* tcp node peers discovery ([#7438](https://github.com/tari-project/tari/issues/7438)) ([b0cfe30](https://github.com/tari-project/tari/commit/b0cfe304d6b5eeceb631cb9979f8d223b4520516))
+* update peer database after re-initializing node identity config file ([#7497](https://github.com/tari-project/tari/issues/7497)) ([2cbf6a2](https://github.com/tari-project/tari/commit/2cbf6a2ffd85e3026f7f21df873a0a0a6d9bffb0))
+* **wallet:** use minimum value promise in VN reg output ([#7460](https://github.com/tari-project/tari/issues/7460)) ([213a0c5](https://github.com/tari-project/tari/commit/213a0c510457be9eae5a140f2a72fb0dc4d13764))
+
 ### [5.0.1](https://github.com/tari-project/tari/compare/v5.0.0...v5.0.1) (2025-09-02)
 
 
