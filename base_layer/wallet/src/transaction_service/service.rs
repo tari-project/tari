@@ -403,7 +403,7 @@ where
         fee_per_gram: MicroMinotari,
         script: &TariScript,
     ) -> Result<MicroMinotari, TransactionServiceError> {
-        let tx_builder = self
+        let mut tx_builder = self
             .resources
             .output_manager_service
             .clone()
@@ -433,14 +433,31 @@ where
             )
             .unwrap_or(payment_id.clone());
 
-        Ok(OfflineSigner::estimate_fee(
-            tx_builder,
-            destination.clone(),
-            amount,
-            output_features,
-            payment_id_temp.clone(),
-        )
-        .await?)
+        // We do this to ensure the fee is calculated correctly
+        tx_builder
+            .add_stealth_recipient(
+                destination.clone(),
+                amount,
+                output_features.clone(),
+                payment_id_temp.clone(),
+            )
+            .await?;
+
+        let mut inputs = Vec::new();
+        for input_pair in tx_builder.inputs() {
+            let input = input_pair.clone();
+            inputs.push(input);
+        }
+
+        let mut outputs = Vec::new();
+        for output_pair in tx_builder.custom_outputs() {
+            let output = output_pair.clone();
+            outputs.push(output);
+        }
+
+        let (fee, _) = tx_builder.get_pre_build_change_output().await?;
+
+        Ok(fee)
     }
 
     /// This handler is called when requests arrive from the various streams

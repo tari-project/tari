@@ -60,39 +60,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         OfflineSigner { key_manager }
     }
 
-    pub async fn estimate_fee(
-        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
-        dest_address: TariAddress,
-        amount: MicroMinotari,
-        output_features: OutputFeatures,
-        payment_id: MemoField,
-    ) -> Result<MicroMinotari, TransactionBuilderError> {
-        // we do this to ensure the fee is calculated correctly
-        tx_builder
-            .add_stealth_recipient(
-                dest_address.clone(),
-                amount,
-                output_features.clone(),
-                payment_id.clone(),
-            )
-            .await?;
-
-        let mut inputs = Vec::new();
-        for input_pair in tx_builder.inputs() {
-            let input = input_pair.clone();
-            inputs.push(input);
-        }
-
-        let mut outputs = Vec::new();
-        for output_pair in tx_builder.custom_outputs() {
-            let output = output_pair.clone();
-            outputs.push(output);
-        }
-
-        let (fee, _) = tx_builder.get_pre_build_change_output().await?;
-        Ok(fee)
-    }
-
     pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
         tx_id: TxId,
