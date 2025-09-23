@@ -417,7 +417,8 @@ where
                 Covenant::default(),
             )
             .await?;
-        let payment_id_temp = payment_id.clone()
+        let payment_id_temp = payment_id
+            .clone()
             .add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
