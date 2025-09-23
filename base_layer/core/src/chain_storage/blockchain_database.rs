@@ -160,7 +160,7 @@ impl Default for BlockchainDatabaseConfig {
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             track_reorgs: false,
-            cleanup_orphans_at_startup: false,
+            cleanup_orphans_at_startup: true,
             clear_bad_blocks_at_startup: true,
         }
     }
