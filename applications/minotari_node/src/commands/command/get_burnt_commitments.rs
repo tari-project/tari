@@ -122,7 +122,7 @@ fn print_results_to_console(burnt_commitments_info: &[BurntCommitmentInfo]) {
     // Table print the results to the console
 
     if burnt_commitments_info.is_empty() {
-        println!("No burnt commitments found in the specified range.");
+        println!("No burnt commitments found in the specified range.\n");
         return;
     }
 
@@ -138,6 +138,7 @@ fn print_results_to_console(burnt_commitments_info: &[BurntCommitmentInfo]) {
             item.kernel_hash.to_hex(),
         ]);
     }
+    table.print_stdout();
 
     println!();
 }

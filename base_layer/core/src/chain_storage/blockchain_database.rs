@@ -383,9 +383,13 @@ where B: BlockchainBackend
             self.clear_all_reorgs()?;
         }
 
-        self.rebuild_payref_indexes_background_task()?;
-        self.rebuild_accumulated_data_background_task()?;
-        self.rebuild_burn_commitment_indexes_background_task()?;
+        if tokio::runtime::Handle::try_current().is_ok() {
+            self.rebuild_payref_indexes_background_task()?;
+            self.rebuild_accumulated_data_background_task()?;
+            self.rebuild_burn_commitment_indexes_background_task()?;
+        } else {
+            warn!(target: LOG_TARGET, "No Tokio runtime detected; background tasks not started.");
+        }
 
         Ok(())
     }
