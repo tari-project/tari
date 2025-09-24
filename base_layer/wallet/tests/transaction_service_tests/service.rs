@@ -111,6 +111,7 @@ use tari_transaction_components::{
     transaction_components::{
         memo_field::{MemoField, TxType},
         one_sided::shared_secret_to_output_encryption_key,
+        EncryptedData,
         KernelBuilder,
         OutputFeatures,
         RangeProofType,
@@ -733,6 +734,7 @@ async fn send_one_sided_transaction_to_other() {
 
 #[tokio::test]
 async fn recover_one_sided_transaction() {
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -811,6 +813,8 @@ async fn recover_one_sided_transaction() {
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
+    log::info!("Starting one-sided transaction");
+
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
     let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
@@ -832,6 +836,8 @@ async fn recover_one_sided_transaction() {
         .await
         .expect("Alice sending one-sided tx to Bob");
 
+    log::info!("One-sided transaction sent");
+
     let completed_tx = alice_ts
         .get_completed_transaction(tx_id)
         .await
@@ -845,6 +851,26 @@ async fn recover_one_sided_transaction() {
     // Bob should be able to claim 1 output.
     assert_eq!(1, recovered_outputs_1.len());
     assert_eq!(value, recovered_outputs_1[0].output.value());
+
+    let shared_secret = bob_key_manager_handle
+        .get_diffie_hellman_shared_secret(
+            &bob_view_key.key_id,
+            &recovered_outputs_1[0]
+                .output
+                .to_transaction_output()
+                .unwrap()
+                .sender_offset_public_key,
+        )
+        .await
+        .unwrap();
+    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let (_, _, payment_id) = EncryptedData::decrypt_data(
+        &encryption_key,
+        recovered_outputs_1[0].output.commitment(),
+        recovered_outputs_1[0].output.encrypted_data(),
+    )
+    .unwrap();
+    assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
     let recovered_outputs_2 = bob_oms

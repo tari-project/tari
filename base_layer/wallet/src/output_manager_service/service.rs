@@ -915,16 +915,18 @@ where
         .await?;
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .set_estimated_fee(input_selection.as_final_fee());
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
         }
         debug!(
             target: LOG_TARGET,
-            "Calculating fee for tx with: Fee per gram: {}. Num selected inputs: {}",
-            amount,
-            input_selection.num_selected()
+            "Calculated fee for tx: Fee per gram: {}. Fee {}. Num inputs: {}.",
+            fee_per_gram,
+            builder.get_fee_estimate_without_change()?,
+            input_selection.num_selected(),
         );
 
         self.resources
@@ -1821,7 +1823,7 @@ where
         for o in uo {
             utxos_total_value += o.wallet_output.value();
 
-            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value:?}");
+            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value}");
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = fee_calc.calculate(
@@ -1842,7 +1844,7 @@ where
                 total_output_features_and_scripts_byte_size + default_features_and_scripts_size,
             );
 
-            trace!(target: LOG_TARGET, "-- amt+fee = {amount:?} {fee_with_change}");
+            trace!(target: LOG_TARGET, "-- amt+fee = {amount} + {fee_with_change}");
             if utxos_total_value > amount + fee_with_change {
                 requires_change_output = true;
                 break;

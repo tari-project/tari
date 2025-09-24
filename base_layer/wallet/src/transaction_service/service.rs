@@ -69,7 +69,6 @@ use tari_script::{
     Opcode,
     ScriptContext,
     StackItem,
-    TariScript,
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -391,75 +390,6 @@ where
         Ok(())
     }
 
-    // We need to the actual fee before we can create the memo field, but the memo field is used in the
-    // fee calculation, so we repeat non-persistent steps here to get the fee.
-    async fn estimate_fee(
-        &self,
-        destination: &TariAddress,
-        payment_id: &MemoField,
-        amount: MicroMinotari,
-        selection_criteria: &UtxoSelectionCriteria,
-        output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
-        script: &TariScript,
-    ) -> Result<MicroMinotari, TransactionServiceError> {
-        let mut tx_builder = self
-            .resources
-            .output_manager_service
-            .clone()
-            .prepare_transaction_to_send(
-                TxId::new_random(), // Dummy TxId
-                amount,
-                selection_criteria.clone(),
-                output_features.clone(),
-                fee_per_gram,
-                script.clone(),
-                Covenant::default(),
-            )
-            .await?;
-        let payment_id_temp = payment_id
-            .clone()
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                true,
-                MicroMinotari(1), // This will be packed in 4 bytes, so 1 uT is enough for fee estimation
-                if destination == &self.resources.one_sided_tari_address ||
-                    destination == &self.resources.interactive_tari_address
-                {
-                    Some(TxType::PaymentToSelf)
-                } else {
-                    Some(TxType::PaymentToOther)
-                },
-            )
-            .unwrap_or(payment_id.clone());
-
-        // We do this to ensure the fee is calculated correctly
-        tx_builder
-            .add_stealth_recipient(
-                destination.clone(),
-                amount,
-                output_features.clone(),
-                payment_id_temp.clone(),
-            )
-            .await?;
-
-        let mut inputs = Vec::new();
-        for input_pair in tx_builder.inputs() {
-            let input = input_pair.clone();
-            inputs.push(input);
-        }
-
-        let mut outputs = Vec::new();
-        for output_pair in tx_builder.custom_outputs() {
-            let output = output_pair.clone();
-            outputs.push(output);
-        }
-
-        let (fee, _) = tx_builder.get_pre_build_change_output().await?;
-
-        Ok(fee)
-    }
-
     /// This handler is called when requests arrive from the various streams
     #[allow(clippy::too_many_lines)]
     async fn handle_request(
@@ -497,18 +427,21 @@ where
 
                 // Prepare sender part of the transaction
                 let script = push_pubkey_script(&Default::default());
-
-                let fee = self
-                    .estimate_fee(
-                        &destination,
-                        &payment_id,
+                let covenant = Covenant::default();
+                let tx_builder = self
+                    .resources
+                    .output_manager_service
+                    .prepare_transaction_to_send(
+                        tx_id,
                         amount,
-                        &selection_criteria,
+                        selection_criteria,
                         *output_features.clone(),
                         fee_per_gram,
-                        &script,
+                        script,
+                        covenant,
                     )
                     .await?;
+                let fee = tx_builder.get_best_fee_estimate()?;
 
                 let payment_id = payment_id
                     .clone()
@@ -526,20 +459,6 @@ where
                     )
                     .unwrap_or(payment_id);
 
-                // Prepare sender part of the transaction
-                let tx_builder = self
-                    .resources
-                    .output_manager_service
-                    .prepare_transaction_to_send(
-                        tx_id,
-                        amount,
-                        selection_criteria,
-                        *output_features.clone(),
-                        fee_per_gram,
-                        script,
-                        Covenant::default(),
-                    )
-                    .await?;
                 let mut offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
                 let res = offline_signing
                     .prepare_one_sided_transaction_for_signing(
@@ -565,33 +484,28 @@ where
                 self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
                 let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
 
-                let output_manager = self.resources.output_manager_service.clone();
-
                 let tx_id = TxId::new_random();
                 let script = push_pubkey_script(&Default::default());
                 let uuid = Uuid::new_v4();
                 let user_data = uuid.as_bytes().to_vec();
                 let fee_per_gram = MicroMinotari::from(1);
                 let output_features = OutputFeatures::default();
+                let covenant = Covenant::default();
 
-                let fee = self
-                    .estimate_fee(
-                        &request.recipient_address,
-                        &MemoField::new_address_and_data(
-                            request.recipient_address.clone(),
-                            MicroMinotari(1), // Dummy value for fee estimation
-                            true,
-                            TxType::PaymentToOther,
-                            user_data.clone(),
-                        )
-                        .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?,
+                let tx_builder = self
+                    .resources
+                    .output_manager_service
+                    .prepare_transaction_to_send(
+                        tx_id,
                         request.amount,
-                        &UtxoSelectionCriteria::default(),
+                        UtxoSelectionCriteria::default(),
                         output_features.clone(),
                         fee_per_gram,
-                        &script,
+                        script,
+                        covenant,
                     )
                     .await?;
+                let fee = tx_builder.get_best_fee_estimate()?;
 
                 let payment_id = MemoField::new_address_and_data(
                     request.recipient_address.clone(),
@@ -601,19 +515,6 @@ where
                     user_data,
                 )
                 .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
-
-                let tx_builder: tari_transaction_components::TransactionBuilder<TKeyManagerInterface> = output_manager
-                    .clone()
-                    .prepare_transaction_to_send(
-                        tx_id,
-                        request.amount,
-                        UtxoSelectionCriteria::default(),
-                        output_features.clone(),
-                        fee_per_gram,
-                        script.clone(),
-                        Covenant::default(),
-                    )
-                    .await?;
 
                 let response = offline_signing
                     .prepare_deposit_multisig_transaction(
@@ -731,24 +632,20 @@ where
                     .checked_sub(fee)
                     .ok_or(TransactionServiceError::Other("Amount too small to cover fee".into()))?;
 
-                let fee = self
-                    .estimate_fee(
-                        &request.recipient_address,
-                        &MemoField::new_address_and_data(
-                            request.recipient_address.clone(),
-                            MicroMinotari(1), // Dummy value for fee estimation
-                            true,
-                            TxType::PaymentToOther,
-                            vec![],
-                        )
-                        .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?,
-                        total_amount,
-                        &UtxoSelectionCriteria::default(),
-                        output_features.clone(),
-                        fee_per_gram,
-                        &script,
+                tx_builder.with_input(input_wallet_output).await?;
+                tx_builder.with_fee_per_gram(fee_per_gram);
+                tx_builder.with_lock_height(0);
+
+                // This output is only added temporarily to calculate the fee, then removed
+                tx_builder
+                    .add_recipient(
+                        request.recipient_address.clone(),
+                        selected_utxo.wallet_output.clone(),
+                        None,
                     )
                     .await?;
+                let fee = tx_builder.get_best_fee_estimate()?;
+                tx_builder.remove_last_recipient();
 
                 let payment_id = MemoField::new_address_and_data(
                     request.recipient_address.clone(),
@@ -758,10 +655,6 @@ where
                     vec![],
                 )
                 .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
-
-                tx_builder.with_input(input_wallet_output).await?;
-                tx_builder.with_fee_per_gram(fee_per_gram);
-                tx_builder.with_lock_height(0);
 
                 let response = offline_signing
                     .prepare_withdraw_multisig_transaction(
@@ -1366,7 +1259,7 @@ where
                     ..Default::default()
                 };
                 let tx_id = TxId::new_random();
-                let tx_builter = self
+                let tx_builder = self
                     .resources
                     .output_manager_service
                     .prepare_transaction_to_send(
@@ -1379,6 +1272,7 @@ where
                         Covenant::default(),
                     )
                     .await?;
+                let fee_estimate = tx_builder.get_best_fee_estimate()?;
                 let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
                 let uuid = Uuid::new_v4();
                 let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
@@ -1387,13 +1281,20 @@ where
                         request.party_number,
                         request.public_keys,
                         request.recipient_address.clone(),
-                        tx_builter,
-                        fee_per_gram,
+                        tx_builder,
+                        fee_estimate,
                         uuid,
                     )
                     .await?;
 
                 let fee = tx.body.get_total_fee()?;
+                if fee_estimate != fee {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Fee estimate in memo field {} does not match actual fee {} for multisig UTXO creation",
+                        fee_estimate, fee
+                    );
+                }
 
                 self.resources
                     .output_manager_service
@@ -1992,25 +1893,9 @@ where
             EndIf
         )?;
 
-        // Empty covenant
-        let covenant = Covenant::default();
-
-        let fee = self
-            .estimate_fee(
-                &destination,
-                &payment_id,
-                amount,
-                &selection_criteria,
-                OutputFeatures::default(),
-                fee_per_gram,
-                &script,
-            )
-            .await?;
-
         // Prepare sender part of the transaction
-        let payment_id = payment_id
-            .add_sender_address(self.resources.one_sided_tari_address.clone(), false, fee, None)
-            .map_err(TransactionServiceError::InvalidPaymentId)?;
+        let covenant = Covenant::default();
+        let output_features = OutputFeatures::default();
         let mut tx_builder = self
             .resources
             .output_manager_service
@@ -2018,12 +1903,17 @@ where
                 tx_id,
                 amount,
                 selection_criteria,
-                OutputFeatures::default(),
+                output_features.clone(),
                 fee_per_gram,
                 script.clone(),
                 covenant.clone(),
             )
             .await?;
+        let fee = tx_builder.get_best_fee_estimate()?;
+
+        let payment_id = payment_id
+            .add_sender_address(self.resources.one_sided_tari_address.clone(), false, fee, None)
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
 
         tx_builder.with_tx_type(TxType::ClaimAtomicSwap);
 
@@ -2072,7 +1962,7 @@ where
 
         let minimum_value_promise = MicroMinotari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(OutputFeatures::default())
+            .with_features(output_features)
             .with_script(script)
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
@@ -2178,7 +2068,7 @@ where
         use_stealth_one_sided: bool,
         mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
-        debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with {amount}");
+        debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with amount {amount}");
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
@@ -2186,17 +2076,23 @@ where
             payment_id = MemoField::open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
         }
 
-        let fee = self
-            .estimate_fee(
-                &self.resources.one_sided_tari_address,
-                &payment_id,
+        // Prepare sender part of the transaction
+        let script = push_pubkey_script(&Default::default());
+        let covenant = Covenant::default();
+        let mut tx_builder = self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
                 amount,
-                &selection_criteria,
+                selection_criteria,
                 output_features.clone(),
                 fee_per_gram,
-                &push_pubkey_script(&Default::default()),
+                script,
+                covenant,
             )
             .await?;
+        let fee = tx_builder.get_best_fee_estimate()?;
 
         let payment_id = payment_id
             .add_sender_address(
@@ -2212,22 +2108,8 @@ where
                 },
             )
             .map_err(TransactionServiceError::InvalidPaymentId)?;
+        trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
-
-        // Prepare sender part of the transaction
-        let mut tx_builder = self
-            .resources
-            .output_manager_service
-            .prepare_transaction_to_send(
-                tx_id,
-                amount,
-                selection_criteria,
-                output_features.clone(),
-                fee_per_gram,
-                push_pubkey_script(&Default::default()),
-                Covenant::default(),
-            )
-            .await?;
 
         let _output = if use_stealth_one_sided {
             tx_builder
@@ -2374,7 +2256,7 @@ where
             .get_public_key_at_key_id(&sender_offset_private_key.key_id)
             .await?;
         let amount = tx_builder.get_total_input_value()?;
-        let fee = tx_builder.get_fee_estimate()?;
+        let fee = tx_builder.get_best_fee_estimate()?;
         let minimum_value_promise = MicroMinotari::zero();
         let payment_id = MemoField::new_address_and_data(
             self.resources.one_sided_tari_address.clone(),
@@ -2496,10 +2378,14 @@ where
         .await
     }
 
-    /// Sends a one side payment transaction to each of the recipients
+    /// Sends a one side payment transaction to each of the recipients. Although only a single transaction will be
+    /// submitted to be broadcast, a separate completed transaction is created and saved for each recipient. Each
+    /// completed transactions will be allocated to one of the recipients, with its corresponding recipient address,
+    /// amount and memo field. The fee and transaction id will correlate to the first saved transaction; each
+    /// consecutive saved transaction will have a random transaction id and zero fee. The memos to each recipient will
+    /// also correlate with the apportioned fees.
     /// # Arguments
     /// 'destinations': array of destinations of (TariAddress, amount, MemoField)
-    /// 'amount': The amount of Tari to send to the recipient
     /// 'selection_criteria': The UTXO selection criteria to use for coin selection
     /// 'output_features': The output features to use for the transaction outputs
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
@@ -2523,40 +2409,11 @@ where
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         let mut total_send = MicroMinotari::zero();
-        for (address, amount, memo) in &mut destinations {
+        let covenant = Covenant::default();
+        let script = push_pubkey_script(&Default::default());
+
+        for (address, amount, _memo) in &destinations {
             total_send += *amount;
-            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo = MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
-            }
-
-            let fee = self
-                .estimate_fee(
-                    &self.resources.one_sided_tari_address,
-                    memo,
-                    *amount,
-                    &selection_criteria,
-                    output_features.clone(),
-                    fee_per_gram,
-                    &push_pubkey_script(&Default::default()),
-                )
-                .await?;
-
-            *memo = memo
-                .clone()
-                .add_sender_address(
-                    self.resources.one_sided_tari_address.clone(),
-                    true,
-                    fee,
-                    if *address == self.resources.one_sided_tari_address ||
-                        *address == self.resources.interactive_tari_address
-                    {
-                        Some(TxType::PaymentToSelf)
-                    } else {
-                        Some(TxType::PaymentToOther)
-                    },
-                )
-                .map_err(TransactionServiceError::InvalidPaymentId)?;
             self.verify_send(address, TariAddressFeatures::create_one_sided_only())?;
         }
 
@@ -2570,11 +2427,34 @@ where
                 selection_criteria,
                 output_features.clone(),
                 fee_per_gram,
-                push_pubkey_script(&Default::default()),
-                Covenant::default(),
+                script,
+                covenant,
             )
             .await?;
-        for (address, amount, memo) in &destinations {
+        let fee_estimate = tx_builder.get_best_fee_estimate()?;
+        let mut fee_in_memo = Some(fee_estimate);
+        for (address, amount, memo) in &mut destinations {
+            // Let's override the payment_id if the address says we should
+            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
+                *memo = MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+            }
+            *memo = memo
+                .clone()
+                .add_sender_address(
+                    self.resources.one_sided_tari_address.clone(),
+                    true,
+                    fee_in_memo.take().unwrap_or(MicroMinotari::zero()),
+                    if *address == self.resources.one_sided_tari_address ||
+                        *address == self.resources.interactive_tari_address
+                    {
+                        Some(TxType::PaymentToSelf)
+                    } else {
+                        Some(TxType::PaymentToOther)
+                    },
+                )
+                .map_err(TransactionServiceError::InvalidPaymentId)?;
+
             tx_builder
                 .add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())
                 .await?;
@@ -2595,7 +2475,14 @@ where
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
-        let fee = finalized.fee;
+        if fee_estimate != finalized.fee {
+            debug!(
+                target: LOG_TARGET,
+                "Fee estimate in memo field {} does not match actual fee {} for send_many_one_sided_transactions",
+                fee_estimate, finalized.fee
+            );
+        }
+
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
@@ -2614,7 +2501,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 first_address,
                 first_amount,
-                fee,
+                finalized.fee,
                 tx.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),
@@ -2628,23 +2515,25 @@ where
             )?,
         )
         .await?;
+
+        // Save the other transactions with zero fee and random tx_id to the database
         let mut tx_ids = vec![tx_id];
-        for destination in destinations {
+        for (address, amount, memo) in destinations {
             let new_tx_id = TxId::new_random();
             tx_ids.push(new_tx_id);
             let completed_tx = CompletedTransaction::new_with_output_hashes(
                 new_tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                destination.0.clone(),
-                destination.1,
-                fee,
+                address.clone(),
+                amount,
+                MicroMinotari::zero(),
                 tx.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
                 None,
-                destination.2,
+                memo,
                 sent_hashes.clone(),
                 vec![],
                 change_hashes.clone(),
@@ -2691,17 +2580,23 @@ where
             .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_deployment_key.as_ref()))
             .unwrap_or_else(OutputFeatures::create_burn_output);
 
-        let fee = self
-            .estimate_fee(
-                &self.resources.one_sided_tari_address,
-                &payment_id,
+        // Prepare sender part of the transaction
+        let covenant = Covenant::default();
+        let script = script!(Nop)?;
+        let mut tx_builder = self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
                 amount,
-                &selection_criteria,
+                selection_criteria.clone(),
                 output_features.clone(),
                 fee_per_gram,
-                &script!(Nop)?,
+                script,
+                covenant,
             )
             .await?;
+        let fee = tx_builder.get_fee_estimate_without_change()?;
 
         let payment_id = payment_id
             .add_sender_address(
@@ -2718,20 +2613,6 @@ where
             tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
         );
 
-        // Prepare sender part of the transaction
-        let mut tx_builder = self
-            .resources
-            .output_manager_service
-            .prepare_transaction_to_send(
-                tx_id,
-                amount,
-                selection_criteria,
-                output_features.clone(),
-                fee_per_gram,
-                script!(Nop)?,
-                Covenant::default(),
-            )
-            .await?;
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,

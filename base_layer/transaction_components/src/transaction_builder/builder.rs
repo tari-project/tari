@@ -1,7 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{fmt, fmt::Debug};
+use std::{cmp::max, fmt, fmt::Debug};
 
 use log::*;
 use tari_common::configuration::Network;
@@ -55,6 +55,7 @@ pub struct TransactionBuilder<KM> {
     consensus_constants: ConsensusConstants,
     key_manager: KM,
     fee_per_gram: Option<MicroMinotari>,
+    estimated_fee: Option<MicroMinotari>,
     fee: MicroMinotari,
     recipient_outputs: Vec<RecipientDetails>,
     inputs: Vec<OutputPair>,
@@ -90,6 +91,7 @@ where KM: TransactionKeyManagerInterface
             consensus_constants,
             key_manager,
             fee_per_gram: None,
+            estimated_fee: None,
             fee: MicroMinotari::zero(),
             recipient_outputs: Vec::new(),
             inputs: Vec::new(),
@@ -109,6 +111,12 @@ where KM: TransactionKeyManagerInterface
     /// `with_fee`.
     pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
+        self
+    }
+
+    /// Sets the estimated fee of the transaction for clients to query.
+    pub fn set_estimated_fee(&mut self, fee: MicroMinotari) -> &mut Self {
+        self.estimated_fee = Some(fee);
         self
     }
 
@@ -159,6 +167,11 @@ where KM: TransactionKeyManagerInterface
         };
         self.recipient_outputs.push(recipient_details);
         Ok(self)
+    }
+
+    /// Remove the last recipient from the transaction.
+    pub fn remove_last_recipient(&mut self) {
+        let _unused = self.recipient_outputs.pop();
     }
 
     pub async fn add_stealth_recipient(
@@ -369,7 +382,7 @@ where KM: TransactionKeyManagerInterface
         &self.custom_outputs
     }
 
-    pub fn get_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+    pub fn get_fee_estimate_without_change(&self) -> Result<MicroMinotari, TransactionBuilderError> {
         let num_outputs = self.custom_outputs.len() + self.recipient_outputs.len();
         let num_inputs = self.inputs.len();
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
@@ -387,6 +400,15 @@ where KM: TransactionKeyManagerInterface
             },
             None => self.fee,
         })
+    }
+
+    /// This can be used to estimate the largest possible fee for the transaction
+    pub fn get_best_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+        let fee_estimate_without_change = self.get_fee_estimate_without_change()?;
+        Ok(max(
+            fee_estimate_without_change,
+            self.estimated_fee.unwrap_or(MicroMinotari::zero()),
+        ))
     }
 
     fn check_conditions(&self) -> Result<(), TransactionBuilderError> {
@@ -434,7 +456,7 @@ where KM: TransactionKeyManagerInterface
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
             })?;
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        let fee_without_change = self.get_fee_estimate()?;
+        let fee_without_change = self.get_fee_estimate_without_change()?;
         let temp_script = script!(PushPubKey(Box::default()))?;
         let change_features_and_scripts_size = OutputFeatures::default()
             .get_serialized_size()
@@ -930,6 +952,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
         pub struct TransactionBuilder<'a> {
             consensus_constants: &'a ConsensusConstants,
             fee_per_gram: &'a Option<MicroMinotari>,
+            estimated_fee: &'a Option<MicroMinotari>,
             fee: &'a MicroMinotari,
             recipient_outputs: &'a Vec<RecipientDetails>,
             inputs: &'a Vec<OutputPair>,
@@ -947,6 +970,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
             consensus_constants,
             key_manager: _,
             fee_per_gram,
+            estimated_fee,
             fee,
             recipient_outputs,
             inputs,
@@ -964,6 +988,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
             &TransactionBuilder {
                 consensus_constants,
                 fee_per_gram,
+                estimated_fee,
                 fee,
                 recipient_outputs,
                 inputs,
