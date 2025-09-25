@@ -550,7 +550,7 @@ OutputFeatures::default()),
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
-        .build(new_block.header.height)
+        .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
@@ -623,7 +623,7 @@ OutputFeatures::default()),
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
-        .build(new_block.header.height)
+        .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
@@ -656,7 +656,7 @@ OutputFeatures::default()),
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
-        .build(new_block.header.height)
+        .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
@@ -687,7 +687,7 @@ OutputFeatures::default()),
         .with_hash(new_block.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
-        .build(new_block.header.height)
+        .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();

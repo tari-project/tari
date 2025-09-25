@@ -129,7 +129,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     }
 
     pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
-        let constants = self.consensus_rules.consensus_constants(header.height);
+        let constants = self.consensus_rules.consensus_constants(header.height).clone();
         if constants.effective_from_height() == header.height {
             if let Some(&mut ref mut mut_state) = self.state.as_mut() {
                 // We need to update the target difficulties for the new algorithm
@@ -230,7 +230,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .with_hash(header.hash())
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())
-            .build(header.height)?;
+            .build(&constants)?;
 
         let total_accumulated_difficulty = accumulated_data.total_accumulated_difficulty;
         // NOTE: accumulated_data constructed from header so they are guaranteed to correspond

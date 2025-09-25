@@ -576,7 +576,7 @@ mod clear_all_pending_headers {
                         .unwrap(),
                     )
                     .with_total_kernel_offset(Default::default())
-                    .build(header.height)
+                    .build(db.consensus_constants().unwrap())
                     .unwrap();
 
                 let header = ChainHeader::try_construct(header, accum.clone()).unwrap();
