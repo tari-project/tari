@@ -215,6 +215,23 @@ pub const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 
 impl ConsensusConstants {
     const MAINNET_MAX_WEIGHT_V1: u64 = 90_000;
 
+    pub fn for_network_at_height(network: Network, height: u64) -> Self {
+        let versions = match network {
+            Network::LocalNet => ConsensusConstants::localnet(),
+            Network::Igor => ConsensusConstants::igor(),
+            Network::MainNet => ConsensusConstants::mainnet(),
+            Network::Esmeralda => ConsensusConstants::esmeralda(),
+            Network::StageNet => ConsensusConstants::stagenet(),
+            Network::NextNet => ConsensusConstants::nextnet(),
+        };
+        let selected = versions
+            .into_iter()
+            .filter(|v| v.effective_from_height <= height)
+            .max_by_key(|v| v.effective_from_height)
+            .expect("There is always at least one consensus version");
+        selected
+    }
+
     /// The height at which these constants become effective
     pub fn effective_from_height(&self) -> u64 {
         self.effective_from_height
