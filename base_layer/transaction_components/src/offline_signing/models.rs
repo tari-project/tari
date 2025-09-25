@@ -33,7 +33,7 @@ use crate::{
     MicroMinotari,
 };
 
-const SUPPORTED_VERSION: &str = "1.0.0";
+const SUPPORTED_VERSION: &str = "2.0.0";
 
 pub fn get_supported_version() -> Version {
     Version::parse(SUPPORTED_VERSION).unwrap()

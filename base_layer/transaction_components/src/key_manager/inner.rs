@@ -569,8 +569,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_encryption_key));
         let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(pvt_bytes))
             .map_err(|e| KeyManagerServiceError::EncryptionFailed(e.to_string()))?;
-        let encrypted = TryFrom::try_from(encrypted_vec.as_slice())
-            .map_err(|_| KeyManagerServiceError::EncryptionFailed("invalid encrypted bytes length".to_string()))?;
+        let encrypted = encrypted_vec.as_slice().to_vec();
         Ok(TariKeyId::Encrypted {
             encrypted,
             key: encryption_key.into(),

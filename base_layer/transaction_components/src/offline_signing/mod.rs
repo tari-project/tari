@@ -185,7 +185,6 @@ mod test {
         assert_eq!(init.info.outputs.len(), 0);
 
         let signer = OfflineSigner::new(alice_key_manager.clone());
-        dbg!(&init);
         let signed = signer.sign_locked_transaction(init).await.unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
