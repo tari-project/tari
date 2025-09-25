@@ -639,7 +639,7 @@ mod test {
     #[test]
     fn key_id_converts_correctly() {
         let managed_key_id: TariKeyId = TariKeyId::Managed {
-            branch: random_string(8),
+            branch: random_string(8) + " " + &random_string(5),
             index: {
                 let mut rng = rand::thread_rng();
                 let random_value: u64 = rng.gen();
