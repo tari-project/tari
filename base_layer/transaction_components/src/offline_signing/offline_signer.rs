@@ -29,7 +29,7 @@ use crate::{
     offline_signing::{
         marshal_output_pair::MarshalOutputPair,
         models::{
-            get_supported_version,
+            get_latest_version,
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
             PaymentRecipient,
@@ -135,7 +135,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok(PrepareOneSidedTransactionForSigningResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             tx_id,
             info,
         })
@@ -209,7 +209,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok(PrepareDepositMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             tx_id,
             info,
         })
@@ -285,7 +285,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok(PrepareWithdrawMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             tx_id,
             info,
         })
@@ -299,7 +299,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
         Ok(SignedOneSidedTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             request,
             signed_transaction,
         })
@@ -315,7 +315,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?;
 
         Ok(SignedOneSidedDepositMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             request,
             signed_transaction,
         })
@@ -332,7 +332,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?;
 
         Ok(SignedOneSidedWithdrawMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             request,
             signed_transaction,
         })
