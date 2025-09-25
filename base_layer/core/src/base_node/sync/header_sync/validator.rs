@@ -237,7 +237,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
         state.previous_accum = chain_header.accumulated_data().clone();
-        if chain_header.header().height % TARI_RX_VM_KEY_BLOCK_SWAP == 0 {
+        if chain_header.header().height.is_multiple_of(TARI_RX_VM_KEY_BLOCK_SWAP) {
             // we need to save the hash of this header and height
             state.vm_key.push((chain_header.header().height, *chain_header.hash()));
         }

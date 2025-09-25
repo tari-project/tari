@@ -1696,7 +1696,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let block_height = block.header.height;
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
     let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
-    let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
+    let (validator_node_mr, validator_node_size) = if block_height.is_multiple_of(epoch_len) {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_all_active_validator_nodes(block_height)?;
         (calculate_validator_node_mr(&validator_nodes)?, validator_nodes.len())

@@ -26,7 +26,7 @@ pub fn median(mut list: Vec<u64>) -> Option<f64> {
     }
     list.sort_unstable();
     let mid_index = list.len() / 2;
-    let median = if list.len() % 2 == 0 {
+    let median = if list.len().is_multiple_of(2) {
         (*list.get(mid_index - 1).expect("Cannot fail") + *list.get(mid_index).expect("Cannot fail")) as f64 / 2.0
     } else {
         *list.get(mid_index).expect("Cannot fail") as f64
