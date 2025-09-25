@@ -183,10 +183,9 @@ impl FromStr for TariKeyId {
                 },
                 ZERO_KEY_BRANCH => Ok(TariKeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    match parts.len() {
-                        4 | 3 => (),
-                        _ => return Err("Wrong derived format".to_string()),
-                    }
+                    if parts.len() < 3 {
+                        return Err("Wrong derived format".to_string());
+                    };
 
                     let key = parts.get(1..).expect("Already checked").join(".");
                     Ok(TariKeyId::Derived {
@@ -659,6 +658,10 @@ mod test {
             public_key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             private_key: managed_key_id.clone().into(),
         };
+
+        let derived_key_id2 = TariKeyId::Derived {
+            key: dh_commitment_mask_key_id.clone().into(),
+        };
         let dh_encrypted_data_key_id = TariKeyId::DHEncryptedData {
             public_key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             private_key: managed_key_id.clone().into(),
@@ -668,6 +671,7 @@ mod test {
         let imported_key_id_str = imported_key_id.to_string();
         let zero_key_id_str = zero_key_id.to_string();
         let derived_key_id_str = derived_key_id.to_string();
+        let derived_key_id_str2 = derived_key_id2.to_string();
         let dh_commitment_mask_key_id_str = dh_commitment_mask_key_id.to_string();
         let dh_encrypted_data_key_id_str = dh_encrypted_data_key_id.to_string();
 
@@ -675,6 +679,7 @@ mod test {
         assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
         assert_eq!(derived_key_id, TariKeyId::from_str(&derived_key_id_str).unwrap());
+        assert_eq!(derived_key_id2, TariKeyId::from_str(&derived_key_id_str2).unwrap());
         assert_eq!(
             dh_commitment_mask_key_id,
             TariKeyId::from_str(&dh_commitment_mask_key_id_str).unwrap()
