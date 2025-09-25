@@ -636,17 +636,6 @@ where
                 tx_builder.with_fee_per_gram(fee_per_gram);
                 tx_builder.with_lock_height(0);
 
-                // This output is only added temporarily to calculate the fee, then removed
-                tx_builder
-                    .add_recipient(
-                        request.recipient_address.clone(),
-                        selected_utxo.wallet_output.clone(),
-                        None,
-                    )
-                    .await?;
-                let fee = tx_builder.get_best_fee_estimate()?;
-                tx_builder.remove_last_recipient();
-
                 let payment_id = MemoField::new_address_and_data(
                     request.recipient_address.clone(),
                     fee,
@@ -1289,7 +1278,7 @@ where
 
                 let fee = tx.body.get_total_fee()?;
                 if fee_estimate != fee {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Fee estimate in memo field {} does not match actual fee {} for multisig UTXO creation",
                         fee_estimate, fee
@@ -1909,10 +1898,10 @@ where
                 covenant.clone(),
             )
             .await?;
-        let fee = tx_builder.get_best_fee_estimate()?;
+        let fee_estimate = tx_builder.get_best_fee_estimate()?;
 
         let payment_id = payment_id
-            .add_sender_address(self.resources.one_sided_tari_address.clone(), false, fee, None)
+            .add_sender_address(self.resources.one_sided_tari_address.clone(), false, fee_estimate, None)
             .map_err(TransactionServiceError::InvalidPaymentId)?;
 
         tx_builder.with_tx_type(TxType::ClaimAtomicSwap);
@@ -2014,6 +2003,13 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
+        if fee_estimate != fee {
+            warn!(
+                target: LOG_TARGET,
+                "Fee estimate in memo field {} does not match actual fee {} for send SHA atomic swap transaction",
+                fee_estimate, fee
+            );
+        }
         self.resources
             .output_manager_service
             .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
@@ -2092,13 +2088,13 @@ where
                 covenant,
             )
             .await?;
-        let fee = tx_builder.get_best_fee_estimate()?;
+        let fee_estimate = tx_builder.get_best_fee_estimate()?;
 
         let payment_id = payment_id
             .add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
-                fee,
+                fee_estimate,
                 if dest_address == self.resources.one_sided_tari_address ||
                     dest_address == self.resources.interactive_tari_address
                 {
@@ -2147,6 +2143,13 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
+        if fee_estimate != fee {
+            warn!(
+                target: LOG_TARGET,
+                "Fee estimate in memo field {} does not match actual fee {} for send one-sided or stealth transaction",
+                fee_estimate, fee
+            );
+        }
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service

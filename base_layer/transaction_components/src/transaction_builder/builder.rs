@@ -169,11 +169,6 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
-    /// Remove the last recipient from the transaction.
-    pub fn remove_last_recipient(&mut self) {
-        let _unused = self.recipient_outputs.pop();
-    }
-
     pub async fn add_stealth_recipient(
         &mut self,
         destination: TariAddress,
