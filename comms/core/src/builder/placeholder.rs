@@ -29,6 +29,7 @@ use futures::future;
 use tower::Service;
 
 /// A service which is used as a placeholder type. This service will panic if used.
+#[allow(dead_code)]
 pub struct PlaceholderService<TReq, TResp, TErr>(PhantomData<(TReq, TResp, TErr)>);
 
 impl<TReq, TResp, TErr> Service<TReq> for PlaceholderService<TReq, TResp, TErr> {

@@ -28,8 +28,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::anyhow;
 use futures::future;
 use log::*;
+use serde::Deserialize;
+use serde_json;
 use tari_common::{
     configuration::{DnsNameServerList, Network},
     exit_codes::{ExitCode, ExitError},
@@ -89,6 +92,7 @@ use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
+    signature_verification::verify_signed_file,
     transport::{TorTransportConfig, TransportType},
     TransportConfig,
     MAJOR_NETWORK_VERSION,
@@ -456,6 +460,138 @@ impl P2pInitializer {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    async fn get_url_from_dns(resolver: &mut DnsSeedResolver, addr: &str) -> Result<(String, String), DnsClientError> {
+        let timer = Instant::now();
+        let download_url_res = match timeout(Duration::from_secs(5), resolver.resolve_download_url(addr)).await {
+            Ok(res) => res,
+            Err(_) => {
+                warn!(target: LOG_TARGET, "Timeout resolving DNS download URL `{addr}`");
+                Err(DnsClientError::Timeout)
+            },
+        }?;
+        let res = (download_url_res, addr.to_string());
+        info!(target: LOG_TARGET, "Resolved DNS download URL `{}` in {:.0?}", res.0, timer.elapsed());
+        Ok(res)
+    }
+
+    /// downloads seed peers files - json with peers and .asc for verification
+    async fn download_seed_peers_files(
+        (url, _): (String, String),
+    ) -> Result<Vec<SeedPeer>, ServiceInitializationError> {
+        #[derive(Deserialize)]
+        struct SeedNodesJson {
+            peer_seeds: Vec<String>,
+        }
+
+        let timer = Instant::now();
+
+        let content = verify_signed_file(&url, &format!("{}.asc", url)).await.map_err(|e| {
+            warn!(target: LOG_TARGET, "Failed to verify seed nodes file from {}: {}", url, e);
+            anyhow!("Signature verification failed: {}", e)
+        })?;
+
+        let seed_nodes: SeedNodesJson = serde_json::from_str(&content).map_err(|e: serde_json::Error| {
+            warn!(target: LOG_TARGET, "Failed to parse seed nodes JSON from {}: {}", url, e);
+            anyhow!("Invalid JSON: {}", e)
+        })?;
+
+        let mut peers = Vec::new();
+        for peer_str in seed_nodes.peer_seeds {
+            match peer_str.parse::<SeedPeer>() {
+                Ok(peer) => peers.push(peer),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to parse peer '{}': {}", peer_str, e);
+                    // Continue with other peers even if one fails
+                },
+            }
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "Downloaded and verified {} seed peers from {} in {:.0?}",
+            peers.len(),
+            url,
+            timer.elapsed()
+        );
+
+        Ok(peers)
+    }
+
+    async fn resolve_http_download_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
+        if config.dns_seeds.is_empty() {
+            debug!(target: LOG_TARGET, "No DNS Seeds configured");
+            return Ok(Vec::new());
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "Resolving DNS seeds (DNSSEC is enabled: {}, name servers: {}, addresses: {}) ...",
+            config.dns_seeds_use_dnssec,
+            config.dns_seed_name_servers,
+            config
+                .dns_seeds
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(",")
+        );
+        let start = Instant::now();
+
+        let resolver =
+            P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
+
+        // First, resolve all DNS records to get download URLs
+        let resolving = config.dns_seeds.iter().map(|addr| {
+            let mut resolver = resolver.clone();
+            let addr = addr.clone();
+            async move { P2pInitializer::get_url_from_dns(&mut resolver, &addr).await }
+        });
+
+        let resolved_urls: Vec<(String, String)> = future::join_all(resolving)
+            .await
+            .into_iter()
+            .filter_map(|result| match result {
+                Ok(url_pair) => Some(url_pair),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to resolve DNS seed: {}", e);
+                    None
+                },
+            })
+            .collect();
+
+        // Download and verify seed peer files
+        let downloading = resolved_urls
+            .into_iter()
+            .map(|url_pair| async move { P2pInitializer::download_seed_peers_files(url_pair).await });
+
+        let seed_peers = future::join_all(downloading).await;
+        if seed_peers.iter().all(|downlaod_res| downlaod_res.is_err()) {
+            return Err(anyhow!("Failed to download and verify seed peer files"));
+        }
+
+        let all_seed_peers: Vec<SeedPeer> = seed_peers
+            .into_iter()
+            .filter_map(|result| match result {
+                Ok(peers) => Some(peers),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to download/verify seed peers: {}", e);
+                    None
+                },
+            })
+            .flatten()
+            .collect();
+
+        let peers: Vec<Peer> = all_seed_peers.into_iter().map(Peer::from).collect();
+        info!(
+            target: LOG_TARGET,
+            "Resolved {} seed peers from download URL in {:.0?}",
+            peers.len(),
+            start.elapsed()
+        );
+
+        Ok(peers)
+    }
+
     async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
         if config.dns_seeds.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
@@ -497,28 +633,28 @@ impl P2pInitializer {
         });
 
         let peers = future::join_all(resolving)
-            .await
-            .into_iter()
-            // Log and ignore errors
-            .filter_map(|(result, addr)| match result {
-                Ok(peers) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Found {} peer(s) from `{}` in {:.0?}",
-                        peers.len(),
-                        addr,
-                        start.elapsed()
-                    );
-                    Some(peers)
-                },
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
-                    None
-                },
-            })
-            .flatten()
-            .map(Into::into)
-            .collect::<Vec<_>>();
+                .await
+                .into_iter()
+                // Log and ignore errors
+                .filter_map(|(result, addr)| match result {
+                    Ok(peers) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Found {} peer(s) from `{}` in {:.0?}",
+                            peers.len(),
+                            addr,
+                            start.elapsed()
+                        );
+                        Some(peers)
+                    },
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
+                        None
+                    },
+                })
+                .flatten()
+                .map(Into::into)
+                .collect::<Vec<_>>();
 
         Ok(peers)
     }
@@ -589,11 +725,11 @@ impl ServiceInitializer for P2pInitializer {
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
 
-        let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
+        let peers = match Self::resolve_http_download_seeds(&self.seed_config).await {
             Ok(peers) => peers,
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {err}");
-                Vec::new()
+                warn!(target: LOG_TARGET, "Failed to resolve seeds through HTTP, fallback to DNS: {err}");
+                Self::try_resolve_dns_seeds(&self.seed_config).await.unwrap_or_default()
             },
         };
         add_seed_peers(&peer_manager, &node_identity, peers).await?;
@@ -615,9 +751,174 @@ impl ServiceInitializer for P2pInitializer {
 mod test {
     use tari_common::configuration::Network;
     use tari_comms::connection_manager::WireMode;
+
+    use super::*;
+
     #[test]
     fn self_liveness_network_wire_byte_is_consistent() {
         let wire_mode = WireMode::Liveness;
         assert_eq!(wire_mode.as_byte(), Network::RESERVED_WIRE_BYTE);
+    }
+
+    #[tokio::test]
+    async fn test_parse_seed_peers_from_json() {
+        // Test JSON content that matches the expected format from cdn-universe.tari.com
+        let json_content = r#"{
+            "peer_seeds": [
+                "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip4/51.83.4.85/tcp/18189",
+                "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/ip4/51.83.102.25/tcp/18189",
+                "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/ip6/2001:41d0:303:a619::1/tcp/18189",
+                "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip6/2001:41d0:303:9a55::1/tcp/18189",
+                "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/onion3/tadnxyokalnqjtvu6mlhxndcq4v2tlolotpvrflscdmi7lcautao3had:18141",
+                "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/onion3/mhfptgpcj6htjkr5zwurom32wvt7x76ovqzn2ttnwo2bnku6baeaaiyd:18141"
+            ]
+        }"#;
+
+        // Parse the JSON
+        #[derive(serde::Deserialize)]
+        struct SeedNodesJson {
+            peer_seeds: Vec<String>,
+        }
+
+        let seed_nodes: SeedNodesJson = serde_json::from_str(json_content).unwrap();
+        assert_eq!(seed_nodes.peer_seeds.len(), 6);
+
+        // Parse each peer string into SeedPeer
+        let mut peers = Vec::new();
+        for peer_str in seed_nodes.peer_seeds {
+            let peer = peer_str.parse::<SeedPeer>().unwrap();
+            peers.push(peer);
+        }
+
+        assert_eq!(peers.len(), 6);
+
+        // Verify the first peer (IPv4)
+        let first_peer = &peers.first().unwrap();
+        assert_eq!(
+            first_peer.public_key.to_hex(),
+            "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409"
+        );
+        assert_eq!(first_peer.addresses.len(), 1);
+        assert_eq!(
+            first_peer.addresses.first().unwrap().to_string(),
+            "/ip4/51.83.4.85/tcp/18189"
+        );
+
+        // Verify an IPv6 peer
+        let ipv6_peer = &peers.get(2).unwrap();
+        assert_eq!(
+            ipv6_peer.public_key.to_hex(),
+            "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76"
+        );
+        assert_eq!(
+            ipv6_peer.addresses.first().unwrap().to_string(),
+            "/ip6/2001:41d0:303:a619::1/tcp/18189"
+        );
+
+        // Verify an onion peer
+        let onion_peer = &peers.get(4).unwrap();
+        assert_eq!(
+            onion_peer.addresses.first().unwrap().to_string(),
+            "/onion3/tadnxyokalnqjtvu6mlhxndcq4v2tlolotpvrflscdmi7lcautao3had:18141"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_try_parse_seed_peers() {
+        let peer_seeds = vec![
+            "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip4/51.83.4.85/tcp/18189".to_string(),
+            "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/ip4/51.83.102.25/tcp/18189".to_string(),
+        ];
+
+        let peers = P2pInitializer::try_parse_seed_peers(&peer_seeds).unwrap();
+        assert_eq!(peers.len(), 2);
+
+        // Verify conversion to Peer works
+        let first_peer = &peers.first().unwrap();
+        assert_eq!(
+            first_peer.public_key.to_hex(),
+            "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_parse_invalid_seed_peers() {
+        // Test JSON with some invalid peers
+        let json_content = r#"{
+            "peer_seeds": [
+                "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip4/51.83.4.85/tcp/18189",
+                "invalid_public_key::/ip4/1.2.3.4/tcp/12345",
+                "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/invalid_address",
+                "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/ip4/51.83.102.25/tcp/18189"
+            ]
+        }"#;
+
+        #[derive(serde::Deserialize)]
+        struct SeedNodesJson {
+            peer_seeds: Vec<String>,
+        }
+
+        let seed_nodes: SeedNodesJson = serde_json::from_str(json_content).unwrap();
+        assert_eq!(seed_nodes.peer_seeds.len(), 4);
+
+        // Parse peers, skipping invalid ones
+        let mut peers = Vec::new();
+        let mut invalid_count = 0;
+        for peer_str in seed_nodes.peer_seeds {
+            match peer_str.parse::<SeedPeer>() {
+                Ok(peer) => peers.push(peer),
+                Err(_) => invalid_count += 1,
+            }
+        }
+
+        // Should have 2 valid peers and 2 invalid ones
+        assert_eq!(peers.len(), 2);
+        assert_eq!(invalid_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_signature_verification_with_actual_key() {
+        // Test with the actual public key for seed peers HTTP download
+        const SEED_PEERS_PUBLIC_KEY: &str = r#"-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEaLl/nhYJKwYBBAHaRw8BAQdAocXM74pI54REY9Y0fESxir/iq8We9wp6JHFP
+z8vcdm20Sk1hY2llaiAoVGVzdCBmb3Igc2VlZCBwZWVycyBIVFRQIGRvd25sb2Fk
+KSA8bWFjaWVqLmtvenVzemVrQHNwYWNlaW5jaC5jb20+iJMEExYKADsWIQTaz8Pe
+9KT58ia7xIFrHRtevPqxvwUCaLl/ngIbAwULCQgHAgIiAgYVCgkICwIEFgIDAQIe
+BwIXgAAKCRBrHRtevPqxv5cOAQDR1jrEiLxlsEFLsI6DLd0I7SRQDw+tziT/02ed
+7E8wMQD/ZzdO7ZO8oLfneJrrwoWiGk241+yq7ym5uEcBuhnKyQ8=
+=rjiS
+-----END PGP PUBLIC KEY BLOCK-----"#;
+
+        use pgp::{types::PublicKeyTrait, Deserializable};
+
+        // Parse the public key
+        let (key, _) = pgp::SignedPublicKey::from_string(SEED_PEERS_PUBLIC_KEY).unwrap();
+
+        // The key should be valid - just verify it can be parsed
+        assert!(!key.primary_key.key_id().to_vec().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_empty_seed_peers_json() {
+        let json_content = r#"{
+            "peer_seeds": []
+        }"#;
+
+        #[derive(serde::Deserialize)]
+        struct SeedNodesJson {
+            peer_seeds: Vec<String>,
+        }
+
+        let seed_nodes: SeedNodesJson = serde_json::from_str(json_content).unwrap();
+        assert_eq!(seed_nodes.peer_seeds.len(), 0);
+
+        let peers: Vec<SeedPeer> = seed_nodes
+            .peer_seeds
+            .into_iter()
+            .filter_map(|s| s.parse::<SeedPeer>().ok())
+            .collect();
+
+        assert_eq!(peers.len(), 0);
     }
 }

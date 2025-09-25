@@ -58,6 +58,7 @@ peer_seeds = [
     "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip6/2001:41d0:303:9a55::1/tcp/18189",
     "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/onion3/mhfptgpcj6htjkr5zwurom32wvt7x76ovqzn2ttnwo2bnku6baeaaiyd:18141",
 ]
+download_url = "https://cdn-universe.tari.com/tari-project/tari/esmeralda/seednodes.json"
 
 [igor.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.

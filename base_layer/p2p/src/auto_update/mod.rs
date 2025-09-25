@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod dns;
-mod signature;
 
 mod service;
 pub use service::{SoftwareUpdaterHandle, SoftwareUpdaterService};
@@ -30,15 +29,12 @@ mod error;
 use std::{
     fmt,
     fmt::{Display, Formatter},
-    io,
     str::FromStr,
     time::Duration,
 };
 
 pub use error::AutoUpdateError;
 use futures::future;
-use pgp::Deserializable;
-use reqwest::IntoUrl;
 // Re-exports of foreign types used in public interface
 pub use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -54,7 +50,10 @@ use tari_common::{
 };
 use tari_utilities::hex::Hex;
 
-use crate::auto_update::{dns::UpdateSpec, signature::SignedMessageVerifier};
+use crate::{
+    auto_update::dns::UpdateSpec,
+    signature_verification::{self, SignedMessageVerifier},
+};
 
 const LOG_TARGET: &str = "p2p::auto_update";
 
@@ -122,24 +121,24 @@ pub async fn check_for_updates(
 
             );
             let (hashes, sig) = future::join(
-                download_hashes_file(&hashes_url),
-                download_hashes_sig_file(&hashes_sig_url),
+                signature_verification::download_hashes_file(&hashes_url),
+                signature_verification::download_hashes_sig_file(&hashes_sig_url),
             )
             .await;
             let hashes = hashes?;
             let sig = sig?;
-            let verifier = SignedMessageVerifier::new(maintainers().collect());
-            verifier
-                .verify_signed_update(&sig, &hashes, &update_spec)
-                .map(|(_, filename)| {
+            let verifier = SignedMessageVerifier::new(signature_verification::maintainers().collect());
+            match verifier.verify_signed_hashes(&sig, &hashes, &update_spec.hash) {
+                Ok((_, filename)) => {
                     let download_url = format!("{download_base_url}/{filename}");
                     log::info!(target: LOG_TARGET, "Valid update found at {download_url}");
-                    Ok(SoftwareUpdate {
+                    Ok(Some(SoftwareUpdate {
                         spec: update_spec,
                         download_url,
-                    })
-                })
-                .transpose()
+                    }))
+                },
+                Err(_) => Ok(None),
+            }
         },
         None => {
             log::info!("No new updates for {app} ({arch} {version})");
@@ -183,44 +182,11 @@ impl Display for SoftwareUpdate {
     }
 }
 
-async fn download_hashes_file<T: IntoUrl>(url: T) -> Result<String, AutoUpdateError> {
-    let resp = http_download(url).await?;
-    let txt = resp.text().await?;
-    Ok(txt)
-}
-
-async fn download_hashes_sig_file<T: IntoUrl>(url: T) -> Result<pgp::StandaloneSignature, AutoUpdateError> {
-    let resp = http_download(url).await?;
-    let sig_bytes = resp.bytes().await?;
-    let cursor = io::Cursor::new(&sig_bytes);
-    let sig = pgp::StandaloneSignature::from_bytes(cursor).map_err(AutoUpdateError::SignatureError)?;
-    Ok(sig)
-}
-
-async fn http_download<T: IntoUrl>(url: T) -> Result<reqwest::Response, AutoUpdateError> {
-    let resp = reqwest::get(url).await?.error_for_status()?;
-    Ok(resp)
-}
-
-const MAINTAINERS: &[&str] = &[include_str!("gpg_keys/swvheerden.asc")];
-
-fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
-    MAINTAINERS.iter().map(|s| {
-        let (pk, _) = pgp::SignedPublicKey::from_string(s).expect("Malformed maintainer PGP signature");
-        pk
-    })
-}
-
 #[cfg(test)]
 mod test {
     use tari_common::DefaultConfigLoader;
 
     use super::*;
-
-    #[test]
-    fn all_maintainers_well_formed() {
-        assert_eq!(maintainers().count(), MAINTAINERS.len());
-    }
 
     fn get_config(config_name: Option<&str>) -> config::Config {
         let s = match config_name {

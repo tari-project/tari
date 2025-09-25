@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,24 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io;
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error)]
-pub enum DnsClientError {
-    #[error("Proto error: {0}")]
-    ProtoError(#[from] hickory_proto::ProtoError),
-    #[error("DNS timeout error")]
-    Timeout,
-    #[error("Failed to parse name server string")]
-    NameServerParseFailed,
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
-    #[error("System config has no DNS servers configured")]
-    SystemHasNoDnsServers,
-    #[error("DNS server name was not provided for DNSSEC connection e.g.1.1.1.1:853/cloudflare-dns.com")]
-    DnsNameRequiredForDnsSec,
-    #[error("Connection error: {0}")]
-    Connection(String),
-    #[error("No download URL found")]
-    NoDownloadUrlFound,
+#[derive(Debug, Error)]
+pub enum SignatureVerificationError {
+    #[error("Failed to download file: {0}")]
+    DownloadError(#[from] reqwest::Error),
+    #[error("Failed to verify signature: {0}")]
+    SignatureError(#[from] pgp::errors::Error),
+    #[error("Signature verification failed")]
+    VerificationFailed,
+    #[error("Invalid hash format")]
+    InvalidHashFormat,
 }

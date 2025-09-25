@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dns::DnsClientError;
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error)]
+use crate::{dns::DnsClientError, signature_verification::SignatureVerificationError};
+
+#[derive(Debug, Error)]
 pub enum AutoUpdateError {
     #[error("DNS Client error: {0}")]
     DnsClientError(#[from] DnsClientError),
-    #[error("Failed to download file: {0}")]
-    DownloadError(#[from] reqwest::Error),
-    #[error("Failed to verify signature: {0}")]
-    SignatureError(#[from] pgp::errors::Error),
+    #[error("Signature verification error: {0}")]
+    SignatureVerificationError(#[from] SignatureVerificationError),
 }

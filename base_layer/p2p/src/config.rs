@@ -67,6 +67,8 @@ pub struct PeerSeedsConfig {
     /// All DNS seed records must pass DNSSEC validation
     #[serde(default)]
     pub dns_seeds_use_dnssec: bool,
+    #[serde(default)]
+    pub download_url: String,
 }
 
 impl Default for PeerSeedsConfig {
@@ -98,6 +100,10 @@ impl Default for PeerSeedsConfig {
             )
             .expect("string is valid"),
             dns_seeds_use_dnssec: false,
+            download_url: format!(
+                "https://cdn-universe.tari.com/tari-project/tari/{}/seednodes.json",
+                Network::get_current_or_user_setting_or_default().as_key_str()
+            ),
         }
     }
 }
