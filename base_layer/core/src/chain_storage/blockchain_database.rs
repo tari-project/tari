@@ -2632,7 +2632,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         .with_hash(hash)
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
-        .build()?;
+        .build(candidate_block.header.height)?;
 
     let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).ok_or(
         ChainStorageError::UnexpectedResult("Somehow hash is missing from Chain block".to_string()),
@@ -2719,7 +2719,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     .with_hash(child_hash)
                     .with_achieved_target_difficulty(achieved_target)
                     .with_total_kernel_offset(child.header.total_kernel_offset.clone())
-                    .build()?;
+                    .build(child.header.height)?;
 
                 let chain_header = ChainHeader::try_construct(child.header, accum_data).ok_or_else(|| {
                     ChainStorageError::InvalidOperation(format!(
@@ -3014,7 +3014,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header.total_kernel_offset.clone())
-        .build()?;
+        .build(header.height)?;
 
     let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
 

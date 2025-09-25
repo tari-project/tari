@@ -35,6 +35,12 @@ use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use crate::proof_of_work::AchievedTargetDifficulty;
 
 const LOG_TARGET: &str = "c::bn::acc_data";
+#[cfg(tari_target_network_mainnet)]
+const C29_ACCUMULATED_DIFFICULTY_STARTING_BLOCK: u64 = 115_000;
+#[cfg(tari_target_network_testnet)]
+const C29_ACCUMULATED_DIFFICULTY_STARTING_BLOCK: u64 = 181_000;
+#[cfg(not(any(tari_target_network_mainnet, tari_target_network_testnet)))]
+const C29_ACCUMULATED_DIFFICULTY_STARTING_BLOCK: u64 = 1;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
@@ -105,7 +111,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn build(self) -> Result<BlockHeaderAccumulatedData, BlockError> {
+    pub fn build(self, height: u64) -> Result<BlockHeaderAccumulatedData, BlockError> {
         let previous_accum = self.previous_accum;
         let hash = self.hash.ok_or(BlockError::BuilderMissingField { field: "hash" })?;
 
@@ -165,9 +171,13 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             .ok_or(BlockError::BuilderMissingField {
                 field: "total_kernel_offset",
             })?;
-        let total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
+        let mut total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
             U512::from(tari_randomx_diff.as_u128()) *
             U512::from(sha3x_diff.as_u128());
+
+        if height >= C29_ACCUMULATED_DIFFICULTY_STARTING_BLOCK {
+            total_accumulated *= U512::from(cuckaroo_diff.as_u128());
+        }
 
         let result = BlockHeaderAccumulatedData {
             hash,

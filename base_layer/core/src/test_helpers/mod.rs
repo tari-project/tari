@@ -248,7 +248,7 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(header.total_kernel_offset.clone())
-        .build()
+        .build(header.height)
         .unwrap();
     ChainHeader::try_construct(header, accumulated_data).unwrap()
 }

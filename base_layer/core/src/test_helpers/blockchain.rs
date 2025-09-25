@@ -656,7 +656,7 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
             AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3x, difficulty, difficulty).unwrap(),
         )
         .with_total_kernel_offset(block.header.total_kernel_offset.clone())
-        .build()
+        .build(block.header.height)
         .unwrap();
     Arc::new(ChainBlock::try_construct(Arc::new(block), accum).unwrap())
 }

@@ -326,7 +326,7 @@ async fn chain_balance_validation() {
         .with_hash(header1.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header1.total_kernel_offset.clone())
-        .build()
+        .build(header1.height)
         .unwrap();
     let header1 = ChainHeader::try_construct(header1, accumulated_data).unwrap();
     txn.insert_chain_header(header1.clone());
@@ -392,7 +392,7 @@ async fn chain_balance_validation() {
         .with_hash(header2.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header2.total_kernel_offset.clone())
-        .build()
+        .build(header2.height)
         .unwrap();
     let header2 = ChainHeader::try_construct(header2, accumulated_data).unwrap();
     txn.insert_chain_header(header2.clone());
@@ -582,7 +582,7 @@ async fn chain_balance_validation_burned() {
         .with_hash(header1.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header1.total_kernel_offset.clone())
-        .build()
+        .build(header1.height)
         .unwrap();
     let header1 = ChainHeader::try_construct(header1, accumulated_data).unwrap();
     txn.insert_chain_header(header1.clone());
