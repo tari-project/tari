@@ -410,6 +410,23 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidati
             burned_outputs.insert(output.commitment.clone());
         }
     }
+    // Multiple burned kernels with same commitment
+    let mut burned_commitments = body
+        .kernels()
+        .iter()
+        .filter_map(|k| k.burn_commitment.clone())
+        .collect::<Vec<_>>();
+    if !burned_commitments.is_empty() {
+        let burned_commitments_len = burned_commitments.len();
+        burned_commitments.sort();
+        burned_commitments.dedup();
+        if burned_commitments_len != burned_commitments.len() {
+            return Err(AggregatedBodyValidationError::InvalidBurnError(
+                "Multiple burned kernels with same commitment".to_string(),
+            ));
+        }
+    }
+    // Burned kernel does not match burned output
     for kernel in body.kernels() {
         if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
             return Err(AggregatedBodyValidationError::InvalidBurnError(
@@ -417,7 +434,7 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidati
             ));
         }
     }
-
+    // Burned output has no matching burned kernel
     if !burned_outputs.is_empty() {
         return Err(AggregatedBodyValidationError::InvalidBurnError(
             "Burned output has no matching burned kernel".to_string(),
@@ -645,8 +662,8 @@ mod test {
     async fn it_fails_if_multiple_burnt_outputs_with_single_burn_kernel() {
         let key_manager = create_memory_key_manager().await.unwrap();
 
-        // Create two burnt outputs
-        let (output1, _, _) = test_helpers::create_utxo(
+        // Create burnt outputs
+        let (output_burn_1, _, _) = test_helpers::create_utxo(
             100.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
@@ -655,7 +672,7 @@ mod test {
             0.into(),
         )
         .await;
-        let (output2, _, _) = test_helpers::create_utxo(
+        let (output_burn_2, _, _) = test_helpers::create_utxo(
             101.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
@@ -664,20 +681,85 @@ mod test {
             0.into(),
         )
         .await;
+        // Create normal outputs
+        let (output_3, _, _) = test_helpers::create_utxo(
+            101.into(),
+            &key_manager,
+            &OutputFeatures::default(),
+            &script!(Nop).unwrap(),
+            &Covenant::default(),
+            0.into(),
+        )
+        .await;
+        let (output_4, _, _) = test_helpers::create_utxo(
+            101.into(),
+            &key_manager,
+            &OutputFeatures::default(),
+            &script!(Nop).unwrap(),
+            &Covenant::default(),
+            0.into(),
+        )
+        .await;
 
-        // Create a single burn kernel referencing the first output's commitment
-        let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
-        kernel.burn_commitment = Some(output1.commitment.clone());
+        // Create (unique) burn kernels
+        let mut kernel_1_burn = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+        kernel_1_burn.burn_commitment = Some(output_burn_1.commitment.clone());
+        let mut kernel_2_burn = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+        kernel_2_burn.burn_commitment = Some(output_burn_2.commitment.clone());
+        // Create a burn kernel referencing a duplicate burn commitment
+        let mut kernel_3_duplicate_burn = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+        kernel_3_duplicate_burn.burn_commitment = Some(output_burn_2.commitment.clone());
+        // Create a normal kernel
+        let kernel_4 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
 
-        // Create an aggregate body with both burnt outputs and one burn kernel
-        let body = AggregateBody::new(Vec::new(), vec![output1, output2], vec![kernel]);
+        // Case 1: Not all burn outputs have a matching burn kernel
+        let body = AggregateBody::new(
+            Vec::new(),
+            vec![
+                output_burn_1.clone(),
+                output_burn_2.clone(),
+                output_3.clone(),
+                output_4.clone(),
+            ],
+            vec![kernel_1_burn.clone(), kernel_4.clone()],
+        );
+        let err = check_total_burned(&body).unwrap_err();
+        assert!(matches!(
+            err,
+            AggregatedBodyValidationError::InvalidBurnError(msg) if msg == "Burned output has no matching burned kernel"
+        ));
 
-        // The check_total_burned function should fail
-        println!("Validate: {:?}", check_total_burned(&body));
-        assert!(check_total_burned(&body)
-            .unwrap_err()
-            .to_string()
-            .contains("Burned output has no matching burned kernel"));
+        // Case 2: Not all burn kernels have a matching burn commitment
+        let body = AggregateBody::new(
+            Vec::new(),
+            vec![output_burn_2.clone(), output_3.clone(), output_4.clone()],
+            vec![kernel_1_burn.clone(), kernel_2_burn.clone(), kernel_4.clone()],
+        );
+        let err = check_total_burned(&body).unwrap_err();
+        assert!(matches!(
+            err,
+            AggregatedBodyValidationError::InvalidBurnError(msg) if msg == "Burned kernel does not match burned output"
+        ));
+
+        // Case 3: Multiple burn kernels reference the same burn commitment
+        let body = AggregateBody::new(
+            Vec::new(),
+            vec![output_burn_2.clone(), output_3.clone(), output_4.clone()],
+            vec![kernel_2_burn.clone(), kernel_3_duplicate_burn, kernel_4.clone()],
+        );
+        let err = check_total_burned(&body).unwrap_err();
+        assert!(matches!(
+            err,
+            AggregatedBodyValidationError::InvalidBurnError(msg) if msg == "Multiple burned kernels with same commitment"
+        ));
+
+        // Case 4: Happy path
+        let body = AggregateBody::new(
+            Vec::new(),
+            vec![output_burn_1, output_burn_2, output_3, output_4],
+            vec![kernel_1_burn, kernel_2_burn, kernel_4.clone()],
+        );
+        assert!(check_total_burned(&body).is_ok());
     }
 
     mod transaction_ordering {
