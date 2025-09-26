@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.6-pre.0](https://github.com/tari-project/tari/compare/v5.0.5...v5.0.6-pre.0) (2025-09-26)
+
+
+### Bug Fixes
+
+* ledger birthday ([#7508](https://github.com/tari-project/tari/issues/7508)) ([0a147b1](https://github.com/tari-project/tari/commit/0a147b1dd052dc4cc45804a6b09510b1652c4571))
+
 ### [5.0.5](https://github.com/tari-project/tari/compare/v5.0.1...v5.0.5) (2025-09-26)
 
 
