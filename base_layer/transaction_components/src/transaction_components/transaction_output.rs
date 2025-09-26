@@ -614,8 +614,13 @@ mod test {
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
         assert!(tx_output.verify_metadata_signature().is_ok());
         let (_, recovered_value, _) = key_manager
-            .try_output_key_recovery(tx_output.commitment(), tx_output.encrypted_data(), None)
+            .try_output_key_recovery(
+                tx_output.commitment(),
+                tx_output.encrypted_data(),
+                &tx_output.sender_offset_public_key,
+            )
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(recovered_value, value);
     }

@@ -686,19 +686,13 @@ where
                     let view_key = key_manager.get_view_key().await?;
                     let spend_key = key_manager.get_spend_key().await?;
 
-                    let shared_secret = key_manager
-                        .get_diffie_hellman_shared_secret(
-                            &view_key.key_id,
-                            input_wallet_output.sender_offset_public_key(),
-                        )
-                        .await?;
-
-                    let shared_secret_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-                    let commitment_mask_key_id = key_manager.import_key(shared_secret_private_key.clone()).await?;
+                    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+                        private_key: view_key.key_id.clone().into(),
+                        public_key: input_wallet_output.sender_offset_public_key().clone(),
+                    };
                     let script_pubkey = key_manager
                         .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)
                         .await?;
-
                     let script_key = TariKeyId::Derived {
                         key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                     };
@@ -1920,7 +1914,7 @@ where
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key)
+            .import_key(encryption_private_key, None)
             .await?;
 
         let sender_offset_public_key = self
@@ -1932,7 +1926,7 @@ where
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(spending_key)
+            .import_key(spending_key, None)
             .await?;
 
         let minimum_value_promise = MicroMinotari::zero();
@@ -2197,7 +2191,7 @@ where
         let commitment_mask_key_id = &self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key.clone())
+            .import_key(commitment_mask_private_key.clone(), None)
             .await?;
 
         let script_spending_key = self
@@ -2211,13 +2205,13 @@ where
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key)
+            .import_key(encryption_private_key, None)
             .await?;
 
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key)
+            .import_key(commitment_mask_private_key, None)
             .await?;
 
         let sender_offset_public_key = self
@@ -2574,28 +2568,6 @@ where
             .await?
             .key_id;
 
-        let recovery_key_id = match claim_public_key {
-            Some(ref claim_public_key) => {
-                // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
-                // this case a new spend key from the key manager) and the provided claim public key. The public
-                // nonce/commitment_mask_key is returned back to the caller.
-                let shared_secret = self
-                    .resources
-                    .transaction_key_manager_service
-                    .get_diffie_hellman_shared_secret(&commitment_mask_key.key_id, claim_public_key)
-                    .await?;
-                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                self.resources
-                    .transaction_key_manager_service
-                    .import_key(encryption_key.clone())
-                    .await?;
-                TariKeyId::Imported {
-                    key: CompressedPublicKey::from_secret_key(&encryption_key),
-                }
-            },
-            // No claim key provided, no shared secret or encryption key needed
-            None => recovery_key_id,
-        };
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
@@ -2997,7 +2969,7 @@ where
         let nonce_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(nonce_secret)
+            .import_key(nonce_secret, None)
             .await?;
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),

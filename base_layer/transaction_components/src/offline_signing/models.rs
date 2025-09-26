@@ -33,9 +33,16 @@ use crate::{
     MicroMinotari,
 };
 
-const SUPPORTED_VERSION: &str = "1.0.0";
+const SUPPORTED_VERSION: &str = "2.0.0";
 
-pub fn get_supported_version() -> Version {
+pub fn get_supported_versions() -> Vec<Version> {
+    vec![
+        Version::parse(SUPPORTED_VERSION).unwrap(),
+        Version::parse("1.0.0").unwrap(),
+    ]
+}
+
+pub fn get_latest_version() -> Version {
     Version::parse(SUPPORTED_VERSION).unwrap()
 }
 
@@ -52,10 +59,10 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
             .ok_or_else(|| TransactionError::SerializationError("Missing version".into()))?;
         let version: Version =
             serde_json::from_value(version.clone()).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-        if version != get_supported_version() {
+        if !get_supported_versions().contains(&version) {
             return Err(TransactionError::SerializationError(format!(
                 "Unsupported version. Expected '{}', got '{}'",
-                get_supported_version(),
+                get_supported_versions().first().expect("at least one version"),
                 version
             )));
         }

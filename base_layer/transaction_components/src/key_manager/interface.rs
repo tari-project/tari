@@ -42,7 +42,7 @@ use tari_common_types::{
 };
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{from_hex, Hex};
 
 use crate::key_manager::AddResult;
 
@@ -50,6 +50,9 @@ pub const MANAGED_KEY_BRANCH: &str = "managed";
 pub const DERIVED_KEY_BRANCH: &str = "derived";
 pub const IMPORTED_KEY_BRANCH: &str = "imported";
 pub const ZERO_KEY_BRANCH: &str = "zero";
+pub const DH_COMMITMENT_MASK_BRANCH: &str = "dh_commitment_mask";
+pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
+pub const ENCRYPTED_BRANCH: &str = "encrypted";
 
 use crate::{
     key_manager::error::{KeyManagerServiceError, KeyManagerStorageError},
@@ -82,6 +85,37 @@ impl KeyManagerBranch {
     }
 }
 
+/// TariKeyId Variants and Private Key Calculation
+// 1. Managed { branch, index }
+// Description: Represents a key derived from a deterministic key manager using a specific branch and index.
+// Private Key Calculation:
+// The private key is deterministically derived using the key manager's master seed, the branch string, and the index.
+// Formula: private_key = derive(master_seed, branch, index)
+// The derivation uses a cryptographic key derivation function (KDF) such as HKDF or similar, ensuring that the same
+// inputs always produce the same private key.
+// 2. Derived { key }
+// Description: Represents a key derived from a serialized key string.
+// Private Key Calculation:
+// The serialized key string encodes the derivation path or method. The key manager parses this string and applies the
+// appropriate derivation logic to reconstruct the private key.
+// 3. Imported { key }
+// Description: Represents a key that was imported directly.
+// Private Key Calculation:
+// The private key is stored in the key manager's backend, associated with the given public key.
+// Retrieval: The key manager looks up the private key using the public key.
+// 4. Zero
+// Description: Represents a special zero key.
+// Private Key Calculation:
+// The private key is a constant value, typically all zeros, and is not used for real cryptographic operations.
+// 5. DHCommitmentMask { public_key, private_key } and DHEncryptedData { public_key, private_key }
+// Description: Used for Diffie-Hellman operations, storing both a public and a serialized private key.
+// Private Key Calculation:
+// The private key is reconstructed from the serialized string, which may represent a derived or imported key.
+// 6. Encrypted { encrypted, key }
+// Description: Represents a key that is encrypted.
+// Private Key Calculation:
+// The encrypted bytes are decrypted using the provided key string, which is used as a decryption key or derivation
+// path.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum TariKeyId {
     Managed {
@@ -96,6 +130,18 @@ pub enum TariKeyId {
     },
     #[default]
     Zero,
+    DHCommitmentMask {
+        public_key: CompressedPublicKey,
+        private_key: SerializedKeyString,
+    },
+    DHEncryptedData {
+        public_key: CompressedPublicKey,
+        private_key: SerializedKeyString,
+    },
+    Encrypted {
+        encrypted: Vec<u8>,
+        key: SerializedKeyString,
+    },
 }
 
 impl TariKeyId {
@@ -105,6 +151,9 @@ impl TariKeyId {
             TariKeyId::Derived { .. } => None,
             TariKeyId::Imported { .. } => None,
             TariKeyId::Zero => None,
+            TariKeyId::DHCommitmentMask { .. } => None,
+            TariKeyId::DHEncryptedData { .. } => None,
+            TariKeyId::Encrypted { .. } => None,
         }
     }
 
@@ -114,6 +163,9 @@ impl TariKeyId {
             TariKeyId::Derived { .. } => None,
             TariKeyId::Imported { .. } => None,
             TariKeyId::Zero => None,
+            TariKeyId::DHCommitmentMask { .. } => None,
+            TariKeyId::DHEncryptedData { .. } => None,
+            TariKeyId::Encrypted { .. } => None,
         }
     }
 
@@ -123,6 +175,9 @@ impl TariKeyId {
             TariKeyId::Derived { .. } => None,
             TariKeyId::Imported { key } => Some(key.clone()),
             TariKeyId::Zero => None,
+            TariKeyId::DHCommitmentMask { .. } => None,
+            TariKeyId::DHEncryptedData { .. } => None,
+            TariKeyId::Encrypted { .. } => None,
         }
     }
 }
@@ -159,13 +214,48 @@ impl FromStr for TariKeyId {
                 },
                 ZERO_KEY_BRANCH => Ok(TariKeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    match parts.len() {
-                        4 | 3 => (),
-                        _ => return Err("Wrong derived format".to_string()),
-                    }
+                    if parts.len() < 3 {
+                        return Err("Wrong derived format".to_string());
+                    };
 
                     let key = parts.get(1..).expect("Already checked").join(".");
                     Ok(TariKeyId::Derived {
+                        key: SerializedKeyString::from(key),
+                    })
+                },
+                DH_COMMITMENT_MASK_BRANCH => {
+                    if parts.len() < 3 {
+                        return Err("Wrong dh_commitment_mask format".to_string());
+                    }
+                    let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
+                        .map_err(|_| "Invalid public key".to_string())?;
+                    let private_key = parts.get(2..).expect("Already checked").join(".");
+                    Ok(TariKeyId::DHCommitmentMask {
+                        public_key,
+                        private_key: SerializedKeyString::from(private_key),
+                    })
+                },
+                DH_ENCRYPTED_DATA_BRANCH => {
+                    if parts.len() < 3 {
+                        return Err("Wrong encryted data format".to_string());
+                    }
+                    let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
+                        .map_err(|_| "Invalid public key".to_string())?;
+                    let private_key = parts.get(2..).expect("Already checked").join(".");
+                    Ok(TariKeyId::DHEncryptedData {
+                        public_key,
+                        private_key: SerializedKeyString::from(private_key),
+                    })
+                },
+                ENCRYPTED_BRANCH => {
+                    if parts.len() < 3 {
+                        return Err("Wrong encrypted format".to_string());
+                    }
+                    let encrypted: Vec<u8> = from_hex(parts.get(1).expect("Already checked"))
+                        .map_err(|_| "Invalid encrypted bytes".to_string())?;
+                    let key = parts.get(2..).expect("Already checked").join(".");
+                    Ok(TariKeyId::Encrypted {
+                        encrypted,
                         key: SerializedKeyString::from(key),
                     })
                 },
@@ -183,6 +273,21 @@ impl fmt::Display for TariKeyId {
             TariKeyId::Derived { key } => write!(f, "{DERIVED_KEY_BRANCH}.{key}"),
             TariKeyId::Imported { key: public_key } => write!(f, "{IMPORTED_KEY_BRANCH}.{public_key}"),
             TariKeyId::Zero => write!(f, "{ZERO_KEY_BRANCH}"),
+            TariKeyId::DHCommitmentMask {
+                public_key,
+                private_key,
+            } => {
+                write!(f, "{DH_COMMITMENT_MASK_BRANCH}.{public_key}.{private_key}")
+            },
+            TariKeyId::DHEncryptedData {
+                public_key,
+                private_key,
+            } => {
+                write!(f, "{DH_ENCRYPTED_DATA_BRANCH}.{public_key}.{private_key}")
+            },
+            TariKeyId::Encrypted { encrypted, key } => {
+                write!(f, "{ENCRYPTED_BRANCH}.{}.{}", encrypted.to_hex(), key)
+            },
         }
     }
 }
@@ -234,32 +339,6 @@ pub enum TxoStage {
     Output,
 }
 
-#[derive(Clone, Copy, EnumIter)]
-pub enum TransactionKeyManagerLabel {
-    ScriptKey,
-}
-
-impl TransactionKeyManagerLabel {
-    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
-    /// recovery.
-    pub fn get_branch_key(self) -> String {
-        match self {
-            TransactionKeyManagerLabel::ScriptKey => "script key".to_string(),
-        }
-    }
-}
-
-impl FromStr for TransactionKeyManagerLabel {
-    type Err = String;
-
-    fn from_str(id: &str) -> Result<Self, Self::Err> {
-        match id {
-            "script key" => Ok(TransactionKeyManagerLabel::ScriptKey),
-            _ => Err("Unknown label".to_string()),
-        }
-    }
-}
-
 #[async_trait::async_trait]
 pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// Creates a new branch for the key manager service to track
@@ -283,7 +362,17 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         -> Result<CompressedPublicKey, KeyManagerServiceError>;
 
     /// Add a new key to be tracked
-    async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError>;
+    async fn import_key(
+        &self,
+        private_key: PrivateKey,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError>;
+
+    async fn create_encrypted_key_from_existing_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError>;
 
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
@@ -321,7 +410,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
-    ) -> Result<CommsDHKE, TransactionError>;
+    ) -> Result<CommsDHKE, KeyManagerServiceError>;
 
     async fn get_diffie_hellman_stealth_domain_hasher(
         &self,
@@ -398,8 +487,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key: Option<PrivateKey>,
-    ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError>;
+        sender_offset_public_key: &CompressedPublicKey,
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, TransactionError>;
 
     async fn is_this_output_ours(
         &self,
@@ -581,7 +670,7 @@ mod test {
     #[test]
     fn key_id_converts_correctly() {
         let managed_key_id: TariKeyId = TariKeyId::Managed {
-            branch: random_string(8),
+            branch: random_string(8) + " " + &random_string(5),
             index: {
                 let mut rng = rand::thread_rng();
                 let random_value: u64 = rng.gen();
@@ -596,14 +685,39 @@ mod test {
             key: managed_key_id.clone().into(),
         };
 
+        let dh_commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            public_key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            private_key: managed_key_id.clone().into(),
+        };
+
+        let derived_key_id2 = TariKeyId::Derived {
+            key: dh_commitment_mask_key_id.clone().into(),
+        };
+        let dh_encrypted_data_key_id = TariKeyId::DHEncryptedData {
+            public_key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            private_key: managed_key_id.clone().into(),
+        };
+
         let managed_key_id_str = managed_key_id.to_string();
         let imported_key_id_str = imported_key_id.to_string();
         let zero_key_id_str = zero_key_id.to_string();
         let derived_key_id_str = derived_key_id.to_string();
+        let derived_key_id_str2 = derived_key_id2.to_string();
+        let dh_commitment_mask_key_id_str = dh_commitment_mask_key_id.to_string();
+        let dh_encrypted_data_key_id_str = dh_encrypted_data_key_id.to_string();
 
         assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
         assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
         assert_eq!(derived_key_id, TariKeyId::from_str(&derived_key_id_str).unwrap());
+        assert_eq!(derived_key_id2, TariKeyId::from_str(&derived_key_id_str2).unwrap());
+        assert_eq!(
+            dh_commitment_mask_key_id,
+            TariKeyId::from_str(&dh_commitment_mask_key_id_str).unwrap()
+        );
+        assert_eq!(
+            dh_encrypted_data_key_id,
+            TariKeyId::from_str(&dh_encrypted_data_key_id_str).unwrap()
+        );
     }
 }

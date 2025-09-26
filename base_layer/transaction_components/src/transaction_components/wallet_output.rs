@@ -30,15 +30,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    ComAndPubSignature,
-    CompressedCommitment,
-    CompressedPublicKey,
-    FixedHash,
-    PrivateKey,
-    RangeProof,
-};
-use tari_crypto::keys::SecretKey;
+use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof};
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 
 use super::TransactionOutputVersion;
@@ -354,10 +346,8 @@ impl WalletOutput {
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, TransactionError> {
         if *script == script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
-            let private_key = PrivateKey::random(&mut rand::thread_rng());
-            let key_id = key_manager.import_key(private_key).await?;
-            let public_key = key_manager.get_public_key_at_key_id(&key_id).await?;
-            return Ok(Some((inputs!(public_key), key_id)));
+            let key = key_manager.get_random_key().await?;
+            return Ok(Some((inputs!(key.pub_key.clone()), key.key_id)));
         }
         // this is push public key script, so lets see if we know the public key
         if let [Opcode::PushPubKey(public_key)] = script.as_slice() {

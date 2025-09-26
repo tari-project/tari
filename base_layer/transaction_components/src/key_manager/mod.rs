@@ -34,7 +34,6 @@ pub use interface::{
     TariKeyId,
     TransactionKeyManagerBackend,
     TransactionKeyManagerInterface,
-    TransactionKeyManagerLabel,
     TxoStage,
 };
 
