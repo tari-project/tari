@@ -36,7 +36,7 @@ pub fn format_currency(value: &str, separator: char) -> String {
     for (i, c) in whole.chars().enumerate() {
         buffer.push(c);
         let idx = whole.len() - i - 1;
-        if idx > 0 && idx % 3 == 0 {
+        if idx > 0 && idx.is_multiple_of(3) {
             buffer.push(separator);
         }
     }

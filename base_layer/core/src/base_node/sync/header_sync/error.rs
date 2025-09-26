@@ -115,7 +115,8 @@ impl BlockHeaderSyncError {
             // short ban
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
             err @ BlockHeaderSyncError::RpcError { .. } |
-            err @ BlockHeaderSyncError::RpcRequestError { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::RpcRequestError { .. } |
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),
@@ -129,7 +130,6 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::InvalidProtocolResponse(_) |
             err @ BlockHeaderSyncError::ChainLinkBroken { .. } |
             err @ BlockHeaderSyncError::BlockError(_) |
-            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,

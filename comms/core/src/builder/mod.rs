@@ -30,7 +30,6 @@ mod error;
 pub use error::CommsBuilderError;
 
 mod consts;
-mod placeholder;
 
 #[cfg(test)]
 mod tests;

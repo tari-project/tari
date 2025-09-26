@@ -171,6 +171,8 @@ pub struct ConsensusConstants {
     cuckaroo_cycle_length: u8,
     /// Cuckaroo edge bits
     cuckaroo_edge_bits: u8,
+    /// Include c29 accumulated difficulty or not
+    include_c29_accumulated_difficulty_into_total: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -436,6 +438,10 @@ impl ConsensusConstants {
         self.cuckaroo_edge_bits
     }
 
+    pub fn include_c29_accumulated_difficulty_into_total(&self) -> bool {
+        self.include_c29_accumulated_difficulty_into_total
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -497,6 +503,7 @@ impl ConsensusConstants {
             vn_registration_max_exits_per_epoch: 5,
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
+            include_c29_accumulated_difficulty_into_total: true,
         }];
         consensus_constants
     }
@@ -566,6 +573,7 @@ impl ConsensusConstants {
             vn_registration_max_exits_per_epoch: 5,
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
+            include_c29_accumulated_difficulty_into_total: true,
         }];
         consensus_constants
     }
@@ -576,6 +584,7 @@ impl ConsensusConstants {
     /// * 21 billion tXTM with a 2.76-year half-life
     /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
     /// * Coinbase lock height - 12 hours = 360 blocks
+    #[allow(clippy::too_many_lines)]
     pub fn esmeralda() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
@@ -627,6 +636,7 @@ impl ConsensusConstants {
             vn_registration_max_exits_per_epoch: 0,
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
+            include_c29_accumulated_difficulty_into_total: false,
         };
 
         let mut con2 = consensus_constants1.clone();
@@ -676,7 +686,10 @@ impl ConsensusConstants {
         con3.blockchain_version = BlockVersion::V2;
         con3.valid_blockchain_version_range = 2..=2;
         con3.proof_of_work = algos;
-        let consensus_constants = vec![consensus_constants1, con2, con3];
+        let mut con4 = con3.clone();
+        con4.include_c29_accumulated_difficulty_into_total = true;
+        con4.effective_from_height = 181_000;
+        let consensus_constants = vec![consensus_constants1, con2, con3, con4];
         consensus_constants
     }
 
@@ -736,6 +749,7 @@ impl ConsensusConstants {
             vn_registration_max_exits_per_epoch: 0,
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
+            include_c29_accumulated_difficulty_into_total: false,
         }];
         consensus_constants
     }
@@ -791,6 +805,7 @@ impl ConsensusConstants {
             vn_registration_max_exits_per_epoch: 0,
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
+            include_c29_accumulated_difficulty_into_total: false,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -843,7 +858,11 @@ impl ConsensusConstants {
         con_4.blockchain_version = BlockVersion::V2;
         con_4.proof_of_work = algos;
 
-        let consensus_constants = vec![con_1, con_2, con_3, con_4];
+        let mut con_5 = con_4.clone();
+        con_5.include_c29_accumulated_difficulty_into_total = true;
+        con_5.effective_from_height = 5000;
+
+        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5];
         consensus_constants
     }
 
@@ -899,6 +918,7 @@ impl ConsensusConstants {
             vn_registration_max_exits_per_epoch: 0,
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
+            include_c29_accumulated_difficulty_into_total: false,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
@@ -957,7 +977,11 @@ impl ConsensusConstants {
         });
         con_5.proof_of_work = algos;
 
-        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5];
+        let mut con_6 = con_5.clone();
+        con_6.include_c29_accumulated_difficulty_into_total = true;
+        con_6.effective_from_height = 140_000;
+
+        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
         consensus_constants
     }
 

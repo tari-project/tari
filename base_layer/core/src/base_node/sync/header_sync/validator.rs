@@ -129,7 +129,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     }
 
     pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
-        let constants = self.consensus_rules.consensus_constants(header.height);
+        let constants = self.consensus_rules.consensus_constants(header.height).clone();
         if constants.effective_from_height() == header.height {
             if let Some(&mut ref mut mut_state) = self.state.as_mut() {
                 // We need to update the target difficulties for the new algorithm
@@ -230,14 +230,14 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .with_hash(header.hash())
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())
-            .build()?;
+            .build(&constants)?;
 
         let total_accumulated_difficulty = accumulated_data.total_accumulated_difficulty;
         // NOTE: accumulated_data constructed from header so they are guaranteed to correspond
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
         state.previous_accum = chain_header.accumulated_data().clone();
-        if chain_header.header().height % TARI_RX_VM_KEY_BLOCK_SWAP == 0 {
+        if chain_header.header().height.is_multiple_of(TARI_RX_VM_KEY_BLOCK_SWAP) {
             // we need to save the hash of this header and height
             state.vm_key.push((chain_header.header().height, *chain_header.hash()));
         }

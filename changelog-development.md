@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.1.0-pre.3](https://github.com/tari-project/tari/compare/v5.1.0-pre.2...v5.1.0-pre.3) (2025-09-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* c29 difficulty (#7516)
+
+### Bug Fixes
+
+* c29 difficulty ([#7516](https://github.com/tari-project/tari/issues/7516)) ([d5d3081](https://github.com/tari-project/tari/commit/d5d3081343ef8044de051118037f03ba012f86d6))
+
+
+## [5.1.0-pre.2](https://github.com/tari-project/tari/compare/v5.1.0-pre.1...v5.1.0-pre.2) (2025-09-26)
+
+
+### Bug Fixes
+
+* handle c29 possible saturation ([#7504](https://github.com/tari-project/tari/issues/7504)) ([a3624e5](https://github.com/tari-project/tari/commit/a3624e55a6b89e3117cd148742d9955dc8519144))
+* ledger birthday ([#7508](https://github.com/tari-project/tari/issues/7508)) ([5618c1d](https://github.com/tari-project/tari/commit/5618c1da75d775f2b3425eeffa6c508b76342374))
+* remove ban for wrong accumulated difficulty ([ccb41e6](https://github.com/tari-project/tari/commit/ccb41e6c5933073041bc77dbf5f23900e12411a2))
+
+
+## [5.1.0-pre.1](https://github.com/tari-project/tari/compare/v5.1.0-pre.0...v5.1.0-pre.1) (2025-09-18)
+
+
+### Bug Fixes
+
+* accumulated data in c29 ([#7507](https://github.com/tari-project/tari/issues/7507)) ([840c6d2](https://github.com/tari-project/tari/commit/840c6d24e02923453ec77dab70073c7d1d9569cc))
+
 ## [5.1.0-pre.0](https://github.com/tari-project/tari/compare/v5.0.1...v5.1.0-pre.0) (2025-09-18)
 
 

@@ -220,7 +220,7 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords,
     // Pad with zeros if length not divisible by 11
     let group_bit_count = 11;
     let mut padded_size = bits.reveal().len() / group_bit_count;
-    if bits.reveal().len() % group_bit_count > 0 {
+    if !bits.reveal().len().is_multiple_of(group_bit_count) {
         padded_size += 1;
     }
     padded_size *= group_bit_count;

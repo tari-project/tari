@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_node_components::blocks::{BlockError, BlockHeaderAccumulatedData};
-use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
+use tari_transaction_components::{consensus::ConsensusConstants, tari_proof_of_work::PowAlgorithm};
 
 use crate::proof_of_work::AchievedTargetDifficulty;
 
@@ -105,7 +105,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn build(self) -> Result<BlockHeaderAccumulatedData, BlockError> {
+    pub fn build(self, consensus_constants: &ConsensusConstants) -> Result<BlockHeaderAccumulatedData, BlockError> {
         let previous_accum = self.previous_accum;
         let hash = self.hash.ok_or(BlockError::BuilderMissingField { field: "hash" })?;
 
@@ -165,9 +165,13 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             .ok_or(BlockError::BuilderMissingField {
                 field: "total_kernel_offset",
             })?;
-        let total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
+        let mut total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
             U512::from(tari_randomx_diff.as_u128()) *
             U512::from(sha3x_diff.as_u128());
+
+        if consensus_constants.include_c29_accumulated_difficulty_into_total() {
+            total_accumulated *= U512::from(cuckaroo_diff.as_u128());
+        }
 
         let result = BlockHeaderAccumulatedData {
             hash,
