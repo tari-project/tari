@@ -36,7 +36,6 @@ pub fn handler_get_view_key(comm: &mut Comm) -> Result<(), AppSW> {
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(p.as_bytes());
-    comm.reply_ok();
 
     Ok(())
 }

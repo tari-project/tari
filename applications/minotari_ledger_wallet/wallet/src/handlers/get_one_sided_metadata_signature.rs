@@ -272,7 +272,6 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&metadata_signature.to_vec());
-    comm.reply_ok();
 
     Ok(())
 }
