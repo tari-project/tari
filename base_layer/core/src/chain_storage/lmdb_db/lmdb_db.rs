@@ -3010,7 +3010,7 @@ impl BlockchainBackend for LMDBDatabase {
             None,
         )?;
 
-        if height % 50 == 0 {
+        if height.is_multiple_of(50) {
             self.update_stats_progress(height);
         }
 

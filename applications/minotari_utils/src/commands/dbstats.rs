@@ -128,13 +128,6 @@ pub struct DatabaseSummary {
     pub avg_entries_per_db: usize,
 }
 
-// New structures for multi-database analysis
-#[derive(Debug, Serialize, Deserialize)]
-enum DatabaseType {
-    Lmdb,
-    SQLite,
-}
-
 #[derive(Debug, Serialize, Deserialize, Tabled)]
 pub struct ComponentDatabaseInfo {
     #[tabled(rename = "Component")]
