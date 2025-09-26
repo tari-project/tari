@@ -85,6 +85,37 @@ impl KeyManagerBranch {
     }
 }
 
+/// TariKeyId Variants and Private Key Calculation
+// 1. Managed { branch, index }
+// Description: Represents a key derived from a deterministic key manager using a specific branch and index.
+// Private Key Calculation:
+// The private key is deterministically derived using the key manager's master seed, the branch string, and the index.
+// Formula: private_key = derive(master_seed, branch, index)
+// The derivation uses a cryptographic key derivation function (KDF) such as HKDF or similar, ensuring that the same
+// inputs always produce the same private key.
+// 2. Derived { key }
+// Description: Represents a key derived from a serialized key string.
+// Private Key Calculation:
+// The serialized key string encodes the derivation path or method. The key manager parses this string and applies the
+// appropriate derivation logic to reconstruct the private key.
+// 3. Imported { key }
+// Description: Represents a key that was imported directly.
+// Private Key Calculation:
+// The private key is stored in the key manager's backend, associated with the given public key.
+// Retrieval: The key manager looks up the private key using the public key.
+// 4. Zero
+// Description: Represents a special zero key.
+// Private Key Calculation:
+// The private key is a constant value, typically all zeros, and is not used for real cryptographic operations.
+// 5. DHCommitmentMask { public_key, private_key } and DHEncryptedData { public_key, private_key }
+// Description: Used for Diffie-Hellman operations, storing both a public and a serialized private key.
+// Private Key Calculation:
+// The private key is reconstructed from the serialized string, which may represent a derived or imported key.
+// 6. Encrypted { encrypted, key }
+// Description: Represents a key that is encrypted.
+// Private Key Calculation:
+// The encrypted bytes are decrypted using the provided key string, which is used as a decryption key or derivation
+// path.
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum TariKeyId {
     Managed {
