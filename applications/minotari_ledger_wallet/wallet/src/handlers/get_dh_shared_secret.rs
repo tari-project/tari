@@ -57,7 +57,6 @@ pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(shared_secret_key.deref().as_bytes());
-    comm.reply_ok();
 
     Ok(())
 }

@@ -3138,7 +3138,7 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    // Returns the accumulated data rebuild status.
+    // Returns the burn commitments index rebuild status.
     fn fetch_burn_commitments_index_rebuild_status(
         &self,
     ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
@@ -3205,7 +3205,7 @@ impl BlockchainBackend for LMDBDatabase {
             None,
         )?;
 
-        if height % 50 == 0 {
+        if height.is_multiple_of(50) {
             self.update_stats_progress(height);
         }
 
@@ -4401,69 +4401,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             write_txn.commit()?;
         }
 
-        // Migration Total accumulated difficulty migration - re-calculate accumulated difficultie for c29
-        if migrate_from_version == 6 {
-            let txn = db.write_transaction()?;
-            let rebuild_status = {
-                let val: Option<MetadataValue> = lmdb_get(
-                    &txn,
-                    &db.metadata_db,
-                    &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
-                )
-                .unwrap_or_default();
-                match val {
-                    Some(MetadataValue::AccumulatedDataRebuildStatus(status)) => status,
-                    _ => AccumulatedDataRebuildStatus::default(),
-                }
-            };
-            match (rebuild_status.is_rebuilt, rebuild_status.last_rebuild_height) {
-                (_, Some(val)) => {
-                    if val < 95000 {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{migrate_from_version}: No need to reset accumulated data rebuilding, below fork height for c29",
-                        );
-                    } else {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{migrate_from_version}: Already past accumulated rebuild already past fork height of c29, need to rebuild"
-                        );
-                        let status = AccumulatedDataRebuildStatus {
-                            is_rebuilt: false,
-                            last_rebuild_height: Some(94999),
-                        };
-                        lmdb_replace(
-                            &txn,
-                            &db.metadata_db,
-                            &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
-                            &MetadataValue::AccumulatedDataRebuildStatus(status),
-                            None,
-                        )?;
-                        txn.commit()?;
-                    }
-                },
-                (_, None) => {
-                    let height = fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0);
-
-                    info!(
-                        target: LOG_TARGET,
-                        "[MIGRATIONS] v{migrate_from_version}: Already past accumulated rebuild already past fork height of c29, need to rebuild"
-                    );
-                    let status = AccumulatedDataRebuildStatus {
-                        is_rebuilt: false,
-                        last_rebuild_height: Some(std::cmp::min(94999, height)),
-                    };
-                    lmdb_replace(
-                        &txn,
-                        &db.metadata_db,
-                        &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
-                        &MetadataValue::AccumulatedDataRebuildStatus(status),
-                        None,
-                    )?;
-                    txn.commit()?;
-                },
-            }
-        }
 
         if migrate_from_version == 7 {
             info!(target: LOG_TARGET, "[MIGRATIONS] v{migrate_from_version}: Starting burn commitments index migration management");

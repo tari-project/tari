@@ -136,7 +136,9 @@ fn main() {
             return;
         },
         Err(e) => {
-            if e != LedgerDeviceError::Processing("GetPublicKey: expected 33 bytes, got 0 (BadBranchKey)".to_string()) {
+            if e != LedgerDeviceError::Processing(
+                "GetPublicKey: expected 1 + 32 bytes, got 0 (BadBranchKey)".to_string(),
+            ) {
                 println!("\nError: Unexpected response ({e})\n");
                 return;
             }

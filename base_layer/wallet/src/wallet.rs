@@ -174,7 +174,7 @@ where
                 factories.clone(),
                 config.network.into(),
             ))
-            .add_initializer(TransactionKeyManagerInitializer::new(
+            .add_initializer(TransactionKeyManagerInitializer::new_with_legacy_storage(
                 key_manager_backend,
                 master_seed,
                 factories.clone(),

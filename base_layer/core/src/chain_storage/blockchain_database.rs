@@ -161,7 +161,7 @@ impl Default for BlockchainDatabaseConfig {
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             track_reorgs: false,
-            cleanup_orphans_at_startup: false,
+            cleanup_orphans_at_startup: true,
             clear_bad_blocks_at_startup: true,
         }
     }
@@ -429,8 +429,9 @@ where B: BlockchainBackend
                 let difficulty_calculator = difficulty_calculator.clone();
                 // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
                 // shut down when base node shutdown is triggered
+                let cc = rules.consensus_constants(height).clone();
                 let res = tokio::task::spawn_blocking(move || {
-                    process_accumulated_data_for_height(db, difficulty_calculator, height)
+                    process_accumulated_data_for_height(db, difficulty_calculator, height, &cc)
                 })
                 .await;
                 match res {
@@ -1782,7 +1783,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let block_height = block.header.height;
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
     let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
-    let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
+    let (validator_node_mr, validator_node_size) = if block_height.is_multiple_of(epoch_len) {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_all_active_validator_nodes(block_height)?;
         (calculate_validator_node_mr(&validator_nodes)?, validator_nodes.len())
@@ -2718,7 +2719,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         .with_hash(hash)
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
-        .build()?;
+        .build(rules.consensus_constants(candidate_block.header.height))?;
 
     let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).ok_or(
         ChainStorageError::UnexpectedResult("Somehow hash is missing from Chain block".to_string()),
@@ -2731,7 +2732,14 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     txn.set_accumulated_data_for_orphan(chain_block.header().version, chain_block.accumulated_data().clone());
     db.write(txn)?;
-    let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
+    let height = chain_header.height();
+    let tips = find_orphan_descendant_tips_of(
+        db,
+        chain_header,
+        prev_timestamps,
+        validator,
+        rules.consensus_constants(height),
+    )?;
     let mut txn = DbTransaction::new();
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     for new_tip in &tips {
@@ -2751,6 +2759,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     prev_chain_header: ChainHeader,
     prev_timestamps: RollingVec<EpochTime>,
     validator: &dyn HeaderChainLinkedValidator<T>,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
     if children.is_empty() {
@@ -2805,7 +2814,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     .with_hash(child_hash)
                     .with_achieved_target_difficulty(achieved_target)
                     .with_total_kernel_offset(child.header.total_kernel_offset.clone())
-                    .build()?;
+                    .build(consensus_constants)?;
 
                 let chain_header = ChainHeader::try_construct(child.header, accum_data).ok_or_else(|| {
                     ChainStorageError::InvalidOperation(format!(
@@ -2820,8 +2829,13 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     chain_header.accumulated_data().clone(),
                 );
                 db.write(txn)?;
-                let children =
-                    find_orphan_descendant_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;
+                let children = find_orphan_descendant_tips_of(
+                    db,
+                    chain_header,
+                    prev_timestamps_for_children,
+                    validator,
+                    consensus_constants,
+                )?;
                 res.extend(children);
             },
             Err(e) => {
@@ -3079,6 +3093,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
     difficulty_calculator: DifficultyCalculator,
     height: u64,
+    consensus_constants: &ConsensusConstants,
 ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
     debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height}");
 
@@ -3100,7 +3115,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_difficulty)
         .with_total_kernel_offset(header.total_kernel_offset.clone())
-        .build()?;
+        .build(consensus_constants)?;
 
     let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
 

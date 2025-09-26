@@ -29,7 +29,7 @@ use crate::{
     offline_signing::{
         marshal_output_pair::MarshalOutputPair,
         models::{
-            get_supported_version,
+            get_latest_version,
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
             PaymentRecipient,
@@ -135,7 +135,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok(PrepareOneSidedTransactionForSigningResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             tx_id,
             info,
         })
@@ -209,7 +209,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok(PrepareDepositMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             tx_id,
             info,
         })
@@ -285,7 +285,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok(PrepareWithdrawMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             tx_id,
             info,
         })
@@ -299,7 +299,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
         Ok(SignedOneSidedTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             request,
             signed_transaction,
         })
@@ -315,7 +315,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?;
 
         Ok(SignedOneSidedDepositMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             request,
             signed_transaction,
         })
@@ -332,7 +332,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?;
 
         Ok(SignedOneSidedWithdrawMultisigTransactionResult {
-            version: get_supported_version(),
+            version: get_latest_version(),
             request,
             signed_transaction,
         })
@@ -366,15 +366,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             },
             TariKeyId::Derived { key } => {
                 let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
-                let public_key = self
-                    .key_manager
-                    .get_public_key_at_key_id(&inner_key)
-                    .await
-                    .map_err(|err| err.to_string())?;
-                let modified_key = TariKeyId::Imported {
-                    key: CompressedPublicKey::new_from_pk(public_key.to_public_key().map_err(|err| err.to_string())?),
-                };
+                let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
                 let key = TariKeyId::Derived {
+                    key: modified_key.into(),
+                };
+                Ok(key)
+            },
+            TariKeyId::DHCommitmentMask { .. } => Ok(key_id.clone()),
+            TariKeyId::DHEncryptedData { .. } => Ok(key_id.clone()),
+            TariKeyId::Encrypted { encrypted, key } => {
+                let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
+                let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
+                let key = TariKeyId::Encrypted {
+                    encrypted: encrypted.clone(),
                     key: modified_key.into(),
                 };
                 Ok(key)
@@ -382,13 +386,11 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             TariKeyId::Managed { .. } => {
                 let key = self
                     .key_manager
-                    .get_public_key_at_key_id(key_id)
+                    .create_encrypted_key_from_existing_key(key_id, None)
                     .await
                     .map_err(|err| err.to_string())?;
 
-                Ok(TariKeyId::Imported {
-                    key: CompressedPublicKey::new_from_pk(key.to_public_key().map_err(|err| err.to_string())?),
-                })
+                Ok(key)
             },
         }
     }

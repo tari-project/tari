@@ -60,7 +60,7 @@ fn get_message_padding_length(message_length: usize) -> usize {
         return MESSAGE_BASE_LENGTH;
     }
 
-    if message_length % MESSAGE_BASE_LENGTH == 0 {
+    if message_length.is_multiple_of(MESSAGE_BASE_LENGTH) {
         0
     } else {
         MESSAGE_BASE_LENGTH - (message_length % MESSAGE_BASE_LENGTH)
@@ -100,7 +100,7 @@ fn get_original_message_from_padded_text(padded_message: &mut BytesMut) -> Resul
     }
 
     // The padded message must be a multiple of the base length
-    if (padded_message.len() % MESSAGE_BASE_LENGTH) != 0 {
+    if !padded_message.len().is_multiple_of(MESSAGE_BASE_LENGTH) {
         return Err(DhtEncryptError::PaddingError(
             "Padded message must be a multiple of the base length".to_string(),
         ));

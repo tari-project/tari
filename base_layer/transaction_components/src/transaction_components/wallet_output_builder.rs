@@ -390,8 +390,13 @@ mod test {
                     .unwrap());
 
                 let (recovered_key_id, recovered_value, _) = key_manager
-                    .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
+                    .try_output_key_recovery(
+                        output.commitment(),
+                        output.encrypted_data(),
+                        &output.sender_offset_public_key,
+                    )
                     .await
+                    .unwrap()
                     .unwrap();
                 let recovered_mask = key_manager.get_public_key_at_key_id(&recovered_key_id).await.unwrap();
                 let original_mask = key_manager

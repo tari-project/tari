@@ -57,7 +57,6 @@ mod test {
         key_manager::{
             create_memory_key_manager,
             error::KeyManagerServiceError,
-            memory_key_manager::MemoryKeyManagerBackend,
             MemoryKeyManager,
             SerializedKeyString,
             TariKeyId,
@@ -69,7 +68,7 @@ mod test {
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
             covenants::Covenant,
-            one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+            one_sided::shared_secret_to_output_encryption_key,
             EncryptedData,
             MemoField,
             OutputFeatures,
@@ -86,8 +85,7 @@ mod test {
         OsRng.fill_bytes(key.as_mut());
         let factory = CryptoFactories::new(64);
 
-        let backend = MemoryKeyManagerBackend::new();
-        TransactionKeyManagerWrapper::new(cipher, backend, factory, Arc::new(WalletType::ProvidedKeys(keys))).await
+        TransactionKeyManagerWrapper::new(cipher, factory, Arc::new(WalletType::ProvidedKeys(keys))).await
     }
     #[tokio::test]
     async fn offline_sign_is_valid() {
@@ -445,20 +443,13 @@ mod test {
             message,
         )];
 
-        let shared_secret = alice_key_manager
-            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, &alice_spend_key.pub_key)
-            .await
-            .unwrap();
-
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
-
-        let script_commitment_mask = alice_key_manager
-            .import_key(commitment_mask_private_key.clone())
-            .await
-            .unwrap();
+        let commitment_mask_private_key = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: alice_spend_key.pub_key.clone(),
+        };
 
         let script_pubkey = alice_key_manager
-            .stealth_address_script_spending_key(&script_commitment_mask, &alice_spend_key.pub_key)
+            .stealth_address_script_spending_key(&commitment_mask_private_key, &alice_spend_key.pub_key)
             .await
             .unwrap();
 
@@ -481,7 +472,7 @@ mod test {
         let output_features = OutputFeatures::default();
 
         let script_key = TariKeyId::Derived {
-            key: SerializedKeyString::from(script_commitment_mask.to_string()),
+            key: SerializedKeyString::from(commitment_mask_private_key.to_string()),
         };
 
         let input = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())

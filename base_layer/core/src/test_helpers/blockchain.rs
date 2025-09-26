@@ -61,7 +61,7 @@ use tari_transaction_components::{
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::ByteArray;
 
-use super::{create_block, mine_to_difficulty};
+use super::{create_block, create_consensus_constants, mine_to_difficulty};
 use crate::{
     blocks::{BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder},
     chain_storage::{
@@ -691,7 +691,7 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
             AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3x, difficulty, difficulty).unwrap(),
         )
         .with_total_kernel_offset(block.header.total_kernel_offset.clone())
-        .build()
+        .build(&create_consensus_constants(block.header.height))
         .unwrap();
     Arc::new(ChainBlock::try_construct(Arc::new(block), accum).unwrap())
 }

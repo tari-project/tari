@@ -85,7 +85,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     /// Creates a new key manager.
     /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
     /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
-    pub async fn new(
+    pub async fn new_with_legacy_storage(
         master_seed: CipherSeed,
         db: TBackend,
         crypto_factories: CryptoFactories,
@@ -93,7 +93,19 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
             transaction_key_manager_inner: Arc::new(RwLock::new(
-                TransactionKeyManagerInner::new(master_seed, db, crypto_factories, wallet_type).await?,
+                TransactionKeyManagerInner::new(master_seed, Some(db), crypto_factories, wallet_type).await?,
+            )),
+        })
+    }
+
+    pub async fn new(
+        master_seed: CipherSeed,
+        crypto_factories: CryptoFactories,
+        wallet_type: Arc<WalletType>,
+    ) -> Result<Self, KeyManagerServiceError> {
+        Ok(TransactionKeyManagerWrapper {
+            transaction_key_manager_inner: Arc::new(RwLock::new(
+                TransactionKeyManagerInner::new(master_seed, None, crypto_factories, wallet_type).await?,
             )),
         })
     }
@@ -152,11 +164,27 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
-    async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
+    async fn import_key(
+        &self,
+        private_key: PrivateKey,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .import_key(private_key)
+            .import_key(private_key, encryption_key)
+            .await
+    }
+
+    async fn create_encrypted_key_from_existing_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .create_encrypted_key_from_existing_key(key_id, encryption_key)
             .await
     }
 
@@ -243,7 +271,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
-    ) -> Result<CommsDHKE, TransactionError> {
+    ) -> Result<CommsDHKE, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -402,12 +430,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-        custom_recovery_key: Option<PrivateKey>,
-    ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError> {
+        sender_offset_public_key: &CompressedPublicKey,
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key)
+            .try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)
             .await
     }
 
