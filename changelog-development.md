@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.5](https://github.com/tari-project/tari/compare/v5.0.1...v5.0.5) (2025-09-26)
+
+
+### Bug Fixes
+
+* update ledger wallet sdk to newer ledger firmware ([#7520](https://github.com/tari-project/tari/issues/7520)) ([09b9033](https://github.com/tari-project/tari/commit/09b9033fd06d8752b3f3466f690cd253307e7731))
+
 ### [5.0.1](https://github.com/tari-project/tari/compare/v5.0.0...v5.0.1) (2025-09-02)
 
 
