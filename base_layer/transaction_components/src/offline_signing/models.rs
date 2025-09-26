@@ -62,7 +62,7 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
         if !get_supported_versions().contains(&version) {
             return Err(TransactionError::SerializationError(format!(
                 "Unsupported version. Expected '{}', got '{}'",
-                get_supported_versions()[0],
+                get_supported_versions().first().expect("at least one version"),
                 version
             )));
         }
