@@ -218,7 +218,7 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetPublicSpendKey: expected 33 bytes, got {} ({:?})",
+                    "GetPublicSpendKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -252,7 +252,7 @@ pub fn ledger_get_public_key(
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetPublicKey: expected 33 bytes, got {} ({:?})",
+                    "GetPublicKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -401,7 +401,7 @@ pub fn ledger_get_script_offset(
         Some(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetScriptOffset: expected 33 bytes, got {} ({:?})",
+                    "GetScriptOffset: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -423,7 +423,7 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetViewKey: expected 33 bytes, got {} ({:?})",
+                    "GetViewKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -457,7 +457,7 @@ pub fn ledger_get_dh_shared_secret(
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetDHSharedSecret: expected 33 bytes, got {} ({:?})",
+                    "GetDHSharedSecret: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));

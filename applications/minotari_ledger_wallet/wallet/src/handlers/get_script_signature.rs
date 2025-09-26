@@ -73,7 +73,6 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
-    comm.reply_ok();
 
     Ok(())
 }
@@ -115,7 +114,6 @@ pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
-    comm.reply_ok();
 
     Ok(())
 }
