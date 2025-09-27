@@ -3,6 +3,7 @@ name = "tari_transaction_components"
 description = "Core Tari transaction components"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

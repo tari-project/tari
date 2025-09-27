@@ -3,6 +3,7 @@ name = "tari_node_components"
 description = "Tari Base Layer Node Components"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

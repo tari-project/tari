@@ -7807,7 +7807,7 @@ dependencies = [
 
 [[package]]
 name = "tari_integration_tests"
-version = "0.35.1"
+version = "5.1.0-pre.3"
 dependencies = [
  "anyhow",
  "async-trait",
