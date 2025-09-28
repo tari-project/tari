@@ -240,7 +240,6 @@ impl CommandContext {
                 Command::SearchUtxo(_) |
                 Command::SearchPayref(_) |
                 Command::SearchKernel(_) |
-                Command::GetBurntCommitments(_) |
                 Command::GetMempoolStats(_) |
                 Command::GetMempoolState(_) |
                 Command::GetMempoolTx(_) |
@@ -253,7 +252,10 @@ impl CommandContext {
                 // This test can potentially take a longer time and should be allowed to run longer
                 Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
-                Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
+                Command::GetBurntCommitments(_) |
+                Command::CheckDb(_) |
+                Command::PeriodStats(_) |
+                Command::RewindBlockchain(_) => 600,
             };
             let fut = self.handle_command(args.command);
             if let Err(e) = time::timeout(Duration::from_secs(time_out), fut).await? {

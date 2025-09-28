@@ -71,7 +71,6 @@ use crate::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        BurnCommitmentIndexRebuildStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -392,10 +391,14 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_accumulated_data_rebuild_status()
     }
 
-    fn fetch_burn_commitments_index_rebuild_status(
+    fn fetch_kernel_burn_commitments_index(
         &self,
-    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_burn_commitments_index_rebuild_status()
+        burn_commitment: &CompressedCommitment,
+    ) -> Result<Option<(HashOutput, HashOutput)>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_kernel_burn_commitments_index(burn_commitment)
     }
 
     fn build_payref_indexes_for_height(
@@ -421,17 +424,6 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .update_accumulated_difficulty(height, header_accum_data, last_chain_header)
-    }
-
-    fn update_burn_commitments_index(
-        &self,
-        height: u64,
-        last_chain_header: ChainHeader,
-    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .update_burn_commitments_index(height, last_chain_header)
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {

@@ -33,7 +33,7 @@ use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
-    transaction_components::{TransactionInput, TransactionOutput},
+    transaction_components::{OutputType, TransactionInput, TransactionOutput},
 };
 
 use crate::{
@@ -226,6 +226,40 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 
     Ok(())
 }
+
+/// This function checks that the burn commitment will not br duplicated in the burn commitment index.
+pub fn check_not_duplicate_burn_commitment<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if let Some((header_hash, kernel_hash)) = db.fetch_kernel_burn_commitments_index(&output.commitment)? {
+        warn!(
+            target: LOG_TARGET,
+            "Duplicate burn commitment found for output {} in block {} with kernel {}",
+            output.commitment.to_hex(), header_hash.to_hex(), kernel_hash.to_hex()
+        );
+        return Err(ValidationError::ContainsDuplicateBurnCommitment);
+    }
+
+    Ok(())
+}
+
+/// This function checks that the burn commitment will not br duplicated in the burn commitment index.
+pub fn check_burn_commitments_are_allowed(
+    output: &TransactionOutput,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    if output.features.output_type == OutputType::Burn {
+        return if consensus_constants.permitted_output_types().contains(&OutputType::Burn) {
+            Ok(())
+        } else {
+            Err(ValidationError::BurnCommitmentsNotAllowedAtThisHeight)
+        };
+    }
+
+    Ok(())
+}
+
 /// This function checks the validity of the validator node registration if applicable
 pub fn check_validator_node_registration<B: BlockchainBackend>(
     db: &B,

@@ -72,7 +72,7 @@ pub fn check_tari_script_byte_size(
     Ok(())
 }
 
-/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
+/// Checks the byte size of EncryptedData is less than or equal to the given size, otherwise returns an error.
 pub fn check_tari_encrypted_data_byte_size(
     encrypted_data: &EncryptedData,
     max_encrypted_data_size: usize,

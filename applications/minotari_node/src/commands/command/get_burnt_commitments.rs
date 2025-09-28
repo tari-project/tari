@@ -20,7 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    fs::OpenOptions,
+    io::Write,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
@@ -99,28 +105,31 @@ impl HandleCommand<ArgsGetBurnCommitments> for CommandContext {
             (None, None, true) => None,
             (None, None, false) => {
                 return Err(anyhow!(
-                    "Either 'start_height' and 'end_height', or 'start_height', or 'end_height' or 'all' must be \
+                    "Either\n   '--start-height <START_HEIGHT>' and '--end-height <END_HEIGHT>', or\n   \
+                     '--start-height <START_HEIGHT>', or\n   '--end-height <END_HEIGHT>' or\n   '--all'\nmust be \
                      provided"
                 ));
             },
         };
 
+        let start = Instant::now();
         let burnt_commitments_info = blockchain_db.fetch_burnt_commitments_info(range).await?;
+        let duration = Instant::now() - start;
+        println!();
+        println!("'get-burnt-commitments' command completed in {:.2?}.", duration);
         if args.output_to_file {
             print_to_file(&burnt_commitments_info, args.output_directory).await;
         } else {
             print_results_to_console(&burnt_commitments_info);
         }
+        println!();
 
         Ok(())
     }
 }
 
 fn print_results_to_console(burnt_commitments_info: &[BurntCommitmentInfo]) {
-    println!();
-
     // Table print the results to the console
-
     if burnt_commitments_info.is_empty() {
         println!("No burnt commitments found in the specified range.\n");
         return;
@@ -139,8 +148,6 @@ fn print_results_to_console(burnt_commitments_info: &[BurntCommitmentInfo]) {
         ]);
     }
     table.print_stdout();
-
-    println!();
 }
 
 async fn print_to_file(burnt_commitments_info: &[BurntCommitmentInfo], output_directory: Option<PathBuf>) {

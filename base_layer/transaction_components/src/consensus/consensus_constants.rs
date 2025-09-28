@@ -146,6 +146,8 @@ pub struct ConsensusConstants {
     kernel_version_range: RangeInclusive<TransactionKernelVersion>,
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
+    /// The height at which the burn commitments becomes active
+    burn_active_height: Option<u64>,
     /// The allowlist of range proof types
     permitted_range_proof_types: &'static [(OutputType, &'static [RangeProofType])],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
@@ -378,6 +380,15 @@ impl ConsensusConstants {
         self.permitted_output_types
     }
 
+    /// Returns height at which burn commitments become active, if burn outputs are permitted
+    pub fn burn_active_height(&self) -> Option<u64> {
+        if self.permitted_output_types().contains(&OutputType::Burn) {
+            self.burn_active_height
+        } else {
+            None
+        }
+    }
+
     /// Returns the permitted range proof types
     pub fn permitted_range_proof_types(&self) -> &'static [(OutputType, &'static [RangeProofType])] {
         self.permitted_range_proof_types
@@ -491,6 +502,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
+            burn_active_height: Some(0),
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
@@ -561,6 +573,7 @@ impl ConsensusConstants {
             kernel_version_range,
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
+            burn_active_height: Some(0),
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
@@ -624,6 +637,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            burn_active_height: Some(0),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
@@ -737,6 +751,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            burn_active_height: Some(0),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
@@ -793,6 +808,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            burn_active_height: Some(0),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
@@ -906,6 +922,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            burn_active_height: Some(0),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
@@ -978,15 +995,23 @@ impl ConsensusConstants {
         con_5.proof_of_work = algos;
 
         let mut con_6 = con_5.clone();
-        con_6.include_c29_accumulated_difficulty_into_total = true;
-        con_6.effective_from_height = 140_000;
+        con_6.permitted_output_types = Self::permitted_output_types_coinbase_and_standard();
+        con_6.burn_active_height = None;
+        con_6.effective_from_height = 105_000;
 
-        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
+        let mut con_7 = con_6.clone();
+        con_7.include_c29_accumulated_difficulty_into_total = true;
+        con_7.effective_from_height = 140_000;
+        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_7];
         consensus_constants
     }
 
     const fn current_permitted_output_types() -> &'static [OutputType] {
         &[OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
+    }
+
+    const fn permitted_output_types_coinbase_and_standard() -> &'static [OutputType] {
+        &[OutputType::Coinbase, OutputType::Standard]
     }
 
     const fn current_permitted_range_proof_types() -> &'static [(OutputType, &'static [RangeProofType])] {

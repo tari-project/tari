@@ -148,6 +148,8 @@ where KM: TransactionKeyManagerInterface
         recipient_output: WalletOutput,
         sender_offset_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        let mut burn_commitment = self.burn_commitment.clone();
+        Self::verify_burn(&mut burn_commitment, &recipient_output)?;
         let kernel_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -301,6 +303,8 @@ where KM: TransactionKeyManagerInterface
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        let mut burn_commitment = self.burn_commitment.clone();
+        Self::verify_burn(&mut burn_commitment, &output)?;
         let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -702,7 +706,7 @@ where KM: TransactionKeyManagerInterface
 
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
-    pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
+    pub async fn build(self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
         let (total_fee, change_output) = self.add_change_if_required().await?;
@@ -721,19 +725,15 @@ where KM: TransactionKeyManagerInterface
         for input in &self.inputs {
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager).await?.clone());
         }
-        let mut burn_commitment = self.burn_commitment.clone();
         for output in &self.custom_outputs {
-            Self::verify_burn(&mut burn_commitment, &output.output)?;
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
         for recipient in &self.recipient_outputs {
-            Self::verify_burn(&mut burn_commitment, &recipient.output.output)?;
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             core_tx_builder.add_output(output);
         }
-        self.burn_commitment = burn_commitment;
         if self.tx_type == TxType::Burn && self.burn_commitment.is_none() {
             return Err(TransactionBuilderError::TxTypeBurnWithNoBurnCommitment);
         } else if self.tx_type != TxType::Burn && self.burn_commitment.is_some() {

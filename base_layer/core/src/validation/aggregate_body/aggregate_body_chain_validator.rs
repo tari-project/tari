@@ -45,8 +45,10 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     validation::{
         helpers::{
+            check_burn_commitments_are_allowed,
             check_eviction_proof,
             check_input_is_utxo,
+            check_not_duplicate_burn_commitment,
             check_not_duplicate_txo,
             check_validator_node_exit,
             check_validator_node_registration,
@@ -226,9 +228,13 @@ fn check_inputs_are_spendable<B: BlockchainBackend>(
 }
 
 /// This function checks:
-/// 1. that the output type is permitted
-/// 2. the byte size of TariScript does not exceed the maximum
-/// 3. that the outputs do not already exist in the UTxO set.
+/// 1. that the byte size of TariScript is less than or equal to the given size,
+/// 2. that the byte size of EncryptedData is less than or equal to the given size,
+/// 3. that the outputs does not already exist in the UTXO set,
+/// 4. that the burn commitment will not br duplicated in the burn commitment index,
+/// 5. that any validator node registration output is valid if applicable,
+/// 6. that any validator node exit output is valid if applicable,
+/// 7. that any eviction proof output is valid if applicable.
 pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
@@ -242,6 +248,8 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
+        check_not_duplicate_burn_commitment(db, output)?;
+        check_burn_commitments_are_allowed(output, constants)?;
         check_validator_node_registration(db, output, epoch)?;
         check_validator_node_exit(db, output, epoch)?;
         check_eviction_proof(db, output, constants)?;

@@ -85,7 +85,6 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use super::{
     smt_hasher::SmtHasher,
     AccumulatedDataRebuildStatus,
-    BurnCommitmentIndexRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -386,7 +385,6 @@ where B: BlockchainBackend
         if tokio::runtime::Handle::try_current().is_ok() {
             self.rebuild_payref_indexes_background_task()?;
             self.rebuild_accumulated_data_background_task()?;
-            self.rebuild_burn_commitment_indexes_background_task()?;
         } else {
             warn!(target: LOG_TARGET, "No Tokio runtime detected; background tasks not started.");
         }
@@ -547,76 +545,6 @@ where B: BlockchainBackend
                     );
                     break;
                 }
-            }
-        });
-
-        Ok(())
-    }
-
-    /// This function will create/rebuild the burn commitments index in the background, up to the last stored chain
-    /// header.
-    pub fn rebuild_burn_commitment_indexes_background_task(&self) -> Result<(), ChainStorageError> {
-        let initial_status = {
-            let db = self.db_read_access()?;
-            db.fetch_burn_commitments_index_rebuild_status()?
-        };
-        debug!(target: LOG_TARGET, "[BurnCommitments] Rebuilding burn commitment indexes status: {initial_status:?}");
-        if initial_status.is_rebuilt {
-            debug!(target: LOG_TARGET, "[BurnCommitments] Burn commitment indexes data has already been rebuilt.");
-            return Ok(());
-        }
-
-        let db_rw_lock = self.db.clone();
-
-        tokio::task::spawn(async move {
-            let start_height = initial_status.last_rebuild_height.unwrap_or_default();
-            let mut last_status = initial_status.clone();
-            debug!(
-                target: LOG_TARGET,
-                "[BurnCommitments] Start rebuilding burn commitment indexes from height {start_height}"
-            );
-
-            let mut height = start_height;
-            loop {
-                // Add a small tokio sleep to allow other tasks to run more freely - this will push out the rebuild a
-                // bit, for example, 80_000 blocks will take at least 8_000 seconds longer, just over two hours.
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                let db = db_rw_lock.clone();
-                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
-                // shut down when base node shutdown is triggered
-                let res =
-                    tokio::task::spawn_blocking(move || process_burn_commitments_index_for_height(db, height)).await;
-                match res {
-                    Ok(Ok(current_status)) => {
-                        last_status = current_status;
-                    },
-                    Ok(Err(e)) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "[BurnCommitments] Rebuilding burn commitment indexes failed. Initial status: \
-                            {initial_status:?}. Last updated status: {last_status:?} ({e})"
-                        );
-                        break;
-                    },
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "[BurnCommitments] Rebuilding burn commitment indexes failed. Initial status: \
-                            {initial_status:?}. Last updated status: {last_status:?} ({e})",
-                        );
-                        break;
-                    },
-                }
-
-                if last_status.is_rebuilt {
-                    debug!(
-                        target: LOG_TARGET,
-                        "[BurnCommitments] Rebuilding burn commitment indexes from height {start_height} completed, \
-                        Final status: {last_status:?}"
-                    );
-                    break;
-                }
-                height = height.saturating_add(1);
             }
         });
 
@@ -3118,25 +3046,6 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .build(consensus_constants)?;
 
     let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
-
-    Ok(status)
-}
-
-// Process a batch of burn commitment indexes migration
-fn process_burn_commitments_index_for_height<B: BlockchainBackend>(
-    db: Arc<RwLock<B>>,
-    height: u64,
-) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
-    debug!(target: LOG_TARGET, "[BurnCommitments] Processing index rebuilding for height {height}");
-
-    let write_lock = db
-        .write()
-        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
-    let last_chain_header = write_lock.fetch_last_chain_header()?;
-    // Safety check to ensure we do not rebuild accumulated data for a height that has been reorged out.
-    let height = min(height, last_chain_header.height());
-
-    let status = write_lock.update_burn_commitments_index(height, last_chain_header)?;
 
     Ok(status)
 }

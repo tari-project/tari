@@ -28,7 +28,6 @@ use super::{
 use crate::{
     blocks::BlockAccumulatedData,
     chain_storage::{
-        lmdb_db::BurnCommitmentIndexRebuildStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -169,10 +168,11 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Returns the stored accumulated data rebuild status.
     fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
-    /// Returns the stored burn commitments index rebuild status.
-    fn fetch_burn_commitments_index_rebuild_status(
+    /// Returns the stored kernel information linked to a burn commitment if it exists.
+    fn fetch_kernel_burn_commitments_index(
         &self,
-    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError>;
+        burn_commitment: &CompressedCommitment,
+    ) -> Result<Option<(HashOutput, HashOutput)>, ChainStorageError>;
     /// Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
@@ -188,12 +188,6 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         header_accum_data: BlockHeaderAccumulatedData,
         last_chain_header: ChainHeader,
     ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
-    /// Builds the burn commitments index for a given block height, with stats.
-    fn update_burn_commitments_index(
-        &self,
-        height: u64,
-        last_chain_header: ChainHeader,
-    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count

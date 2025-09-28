@@ -66,6 +66,10 @@ pub enum ValidationError {
     ContainsSTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
+    #[error("Transaction contains a burn commitment that already exists")]
+    ContainsDuplicateBurnCommitment,
+    #[error("Transaction contains a burn commitment, but burn commitments are not allowed at this height")]
+    BurnCommitmentsNotAllowedAtThisHeight,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
     #[error("The total value + fees of the block exceeds the maximum allowance on chain")]
@@ -174,6 +178,8 @@ impl ValidationError {
             err @ ValidationError::CovenantError(_) |
             err @ ValidationError::InvalidBlockchainVersion { .. } |
             err @ ValidationError::InvalidBurnError(_) |
+            err @ ValidationError::ContainsDuplicateBurnCommitment |
+            err @ ValidationError::BurnCommitmentsNotAllowedAtThisHeight |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::InvalidSerializedPublicKey(_) |
