@@ -26,7 +26,6 @@ use thiserror::Error;
 use tonic::codegen::http::uri::InvalidUri;
 
 #[derive(Debug, Error)]
-#[allow(clippy::result_large_err)]
 pub enum MinerError {
     #[error("I/O error")]
     IOError(#[from] std::io::Error),
