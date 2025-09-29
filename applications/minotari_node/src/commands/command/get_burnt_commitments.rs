@@ -53,10 +53,10 @@ pub struct ArgsGetBurnCommitments {
     #[clap(short, long)]
     all: bool,
     /// Write the result to file - results will be written to 'burnt_commitments.csv'
-    #[clap(short, long)]
+    #[clap(short = 'f', long)]
     output_to_file: bool,
     /// Optional output directory (otherwise current directory will be used)
-    #[clap(short, long)]
+    #[clap(short = 'd', long)]
     output_directory: Option<PathBuf>,
 }
 
@@ -153,7 +153,7 @@ fn print_results_to_console(burnt_commitments_info: &[BurntCommitmentInfo]) {
 async fn print_to_file(burnt_commitments_info: &[BurntCommitmentInfo], output_directory: Option<PathBuf>) {
     let file_name = "burnt_commitments.csv";
     let file_path = if let Some(path) = output_directory.clone() {
-        if let Ok(true) = fs::exists(&path) {
+        if let Ok(true) = path.try_exists() {
             path.join(file_name)
         } else if fs::create_dir_all(&path).is_ok() {
             path.join(file_name)

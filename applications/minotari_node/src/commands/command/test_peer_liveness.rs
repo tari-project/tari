@@ -250,7 +250,7 @@ async fn print_to_file(
 
     let file_name = "peer_liveness_test.csv";
     let file_path = if let Some(path) = output_directory.clone() {
-        if let Ok(true) = fs::exists(&path) {
+        if let Ok(true) = path.try_exists() {
             path.join(file_name)
         } else if fs::create_dir_all(&path).is_ok() {
             path.join(file_name)
