@@ -47,6 +47,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
     mut output_manager: OutputManagerHandle<KM>,
     db: TransactionDatabase<TBackend>,
     event_publisher: TransactionEventSender,
+    config: TransactionServiceConfig,
     tip_height: u64,
 ) {
     debug!(target: LOG_TARGET, "Checking detected (onesided, imported, coinbase unconf) transactions");
@@ -159,8 +160,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
         let mined_in_block = output_info_for_tx_id.block_hash.unwrap_or(FixedHash::zero());
         let is_valid = tip_height >= mined_height;
         let previously_confirmed = tx.status.is_confirmed();
-        let must_be_confirmed =
-            tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
+        let must_be_confirmed = tip_height.saturating_sub(mined_height) >= config.num_confirmations_required;
 
         if !(previously_confirmed && must_be_confirmed) {
             let log_msg = format!(
@@ -181,7 +181,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
                 tx.mined_timestamp
                     .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
                 must_be_confirmed,
-                &tx.status,
+                tx.status,
             );
             if let Err(e) = result {
                 error!(

@@ -483,6 +483,15 @@ pub enum DbValue {
     OrphanBlock(Box<Block>),
 }
 
+impl DbValue {
+    pub fn into_header(self) -> Option<BlockHeader> {
+        match self {
+            DbValue::HeaderHeight(bh) | DbValue::HeaderHash(bh) => Some(*bh),
+            DbValue::OrphanBlock(_) => None,
+        }
+    }
+}
+
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {

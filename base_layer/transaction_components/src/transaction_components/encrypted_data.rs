@@ -218,6 +218,11 @@ impl EncryptedData {
         &self.data
     }
 
+    /// Consumes self and returns the encrypted data as a byte vector
+    pub fn into_vec(self) -> Vec<u8> {
+        self.data.into_vec()
+    }
+
     /// Accessor method for the encrypted data hex display
     pub fn hex_display(&self, full: bool) -> String {
         if full {

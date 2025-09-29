@@ -33,5 +33,6 @@
 //      file
 
 pub mod database;
+pub mod serializers;
 pub mod sqlite_db;
 pub mod sqlite_utilities;

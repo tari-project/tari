@@ -63,7 +63,7 @@ use tari_common_types::{
     },
 };
 use tari_hashing::TransactionHashDomain;
-use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleProof};
 use tari_node_components::blocks::{
     Block,
     BlockHeader,
@@ -106,6 +106,7 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
+        kernel_merkle_proof::KernelMerkleProof,
         smt_hasher::ValidatorNodeJmtHasher,
         utxo_mined_info::OutputMinedInfo,
         BlockAddResult,
@@ -1590,6 +1591,74 @@ where B: BlockchainBackend
         }
         let (start, end) = (start.unwrap_or(0), end.unwrap());
         db.fetch_template_registrations(start, end)
+    }
+
+    pub fn generate_kernel_merkle_proof(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<KernelMerkleProof, ChainStorageError> {
+        const OPERATION: &str = "generate_kernel_merkle_proof";
+        let db = self.db_read_access()?;
+
+        let (kernel, block_hash) =
+            db.fetch_kernel_by_excess_sig(&excess_sig)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "TransactionKernel",
+                    field: "excess_sig",
+                    value: excess_sig.get_signature().to_hex(),
+                })?;
+
+        let block = fetch_block_by_hash(&*db, block_hash, true)?.ok_or_else(|| {
+            ChainStorageError::DataInconsistencyDetected {
+                function: OPERATION,
+                details: format!(
+                    "Kernel with excess sig {} found in database, but block not found in block database",
+                    excess_sig.get_signature().reveal()
+                ),
+            }
+        })?;
+
+        let BlockAccumulatedData { kernels, .. } = db
+            .fetch_block_accumulated_data(&block.header().prev_hash)?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "BlockAccumulatedData",
+                field: "block_hash",
+                value: block_hash.to_hex(),
+            })?;
+
+        info!(
+            target: LOG_TARGET,
+            "Generating kernel merkle proof for kernel in block #{} ({}) MMR size: {}",
+            block.header().height,
+            block_hash,
+            block.header().kernel_mmr_size,
+        );
+
+        let mut kernel_mmr = PrunedKernelMmr::new(kernels);
+
+        for kernel in block.block().body.kernels() {
+            let hash = kernel.hash();
+            kernel_mmr.push(hash.to_vec())?;
+        }
+
+        let kernel_hash = kernel.hash();
+        let leaf_index = kernel_mmr.find_leaf_index(kernel_hash.as_slice())?.ok_or_else(|| {
+            ChainStorageError::DataInconsistencyDetected {
+                function: OPERATION,
+                details: format!(
+                    "Kernel with hash {} found in database, but not found in MMR",
+                    kernel_hash
+                ),
+            }
+        })?;
+
+        let merkle_proof = MerkleProof::for_leaf_node(&kernel_mmr, leaf_index)?;
+        Ok(KernelMerkleProof {
+            merkle_proof,
+            leaf_index,
+            kernel_hash,
+            block_hash,
+        })
     }
 }
 

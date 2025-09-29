@@ -457,8 +457,6 @@ mod test {
 
             whois 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
 
-            burn-minotari --payment-id Ups_these_funds_will_be_burned! 100T
-
             pre-mine-spend-get-output-status
 
             pre-mine-start \
@@ -490,7 +488,6 @@ mod test {
         let commands = parse_command_file(script).unwrap();
 
         let mut get_balance = false;
-        let mut burn_tari = false;
         let mut pre_mine_spend_get_output_status = false;
         let mut pre_mine_spend_session_info = false;
         let mut pre_mine_spend_encumber_aggregate_utxo = false;
@@ -506,7 +503,6 @@ mod test {
         for command in commands {
             match command {
                 CliCommands::GetBalance => get_balance = true,
-                CliCommands::BurnMinotari(_) => burn_tari = true,
                 CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
                 CliCommands::PreMineStart(_) => pre_mine_spend_session_info = true,
                 CliCommands::PreMineStartParty(_) => pre_mine_spend_party_details = true,
@@ -561,7 +557,6 @@ mod test {
         }
         assert!(
             get_balance &&
-                burn_tari &&
                 pre_mine_spend_get_output_status &&
                 pre_mine_spend_session_info &&
                 pre_mine_spend_encumber_aggregate_utxo &&

@@ -55,7 +55,7 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
         .block_on(async {
             trace!(target: LOG_TARGET, "Refreshing transaction state");
             app.app_state.refresh_transaction_state().await?;
-            trace!(target: LOG_TARGET, "Refreshing burnt proofs state");
+            trace!(target: LOG_TARGET, "Refreshing burn proofs state");
             app.app_state.refresh_burnt_proofs_state().await?;
             trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");
             app.app_state.start_balance_enquiry_debouncer().await?;

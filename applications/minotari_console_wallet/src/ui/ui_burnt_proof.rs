@@ -21,11 +21,33 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::NaiveDateTime;
+use serde::Serialize;
+use tari_common_types::burn_proof::{BurnClaimProof, EncodedMerkleProof};
+use tari_transaction_components::transaction_components::TransactionKernel;
 
 #[derive(Debug, Clone)]
-pub struct UiBurntProof {
-    pub id: u32,
-    pub reciprocal_claim_public_key: String,
-    pub payload: String,
+pub struct UiBurnProof {
+    pub id: i32,
+    pub proof: BurnClaimProof,
+    pub encoded_merkle_proof: Option<EncodedMerkleProof>,
+    pub kernel: TransactionKernel,
     pub burned_at: NaiveDateTime,
+}
+
+impl UiBurnProof {
+    pub fn to_confirmed_proof(&self) -> Option<ConfirmedBurnClaimProof<'_>> {
+        self.encoded_merkle_proof.as_ref().map(|mp| ConfirmedBurnClaimProof {
+            claim_proof: &self.proof,
+            merkle_proof: mp,
+            kernel: &self.kernel,
+        })
+    }
+}
+
+/// Used to save the proof to a file
+#[derive(Debug, Clone, Serialize)]
+pub struct ConfirmedBurnClaimProof<'a> {
+    pub claim_proof: &'a BurnClaimProof,
+    pub merkle_proof: &'a EncodedMerkleProof,
+    pub kernel: &'a TransactionKernel,
 }

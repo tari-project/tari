@@ -143,8 +143,8 @@ pub enum WalletStorageError {
     DatabaseMigrationError(String),
     #[error("Value not found: `{}`", .0.to_key_string())]
     ValueNotFound(DbKey),
-    #[error("Burnt proof not found: `{0}`")]
-    BurntProofNotFound(u32),
+    #[error("Burn proof not found: `{0}`")]
+    BurnProofNotFound(i32),
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
     #[error("Blocking task spawn error: `{0}`")]

@@ -18,7 +18,7 @@ sqlite_bundled = ["tari_common_sqlite/bundled"]
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_common_sqlite = { workspace = true }
-tari_comms = { workspace = true , features = ["rpc"]}
+tari_comms = { workspace = true, features = ["rpc"] }
 tari_comms_dht = { workspace = true }
 tari_comms_rpc_macros = { workspace = true }
 tari_crypto = { workspace = true, features = ["borsh"] }
@@ -26,7 +26,7 @@ tari_hashing = { workspace = true }
 tari_node_components = { workspace = true }
 tari_max_size = { workspace = true }
 tari_metrics = { workspace = true, optional = true }
-tari_mmr = { workspace = true}
+tari_mmr = { workspace = true }
 tari_p2p = { workspace = true }
 tari_script = { workspace = true }
 tari_sidechain = { workspace = true }
@@ -34,7 +34,7 @@ tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }
 tari_transaction_components = { workspace = true }
-tari_transaction_key_manager = { workspace = true}
+tari_transaction_key_manager = { workspace = true }
 tari_test_utils = { workspace = true }
 tari_utilities = { workspace = true, features = ["borsh"] }
 

@@ -24,5 +24,6 @@
 #[allow(clippy::cast_possible_wrap)]
 pub mod scanned_blocks;
 // converting between unsigned and signed is okay here as we do it both ways
+pub mod models;
 #[allow(clippy::cast_possible_wrap)]
 pub mod wallet;
