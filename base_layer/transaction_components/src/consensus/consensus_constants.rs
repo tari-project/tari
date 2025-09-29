@@ -997,7 +997,7 @@ impl ConsensusConstants {
         let mut con_6 = con_5.clone();
         con_6.permitted_output_types = Self::permitted_output_types_coinbase_and_standard();
         con_6.burn_active_height = None;
-        con_6.effective_from_height = 105_000;
+        con_6.effective_from_height = 106_000;
 
         let mut con_7 = con_6.clone();
         con_7.include_c29_accumulated_difficulty_into_total = true;
