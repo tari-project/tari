@@ -12,6 +12,7 @@ name: Source Coverage
 
 env:
   toolchain: stable
+  RUSTUP_PERMIT_COPY_RENAME: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -30,9 +31,9 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
+          toolchain: ${{ env.toolchain }}
 
       - name: run tests with coverage
         # Prepare the coverage data, even if some tests fail

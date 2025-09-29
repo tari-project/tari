@@ -2,6 +2,9 @@
 name: "Integration Tests"
 
 "on":
+  push:
+    branches:
+      - "ci-*"
   pull_request:
     types:
       - opened
@@ -31,6 +34,7 @@ permissions: {}
 env:
   toolchain: stable
   nightly_toolchain: nightly-2025-06-01
+  RUSTUP_PERMIT_COPY_RENAME: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -64,10 +68,10 @@ jobs:
           fi
 
       - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          toolchain: ${{ env.nightly_toolchain }}
+          toolchain: ${{ env.toolchain }}
 
       - name: Install ubuntu dependencies
         shell: bash
@@ -95,7 +99,7 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
 
       - name: cargo test compile
-        run: cargo +${{ env.nightly_toolchain }} test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
@@ -104,7 +108,7 @@ jobs:
           set -e
           set -o pipefail
           echo "Running integration tests with profile: ${{ env.CI_PROFILE }}"
-          cargo +${{ env.nightly_toolchain }} test \
+          cargo test \
             --test cucumber \
             -v \
             --all-features \
@@ -155,10 +159,10 @@ jobs:
 
       - name: Setup rust toolchain
         if: ${{ env.CI_FFI == 'true' }}
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          toolchain: ${{ env.nightly_toolchain }}
+          toolchain: ${{ env.toolchain }}
 
       - name: Install ubuntu dependencies
         if: ${{ env.CI_FFI == 'true' }}
@@ -186,7 +190,7 @@ jobs:
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
-        run: cargo +${{ env.nightly_toolchain }} test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
@@ -195,7 +199,7 @@ jobs:
           set -e
           set -o pipefail
           echo "Running FFI integration tests with profile: ${{ env.CI_PROFILE }}"
-          cargo +${{ env.nightly_toolchain }} test \
+          cargo test \
             --test cucumber \
             -v \
             --all-features \

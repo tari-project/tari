@@ -211,9 +211,8 @@ jobs:
           echo "S3_DEST_OVERRIDE=daily/" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
           toolchain: ${{ matrix.builds.rust }}
           targets: ${{ matrix.builds.target }}
 
