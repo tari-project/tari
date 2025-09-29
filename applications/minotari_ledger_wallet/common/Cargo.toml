@@ -2,7 +2,7 @@
 name = "minotari_ledger_wallet_common"
 version.workspace = true
 edition.workspace = true
-rust-version = "1.85.0" # Note: This msut be kept in sync with the ledger-app-builder
+#Note: `rust-version` is not specified here as this msut be kept in sync with the ledger-app-builder
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
