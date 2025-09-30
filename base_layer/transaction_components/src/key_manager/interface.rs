@@ -40,7 +40,7 @@ use tari_common_types::{
     },
     WALLET_COMMS_AND_SPEND_KEY_BRANCH,
 };
-use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
+use tari_crypto::hashing::DomainSeparatedHash;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::hex::{from_hex, Hex};
 
@@ -582,12 +582,12 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 
-    async fn generate_burn_proof(
+    async fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        amount: &PrivateKey,
+        amount: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<RistrettoComSig, TransactionError>;
+    ) -> Result<CompressedSignature, TransactionError>;
 
     async fn stealth_address_script_spending_key(
         &self,

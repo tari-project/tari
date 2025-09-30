@@ -329,6 +329,11 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
+    pub fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+        let outputs = self.db.fetch_many_outputs(outputs)?;
+        Ok(outputs)
+    }
+
     pub fn update_output_metadata_signature(&self, output: TransactionOutput) -> Result<(), OutputManagerStorageError> {
         self.db.update_output_metadata_signature(&output)
     }

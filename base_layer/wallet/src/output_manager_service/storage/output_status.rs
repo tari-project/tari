@@ -42,6 +42,24 @@ pub enum OutputStatus {
     NotStored,
 }
 
+impl OutputStatus {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Unspent => 0,
+            Self::Spent => 1,
+            Self::EncumberedToBeReceived => 2,
+            Self::EncumberedToBeSpent => 3,
+            Self::Invalid => 4,
+            Self::CancelledInbound => 5,
+            Self::UnspentMinedUnconfirmed => 6,
+            Self::ShortTermEncumberedToBeReceived => 7,
+            Self::ShortTermEncumberedToBeSpent => 8,
+            Self::SpentMinedUnconfirmed => 9,
+            Self::NotStored => 10,
+        }
+    }
+}
+
 impl TryFrom<i32> for OutputStatus {
     type Error = OutputManagerStorageError;
 
@@ -61,6 +79,20 @@ impl TryFrom<i32> for OutputStatus {
             _ => Err(OutputManagerStorageError::ConversionError {
                 reason: "Was expecting value between 0 and 11 for OutputStatus".to_string(),
             }),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_from_int() {
+        for i in 0..=10 {
+            let status = OutputStatus::try_from(i).expect("Conversion failed");
+            let i_converted = status.as_u8();
+            assert_eq!(i, i32::from(i_converted));
         }
     }
 }

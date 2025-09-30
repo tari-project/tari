@@ -458,6 +458,13 @@ impl AggregateBody {
         }
     }
 
+    /// Returns an iterator over all outputs that have the Burn feature flag
+    pub fn burnt_outputs_iter(&self) -> impl Iterator<Item = &TransactionOutput> {
+        self.outputs
+            .iter()
+            .filter(|o| o.features.output_type == OutputType::Burn)
+    }
+
     // Searches though all outputs to see if it contains a burned feature flag
     pub fn contains_burn(&self) -> bool {
         self.outputs.iter().any(|k| k.features.output_type == OutputType::Burn)

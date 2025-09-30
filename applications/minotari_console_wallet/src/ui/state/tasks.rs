@@ -28,7 +28,6 @@ use minotari_wallet::{
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
 };
-use rand::random;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, FixedHash, PrivateKey},
@@ -42,7 +41,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
 
 use crate::ui::{
-    state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
+    state::{BurntProofBase64, SignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
     ui_error::UiError,
 };
 
@@ -112,7 +111,6 @@ pub async fn send_burn_transaction_task(
     fee_per_gram: MicroMinotari,
     sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,
-    db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
 ) {
     result_tx.send(UiTransactionBurnStatus::Initiated).unwrap();
@@ -151,22 +149,25 @@ pub async fn send_burn_transaction_task(
     // ----------------------------------------------------------------------------
 
     loop {
-        let original_proof = original_proof.clone();
-        let burn_proof_filepath = burn_proof_filepath.clone();
-
         match event_stream.recv().await {
-            Ok(event) => {
-                if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
-                    if burn_tx_id == *completed_tx_id {
+            Ok(ref event) => {
+                let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = event.as_ref() else {
+                    warn!(target: LOG_TARGET, "Encountered an unexpected event: {}", event);
+                    continue;
+                };
+
+                if burn_tx_id != *completed_tx_id {
+                    continue;
+                }
+                if let Some(original_proof) = original_proof {
+                    if let Some(filepath) = burn_proof_filepath {
                         let wrapped_proof = BurntProofBase64 {
                             reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
                             commitment: original_proof.commitment.to_vec(),
-                            ownership_proof: original_proof.ownership_proof.map(|x| CommitmentSignatureBase64 {
-                                public_nonce: x.public_nonce().to_vec(),
-                                u: x.u().to_vec(),
-                                v: x.v().to_vec(),
-                            }),
-                            range_proof: original_proof.range_proof.0,
+                            ownership_proof: SignatureBase64 {
+                                public_nonce: original_proof.ownership_proof.get_compressed_public_nonce().to_vec(),
+                                signature: original_proof.ownership_proof.get_signature().to_vec(),
+                            },
                         };
 
                         let serialized_proof = match serde_json::to_string_pretty(&wrapped_proof) {
@@ -180,46 +181,20 @@ pub async fn send_burn_transaction_task(
                             },
                         };
 
-                        let proof_id = random::<u32>();
-
-                        let filepath = burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{proof_id}.json")));
-
-                        match std::fs::write(filepath, serialized_proof.as_bytes()) {
-                            Ok(()) => {},
-                            Err(e) => {
-                                error!(target: LOG_TARGET, "failed to write burn proof: {e:?}");
-                                result_tx
-                                    .send(UiTransactionBurnStatus::Error(format!("failure to write proof {e:?}")))
-                                    .unwrap();
-                                return;
-                            },
-                        };
-
-                        let result = db.create_burnt_proof(
-                            proof_id,
-                            original_proof.reciprocal_claim_public_key.to_hex(),
-                            serialized_proof.clone(),
-                        );
-
-                        if let Err(err) = result {
-                            log::error!("failed to create database entry for the burnt proof: {err:?}");
+                        if let Err(e) = std::fs::write(filepath, serialized_proof.as_bytes()) {
+                            error!(target: LOG_TARGET, "failed to write burn proof: {e:?}");
+                            result_tx
+                                .send(UiTransactionBurnStatus::Error(format!("failure to write proof {e:?}")))
+                                .unwrap();
+                            return;
                         }
-
-                        result_tx
-                            .send(UiTransactionBurnStatus::TransactionComplete((
-                                proof_id,
-                                original_proof.reciprocal_claim_public_key.to_hex(),
-                                serialized_proof,
-                            )))
-                            .unwrap();
-
-                        return;
                     }
-                } else {
-                    warn!(target: LOG_TARGET, "Encountered an unexpected event");
                 }
-            },
 
+                result_tx.send(UiTransactionBurnStatus::TransactionComplete).unwrap();
+
+                return;
+            },
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                 warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
                 continue;

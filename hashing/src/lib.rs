@@ -30,4 +30,5 @@ mod borsh_hasher;
 
 pub use borsh_hasher::*;
 
+pub mod hashers;
 pub mod layer2;

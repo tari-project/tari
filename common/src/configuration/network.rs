@@ -196,6 +196,12 @@ impl TryFrom<u8> for Network {
     }
 }
 
+impl From<Network> for u8 {
+    fn from(n: Network) -> Self {
+        n.as_byte()
+    }
+}
+
 impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(self.as_key_str())
