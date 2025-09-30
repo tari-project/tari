@@ -12,6 +12,7 @@ pub struct SyncUtxosByBlockRequest {
     pub limit: u64,
     #[validate(minimum = 0)]
     pub page: u64,
+    pub exclude_spent: bool,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug)]

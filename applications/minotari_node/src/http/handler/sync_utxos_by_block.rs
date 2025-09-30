@@ -47,6 +47,8 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
             start_header_hash: params.start_header_hash,
             limit: params.limit,
             page: params.page,
+            // TODO: remove
+            exclude_spent: true,
         }
     }
 }

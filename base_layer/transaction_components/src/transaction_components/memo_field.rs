@@ -1016,9 +1016,7 @@ impl MemoField {
     }
 
     /// Helper function to create a `MemoField::Open` from a string and the transaction type
-    ///
-    /// # Deprecated
-    /// Use `new_open_from_string` instead for proper validation
+    #[deprecated(note = "Use `new_open_from_string` instead for proper validation")]
     pub fn open_from_string(s: &str, tx_type: TxType) -> Self {
         MemoField {
             inner: InnerMemoField::Open {
@@ -1029,9 +1027,7 @@ impl MemoField {
     }
 
     /// Helper function to create a `MemoField::Open` from a bytes and the transaction type
-    ///
-    /// # Deprecated
-    /// Use `new_open` instead for proper validation
+    #[deprecated(note = "Use `new_open` instead for proper validation")]
     pub fn open(bytes: Vec<u8>, tx_type: TxType) -> Self {
         MemoField {
             inner: InnerMemoField::Open {

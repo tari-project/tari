@@ -215,7 +215,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
             let outputs_with_statuses = self
                 .db
-                .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
+                .fetch_outputs_in_block_with_spend_state(current_header.hash(), Some(current_header_hash))
                 .await?;
             let mut inputs = self
                 .db
@@ -225,8 +225,9 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 .map(|input| input.output_hash().to_vec())
                 .collect::<Vec<Vec<u8>>>();
 
-            let outputs = outputs_with_statuses
+            let mut outputs = outputs_with_statuses
                 .into_iter()
+                .filter(|(_, spent)| !spent || !request.exclude_spent)
                 .map(|(output, _spent)| output)
                 .collect::<Vec<TransactionOutput>>();
 
