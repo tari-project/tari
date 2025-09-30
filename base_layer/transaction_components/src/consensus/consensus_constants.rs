@@ -979,7 +979,7 @@ impl ConsensusConstants {
 
         let mut con_6 = con_5.clone();
         con_6.include_c29_accumulated_difficulty_into_total = true;
-        con_6.effective_from_height = 140_000;
+        con_6.effective_from_height = 121_000;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
         consensus_constants
