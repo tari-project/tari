@@ -301,7 +301,7 @@ where
                     use_output,
                 )
                 .await
-                .map(|val| (OutputManagerResponse::EncumberAggregateUtxo(Box::new(val)))),
+                .map(|val| OutputManagerResponse::EncumberAggregateUtxo(Box::new(val))),
             OutputManagerRequest::SpendBackupPreMineUtxo {
                 tx_id,
                 fee_per_gram,
@@ -915,8 +915,7 @@ where
         .await?;
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .set_estimated_fee(input_selection.as_final_fee());
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
@@ -925,7 +924,7 @@ where
             target: LOG_TARGET,
             "Calculated fee for tx: Fee per gram: {}. Fee {}. Num inputs: {}.",
             fee_per_gram,
-            builder.get_fee_estimate_without_change()?,
+            input_selection.as_final_fee(),
             input_selection.num_selected(),
         );
 

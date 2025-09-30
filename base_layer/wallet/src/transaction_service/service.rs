@@ -441,7 +441,7 @@ where
                         covenant,
                     )
                     .await?;
-                let fee = tx_builder.get_best_fee_estimate()?;
+                let fee = tx_builder.get_fee_estimate_without_change()?;
 
                 let payment_id = payment_id
                     .clone()
@@ -505,7 +505,7 @@ where
                         covenant,
                     )
                     .await?;
-                let fee = tx_builder.get_best_fee_estimate()?;
+                let fee = tx_builder.get_fee_estimate_without_change()?;
 
                 let payment_id = MemoField::new_address_and_data(
                     request.recipient_address.clone(),
@@ -1261,7 +1261,7 @@ where
                         Covenant::default(),
                     )
                     .await?;
-                let fee_estimate = tx_builder.get_best_fee_estimate()?;
+                let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
                 let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
                 let uuid = Uuid::new_v4();
                 let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
@@ -1898,7 +1898,7 @@ where
                 covenant.clone(),
             )
             .await?;
-        let fee_estimate = tx_builder.get_best_fee_estimate()?;
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
 
         let payment_id = payment_id
             .add_sender_address(self.resources.one_sided_tari_address.clone(), false, fee_estimate, None)
@@ -2088,7 +2088,7 @@ where
                 covenant,
             )
             .await?;
-        let fee_estimate = tx_builder.get_best_fee_estimate()?;
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
 
         let payment_id = payment_id
             .add_sender_address(
@@ -2259,7 +2259,7 @@ where
             .get_public_key_at_key_id(&sender_offset_private_key.key_id)
             .await?;
         let amount = tx_builder.get_total_input_value()?;
-        let fee = tx_builder.get_best_fee_estimate()?;
+        let fee = tx_builder.get_fee_estimate_without_change()?;
         let minimum_value_promise = MicroMinotari::zero();
         let payment_id = MemoField::new_address_and_data(
             self.resources.one_sided_tari_address.clone(),
@@ -2434,7 +2434,7 @@ where
                 covenant,
             )
             .await?;
-        let fee_estimate = tx_builder.get_best_fee_estimate()?;
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
         let mut fee_in_memo = Some(fee_estimate);
         for (address, amount, memo) in &mut destinations {
             // Let's override the payment_id if the address says we should

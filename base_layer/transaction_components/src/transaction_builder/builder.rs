@@ -1,7 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{cmp::max, fmt, fmt::Debug};
+use std::{fmt, fmt::Debug};
 
 use log::*;
 use tari_common::configuration::Network;
@@ -18,6 +18,7 @@ use tari_common_types::{
     },
 };
 use tari_script::{push_pubkey_script, script, ExecutionStack};
+use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -33,6 +34,7 @@ use crate::{
         memo_field::{MemoField, TxType},
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         CoreTransactionBuilder,
+        EncryptedData,
         KernelBuilder,
         KernelFeatures,
         OutputFeatures,
@@ -55,7 +57,6 @@ pub struct TransactionBuilder<KM> {
     consensus_constants: ConsensusConstants,
     key_manager: KM,
     fee_per_gram: Option<MicroMinotari>,
-    estimated_fee: Option<MicroMinotari>,
     fee: MicroMinotari,
     recipient_outputs: Vec<RecipientDetails>,
     inputs: Vec<OutputPair>,
@@ -91,7 +92,6 @@ where KM: TransactionKeyManagerInterface
             consensus_constants,
             key_manager,
             fee_per_gram: None,
-            estimated_fee: None,
             fee: MicroMinotari::zero(),
             recipient_outputs: Vec::new(),
             inputs: Vec::new(),
@@ -111,12 +111,6 @@ where KM: TransactionKeyManagerInterface
     /// `with_fee`.
     pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
-        self
-    }
-
-    /// Sets the estimated fee of the transaction for clients to query.
-    pub fn set_estimated_fee(&mut self, fee: MicroMinotari) -> &mut Self {
-        self.estimated_fee = Some(fee);
         self
     }
 
@@ -395,15 +389,6 @@ where KM: TransactionKeyManagerInterface
             },
             None => self.fee,
         })
-    }
-
-    /// This can be used to estimate the largest possible fee for the transaction
-    pub fn get_best_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
-        let fee_estimate_without_change = self.get_fee_estimate_without_change()?;
-        Ok(max(
-            fee_estimate_without_change,
-            self.estimated_fee.unwrap_or(MicroMinotari::zero()),
-        ))
     }
 
     fn check_conditions(&self) -> Result<(), TransactionBuilderError> {
@@ -703,12 +688,89 @@ where KM: TransactionKeyManagerInterface
         ))
     }
 
+    // Helper function to change the payet_id and encrypted data if the fee has changed due to a change output
+    async fn change_encrypted_data_if_fee_changed(
+        key_manager: &KM,
+        output_pair: &mut OutputPair,
+        recipient_address: &TariAddress,
+        sender_offset_key_id: Option<TariKeyId>,
+        final_fee: MicroMinotari,
+    ) -> Result<(), TransactionBuilderError> {
+        let mut payment_id = output_pair.output.payment_id().clone();
+        if let Some(existing_fee) = payment_id.get_fee() {
+            if existing_fee == final_fee {
+                debug!(
+                    target: LOG_TARGET,
+                    "[Update fee] Fee ({}) was correct for output '{}'",
+                    existing_fee, output_pair.output.commitment().to_hex()
+                );
+                return Ok(());
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "[Update fee] Changing fee changed from {} to {} for output '{}'",
+                    existing_fee, final_fee, output_pair.output.commitment().to_hex()
+                );
+            }
+            payment_id.set_fee(final_fee);
+
+            let shared_secret = key_manager
+                .get_diffie_hellman_shared_secret(
+                    sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    recipient_address
+                        .public_view_key()
+                        .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
+                )
+                .await?;
+            let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+            let encryption_key = key_manager.import_key(encryption_private_key.clone()).await?;
+
+            let custom_recovery_key_id = if EncryptedData::decrypt_data(
+                &encryption_private_key,
+                output_pair.output.commitment(),
+                output_pair.output.encrypted_data(),
+            )
+            .is_ok()
+            {
+                Some(&encryption_key)
+            } else {
+                None
+            };
+
+            let encrypted_data = key_manager
+                .encrypt_data_for_recovery(
+                    output_pair.output.commitment_mask_key_id(),
+                    custom_recovery_key_id,
+                    output_pair.output.value().as_u64(),
+                    payment_id.clone(),
+                )
+                .await?;
+            // This will change all the necessary fields in the wallet output
+            output_pair
+                .output
+                .change_encrypted_data(
+                    encrypted_data,
+                    output_pair
+                        .sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    payment_id,
+                    key_manager,
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
-        let (total_fee, change_output) = self.add_change_if_required().await?;
+        let (total_fee, mut change_output) = self.add_change_if_required().await?;
         let mut core_tx_builder = CoreTransactionBuilder::new();
 
         let (total_public_nonce, total_public_excess) = self
@@ -728,7 +790,15 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &self.recipient_outputs {
+        for recipient in self.recipient_outputs.iter_mut() {
+            Self::change_encrypted_data_if_fee_changed(
+                &self.key_manager,
+                &mut recipient.output.clone(),
+                &recipient.recipient_address,
+                recipient.output.sender_offset_key_id.clone(),
+                total_fee,
+            )
+            .await?;
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
@@ -779,7 +849,15 @@ where KM: TransactionKeyManagerInterface
             script_keys.push(input.output.script_key_id().clone());
         }
 
-        for output in &self.custom_outputs {
+        for output in self.custom_outputs.iter_mut() {
+            Self::change_encrypted_data_if_fee_changed(
+                &self.key_manager,
+                output,
+                &self.own_address,
+                output.sender_offset_key_id.clone(),
+                total_fee,
+            )
+            .await?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -837,7 +915,15 @@ where KM: TransactionKeyManagerInterface
             sender_offset_keys.push(sender_offset_key_id);
         }
 
-        if let Some(change) = &change_output {
+        if let Some(change) = &mut change_output {
+            Self::change_encrypted_data_if_fee_changed(
+                &self.key_manager,
+                change,
+                &self.own_address,
+                change.sender_offset_key_id.clone(),
+                total_fee,
+            )
+            .await?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
@@ -947,7 +1033,6 @@ impl<KM> Debug for TransactionBuilder<KM> {
         pub struct TransactionBuilder<'a> {
             consensus_constants: &'a ConsensusConstants,
             fee_per_gram: &'a Option<MicroMinotari>,
-            estimated_fee: &'a Option<MicroMinotari>,
             fee: &'a MicroMinotari,
             recipient_outputs: &'a Vec<RecipientDetails>,
             inputs: &'a Vec<OutputPair>,
@@ -965,7 +1050,6 @@ impl<KM> Debug for TransactionBuilder<KM> {
             consensus_constants,
             key_manager: _,
             fee_per_gram,
-            estimated_fee,
             fee,
             recipient_outputs,
             inputs,
@@ -983,7 +1067,6 @@ impl<KM> Debug for TransactionBuilder<KM> {
             &TransactionBuilder {
                 consensus_constants,
                 fee_per_gram,
-                estimated_fee,
                 fee,
                 recipient_outputs,
                 inputs,
