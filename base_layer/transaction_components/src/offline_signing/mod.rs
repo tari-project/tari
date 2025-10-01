@@ -98,12 +98,12 @@ mod test {
             view_key: alice_key_manager.get_private_view_key().await.unwrap(),
             birthday: None,
         };
-        let alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
+        let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
         let bob_key_manager = create_memory_key_manager().await.unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut alice_view_key_manager, vec![], None).await;
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -184,7 +184,7 @@ mod test {
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        let signer = OfflineSigner::new(alice_key_manager.clone());
+        let mut signer = OfflineSigner::new(alice_key_manager.clone());
         let signed = signer.sign_locked_transaction(init).await.unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
@@ -217,7 +217,7 @@ mod test {
             birthday: None,
         };
 
-        let alice_view_key_manager = create_view_key_manager(alice_keys.clone()).await.unwrap();
+        let mut alice_view_key_manager = create_view_key_manager(alice_keys.clone()).await.unwrap();
 
         let charlie_keys = ProvidedKeysWallet {
             public_spend_key: charlie_key_manager.get_spend_key().await.unwrap().pub_key,
@@ -257,9 +257,9 @@ mod test {
             bob_spend_key.clone(),
         ];
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut alice_view_key_manager, vec![], None).await;
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -320,7 +320,7 @@ mod test {
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        let signer = OfflineSigner::new(alice_key_manager.clone());
+        let mut signer = OfflineSigner::new(alice_key_manager.clone());
 
         let signed = signer.sign_locked_deposit_multisig_transaction(init).await.unwrap();
 
@@ -354,7 +354,7 @@ mod test {
             birthday: None,
         };
 
-        let alice_view_key_manager = create_view_key_manager(alice_keys.clone()).await.unwrap();
+        let mut alice_view_key_manager = create_view_key_manager(alice_keys.clone()).await.unwrap();
 
         let charlie_keys = ProvidedKeysWallet {
             public_spend_key: charlie_key_manager.get_spend_key().await.unwrap().pub_key,
@@ -485,7 +485,7 @@ mod test {
             .unwrap()
             .with_sender_offset_public_key(sender_offset_key.pub_key.clone())
             .sign_as_sender_and_receiver_verified(
-                &alice_view_key_manager,
+                &mut alice_view_key_manager,
                 &sender_offset_key.key_id,
                 &Default::default(),
             )
@@ -548,7 +548,7 @@ mod test {
         assert_eq!(init.info.metadata.fee, fee);
         assert_eq!(init.info.inputs.len(), 1);
         assert_eq!(init.info.outputs.len(), 0);
-        let signer = OfflineSigner::new(alice_key_manager.clone());
+        let mut signer = OfflineSigner::new(alice_key_manager.clone());
         let signed = signer.sign_locked_withdraw_multisig_transaction(init).await.unwrap();
         assert_eq!(signed.signed_transaction.transaction.body.kernels()[0].fee, fee,);
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 1);
@@ -571,10 +571,10 @@ mod test {
             view_key: alice_key_manager.get_private_view_key().await.unwrap(),
             birthday: None,
         };
-        let alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
+        let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
         let bob_key_manager = create_memory_key_manager().await.unwrap();
 
-        let input = create_test_input(MicroMinotari(100000), 0, &alice_view_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(100000), 0, &mut alice_view_key_manager, vec![], None).await;
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -626,7 +626,7 @@ mod test {
             .await
             .unwrap();
 
-        let signer = OfflineSigner::new(alice_key_manager.clone());
+        let mut signer = OfflineSigner::new(alice_key_manager.clone());
         let signed = signer.sign_locked_transaction(init).await.unwrap();
         let tx = signed.signed_transaction.transaction.clone();
 
@@ -681,12 +681,12 @@ mod test {
             view_key: alice_key_manager.get_private_view_key().await.unwrap(),
             birthday: None,
         };
-        let alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
+        let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
         let bob_key_manager = create_memory_key_manager().await.unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut alice_view_key_manager, vec![], None).await;
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -767,7 +767,7 @@ mod test {
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        let signer = OfflineSigner::new(alice_view_key_manager.clone());
+        let mut signer = OfflineSigner::new(alice_view_key_manager.clone());
         assert!(signer.sign_locked_transaction(init).await.is_err());
     }
 }

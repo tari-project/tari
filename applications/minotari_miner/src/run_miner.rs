@@ -96,7 +96,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     config.set_base_path(cli.common.get_base_path());
 
     debug!(target: LOG_TARGET_FILE, "{config:?}");
-    let key_manager = create_memory_db_key_manager().await.map_err(|err| {
+    let mut key_manager = create_memory_db_key_manager().await.map_err(|err| {
         ExitError::new(
             ExitCode::KeyManagerServiceError,
             "'wallet_payment_address' ".to_owned() + &err.to_string(),
@@ -180,7 +180,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 p2pool_node_client.clone(),
                 &config,
                 &cli,
-                &key_manager,
+                &mut key_manager,
                 &wallet_payment_address,
                 &consensus_manager,
             )
@@ -373,7 +373,7 @@ async fn get_new_block(
     sha_p2pool_client: Arc<Mutex<Option<ShaP2PoolGrpcClient>>>,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
@@ -398,7 +398,7 @@ async fn get_new_block_base_node(
     base_node_client: &mut BaseNodeGrpcClient,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
@@ -530,7 +530,7 @@ async fn mining_cycle(
     sha_p2pool_client: Option<ShaP2PoolGrpcClient>,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<bool, MinerError> {

@@ -168,7 +168,7 @@ impl WalletOutputBuilder {
 
     pub async fn sign_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
         mut self,
-        key_manager: &KM,
+        key_manager: &mut KM,
         sender_offset_key_id: &TariKeyId,
     ) -> Result<Self, TransactionError> {
         let script = self
@@ -203,7 +203,7 @@ impl WalletOutputBuilder {
 
     pub async fn sign_as_sender_and_receiver_verified<KM: TransactionKeyManagerInterface>(
         mut self,
-        key_manager: &KM,
+        key_manager: &mut KM,
         sender_offset_key_id: &TariKeyId,
         receiver_address: &TariAddress,
     ) -> Result<Self, TransactionError> {
@@ -242,7 +242,7 @@ impl WalletOutputBuilder {
     /// `ephemeral_pubkey_shares` from other participants are combined to enable creation of the challenge.
     pub async fn sign_partial_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
         mut self,
-        key_manager: &KM,
+        key_manager: &mut KM,
         sender_offset_key_id: &TariKeyId,
         aggregated_sender_offset_public_key_shares: &CompressedPublicKey,
         aggregated_ephemeral_public_key_shares: &CompressedPublicKey,
@@ -358,7 +358,7 @@ mod test {
 
     #[tokio::test]
     async fn test_try_build() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let (commitment_mask_key, script_key_id) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
@@ -377,7 +377,7 @@ mod test {
             .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .await
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_as_sender_and_receiver(&mut key_manager, &sender_offset.key_id)
             .await
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
@@ -412,7 +412,7 @@ mod test {
 
     #[tokio::test]
     async fn test_partial_metadata_signatures() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
@@ -429,7 +429,7 @@ mod test {
             .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .await
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_as_sender_and_receiver(&mut key_manager, &sender_offset.key_id)
             .await
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {

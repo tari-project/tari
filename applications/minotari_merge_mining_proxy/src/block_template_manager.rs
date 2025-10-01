@@ -242,7 +242,7 @@ impl BlockTemplateManager<'_> {
             block_reward.into(),
             tari_height,
             &CoinBaseExtra::try_from(self.config.coinbase_extra.as_bytes().to_vec())?,
-            &self.key_manager,
+            &mut self.key_manager,
             &self.wallet_payment_address,
             true,
             self.consensus_manager.consensus_constants(tari_height),

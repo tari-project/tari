@@ -51,7 +51,7 @@ struct TestTransactionBuilder {
 }
 
 impl TestTransactionBuilder {
-    pub async fn new(key_manager: &MemoryDbKeyManager) -> Self {
+    pub async fn new(key_manager: &mut MemoryDbKeyManager) -> Self {
         Self {
             amount: MicroMinotari(0),
             fee_per_gram: MicroMinotari(1),
@@ -94,7 +94,7 @@ impl TestTransactionBuilder {
         self
     }
 
-    pub async fn build(mut self, key_manager: &MemoryDbKeyManager) -> (Transaction, WalletOutput) {
+    pub async fn build(mut self, key_manager: &mut MemoryDbKeyManager) -> (Transaction, WalletOutput) {
         self.create_utxo(key_manager, self.inputs.len()).await;
 
         let inputs = self.inputs.iter().map(|f| f.1.clone()).collect();
@@ -104,7 +104,7 @@ impl TestTransactionBuilder {
         (tx, self.output.clone().unwrap().1)
     }
 
-    async fn create_utxo(&mut self, key_manager: &MemoryDbKeyManager, num_inputs: usize) {
+    async fn create_utxo(&mut self, key_manager: &mut MemoryDbKeyManager, num_inputs: usize) {
         let script = script!(Nop).unwrap();
         let features = OutputFeatures::default();
         let covenant = Covenant::default();
@@ -147,7 +147,7 @@ impl TestTransactionBuilder {
 pub async fn build_transaction_with_output_and_fee_per_gram(
     utxos: Vec<WalletOutput>,
     fee_per_gram: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new(key_manager).await;
     for wallet_output in utxos {
@@ -161,7 +161,7 @@ pub async fn build_transaction_with_output_and_fee_per_gram(
 pub async fn build_transaction_with_output_and_lockheight(
     utxos: Vec<WalletOutput>,
     lockheight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new(key_manager).await;
     for wallet_output in utxos {
@@ -174,7 +174,7 @@ pub async fn build_transaction_with_output_and_lockheight(
 
 pub async fn build_transaction_with_output(
     utxos: Vec<WalletOutput>,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new(key_manager).await;
     for wallet_output in utxos {

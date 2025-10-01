@@ -346,10 +346,11 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// manager from the backend to track in memory, will return `Ok(AddResult::NewEntry)`. If the branch is already
     /// tracked in memory the result will be `Ok(AddResult::AlreadyExists)`. If the branch does not exist in memory
     /// or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
-    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
+    async fn add_new_branch<T: Into<String> + Send>(&mut self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyAndId, KeyManagerServiceError>;
+    async fn get_next_key<T: Into<String> + Send>(&mut self, branch: T)
+        -> Result<TariKeyAndId, KeyManagerServiceError>;
 
     /// Gets a randomly generated key, which the key manager will manage
     async fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError>;
@@ -397,7 +398,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     async fn get_comms_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError>;
 
     async fn get_next_commitment_mask_and_script_key(
-        &self,
+        &mut self,
     ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerServiceError>;
 
     async fn find_script_key_id_from_commitment_mask_key_id(
@@ -512,7 +513,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     // Look into perhaps removing all nonce here, if the signer and receiver are the same it should not be required to
     // share or pre calc the nonces
     async fn get_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
@@ -522,7 +523,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ) -> Result<ComAndPubSignature, TransactionError>;
 
     async fn get_one_sided_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
@@ -559,7 +560,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ) -> Result<CompressedSignature, TransactionError>;
 
     async fn get_receiver_partial_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,

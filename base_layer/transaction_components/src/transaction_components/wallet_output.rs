@@ -560,7 +560,7 @@ impl WalletOutput {
         encrypted_data: EncryptedData,
         sender_offset: &TariKeyId,
         payment_id: MemoField,
-        key_manager: &KM,
+        key_manager: &mut KM,
     ) -> Result<(), TransactionError> {
         self.input = OnceLock::new();
         self.output = OnceLock::new();

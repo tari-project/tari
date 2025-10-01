@@ -70,7 +70,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     #[allow(clippy::too_many_lines)]
     pub async fn create_deposit_multisig_transaction(
-        &self,
+        &mut self,
         amount: MicroMinotari,
         party_number: u8,
         public_keys: Vec<CompressedPublicKey>,
@@ -157,7 +157,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?
             .with_script_key(TariKeyId::Zero)
             .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_key.key_id, &recipient)
+            .sign_as_sender_and_receiver_verified(&mut self.key_manager, &sender_offset_key.key_id, &recipient)
             .await?
             .try_build(&self.key_manager)
             .await?;

@@ -229,7 +229,7 @@ async fn fee_estimate() {
         &mut OsRng.clone(),
         MicroMinotari::from(3000),
         &OutputFeatures::default(),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
@@ -312,7 +312,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     // no chain metadata
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
+    let (mut oms, _shutdown, _, _, _, mut key_manager) = setup_oms_with_bn_state(backend.clone()).await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // no utxos - not enough funds
@@ -342,7 +342,7 @@ async fn test_utxo_selection_no_chain_metadata() {
                 maturity: i,
                 ..Default::default()
             },
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();
@@ -440,7 +440,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         timestamp: Utc::now().naive_utc(),
     };
     backend.save_last_scanned_height(scanned_block).unwrap();
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
+    let (mut oms, _shutdown, _, _, _, mut key_manager) = setup_oms_with_bn_state(backend.clone()).await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
 
     // no utxos - not enough funds
@@ -470,7 +470,7 @@ async fn test_utxo_selection_with_chain_metadata() {
                 maturity: i,
                 ..Default::default()
             },
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();
@@ -585,7 +585,7 @@ async fn test_utxo_selection_with_tx_priority() {
         timestamp: Utc::now().naive_utc(),
     };
     backend.save_last_scanned_height(scanned_block).unwrap();
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
+    let (mut oms, _shutdown, _, _, _, mut key_manager) = setup_oms_with_bn_state(backend.clone()).await;
 
     let amount = MicroMinotari::from(2000);
     let fee_per_gram = MicroMinotari::from(2);
@@ -598,7 +598,7 @@ async fn test_utxo_selection_with_tx_priority() {
             maturity: 1,
             ..Default::default()
         },
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     oms.add_output(uo_low_1.clone(), None).await.unwrap();
@@ -610,7 +610,7 @@ async fn test_utxo_selection_with_tx_priority() {
             maturity: 1,
             ..Default::default()
         },
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     oms.add_output(uo_high.clone(), Some(SpendingPriority::HtlcSpendAsap))
@@ -627,7 +627,7 @@ async fn test_utxo_selection_with_tx_priority() {
             maturity: 1,
             ..Default::default()
         },
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     oms.add_output(uo_low_2.clone(), None).await.unwrap();
@@ -694,7 +694,7 @@ async fn send_not_enough_funds() {
             &mut OsRng.clone(),
             MicroMinotari::from(200 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &oms.key_manager_handle,
+            &mut oms.key_manager_handle,
         )
         .await;
         oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
@@ -740,9 +740,9 @@ async fn send_no_change() {
     let uo_1 = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&oms.key_manager_handle).await,
+        &TestParams::new(&mut oms.key_manager_handle).await,
         MicroMinotari::from(value1),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await
     .unwrap();
@@ -755,9 +755,9 @@ async fn send_no_change() {
     let uo_2 = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&oms.key_manager_handle).await,
+        &TestParams::new(&mut oms.key_manager_handle).await,
         MicroMinotari::from(value2),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await
     .unwrap();
@@ -803,9 +803,9 @@ async fn send_not_enough_for_change() {
     let uo_1 = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&oms.key_manager_handle).await,
+        &TestParams::new(&mut oms.key_manager_handle).await,
         value1,
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await
     .unwrap();
@@ -817,9 +817,9 @@ async fn send_not_enough_for_change() {
     let uo_2 = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&oms.key_manager_handle).await,
+        &TestParams::new(&mut oms.key_manager_handle).await,
         value2,
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await
     .unwrap();
@@ -859,7 +859,7 @@ async fn cancel_transaction() {
             &mut OsRng.clone(),
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &oms.key_manager_handle,
+            &mut oms.key_manager_handle,
         )
         .await;
         oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
@@ -905,7 +905,7 @@ async fn sending_transaction_persisted_while_offline() {
         &mut OsRng.clone(),
         available_balance / 2,
         &OutputFeatures::default(),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
@@ -914,7 +914,7 @@ async fn sending_transaction_persisted_while_offline() {
         &mut OsRng.clone(),
         available_balance / 2,
         &OutputFeatures::default(),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
@@ -993,9 +993,27 @@ async fn coin_split_with_change() {
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
     let val3 = 8_000 * uT;
-    let uo1 = make_input(&mut OsRng, val1, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    let uo2 = make_input(&mut OsRng, val2, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    let uo3 = make_input(&mut OsRng, val3, &OutputFeatures::default(), &oms.key_manager_handle).await;
+    let uo1 = make_input(
+        &mut OsRng,
+        val1,
+        &OutputFeatures::default(),
+        &mut oms.key_manager_handle,
+    )
+    .await;
+    let uo2 = make_input(
+        &mut OsRng,
+        val2,
+        &OutputFeatures::default(),
+        &mut oms.key_manager_handle,
+    )
+    .await;
+    let uo3 = make_input(
+        &mut OsRng,
+        val3,
+        &OutputFeatures::default(),
+        &mut oms.key_manager_handle,
+    )
+    .await;
     assert!(oms.output_manager_handle.add_output(uo1.clone(), None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo2.clone(), None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
@@ -1057,9 +1075,27 @@ async fn coin_split_no_change() {
     let val1 = 4_000 * uT;
     let val2 = 5_000 * uT;
     let val3 = 6_000 * uT + expected_fee;
-    let uo1 = make_input(&mut OsRng, val1, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    let uo2 = make_input(&mut OsRng, val2, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    let uo3 = make_input(&mut OsRng, val3, &OutputFeatures::default(), &oms.key_manager_handle).await;
+    let uo1 = make_input(
+        &mut OsRng,
+        val1,
+        &OutputFeatures::default(),
+        &mut oms.key_manager_handle,
+    )
+    .await;
+    let uo2 = make_input(
+        &mut OsRng,
+        val2,
+        &OutputFeatures::default(),
+        &mut oms.key_manager_handle,
+    )
+    .await;
+    let uo3 = make_input(
+        &mut OsRng,
+        val3,
+        &OutputFeatures::default(),
+        &mut oms.key_manager_handle,
+    )
+    .await;
     assert!(oms.output_manager_handle.add_output(uo1.clone(), None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo2.clone(), None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
@@ -1091,7 +1127,7 @@ async fn it_handles_large_coin_splits() {
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let val = 20 * T;
-    let uo = make_input(&mut OsRng, val, &OutputFeatures::default(), &oms.key_manager_handle).await;
+    let uo = make_input(&mut OsRng, val, &OutputFeatures::default(), &mut oms.key_manager_handle).await;
     assert!(oms.output_manager_handle.add_output(uo.clone(), None).await.is_ok());
     // lets mark them as unspent so we can use them
     backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
@@ -1900,7 +1936,7 @@ async fn test_get_status_by_tx_id() {
         &mut OsRng.clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await;
     oms.output_manager_handle
@@ -1912,7 +1948,7 @@ async fn test_get_status_by_tx_id() {
         &mut OsRng.clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
-        &oms.key_manager_handle,
+        &mut oms.key_manager_handle,
     )
     .await;
     oms.output_manager_handle
@@ -1991,13 +2027,13 @@ async fn scan_for_recovery_test() {
 
     let mut non_recoverable_wallet_outputs = Vec::new();
     // we need to create a new key_manager to make the outputs non recoverable
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_input(
             &mut OsRng,
             MicroMinotari::from(1000 * i as u64),
             &OutputFeatures::default(),
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         non_recoverable_wallet_outputs.push(uo)
@@ -2058,12 +2094,12 @@ async fn recovered_output_key_not_in_keychain() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
     // we need to create a new key manager here as we dont want the input be recoverable from oms key chain
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000u64),
         &OutputFeatures::default(),
-        &key_manager,
+        &mut key_manager,
     )
     .await;
 

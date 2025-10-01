@@ -110,9 +110,10 @@ use crate::{
     MicroMinotari,
 };
 
+#[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
-    key_managers: HashMap<String, RwLock<TariKeyManager<KeyDigest>>>,
-    db: Option<TBackend>,
+    key_managers: HashMap<String, TariKeyManager<KeyDigest>>,
+    db: Option<Arc<RwLock<TBackend>>>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
@@ -129,7 +130,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<Self, KeyManagerServiceError> {
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
-            db,
+            db: db.map(|db| Arc::new(RwLock::new(db))),
             master_seed,
             crypto_factories,
             wallet_type,
@@ -165,26 +166,20 @@ where TBackend: TransactionKeyManagerBackend + 'static
         };
         self.key_managers.insert(
             branch.to_string(),
-            RwLock::new(TariKeyManager::<KeyDigest>::from(
-                self.master_seed.clone(),
-                state.branch_seed,
-                state.primary_key_index,
-            )),
+            TariKeyManager::<KeyDigest>::from(self.master_seed.clone(), state.branch_seed, state.primary_key_index),
         );
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: &str) -> Result<TariKeyAndId, KeyManagerServiceError> {
+    pub async fn get_next_key(&mut self, branch: &str) -> Result<TariKeyAndId, KeyManagerServiceError> {
         let index = {
             match branch {
                 PRE_MINE => {
-                    let mut km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
-                        .write()
-                        .await;
-                    km.increment_key_index(1)
+                    if let Some(km) = self.key_managers.get_mut(branch) {
+                        km.increment_key_index(1)
+                    } else {
+                        return Err(self.unknown_key_branch_error("get_next_key", branch));
+                    }
                 },
                 _ => OsRng.next_u64(),
             }
@@ -364,9 +359,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             let km = self
                 .key_managers
                 .get(branch)
-                .ok_or_else(|| self.unknown_key_branch_error("get_public_key_at_key_id", branch))?
-                .read()
-                .await;
+                .ok_or_else(|| self.unknown_key_branch_error("get_public_key_at_key_id", branch))?;
             Ok(km.derive_public_key(*index)?.key)
         } else {
             Err(KeyManagerServiceError::UnknownError(
@@ -426,7 +419,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             TariKeyId::Zero => Ok(PrivateKey::default()),
             TariKeyId::Imported { key } => {
                 if let Some(db) = &self.db {
-                    let pvt_key = db.get_imported_key(key).await?;
+                    let pvt_key = db.write().await.get_imported_key(key).await?;
                     return Ok(pvt_key);
                 }
                 Err(KeyManagerServiceError::NoStorage)
@@ -468,9 +461,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 let km = self
                     .key_managers
                     .get(branch)
-                    .ok_or_else(|| self.unknown_key_branch_error("get_private_key", branch))?
-                    .read()
-                    .await;
+                    .ok_or_else(|| self.unknown_key_branch_error("get_private_key", branch))?;
                 let key = km.get_private_key(*index)?;
                 Ok(key)
             },
@@ -493,9 +484,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     "get_private_key",
                                     &TransactionKeyManagerBranch::Spend.get_branch_key(),
                                 )
-                            })?
-                            .read()
-                            .await;
+                            })?;
                         let private_alpha = km.get_private_key(0)?;
                         let hasher =
                             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
@@ -630,7 +619,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub async fn get_next_commitment_mask_and_script_key(
-        &self,
+        &mut self,
     ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerServiceError> {
         let commitment_mask = self
             .get_next_key(&TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
@@ -708,9 +697,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     let km = self
                         .key_managers
                         .get(&branch)
-                        .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?
-                        .read()
-                        .await;
+                        .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?;
                     let key = km.get_private_key(index)?;
                     Ok(key)
                 }
@@ -719,9 +706,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 let km = self
                     .key_managers
                     .get(&branch)
-                    .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?
-                    .read()
-                    .await;
+                    .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?;
                 let key = km.get_private_key(index)?;
                 Ok(key)
             },
@@ -1406,7 +1391,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub async fn get_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
@@ -1453,7 +1438,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     #[allow(unused_variables)]
     pub async fn get_one_sided_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
@@ -1516,7 +1501,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub async fn get_receiver_partial_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,

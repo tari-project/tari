@@ -90,7 +90,7 @@ async fn it_passes_if_large_output_block_is_valid() {
     }
 
     let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: outs);
-    let (txs, _outputs) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, _outputs) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (chain_block, _coinbase_b) = blockchain
@@ -126,7 +126,7 @@ async fn it_validates_when_a_coinbase_is_spent() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![9000 * uT]);
-    let (txs, _outputs) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, _outputs) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (chain_block, _coinbase_b) = blockchain
@@ -155,7 +155,7 @@ async fn it_passes_if_large_block_is_valid() {
     let (mut blockchain, validator) = setup(false).await;
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
     let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T, 5 * T]);
-    let (txs, outputs) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, outputs) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (_block, _coinbase_b) = blockchain
@@ -168,7 +168,7 @@ async fn it_passes_if_large_block_is_valid() {
         let new_schema = txn_schema!(from: vec![output.clone()], to: vec![1 * T, 1 * T, 1 * T, 1 * T]);
         schemas.push(new_schema);
     }
-    let (txs, _) = schema_to_transaction(&schemas, &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(&schemas, &mut blockchain.km).await;
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (chain_block, _coinbase_c) = blockchain
@@ -200,7 +200,7 @@ async fn it_passes_if_large_block_is_valid() {
 
 #[tokio::test]
 async fn it_passes_if_block_is_valid() {
-    let (blockchain, validator) = setup(true).await;
+    let (mut blockchain, validator) = setup(true).await;
 
     let (chain_block, _) = blockchain.create_next_tip(BlockSpec::default()).await;
 
@@ -223,7 +223,7 @@ async fn it_passes_if_block_is_valid() {
 
 #[tokio::test]
 async fn it_checks_the_coinbase_reward() {
-    let (blockchain, validator) = setup(true).await;
+    let (mut blockchain, validator) = setup(true).await;
 
     let (block, _) = blockchain
         .create_chained_block(block_spec!("A", parent: "GB", reward: 10 * T, ))
@@ -241,7 +241,7 @@ async fn it_checks_the_coinbase_reward() {
 
 #[tokio::test]
 async fn it_allows_multiple_coinbases() {
-    let (blockchain, validator) = setup(true).await;
+    let (mut blockchain, validator) = setup(true).await;
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
     let commitment_mask_key = TariKeyId::Managed {
@@ -288,7 +288,7 @@ async fn it_checks_duplicate_kernel() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
-        &blockchain.km,
+        &mut blockchain.km,
     )
     .await;
 
@@ -315,7 +315,7 @@ async fn it_checks_double_spends() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
-        &blockchain.km,
+        &mut blockchain.km,
     )
     .await;
 
@@ -326,7 +326,7 @@ async fn it_checks_double_spends() {
     // lets create a new transction from the same input
     let (txs2, _) = schema_to_transaction(
         &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
-        &blockchain.km,
+        &mut blockchain.km,
     )
     .await;
     let (block, _) = blockchain
@@ -350,7 +350,7 @@ async fn it_checks_input_maturity() {
     let mut features = schema.from[0].features().clone();
     features.maturity = 100;
     schema.from[0].set_features(features);
-    let (txs, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
     let (block, _) = blockchain
         .create_next_tip(
@@ -375,7 +375,7 @@ async fn it_checks_txo_sort_order() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
 
     let (mut block, _) = blockchain
@@ -412,7 +412,7 @@ async fn it_limits_the_script_byte_size() {
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
     schema1.script = script!(Nop Nop Nop).unwrap();
-    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 
@@ -440,7 +440,7 @@ async fn it_limits_the_encrypted_data_byte_size() {
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
     schema1.script = script!(Nop Nop Nop).unwrap();
-    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
     outputs[0].encrypted_data = EncryptedData::from_bytes(&vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]).unwrap();
@@ -473,7 +473,7 @@ async fn it_rejects_invalid_input_metadata() {
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
     schema1.from[0].set_sender_offset_public_key(Default::default());
-    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 
@@ -488,13 +488,13 @@ async fn it_rejects_zero_conf_double_spends() {
     let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
 
     let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
-    let (initial_tx, outputs) = schema_to_transaction(&[schema], &blockchain.km).await;
+    let (initial_tx, outputs) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
     let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![200 * T]);
-    let (first_spend, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+    let (first_spend, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
     let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![150 * T]);
-    let (double_spend, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+    let (double_spend, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
     let transactions = initial_tx
         .into_iter()
@@ -534,7 +534,7 @@ mod body_only {
 
         let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
         schema1.from[0].set_sender_offset_public_key(Default::default());
-        let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+        let (txs, _) = schema_to_transaction(&[schema1], &mut blockchain.km).await;
         let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
         let (block, _) = blockchain
             .create_next_tip(BlockSpec::new().with_transactions(txs).finish())
@@ -569,13 +569,13 @@ mod orphan_validator {
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
 
         let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
-        let (initial_tx, outputs) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (initial_tx, outputs) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![200 * T]);
-        let (first_spend, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (first_spend, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![150 * T]);
-        let (double_spend, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (double_spend, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let transactions = initial_tx
             .into_iter()
@@ -610,7 +610,7 @@ mod orphan_validator {
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
 
         let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
-        let (tx, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (tx, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
@@ -645,7 +645,7 @@ mod orphan_validator {
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
 
         let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
-        let (tx, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (tx, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
@@ -682,7 +682,7 @@ mod orphan_validator {
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
 
         let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
-        let (tx, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (tx, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
@@ -710,7 +710,7 @@ mod orphan_validator {
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
 
         let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
-        let (tx, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+        let (tx, _) = schema_to_transaction(&[schema], &mut blockchain.km).await;
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
