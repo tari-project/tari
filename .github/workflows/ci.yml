@@ -17,6 +17,8 @@ permissions: {}
 
 env:
   toolchain: stable
+  toolchain_msrv: 1.89.0
+  toolchain_msrv-reject-older: 1.80.0
   nightly_toolchain: nightly-2025-06-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
@@ -173,10 +175,21 @@ jobs:
   build-stable:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
-    name: cargo check with stable
+    name: cargo check with ${{ matrix.rust }}
     runs-on: [self-hosted, ubuntu-high-cpu]
+    # fail jobs unless - msrv-reject-older
+    continue-on-error: ${{ startsWith(matrix.rust, 'msrv-reject-older') || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - msrv
+          - msrv-reject-older
+
     env:
       RUSTUP_PERMIT_COPY_RENAME: true
+
     steps:
       - name: checkout
         uses: actions/checkout@v5
@@ -204,18 +217,44 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
-      - name: toolchain
+
+      - name: Extract MSRV from env/Cargo.toml
+        id: msrv
+        if: startsWith(matrix.rust,'msrv')
+        run: |
+          if [[ "${{ matrix.rust }}" == 'msrv' ]]; then
+            #version=$(grep -m1 '^rust-version' Cargo.toml | sed 's/[^0-9.]//g')
+            version=${{ env.toolchain_msrv }}
+          else
+            version=${{ env.toolchain_msrv-reject-older }}
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
+          # Temporary disable toolchain pinning
+          rm -vf rust-toolchain.toml
+
+      # Stable toolchain
+      - name: Set up Rust (stable)
+        if: matrix.rust == 'stable'
         uses: dtolnay/rust-toolchain@stable
+
+      # MSRV toolchain
+      - name: Set up Rust (${{ matrix.rust }}-${{ steps.msrv.outputs.version }})
+        if: startsWith(matrix.rust,'msrv')
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: ${{ steps.msrv.outputs.version }}
+
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+
       - name: rustup show
         run: rustup show
+
       - name: cargo check
         run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
+
       - name: cargo check individual features
         shell: bash
         run: |
@@ -226,6 +265,7 @@ jobs:
               --features ${FEATURE_TEST} \
               --workspace --exclude tari_integration_tests --locked
           done
+
       - name: cargo check wallet ffi separately
         run: cargo check --release --package minotari_wallet_ffi --locked
 
