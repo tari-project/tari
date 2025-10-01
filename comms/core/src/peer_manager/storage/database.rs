@@ -3005,7 +3005,16 @@ mod tests {
             let peer = create_test_peer_internal_addresses_only(false, PeerFeatures::COMMUNICATION_CLIENT);
             peers_db.add_or_update_peer(peer).unwrap();
         }
-        assert_eq!(peers_db.size(), 48);
+        // Add peers with no addresses
+        for _i in 0..4 {
+            let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+            peer.addresses = MultiaddressesWithStats::new(vec![]);
+            peers_db.add_or_update_peer(peer).unwrap();
+            let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
+            peer.addresses = MultiaddressesWithStats::new(vec![]);
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        assert_eq!(peers_db.size(), 56);
 
         // Assert that retrieved peers have external addresses only
         let nodes_with_external_addresses_only = peers_db
