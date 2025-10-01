@@ -625,7 +625,7 @@ impl PeerDatabaseSql {
                 last_attempted: None,
                 last_failed_reason: None,
                 quality_score: None,
-                source: "".to_string(),
+                source: "null".to_string(),
             });
         }
 
