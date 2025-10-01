@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use log::debug;
 
 use crate::{
     multiaddr::{Multiaddr, Protocol},
@@ -29,11 +30,14 @@ use crate::{
     types::CommsPublicKey,
 };
 
+const LOG_TARGET: &str = "comms::peer_validator";
+
 /// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
 /// memory addresses will be rejected.
 pub fn validate_addresses(config: &PeerValidatorConfig, addresses: &[Multiaddr]) -> Result<(), PeerValidatorError> {
     if addresses.is_empty() {
-        return Err(PeerValidatorError::PeerIdentityNoAddresses);
+        debug!(target: LOG_TARGET, "validate_addresses - no addresses to validate.");
+        return Ok(());
     }
 
     if addresses.len() > config.max_permitted_peer_addresses_per_claim {
