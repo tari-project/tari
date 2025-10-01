@@ -3,6 +3,7 @@ name = "minotari_node"
 description = "The tari full base node implementation"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

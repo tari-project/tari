@@ -1,9 +1,10 @@
 [package]
 name = "minotari_ledger_wallet_comms"
-version = "5.1.0-pre.3"
-authors = ["The Tari Development Community"]
-license = "BSD-3-Clause"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 tari_utilities = { version = "0.8" }
