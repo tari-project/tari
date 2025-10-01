@@ -179,7 +179,7 @@ async fn setup_transaction_service(
         .add_initializer(
             TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new_with_legacy_storage(
                 kms_backend,
-                cipher,
+                Some(cipher),
                 factories.clone(),
                 wallet_type.clone(),
             ),
@@ -453,7 +453,7 @@ async fn large_coin_split_transaction() {
             tx_id,
             coin_split_tx,
             amount,
-            MemoField::open_from_string("large coin-split", TxType::CoinSplit),
+            MemoField::new_open_from_string("large coin-split", TxType::CoinSplit).unwrap(),
         )
         .await
         .expect("Alice sending coin-split tx");
@@ -667,7 +667,8 @@ async fn send_one_sided_transaction_to_other() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            MemoField::open_from_string("SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!", TxType::PaymentToOther),
+            MemoField::new_open_from_string("SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!", TxType::PaymentToOther)
+                .unwrap(),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1556,7 +1557,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
-        payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
+        payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
         change_output_hashes: vec![],
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
@@ -1696,7 +1697,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             None,
             uo_1.to_transaction_output().unwrap(),
-            MemoField::open_from_string("blah", TxType::PaymentToOther),
+            MemoField::new_open_from_string("blah", TxType::PaymentToOther).unwrap(),
         )
         .await
         .unwrap();
@@ -1710,7 +1711,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             None,
             uo_2.to_transaction_output().unwrap(),
-            MemoField::open_from_string("one-sided 1", TxType::PaymentToOther),
+            MemoField::new_open_from_string("one-sided 1", TxType::PaymentToOther).unwrap(),
         )
         .await
         .unwrap();
@@ -1724,7 +1725,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             None,
             uo_3.to_transaction_output().unwrap(),
-            MemoField::open_from_string("one-sided 2", TxType::PaymentToOther),
+            MemoField::new_open_from_string("one-sided 2", TxType::PaymentToOther).unwrap(),
         )
         .await
         .unwrap();
@@ -1876,7 +1877,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             None,
             uo_1.to_transaction_output().unwrap(),
-            MemoField::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
+            MemoField::new_open_from_string("coinbase_confirmed", TxType::PaymentToOther).unwrap(),
         )
         .await
         .unwrap();
@@ -1890,7 +1891,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             None,
             uo_2.to_transaction_output().unwrap(),
-            MemoField::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
+            MemoField::new_open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther).unwrap(),
         )
         .await
         .unwrap();
@@ -1904,7 +1905,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             None,
             uo_3.to_transaction_output().unwrap(),
-            MemoField::open_from_string("Coinbase_not_mined", TxType::PaymentToOther),
+            MemoField::new_open_from_string("Coinbase_not_mined", TxType::PaymentToOther).unwrap(),
         )
         .await
         .unwrap();
@@ -2053,7 +2054,7 @@ fn create_mock_completed_transaction(
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: Utc::now().checked_add_days(Days::new(1)),
-        payment_id: MemoField::open_from_string(description, TxType::PaymentToOther),
+        payment_id: MemoField::new_open_from_string(description, TxType::PaymentToOther).unwrap(),
         change_output_hashes: vec![],
         received_output_hashes: vec![],
         sent_output_hashes: vec![],

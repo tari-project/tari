@@ -2122,10 +2122,13 @@ where
         )
         .await?;
         tx_builder
-            .with_memo(MemoField::open_from_string(
-                &format!("Coin split transaction, {accumulated_amount} into {number_of_splits} outputs"),
-                TxType::CoinSplit,
-            ))
+            .with_memo(
+                MemoField::new_open_from_string(
+                    &format!("Coin split transaction, {accumulated_amount} into {number_of_splits} outputs"),
+                    TxType::CoinSplit,
+                )
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+            )
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2153,7 +2156,8 @@ where
                     OutputFeatures::default(),
                     amount_per_split,
                     Covenant::default(),
-                    MemoField::open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit),
+                    MemoField::new_open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit)
+                        .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
                     fee,
                     MicroMinotari::zero(),
                 )
@@ -2285,10 +2289,11 @@ where
             self.resources.network,
         )
         .await?;
-        let payment_id = MemoField::open_from_string(
+        let payment_id = MemoField::new_open_from_string(
             &format!("Coin split, {accumulated_amount} into {number_of_splits} outputs"),
             TxType::CoinSplit,
-        );
+        )
+        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         tx_builder
             .with_memo(payment_id.clone())
             .with_lock_height(0)
@@ -2582,7 +2587,10 @@ where
         .await?;
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_memo(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
+            .with_memo(
+                MemoField::new_open_from_string("scraping wallet", TxType::PaymentToOther)
+                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+            )
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in &src_outputs {
@@ -2648,10 +2656,10 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_memo(MemoField::open_from_string(
-                        "SHA-XTR atomic swap",
-                        TxType::ClaimAtomicSwap,
-                    ))
+                    .with_memo(
+                        MemoField::new_open_from_string("SHA-XTR atomic swap", TxType::ClaimAtomicSwap)
+                            .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+                    )
                     .with_tx_type(TxType::ClaimAtomicSwap)
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
@@ -2713,10 +2721,10 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_memo(MemoField::open_from_string(
-                "SHA-XTR atomic refund",
-                TxType::HtlcAtomicSwapRefund,
-            ))
+            .with_memo(
+                MemoField::new_open_from_string("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund)
+                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+            )
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)

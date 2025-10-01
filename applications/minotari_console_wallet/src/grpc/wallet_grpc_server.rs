@@ -659,10 +659,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        MemoField::open_from_string(
+                        MemoField::new_open_from_string(
                             "Claiming HTLC transaction with pre-image",
                             TxType::ClaimAtomicSwap,
-                        ),
+                        )
+                        .map_err(Status::internal)?,
                     )
                     .await
                 {
@@ -734,7 +735,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        MemoField::open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
+                        MemoField::new_open_from_string(
+                            "Creating HTLC refund transaction",
+                            TxType::HtlcAtomicSwapRefund,
+                        )
+                        .map_err(Status::internal)?,
                     )
                     .await
                 {
@@ -1917,7 +1922,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                MemoField::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
+                MemoField::new_open_from_string("Creating coin-split transaction", TxType::CoinSplit)
+                    .map_err(Status::internal)?,
             )
             .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;

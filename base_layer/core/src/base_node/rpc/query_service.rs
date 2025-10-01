@@ -234,7 +234,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 .map(|input| input.output_hash().to_vec())
                 .collect::<Vec<Vec<u8>>>();
 
-            let mut outputs = outputs_with_statuses
+            let outputs = outputs_with_statuses
                 .into_iter()
                 .filter(|(_, spent)| !spent || !request.exclude_spent)
                 .map(|(output, _spent)| output)

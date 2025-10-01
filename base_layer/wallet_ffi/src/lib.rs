@@ -2660,13 +2660,20 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
             },
         }
     };
+    let memo = match MemoField::new_open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable) {
+        Ok(v) => v,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument(e)).code;
+            return 0;
+        },
+    };
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
-            (*output).clone(),
-            source_address,
-            MemoField::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
-        )) {
+        .block_on(
+            (*wallet)
+                .wallet
+                .import_unblinded_output_as_non_rewindable((*output).clone(), source_address, memo),
+        ) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -6405,19 +6412,26 @@ pub unsafe extern "C" fn wallet_coin_split(
             },
         },
     };
+    let memo = match MemoField::new_open_from_string(
+        &format!("{number_of_splits} even coin splits"),
+        if number_of_splits > 1 {
+            TxType::CoinSplit
+        } else {
+            TxType::CoinJoin
+        },
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Invalid payment id: {e:#?}");
+            return 0;
+        },
+    };
 
     match (*wallet).runtime.block_on((*wallet).wallet.coin_split_even(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        MemoField::open_from_string(
-            &format!("{number_of_splits} even coin splits"),
-            if number_of_splits > 1 {
-                TxType::CoinSplit
-            } else {
-                TxType::CoinJoin
-            },
-        ),
+        memo,
     )) {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
@@ -6481,16 +6495,20 @@ pub unsafe extern "C" fn wallet_coin_join(
             },
         },
     };
-
     let commitments_len = commitments.len();
-    match (*wallet).runtime.block_on((*wallet).wallet.coin_join(
-        commitments,
-        fee_per_gram.into(),
-        Some(MemoField::open_from_string(
-            &format!("Coin join {commitments_len} outputs"),
-            TxType::CoinJoin,
-        )),
-    )) {
+    let memo = match MemoField::new_open_from_string(&format!("Coin join {commitments_len} outputs"), TxType::CoinJoin)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Invalid payment id: {e:#?}");
+            return 0;
+        },
+    };
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.coin_join(commitments, fee_per_gram.into(), Some(memo)))
+    {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
             tx_id.as_u64()
@@ -7085,10 +7103,16 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     let payment_id = if payment_id_string.is_null() {
-        MemoField::open_from_string("", TxType::PaymentToOther)
+        MemoField::new_open_from_string("", TxType::PaymentToOther).expect("Cannot fail with empty string")
     } else {
         match CStr::from_ptr(payment_id_string).to_str() {
-            Ok(v) => MemoField::open_from_string(v, TxType::PaymentToOther),
+            Ok(v) => match MemoField::new_open_from_string(v, TxType::PaymentToOther) {
+                Ok(v) => v,
+                Err(e) => {
+                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument(e)).code;
+                    return 0;
+                },
+            },
             _ => {
                 *error_out = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 return 0;

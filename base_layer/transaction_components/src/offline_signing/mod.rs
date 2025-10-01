@@ -85,7 +85,7 @@ mod test {
         OsRng.fill_bytes(key.as_mut());
         let factory = CryptoFactories::new(64);
 
-        TransactionKeyManagerWrapper::new(cipher, factory, Arc::new(WalletType::ProvidedKeys(keys))).await
+        TransactionKeyManagerWrapper::new(Some(cipher), factory, Arc::new(WalletType::ProvidedKeys(keys))).await
     }
     #[tokio::test]
     async fn offline_sign_is_valid() {

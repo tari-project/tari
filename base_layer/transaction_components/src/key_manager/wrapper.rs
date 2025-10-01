@@ -99,7 +99,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub async fn new(
-        master_seed: CipherSeed,
+        master_seed: Option<CipherSeed>,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
@@ -119,7 +119,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn get_birthday(&self) -> Option<u16> {
         let lock = self.transaction_key_manager_inner.read().await;
         lock.master_seed()
-            .and_then(|s| Some(s.birthday()))
+            .map(|s| s.birthday())
             .or_else(|| match lock.get_wallet_type().as_ref() {
                 WalletType::ProvidedKeys(keys) => keys.birthday,
                 _ => None,

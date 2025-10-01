@@ -585,10 +585,10 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: Option<MemoField>,
     ) -> Result<TxId, WalletError> {
-        let payment_id = payment_id.unwrap_or(MemoField::open_from_string(
-            &format!("Coin join {} outputs", commitments.len()),
-            TxType::CoinJoin,
-        ));
+        let payment_id = payment_id.unwrap_or(
+            MemoField::new_open_from_string(&format!("Coin join {} outputs", commitments.len()), TxType::CoinJoin)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+        );
         let coin_join_tx = self
             .output_manager_service
             .create_coin_join(commitments, fee_per_gram, payment_id.clone())

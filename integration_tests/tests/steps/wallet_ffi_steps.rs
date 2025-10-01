@@ -154,10 +154,11 @@ async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: Str
 async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let payment_id = MemoField::open_from_string(
+    let payment_id = MemoField::new_open_from_string(
         &format!("Send from ffi {wallet} to ${dest} at fee ${fee}"),
         TxType::PaymentToOther,
-    );
+    )
+    .unwrap();
     let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, false);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
@@ -167,10 +168,11 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let payment_id = MemoField::open_from_string(
+    let payment_id = MemoField::new_open_from_string(
         &format!("Send from ffi {wallet} to ${dest} at fee ${fee}"),
         TxType::PaymentToOther,
-    );
+    )
+    .unwrap();
     let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, true);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }

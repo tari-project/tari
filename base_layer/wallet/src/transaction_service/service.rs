@@ -422,7 +422,9 @@ where
                 // let override the payment_id if the address says we should
                 if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
                     debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, destination.get_memo_field_payment_id_bytes());
-                    payment_id = MemoField::open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+                    payment_id =
+                        MemoField::new_open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
                 }
                 let payment_id = payment_id
                     .clone()
@@ -2043,7 +2045,8 @@ where
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
             debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
-            payment_id = MemoField::open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+            payment_id = MemoField::new_open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         }
         let payment_id = payment_id
             .add_sender_address(
@@ -2374,7 +2377,8 @@ where
             total_send += *amount;
             if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
                 debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo = MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+                *memo = MemoField::new_open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
             }
             *memo = memo
                 .clone()

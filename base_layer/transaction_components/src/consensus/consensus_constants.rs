@@ -226,12 +226,11 @@ impl ConsensusConstants {
             Network::StageNet => ConsensusConstants::stagenet(),
             Network::NextNet => ConsensusConstants::nextnet(),
         };
-        let selected = versions
+        versions
             .into_iter()
             .filter(|v| v.effective_from_height <= height)
             .max_by_key(|v| v.effective_from_height)
-            .expect("There is always at least one consensus version");
-        selected
+            .expect("There is always at least one consensus version")
     }
 
     /// The height at which these constants become effective

@@ -66,7 +66,11 @@ where T: TransactionKeyManagerBackend + 'static
 
 impl<T> TransactionKeyManagerInitializer<T> {
     /// Creates a new [TransactionKeyManagerInitializer] from the [CipherSeed]
-    pub fn new(master_seed: CipherSeed, crypto_factories: CryptoFactories, wallet_type: Arc<WalletType>) -> Self {
+    pub fn new(
+        master_seed: Option<CipherSeed>,
+        crypto_factories: CryptoFactories,
+        wallet_type: Arc<WalletType>,
+    ) -> Self {
         Self {
             backend: None,
             master_seed,

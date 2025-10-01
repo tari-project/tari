@@ -43,7 +43,7 @@ async fn get_key_at_test_with_encryption() {
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(64);
     let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new_with_legacy_storage(
-        cipher,
+        Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),
@@ -81,7 +81,7 @@ async fn key_manager_multiple_branches() {
 
     let factory = CryptoFactories::new(64);
     let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new_with_legacy_storage(
-        cipher,
+        Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),

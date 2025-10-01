@@ -60,7 +60,7 @@ pub async fn create_memory_key_manager_from_seed(
     OsRng.fill_bytes(key.as_mut());
     let factory = CryptoFactories::new(rangeproof_size);
 
-    TransactionKeyManagerWrapper::new(cipher, factory, Arc::new(WalletType::default())).await
+    TransactionKeyManagerWrapper::new(Some(cipher), factory, Arc::new(WalletType::default())).await
 }
 
 pub async fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {

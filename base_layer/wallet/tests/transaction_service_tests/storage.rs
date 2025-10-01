@@ -89,7 +89,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let amount = MicroMinotari::from(10_000);
     builder
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_memo(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
+        .with_memo(MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap())
         .with_input(input)
         .await
         .unwrap();
@@ -162,7 +162,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             fee: finalized.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
-            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::new_open_from_string(messages[i], TxType::PaymentToOther).unwrap(),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -222,7 +222,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i],
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
-            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::new_open_from_string(messages[i], TxType::PaymentToOther).unwrap(),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -318,7 +318,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::new_open_from_string(messages[i], TxType::PaymentToOther).unwrap(),
             sent_output_hashes: vec![],
             change_output_hashes: vec![],
             received_output_hashes: vec![],
@@ -466,7 +466,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        MemoField::open_from_string("message", TxType::PaymentToOther),
+        MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
     )
     .unwrap();
 
@@ -495,7 +495,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        MemoField::open_from_string("message", TxType::PaymentToOther),
+        MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
     )
     .unwrap();
 
@@ -524,7 +524,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        MemoField::open_from_string("message", TxType::PaymentToOther),
+        MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
     )
     .unwrap();
 
