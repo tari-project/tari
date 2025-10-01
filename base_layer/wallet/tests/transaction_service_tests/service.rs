@@ -79,19 +79,13 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsDHKE,
     PeerConnection,
 };
 use tari_core::base_node::{
     proto::wallet_rpc::{TxLocation, TxQueryResponse},
     rpc::BaseNodeWalletRpcServer,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    extended_range_proof::{ExtendedRangeProofService, Statement},
-    keys::SecretKey as SK,
-    ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
 use tari_p2p::Network;
 use tari_script::{push_pubkey_script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
@@ -191,7 +185,7 @@ async fn setup_transaction_service(
             Network::LocalNet.into(),
         ))
         .add_initializer(
-            TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new(
+            TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new_with_legacy_storage(
                 kms_backend,
                 cipher,
                 factories.clone(),
@@ -501,7 +495,7 @@ async fn large_coin_split_transaction() {
 
 #[tokio::test]
 async fn single_transaction_burn_tari() {
-    // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
+    // let _ = env_logger::builder().filter_level(log::LevelFilter::Debug).is_test(true).try_init();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -545,13 +539,12 @@ async fn single_transaction_burn_tari() {
     .await;
 
     // Burn output
-
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     let burn_value = 10000.into();
-    let (claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let (_claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
     let (tx_id, burn_proof) = alice_ts
         .burn_tari(
             burn_value,
@@ -563,6 +556,7 @@ async fn single_transaction_burn_tari() {
         )
         .await
         .expect("Alice sending burn tx");
+    let burn_proof = burn_proof.expect("Burn proof should be present");
 
     // Verify final balance
 
@@ -573,8 +567,12 @@ async fn single_transaction_burn_tari() {
 
     let fees = completed_tx.fee;
 
+    let balance = alice_oms.get_balance().await.unwrap();
+
+    eprintln!("Balance after burn: {:#?}", balance);
+
     assert_eq!(
-        alice_oms.get_balance().await.unwrap().pending_incoming_balance,
+        balance.pending_incoming_balance,
         initial_wallet_value - burn_value - fees
     );
 
@@ -593,52 +591,35 @@ async fn single_transaction_burn_tari() {
     assert!(payment_id_verified);
 
     // Verify burn proof
-
     let challenge_bytes = ConfidentialOutputHasher::new("commitment_signature")
-        .chain(&burn_proof.ownership_proof.as_ref().unwrap().public_nonce())
         .chain(&burn_proof.commitment)
         .chain(&claim_public_key)
         .finalize();
-    let challenge = PrivateKey::from_uniform_bytes(&challenge_bytes).unwrap();
-    assert!(burn_proof.ownership_proof.unwrap().verify(
-        &burn_proof.commitment.to_commitment().unwrap(),
-        &challenge,
-        factories.commitment.as_ref()
-    ));
-    let statement = RistrettoAggregatedPublicStatement {
-        statements: vec![Statement {
-            commitment: burn_proof.commitment.to_commitment().unwrap(),
-            minimum_value_promise: MicroMinotari::zero().as_u64(),
-        }],
-    };
-    assert!(factories
-        .range_proof
-        .verify_batch(vec![&burn_proof.range_proof.to_vec()], vec![&statement])
-        .is_ok());
+    let ownership_proof = burn_proof.ownership_proof.to_schnorr_signature().unwrap();
+    let commit_value = factories
+        .commitment
+        .commit_value(&PrivateKey::default(), burn_value.as_u64());
+    let signer_pk = burn_proof.commitment.to_commitment().unwrap().as_public_key() - commit_value.as_public_key();
+    assert!(ownership_proof.verify(&signer_pk, challenge_bytes));
 
     // Verify recovery of burned output
 
-    let shared_secret = CommsDHKE::new(
-        &claim_private_key,
-        &burn_proof.reciprocal_claim_public_key.to_public_key().unwrap(),
-    );
-    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-    let recovery_key_id = TariKeyId::Imported {
-        key: CompressedPublicKey::from_secret_key(&encryption_key),
-    };
-    let recovery_key = key_manager_handle.get_private_key(&recovery_key_id).await.unwrap();
     let mut found_burned_output = false;
     for output in completed_tx.transaction.body.outputs() {
         if output.is_burned() {
             found_burned_output = true;
             match key_manager_handle
-                .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(recovery_key.clone()))
+                .try_output_key_recovery(
+                    output.commitment(),
+                    output.encrypted_data(),
+                    &output.sender_offset_public_key,
+                )
                 .await
             {
-                Ok((_spending_key_id, value, _)) => {
+                Ok(Some((_spending_key_id, value, _))) => {
                     assert_eq!(value, burn_value);
                 },
-                Err(e) => panic!("{}", e),
+                _ => panic!("Should have recovered the burned output"),
             }
         }
     }
@@ -836,7 +817,7 @@ async fn recover_one_sided_transaction() {
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
         script_key_id: bob_key_manager_handle
-            .import_key(bob_node_identity.secret_key().clone())
+            .import_key(bob_node_identity.secret_key().clone(), None)
             .await
             .unwrap(),
         script,

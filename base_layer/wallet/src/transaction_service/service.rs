@@ -36,7 +36,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burnt_proof::BurntProof,
+    burn_proof::BurnClaimProof,
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     payment_reference::generate_payment_reference,
@@ -691,19 +691,13 @@ where
                     let view_key = key_manager.get_view_key().await?;
                     let spend_key = key_manager.get_spend_key().await?;
 
-                    let shared_secret = key_manager
-                        .get_diffie_hellman_shared_secret(
-                            &view_key.key_id,
-                            input_wallet_output.sender_offset_public_key(),
-                        )
-                        .await?;
-
-                    let shared_secret_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-                    let commitment_mask_key_id = key_manager.import_key(shared_secret_private_key.clone()).await?;
+                    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+                        private_key: view_key.key_id.clone().into(),
+                        public_key: input_wallet_output.sender_offset_public_key().clone(),
+                    };
                     let script_pubkey = key_manager
                         .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)
                         .await?;
-
                     let script_key = TariKeyId::Derived {
                         key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                     };
@@ -842,7 +836,7 @@ where
                     .await?;
                 Ok(TransactionServiceResponse::BurntTransactionSent {
                     tx_id,
-                    proof: Box::new(proof),
+                    proof: proof.map(Box::new),
                 })
             },
             TransactionServiceRequest::EncumberAggregateUtxo {
@@ -1507,6 +1501,7 @@ where
                 output_manager_handle,
                 db,
                 event_publisher,
+                self.config.clone(),
                 tip_height,
             ));
         }
@@ -1934,7 +1929,7 @@ where
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key)
+            .import_key(encryption_private_key, None)
             .await?;
 
         let sender_offset_public_key = self
@@ -1946,7 +1941,7 @@ where
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(spending_key)
+            .import_key(spending_key, None)
             .await?;
 
         let minimum_value_promise = MicroMinotari::zero();
@@ -2230,7 +2225,7 @@ where
         let commitment_mask_key_id = &self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key.clone())
+            .import_key(commitment_mask_private_key.clone(), None)
             .await?;
 
         let script_spending_key = self
@@ -2244,13 +2239,13 @@ where
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key)
+            .import_key(encryption_private_key, None)
             .await?;
 
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key)
+            .import_key(commitment_mask_private_key, None)
             .await?;
 
         let sender_offset_public_key = self
@@ -2569,7 +2564,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<(TxId, BurntProof), TransactionServiceError> {
+    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
         if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
@@ -2633,28 +2628,6 @@ where
             .await?
             .key_id;
 
-        let recovery_key_id = match claim_public_key {
-            Some(ref claim_public_key) => {
-                // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
-                // this case a new spend key from the key manager) and the provided claim public key. The public
-                // nonce/commitment_mask_key is returned back to the caller.
-                let shared_secret = self
-                    .resources
-                    .transaction_key_manager_service
-                    .get_diffie_hellman_shared_secret(&commitment_mask_key.key_id, claim_public_key)
-                    .await?;
-                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                self.resources
-                    .transaction_key_manager_service
-                    .import_key(encryption_key.clone())
-                    .await?;
-                TariKeyId::Imported {
-                    key: CompressedPublicKey::from_secret_key(&encryption_key),
-                }
-            },
-            // No claim key provided, no shared secret or encryption key needed
-            None => recovery_key_id,
-        };
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
@@ -2691,43 +2664,17 @@ where
 
         let finalized = tx_builder.build().await?;
 
-        let range_proof = finalized
-            .sent_outputs
-            .first()
-            .expect("Should exist")
-            .output
-            .to_transaction_output()?
-            .proof_result()?
-            .clone();
-        let mut ownership_proof = None;
-        let commitment = finalized
-            .sent_outputs
-            .first()
-            .expect("Should exist")
-            .output
-            .to_transaction_output()?
-            .commitment
-            .clone();
+        self.resources
+            .output_manager_service
+            .add_output_with_tx_id(tx_id, output, None)
+            .await?;
 
-        if let Some(claim_public_key) = claim_public_key {
-            ownership_proof = Some(
-                self.resources
-                    .transaction_key_manager_service
-                    .generate_burn_proof(&commitment_mask_key.key_id, &amount.into(), &claim_public_key)
-                    .await?,
-            );
-        }
-
-        let tx = finalized.transaction.clone();
-        let fee = finalized.fee;
-        let change = finalized.change.clone().map(|change| vec![change]);
+        let change = finalized.change.map(|change| vec![change]);
         self.resources
             .output_manager_service
             .confirm_pending_transaction(tx_id, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let sent_hashes = finalized.sent_output_hashes.clone();
-        let change_hashes = finalized.change_output_hashes.clone();
 
         info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {tx_id}");
 
@@ -2737,36 +2684,66 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                TariAddress::default(),
-                amount,
-                fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                payment_id,
-                sent_hashes,
-                vec![],
-                change_hashes,
-            )?,
-        )
-        .await?;
+        let completed_transaction = CompletedTransaction::new_with_output_hashes(
+            tx_id,
+            self.resources.one_sided_tari_address.clone(),
+            TariAddress::default(),
+            amount,
+            finalized.fee,
+            finalized.transaction,
+            LegacyTransactionStatus::Completed,
+            Utc::now(),
+            TransactionDirection::Outbound,
+            None,
+            None,
+            payment_id,
+            finalized.sent_output_hashes,
+            vec![],
+            finalized.change_output_hashes,
+        )?;
+
+        let burn_kernel = completed_transaction
+            .transaction
+            .body
+            .kernels()
+            .iter()
+            .find(|k| k.features.is_burned())
+            .ok_or(TransactionServiceError::InvalidBurnTransaction(
+                "No burn kernel found in transaction".to_string(),
+            ))?
+            .clone();
+
+        self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
+            .await?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {tx_id}");
 
-        Ok((tx_id, BurntProof {
-            // Key used to claim the burn on L2
-            reciprocal_claim_public_key: commitment_mask_key.pub_key,
-            commitment,
-            ownership_proof,
-            range_proof,
-        }))
+        // Generate claim proof if needed
+        let mut burn_proof = None;
+        if let Some(claim_public_key) = claim_public_key {
+            let tx_output = finalized
+                .sent_outputs
+                .first()
+                .expect("a recipient was added, so there must be at least one output");
+            let output_hash = tx_output.output.output_hash();
+            let commitment = tx_output.output.commitment().clone();
+
+            let ownership_proof = self
+                .resources
+                .transaction_key_manager_service
+                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)
+                .await?;
+            let proof = BurnClaimProof {
+                // Nonce part of the DH key exchange to derive the shared secret and decryption key
+                reciprocal_claim_public_key: commitment_mask_key.pub_key,
+                commitment,
+                ownership_proof,
+            };
+
+            self.db.insert_burn_proof(output_hash, &proof, &burn_kernel)?;
+            burn_proof = Some(proof);
+        }
+
+        Ok((tx_id, burn_proof))
     }
 
     async fn register_validator_node(
@@ -3056,7 +3033,7 @@ where
         let nonce_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(nonce_secret)
+            .import_key(nonce_secret, None)
             .await?;
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),
@@ -3369,7 +3346,7 @@ where
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
 
         let join_handle = tokio::spawn(async move {
-            let mut _lock = validation_in_progress.try_lock().map_err(|_| {
+            let _lock = validation_in_progress.try_lock().map_err(|_| {
                 debug!(
                     target: LOG_TARGET,
                     "Transaction Validation Protocol (Id: {id}) spawned while a previous protocol was busy, ignored"

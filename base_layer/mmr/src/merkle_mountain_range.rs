@@ -231,14 +231,12 @@ where
     }
 
     /// Search for the leaf index of the given hash in the leaf nodes of the MMR.
-    pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<u32>, MerkleMountainRangeError> {
+    pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<LeafIndex>, MerkleMountainRangeError> {
         Ok(match self.find_node_index(hash)? {
             Some(node_index) => {
                 if is_leaf(node_index) {
-                    let node_index = node_index
-                        .try_into()
-                        .map_err(|_| MerkleMountainRangeError::MaximumSizeReached)?;
-                    Some(leaf_index(node_index))
+                    let leaf_index = leaf_index(node_index).ok_or(MerkleMountainRangeError::InvalidLeafIndex)?;
+                    Some(LeafIndex(leaf_index))
                 } else {
                     None
                 }

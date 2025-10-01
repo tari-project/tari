@@ -55,7 +55,6 @@ use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burnt_proof::BurntProof,
     emoji::EmojiId,
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
@@ -156,26 +155,6 @@ pub(crate) const SPEND_STEP_4_LEADER: &str = "step_4_for_leader_from_";
 
 #[derive(Debug)]
 pub struct SentTransaction {}
-
-pub async fn burn_tari(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    fee_per_gram: u64,
-    amount: MicroMinotari,
-    payment_id: MemoField,
-    sidechain_deployment_key: Option<PrivateKey>,
-) -> Result<(TxId, BurntProof), CommandError> {
-    wallet_transaction_service
-        .burn_tari(
-            amount,
-            UtxoSelectionCriteria::default(),
-            fee_per_gram * uT,
-            payment_id,
-            None,
-            sidechain_deployment_key,
-        )
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
 
 /// encumbers a n-of-m transaction
 #[allow(clippy::too_many_arguments)]
@@ -503,11 +482,6 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => {
-                            burn_tari(tx_service, fee, amount, payment_id_clone, None)
-                                .await
-                                .map(|(tx_id, _)| tx_id)
-                        },
                     };
                     let submit_time = Instant::now();
 
@@ -695,30 +669,6 @@ pub async fn command_runner(
                     println!("{balance}");
                 },
                 Err(e) => eprintln!("GetBalance error! {e}"),
-            },
-            BurnMinotari(args) => {
-                match burn_tari(
-                    transaction_service.clone(),
-                    config.fee_per_gram,
-                    args.amount,
-                    MemoField::open_from_string(&args.payment_id, TxType::Burn),
-                    None,
-                )
-                .await
-                {
-                    Ok((tx_id, proof)) => {
-                        debug!(target: LOG_TARGET, "burn minotari concluded with tx_id {tx_id}");
-                        println!("Burnt {} Minotari in tx_id: {}", args.amount, tx_id);
-                        println!("The following can be used to claim the burnt funds:");
-                        println!();
-                        println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
-                        println!("commitment: {}", proof.commitment.to_public_key()?);
-                        println!("ownership_proof: {:?}", proof.ownership_proof);
-                        println!("ownership_proof: {:?}", proof.range_proof);
-                        tx_ids.push(tx_id);
-                    },
-                    Err(e) => eprintln!("BurnMinotari error! {e}"),
-                }
             },
             PreMineSpendGetOutputStatus => {
                 let pre_mine_outputs = get_all_embedded_pre_mine_outputs()?;
@@ -1510,7 +1460,7 @@ pub async fn command_runner(
                         },
                     };
                     let commitment_mask_key_id = &key_manager_service
-                        .import_key(commitment_mask_private_key.clone())
+                        .import_key(commitment_mask_private_key.clone(), None)
                         .await?;
                     match key_manager_service
                         .verify_mask(

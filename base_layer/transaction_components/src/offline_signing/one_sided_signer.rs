@@ -47,7 +47,6 @@ use crate::{
     },
     transaction_builder::OutputPair,
     transaction_components::{
-        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         CoreTransactionBuilder,
         KernelBuilder,
         Transaction,
@@ -244,21 +243,25 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
-        let shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_key.key_id,
-                info.recipient
-                    .address
-                    .public_view_key()
-                    .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?,
-            )
-            .await?;
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-        let commitment_mask_key_id = self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
+        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: info
+                .recipient
+                .address
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
 
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self.key_manager.import_key(encryption_private_key).await?;
+        let encryption_key = TariKeyId::DHEncryptedData {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: info
+                .recipient
+                .address
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
 
         let sender_offset_public_key = self
             .key_manager
@@ -371,22 +374,6 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
 
-        let shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_key.key_id,
-                info.recipient
-                    .address
-                    .public_view_key()
-                    .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?,
-            )
-            .await?;
-
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)
-            .map_err(|e| TransactionError::BuilderError(format!("Failed to derive encryption key: {}", e)))?;
-
-        let encryption_key = self.key_manager.import_key(encryption_private_key.clone()).await?;
-
         let sender_offset_public_key = self
             .key_manager
             .get_public_key_at_key_id(&sender_offset_key.key_id)
@@ -394,15 +381,15 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
         let recipient_view_key = info.recipient.address.public_spend_key();
         let recipient_spend_key = info.recipient.address.public_spend_key();
-        let shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, recipient_view_key)
-            .await?;
+        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: recipient_view_key.clone(),
+        };
 
-        let stealth_hash = shared_secret_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionError::BuilderError(format!("Failed to derive spending key: {}", e)))?;
-
-        let commitment_mask_key_id = self.key_manager.import_key(stealth_hash.clone()).await?;
+        let encryption_key = TariKeyId::DHEncryptedData {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: recipient_view_key.clone(),
+        };
         let script_pubkey = self
             .key_manager
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)
@@ -518,7 +505,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
-        let (commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
+        let (_commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
 
         let sender_offset_key = self
             .key_manager
@@ -530,19 +517,25 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .get_public_key_at_key_id(&sender_offset_key.key_id)
             .await?;
 
-        let encrypted_data_shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_key.key_id,
-                info.recipient
-                    .address
-                    .public_view_key()
-                    .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?,
-            )
-            .await?;
+        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: info
+                .recipient
+                .address
+                .public_view_key()
+                .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
+                .clone(),
+        };
 
-        let encryption_private_key = shared_secret_to_output_encryption_key(&encrypted_data_shared_secret)?;
-        let encryption_key = self.key_manager.clone().import_key(encryption_private_key).await?;
+        let encryption_key = TariKeyId::DHEncryptedData {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: info
+                .recipient
+                .address
+                .public_view_key()
+                .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
+                .clone(),
+        };
 
         let (sender_public_nonce, sender_public_excess) =
             self.calculate_total_nonce_and_total_public_excess(info).await?;
@@ -551,12 +544,12 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let script_spending_key = self
             .key_manager
             .clone()
-            .stealth_address_script_spending_key(&commitment_mask_key.key_id, info.recipient.address.public_spend_key())
+            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())
             .await?;
 
         let script = push_pubkey_script(&script_spending_key);
 
-        let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key.key_id.clone())
+        let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key_id.clone())
             .with_script(script.clone())
             .with_features(info.recipient.output_features.clone())
             .with_input_data(ExecutionStack::default())

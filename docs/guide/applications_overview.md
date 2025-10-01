@@ -1,6 +1,7 @@
 # Tari Applications Overview
 
-This document provides a comprehensive overview of all applications in the Tari project, their purposes, command-line options, and configuration overrides.
+This document provides a comprehensive overview of all applications in the Tari project, their purposes, command-line
+options, and configuration overrides.
 
 ## Overview
 
@@ -17,11 +18,13 @@ The Tari project consists of several applications that work together to provide 
 
 ### 1. minotari_node
 
-**Description**: The full base node implementation that maintains the Tari blockchain, validates transactions, and provides network services.
+**Description**: The full base node implementation that maintains the Tari blockchain, validates transactions, and
+provides network services.
 
 **Binary Name**: `minotari_node`
 
-**Purpose**: 
+**Purpose**:
+
 - Maintains a full copy of the Tari blockchain
 - Validates and processes transactions
 - Provides gRPC API for other applications
@@ -31,6 +34,7 @@ The Tari project consists of several applications that work together to provide 
 #### Command Line Options
 
 **Common Options** (inherited from CommonCliArgs):
+
 - `-b, --base-path, --base-dir <PATH>` - Directory to store files (default: platform-specific, env: `TARI_BASE_DIR`)
 - `-c, --config <FILE>` - Configuration file path (default: `config/config.toml`)
 - `-l, --log-config <FILE>` - Log configuration file path
@@ -39,6 +43,7 @@ The Tari project consists of several applications that work together to provide 
 - `-p <KEY=VALUE>` - Configuration property overrides (multiple allowed)
 
 **Node-Specific Options**:
+
 - `--init` - Create default configuration file if it doesn't exist
 - `--rebuild-db` - Rebuild the database, adding blocks one by one
 - `-n, --non-interactive-mode` - Run without UI (env: `TARI_NON_INTERACTIVE`)
@@ -53,6 +58,7 @@ The Tari project consists of several applications that work together to provide 
 #### All Configuration Overrides (-p options)
 
 **Core Node Configuration**:
+
 - `base_node.network=<network>` - Network type (mainnet, esmeralda, nextnet, stagenet, igor)
 - `base_node.identity_file=<path>` - Node identity file path
 - `base_node.use_libtor=<bool>` - Use built-in Tor instance
@@ -72,6 +78,7 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.tari_pulse_health_check=<seconds>` - Health check interval (default: 600)
 
 **gRPC Configuration**:
+
 - `base_node.grpc_enabled=<bool>` - Enable gRPC server
 - `base_node.grpc_address=<address>` - gRPC server address
 - `base_node.grpc_server_allow_methods=<methods>` - Allowed gRPC methods (comma-separated)
@@ -79,11 +86,13 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.grpc_tls_enabled=<bool>` - Enable gRPC TLS
 
 **LMDB Configuration**:
+
 - `base_node.lmdb.init_size_bytes=<bytes>` - Initial LMDB size (default: 16MB)
 - `base_node.lmdb.grow_size_bytes=<bytes>` - LMDB growth size (default: 16MB)
 - `base_node.lmdb.resize_threshold_bytes=<bytes>` - Resize threshold (default: 4MB)
 
 **Storage Configuration**:
+
 - `base_node.storage.orphan_storage_capacity=<num>` - Max orphan blocks (default: 720)
 - `base_node.storage.pruning_horizon=<blocks>` - Pruning horizon (default: 0)
 - `base_node.storage.pruning_interval=<blocks>` - Pruning interval (default: 50)
@@ -92,6 +101,7 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.storage.clear_bad_blocks_at_startup=<bool>` - Clean bad blocks on startup
 
 **Mempool Configuration**:
+
 - `base_node.mempool.unconfirmed_pool.storage_capacity=<num>` - Max unconfirmed TXs (default: 40,000)
 - `base_node.mempool.unconfirmed_pool.weight_tx_skip_count=<num>` - TX skip count (default: 20)
 - `base_node.mempool.unconfirmed_pool.min_fee=<fee>` - Minimum fee (default: 50)
@@ -101,6 +111,7 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.mempool.service.block_sync_trigger=<blocks>` - Sync trigger blocks (default: 5)
 
 **State Machine Configuration**:
+
 - `base_node.state_machine.blockchain_sync_config.initial_max_sync_latency=<seconds>` - Max sync latency (default: 240)
 - `base_node.state_machine.blockchain_sync_config.max_latency_increase=<seconds>` - Latency increase (default: 10)
 - `base_node.state_machine.blockchain_sync_config.ban_period=<seconds>` - Long ban period (default: 7200)
@@ -112,6 +123,7 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.state_machine.time_before_considered_lagging=<seconds>` - Lagging time threshold (default: 10)
 
 **P2P Configuration**:
+
 - `base_node.p2p.public_addresses=<addresses>` - Public addresses for discovery
 - `base_node.p2p.auxiliary_tcp_listener_address=<address>` - Additional TCP listener
 - `base_node.p2p.datastore_path=<path>` - Peer database path (default: "peer_db")
@@ -127,14 +139,17 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.p2p.base_node_http_wallet_query_service_listen_address=<address>` - Wallet query service address
 
 **Transport Configuration**:
+
 - `base_node.p2p.transport.type=<type>` - Transport type (tcp, tor, socks5, memory)
 
 **TCP Transport**:
+
 - `base_node.p2p.transport.tcp.listener_address=<address>` - TCP listener address
 - `base_node.p2p.transport.tcp.tor_socks_address=<address>` - Tor SOCKS proxy address
 - `base_node.p2p.transport.tcp.tor_socks_auth=<auth>` - Tor SOCKS authentication
 
 **Tor Transport**:
+
 - `base_node.p2p.transport.tor.control_address=<address>` - Tor control server address
 - `base_node.p2p.transport.tor.socks_auth=<auth>` - SOCKS authentication
 - `base_node.p2p.transport.tor.socks_address_override=<address>` - SOCKS address override
@@ -146,13 +161,16 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.p2p.transport.tor.listener_address_override=<address>` - Listener address override
 
 **SOCKS5 Transport**:
+
 - `base_node.p2p.transport.socks.proxy_address=<address>` - SOCKS5 proxy address
 - `base_node.p2p.transport.socks.auth=<auth>` - SOCKS5 authentication
 
 **Memory Transport**:
+
 - `base_node.p2p.transport.memory.listener_address=<address>` - Memory transport address
 
 **DHT Configuration**:
+
 - `base_node.p2p.dht.database_url=<url>` - DHT database URL
 - `base_node.p2p.dht.num_neighbouring_nodes=<num>` - Neighboring nodes (default: 8)
 - `base_node.p2p.dht.num_random_nodes=<num>` - Random nodes (default: 4)
@@ -174,6 +192,7 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.p2p.dht.enable_forwarding=<bool>` - Enable message forwarding
 
 **Store and Forward (SAF) Configuration**:
+
 - `base_node.p2p.dht.saf.msg_validity=<seconds>` - Message validity period (default: 10,800)
 - `base_node.p2p.dht.saf.msg_storage_capacity=<num>` - Storage capacity (default: 100,000)
 - `base_node.p2p.dht.saf.num_closest_nodes=<num>` - Closest nodes (default: 10)
@@ -186,12 +205,14 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.p2p.dht.saf.num_neighbouring_nodes=<num>` - SAF neighboring nodes (default: 8)
 
 **DHT Connectivity Configuration**:
+
 - `base_node.p2p.dht.connectivity.update_interval=<seconds>` - Update interval (default: 120)
 - `base_node.p2p.dht.connectivity.random_pool_refresh_interval=<seconds>` - Random pool refresh (default: 7,200)
 - `base_node.p2p.dht.connectivity.high_failure_rate_cooldown=<seconds>` - High failure cooldown (default: 45)
 - `base_node.p2p.dht.connectivity.minimum_desired_tcpv4_node_ratio=<ratio>` - Min TCPv4 ratio (default: 0.1)
 
 **DHT Network Discovery Configuration**:
+
 - `base_node.p2p.dht.network_discovery.enabled=<bool>` - Enable network discovery
 - `base_node.p2p.dht.network_discovery.min_desired_peers=<num>` - Min desired peers (default: 50)
 - `base_node.p2p.dht.network_discovery.idle_period=<seconds>` - Idle period (default: 1,800)
@@ -202,9 +223,11 @@ The Tari project consists of several applications that work together to provide 
 - `base_node.p2p.dht.network_discovery.initial_peer_sync_delay=<seconds>` - Initial sync delay
 
 **Peer Validation Configuration**:
+
 - `base_node.p2p.dht.peer_validator_config.min_peer_version=<version>` - Minimum peer version
 
 **HTTP Wallet Query Service**:
+
 - `base_node.http_wallet_query_service.port=<port>` - Service port (default: 9000)
 - `base_node.http_wallet_query_service.external_address=<address>` - External address
 
@@ -212,11 +235,13 @@ The Tari project consists of several applications that work together to provide 
 
 ### 2. minotari_console_wallet
 
-**Description**: Command-line wallet application for creating transactions, managing funds, and interacting with the Tari network.
+**Description**: Command-line wallet application for creating transactions, managing funds, and interacting with the
+Tari network.
 
 **Binary Name**: `minotari_console_wallet`
 
 **Purpose**:
+
 - Manage Tari wallet and private keys
 - Create and broadcast transactions
 - Monitor transaction status
@@ -226,6 +251,7 @@ The Tari project consists of several applications that work together to provide 
 #### Command Line Options
 
 **Common Options** (inherited from CommonCliArgs):
+
 - `-b, --base-path, --base-dir <PATH>` - Directory to store files
 - `-c, --config <FILE>` - Configuration file path
 - `-l, --log-config <FILE>` - Log configuration file path
@@ -234,6 +260,7 @@ The Tari project consists of several applications that work together to provide 
 - `-p <KEY=VALUE>` - Configuration property overrides
 
 **Wallet-Specific Options**:
+
 - `--password <PASSWORD>` - Wallet password (env: `MINOTARI_WALLET_PASSWORD`)
 - `--change-password` - Change wallet password and exit
 - `--recovery` - Force wallet recovery
@@ -257,12 +284,13 @@ The Tari project consists of several applications that work together to provide 
 The wallet supports extensive subcommands for various operations:
 
 **Basic Operations**:
+
 - `get-balance` - Show current wallet balance
 - `send-minotari <amount> <address>` - Send Tari to address
-- `burn-minotari <amount>` - Burn Tari (destroy permanently)
 - `sync` - Synchronize wallet with base node
 
 **Pre-mine Operations** (for network genesis):
+
 - `pre-mine-start` - Start pre-mine spending session
 - `pre-mine-start-party` - Start party for pre-mine spending
 - `pre-mine-encumber` - Encumber aggregate UTXO
@@ -271,6 +299,7 @@ The wallet supports extensive subcommands for various operations:
 - `pre-mine-backup-utxo` - Backup pre-mine UTXO
 
 **Advanced Operations**:
+
 - `send-one-sided-to-stealth-address` - Send to stealth address
 - `make-it-rain` - Stress test with multiple transactions
 - `coin-split` - Split coins into smaller denominations
@@ -278,6 +307,7 @@ The wallet supports extensive subcommands for various operations:
 - `whois` - Get information about a public key
 
 **Import/Export**:
+
 - `export-utxos` - Export UTXOs to file
 - `export-tx` - Export transaction to file
 - `import-tx` - Import transaction from file
@@ -286,22 +316,26 @@ The wallet supports extensive subcommands for various operations:
 - `import-paper-wallet` - Import from paper wallet
 
 **Node Management**:
+
 - `set-base-node` - Set base node connection
 - `set-custom-base-node` - Set custom base node
 - `clear-custom-base-node` - Clear custom base node
 
 **Atomic Swaps**:
+
 - `init-sha-atomic-swap` - Initialize SHA atomic swap
 - `finalise-sha-atomic-swap` - Finalize atomic swap
 - `claim-sha-atomic-swap-refund` - Claim refund
 
 **Utilities**:
+
 - `count-utxos` - Count UTXOs
 - `revalidate-wallet-db` - Revalidate wallet database
 - `register-validator-node` - Register as validator node
 - `create-tls-certs` - Create TLS certificates
 
 **Payment References**:
+
 - `show-pay-ref` - Show payment reference
 - `find-pay-ref` - Find payment reference
 - `list-tx` - List all transactions
@@ -309,6 +343,7 @@ The wallet supports extensive subcommands for various operations:
 #### All Configuration Overrides (-p options)
 
 **Core Wallet Configuration**:
+
 - `wallet.buffer_size=<size>` - Message buffer size (default: 50,000)
 - `wallet.data_dir=<path>` - Wallet data directory (default: "data/wallet")
 - `wallet.db_file=<path>` - Database file path (default: "db/console_wallet.db")
@@ -329,12 +364,14 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.birthday_offset=<blocks>` - Scanning offset from birthday (default: 2)
 
 **gRPC Configuration**:
+
 - `wallet.grpc_enabled=<bool>` - Enable gRPC server
 - `wallet.grpc_address=<address>` - gRPC bind address (default: "127.0.0.1:18143")
 - `wallet.grpc_authentication=<auth>` - gRPC authentication (username/password)
 - `wallet.grpc_tls_enabled=<bool>` - Enable gRPC TLS
 
 **Transaction Service Configuration**:
+
 - `wallet.transactions.broadcast_monitoring_timeout=<seconds>` - Broadcast monitoring timeout (default: 180)
 - `wallet.transactions.chain_monitoring_timeout=<seconds>` - Chain monitoring timeout (default: 60)
 - `wallet.transactions.direct_send_timeout=<seconds>` - Direct send timeout (default: 180)
@@ -342,14 +379,17 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.transactions.low_power_polling_timeout=<seconds>` - Low power polling timeout (default: 300)
 - `wallet.transactions.transaction_resend_period=<seconds>` - Transaction resend period (default: 600)
 - `wallet.transactions.resend_response_cooldown=<seconds>` - Resend response cooldown (default: 300)
-- `wallet.transactions.pending_transaction_cancellation_timeout=<seconds>` - Pending TX cancellation timeout (default: 259,200)
+- `wallet.transactions.pending_transaction_cancellation_timeout=<seconds>` - Pending TX cancellation timeout (default:
+  259,200)
 - `wallet.transactions.num_confirmations_required=<num>` - Transaction confirmations required (default: 3)
 - `wallet.transactions.max_tx_query_batch_size=<num>` - Max TX query batch size (default: 20)
-- `wallet.transactions.transaction_routing_mechanism=<mechanism>` - Routing mechanism (DirectOnly, StoreAndForwardOnly, DirectAndStoreAndForward)
+- `wallet.transactions.transaction_routing_mechanism=<mechanism>` - Routing mechanism (DirectOnly, StoreAndForwardOnly,
+  DirectAndStoreAndForward)
 - `wallet.transactions.transaction_event_channel_size=<size>` - Event channel size (default: 25,000)
 - `wallet.transactions.transaction_mempool_resubmission_window=<seconds>` - Mempool resubmission window (default: 600)
 
 **Output Manager Configuration**:
+
 - `wallet.outputs.prevent_fee_gt_amount=<bool>` - Prevent fee greater than amount (default: false)
 - `wallet.outputs.dust_ignore_value=<amount>` - Dust ignore value (default: 100)
 - `wallet.outputs.event_channel_size=<size>` - Output event channel size (default: 3,500)
@@ -358,11 +398,13 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.outputs.num_of_seconds_to_revalidate_invalid_utxos=<seconds>` - UTXO revalidation interval (default: 259,200)
 
 **Base Node Service Configuration**:
+
 - `wallet.base_node.base_node_monitor_max_refresh_interval=<seconds>` - Monitor refresh interval (default: 30)
 - `wallet.base_node.base_node_rpc_pool_size=<num>` - RPC client pool size (default: 5)
 - `wallet.base_node.event_channel_size=<size>` - Base node event channel size (default: 250)
 
 **P2P Configuration**:
+
 - `wallet.p2p.public_addresses=<addresses>` - Public addresses for discovery
 - `wallet.p2p.auxiliary_tcp_listener_address=<address>` - Additional TCP listener
 - `wallet.p2p.datastore_path=<path>` - Peer database path (default: "peer_db")
@@ -378,14 +420,17 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.p2p.cull_oldest_peer_rpc_connection_on_full=<bool>` - Cull old RPC connections
 
 **Transport Configuration**:
+
 - `wallet.p2p.transport.type=<type>` - Transport type (tcp, tor, socks5, memory)
 
 **TCP Transport**:
+
 - `wallet.p2p.transport.tcp.listener_address=<address>` - TCP listener address
 - `wallet.p2p.transport.tcp.tor_socks_address=<address>` - Tor SOCKS proxy address
 - `wallet.p2p.transport.tcp.tor_socks_auth=<auth>` - Tor SOCKS authentication
 
 **Tor Transport**:
+
 - `wallet.p2p.transport.tor.control_address=<address>` - Tor control server address
 - `wallet.p2p.transport.tor.socks_auth=<auth>` - SOCKS authentication
 - `wallet.p2p.transport.tor.socks_address_override=<address>` - SOCKS address override
@@ -396,13 +441,16 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.p2p.transport.tor.forward_address=<address>` - Traffic forward address
 
 **SOCKS5 Transport**:
+
 - `wallet.p2p.transport.socks.proxy_address=<address>` - SOCKS5 proxy address
 - `wallet.p2p.transport.socks.auth=<auth>` - SOCKS5 authentication
 
 **Memory Transport**:
+
 - `wallet.p2p.transport.memory.listener_address=<address>` - Memory transport address
 
 **DHT Configuration**:
+
 - `wallet.p2p.dht.database_url=<url>` - DHT database URL
 - `wallet.p2p.dht.num_neighbouring_nodes=<num>` - Neighboring nodes (default: 5)
 - `wallet.p2p.dht.num_random_nodes=<num>` - Random nodes (default: 1)
@@ -424,6 +472,7 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.p2p.dht.enable_forwarding=<bool>` - Enable message forwarding
 
 **Store and Forward (SAF) Configuration**:
+
 - `wallet.p2p.dht.saf.msg_validity=<seconds>` - Message validity period (default: 10,800)
 - `wallet.p2p.dht.saf.msg_storage_capacity=<num>` - Storage capacity (default: 100,000)
 - `wallet.p2p.dht.saf.num_closest_nodes=<num>` - Closest nodes (default: 10)
@@ -436,12 +485,14 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.p2p.dht.saf.num_neighbouring_nodes=<num>` - SAF neighboring nodes (default: 8)
 
 **DHT Connectivity Configuration**:
+
 - `wallet.p2p.dht.connectivity.update_interval=<seconds>` - Update interval (default: 300)
 - `wallet.p2p.dht.connectivity.random_pool_refresh_interval=<seconds>` - Random pool refresh (default: 7,200)
 - `wallet.p2p.dht.connectivity.high_failure_rate_cooldown=<seconds>` - High failure cooldown (default: 45)
 - `wallet.p2p.dht.connectivity.minimum_desired_tcpv4_node_ratio=<ratio>` - Min TCPv4 ratio (default: 0.0)
 
 **DHT Network Discovery Configuration**:
+
 - `wallet.p2p.dht.network_discovery.enabled=<bool>` - Enable network discovery
 - `wallet.p2p.dht.network_discovery.min_desired_peers=<num>` - Min desired peers (default: 16)
 - `wallet.p2p.dht.network_discovery.idle_period=<seconds>` - Idle period (default: 1,800)
@@ -452,6 +503,7 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.p2p.dht.network_discovery.initial_peer_sync_delay=<seconds>` - Initial sync delay (default: 25)
 
 **Peer Validation Configuration**:
+
 - `wallet.p2p.dht.peer_validator_config.min_peer_version=<version>` - Minimum peer version
 
 ---
@@ -463,6 +515,7 @@ The wallet supports extensive subcommands for various operations:
 **Binary Name**: `minotari_miner`
 
 **Purpose**:
+
 - Mine Tari blocks using SHA-3 proof-of-work
 - Connect to base node for block templates
 - Support CPU mining with multiple threads
@@ -471,6 +524,7 @@ The wallet supports extensive subcommands for various operations:
 #### Command Line Options
 
 **Common Options** (inherited from CommonCliArgs):
+
 - `-b, --base-path, --base-dir <PATH>` - Directory to store files
 - `-c, --config <FILE>` - Configuration file path
 - `-l, --log-config <FILE>` - Log configuration file path
@@ -479,6 +533,7 @@ The wallet supports extensive subcommands for various operations:
 - `-p <KEY=VALUE>` - Configuration property overrides
 
 **Miner-Specific Options**:
+
 - `--mine-until-height <HEIGHT>` - Mine until specific block height
 - `--miner-max-blocks <COUNT>` - Maximum blocks to mine
 - `--miner-min-diff <DIFFICULTY>` - Minimum difficulty to mine
@@ -488,6 +543,7 @@ The wallet supports extensive subcommands for various operations:
 #### All Configuration Overrides (-p options)
 
 **Core Mining Configuration**:
+
 - `miner.network=<network>` - Mining network (mainnet, esmeralda, nextnet, stagenet)
 - `miner.base_node_grpc_address=<address>` - Base node gRPC address (default: "http://127.0.0.1:18142")
 - `miner.base_node_grpc_authentication=<auth>` - Base node gRPC authentication (username/password)
@@ -500,16 +556,19 @@ The wallet supports extensive subcommands for various operations:
 - `miner.proof_of_work_algo=<algo>` - PoW algorithm (Sha3X, RandomXT, RandomXM)
 
 **Pool Mining Configuration**:
+
 - `miner.stratum_mining_pool_address=<address>` - Mining pool address (e.g., "miningcore.tari.com:3052")
 - `miner.stratum_mining_wallet_address=<address>` - Mining wallet address/public key
 - `miner.stratum_mining_worker_name=<name>` - Mining worker name
 
 **Payment Configuration**:
+
 - `miner.wallet_payment_address=<address>` - Tari wallet address for mining rewards
 - `miner.coinbase_extra=<data>` - Extra coinbase data (default: "minotari_miner")
 - `miner.range_proof_type=<type>` - Range proof type (revealed_value, bullet_proof_plus)
 
 **P2Pool Configuration**:
+
 - `miner.sha_p2pool_enabled=<bool>` - Enable SHA p2pool mining
 
 ---
@@ -521,6 +580,7 @@ The wallet supports extensive subcommands for various operations:
 **Binary Name**: `minotari_merge_mining_proxy`
 
 **Purpose**:
+
 - Act as proxy between Monero miners (XMRig) and Tari base node
 - Enable simultaneous mining of Monero and Tari
 - Handle block template conversion between networks
@@ -529,6 +589,7 @@ The wallet supports extensive subcommands for various operations:
 #### Command Line Options
 
 **Common Options** (inherited from CommonCliArgs):
+
 - `-b, --base-path, --base-dir <PATH>` - Directory to store files
 - `-c, --config <FILE>` - Configuration file path
 - `-l, --log-config <FILE>` - Log configuration file path
@@ -537,11 +598,13 @@ The wallet supports extensive subcommands for various operations:
 - `-p <KEY=VALUE>` - Configuration property overrides
 
 **Proxy-Specific Options**:
+
 - `-n, --non-interactive-mode` - Run without UI (env: `TARI_NON_INTERACTIVE`)
 
 #### All Configuration Overrides (-p options)
 
 **Core Proxy Configuration**:
+
 - `merge_mining_proxy.network=<network>` - Proxy network (mainnet, esmeralda, nextnet, stagenet)
 - `merge_mining_proxy.listener_address=<address>` - Proxy listener address (default: "/ip4/127.0.0.1/tcp/18081")
 - `merge_mining_proxy.submit_to_origin=<bool>` - Submit to Monero blockchain (default: true)
@@ -549,10 +612,12 @@ The wallet supports extensive subcommands for various operations:
 - `merge_mining_proxy.check_tari_difficulty_before_submit=<bool>` - Check difficulty before submit (default: true)
 
 **Base Node Configuration**:
+
 - `merge_mining_proxy.base_node_grpc_address=<address>` - Base node gRPC address (default: "http://127.0.0.1:18142")
 - `merge_mining_proxy.base_node_grpc_authentication=<auth>` - Base node gRPC authentication (username/password)
 
 **Monero Configuration**:
+
 - `merge_mining_proxy.use_dynamic_fail_data=<bool>` - Use dynamic monerod URLs from monero.fail (default: true)
 - `merge_mining_proxy.monero_fail_url=<url>` - Monero fail URL for dynamic URLs
 - `merge_mining_proxy.monerod_url=<urls>` - Static monerod URLs list (when dynamic disabled)
@@ -562,35 +627,41 @@ The wallet supports extensive subcommands for various operations:
 - `merge_mining_proxy.monerod_connection_timeout=<seconds>` - Connection timeout (default: 2)
 
 **Mining Configuration**:
+
 - `merge_mining_proxy.max_randomx_vms=<num>` - Maximum RandomX VMs (default: 5)
 - `merge_mining_proxy.coinbase_extra=<data>` - Extra coinbase data (default: "tari_merge_mining_proxy")
 - `merge_mining_proxy.wallet_payment_address=<address>` - Tari wallet address for mining rewards
 - `merge_mining_proxy.range_proof_type=<type>` - Range proof type (revealed_value, bullet_proof_plus)
 
 **P2Pool Configuration**:
+
 - `merge_mining_proxy.p2pool_enabled=<bool>` - Enable P2Pool support (default: false)
 
 ---
 
 ### 5. minotari_ledger_wallet
 
-**Description**: Hardware wallet implementation for Ledger devices, providing secure key management and transaction signing.
+**Description**: Hardware wallet implementation for Ledger devices, providing secure key management and transaction
+signing.
 
 **Binary Name**: `minotari_ledger_wallet` (Ledger app, not a CLI application)
 
 **Purpose**:
+
 - Secure key storage on Ledger hardware
 - Transaction signing on hardware device
 - Integration with Tari wallet ecosystem
 - Support for multiple Ledger device models
 
 **Device Support**:
+
 - Ledger Nano X
 - Ledger Nano S Plus
 - Ledger Stax
 - Ledger Flex
 
 **Features**:
+
 - Hardware-based private key generation and storage
 - Secure transaction signing
 - BIP44 derivation path: `44'/535348'`
@@ -605,6 +676,7 @@ The wallet supports extensive subcommands for various operations:
 **Binary Name**: `deps_only`
 
 **Purpose**:
+
 - Build all project dependencies without functionality
 - Create cached Docker layers with compiled dependencies
 - Speed up subsequent builds in containerized environments
@@ -635,12 +707,14 @@ All applications support configuration overrides using the `-p` parameter:
 ### Common Configuration Overrides
 
 **Common Section** (applies to all applications):
+
 - `common.base_path=<path>` - Common Tari data path
 - `common.message_cache_size=<mb>` - Message cache size in MB (default: 10)
 - `common.message_cache_ttl=<minutes>` - Message cache TTL (default: 1440)
 - `common.denylist_ban_period=<minutes>` - Blacklist period (default: 1440)
 
 **Auto Update Configuration**:
+
 - `auto_update.update_uris=<uris>` - Update URIs list
 - `auto_update.hashes_url=<url>` - Update hashes URL
 - `auto_update.hashes_sig_url=<url>` - Update signature URL
@@ -649,17 +723,20 @@ All applications support configuration overrides using the `-p` parameter:
 - `auto_update.override_from=<network>` - Network override
 
 **Metrics Configuration**:
+
 - `metrics.enabled=<bool>` - Enable metrics
 - `metrics.bind_address=<address>` - Metrics server address
 - `metrics.push_endpoint=<url>` - Metrics push endpoint
 - `metrics.override_from=<network>` - Network override
 
 **Peer Seeds Configuration** (Network-specific):
+
 - `<network>.p2p.seeds.dns_seeds=<domains>` - DNS seed domains
 - `<network>.p2p.seeds.peer_seeds=<peers>` - Static peer seeds
 - `<network>.p2p.seeds.dns_name_server=<servers>` - DNS name servers
 
 **Examples**:
+
 ```bash
 # Set network
 -p "base_node.network=esmeralda"
@@ -690,6 +767,7 @@ All applications support configuration overrides using the `-p` parameter:
 ### Network Types
 
 All applications support these networks:
+
 - `mainnet` - Production network
 - `esmeralda` - Testnet
 - `nextnet` - Development network
@@ -698,9 +776,9 @@ All applications support these networks:
 ### Common Directories
 
 - **Base Path**: Platform-specific default, customizable with `-b`
-  - Linux: `~/.tari/`
-  - macOS: `~/Library/Application Support/tari/`
-  - Windows: `%APPDATA%\tari\`
+    - Linux: `~/.tari/`
+    - macOS: `~/Library/Application Support/tari/`
+    - Windows: `%APPDATA%\tari\`
 - **Config**: `{base_path}/{network}/config/`
 - **Data**: `{base_path}/{network}/data/`
 - **Logs**: `{base_path}/{network}/logs/`
@@ -708,11 +786,13 @@ All applications support these networks:
 ### Environment Variables
 
 **Universal**:
+
 - `TARI_BASE_DIR` - Base directory path
 - `TARI_NETWORK` - Network selection
 - `TARI_NON_INTERACTIVE` - Non-interactive mode
 
 **Application-specific**:
+
 - `MINOTARI_NODE_ENABLE_GRPC` - Enable node gRPC
 - `MINOTARI_NODE_ENABLE_MINING` - Enable node mining
 - `MINOTARI_WALLET_PASSWORD` - Wallet password
@@ -753,6 +833,7 @@ The project supports cross-compilation to various targets. See the `Cross.toml` 
 Many applications support optional features that can be enabled during compilation:
 
 ### minotari_node Features
+
 - `default` - Standard features including libtor
 - `metrics` - Enable Prometheus metrics
 - `safe` - Safe mode with additional checks
@@ -760,6 +841,7 @@ Many applications support optional features that can be enabled during compilati
 - `dhat-heap` - Heap profiling support
 
 ### minotari_console_wallet Features
+
 - `default` - Standard features (grpc, ledger, libtor)
 - `grpc` - gRPC API support
 - `ledger` - Ledger hardware wallet support
@@ -776,4 +858,6 @@ cargo build --release --bin minotari_node --features metrics
 cargo build --release --bin minotari_console_wallet --no-default-features --features grpc,libtor
 ```
 
-This comprehensive overview provides all the essential information about Tari applications, their command-line interfaces, and configuration options. Each application is designed to work together in the Tari ecosystem while being independently configurable and deployable.
+This comprehensive overview provides all the essential information about Tari applications, their command-line
+interfaces, and configuration options. Each application is designed to work together in the Tari ecosystem while being
+independently configurable and deployable.

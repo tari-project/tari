@@ -150,7 +150,6 @@ fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, val
 #[derive(Debug, Subcommand, Clone)]
 pub enum CliCommands {
     GetBalance,
-    BurnMinotari(BurnMinotariArgs),
     PreMineSpendGetOutputStatus,
     PreMineStart(PreMineStartSessionArgs),
     PreMineStartParty(PreMineSpendPartyDetailsArgs),
@@ -302,13 +301,6 @@ pub struct UserPayForFeeArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct BurnMinotariArgs {
-    pub amount: MicroMinotari,
-    #[clap(short, long, default_value = "Burn funds")]
-    pub payment_id: String,
-}
-
-#[derive(Debug, Args, Clone)]
 pub struct PreMineStartSessionArgs {
     #[clap(long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
@@ -440,26 +432,19 @@ pub struct MakeItRainArgs {
     pub start_time: Option<DateTime<Utc>>,
     #[clap(long, alias = "stealth-one-sided")]
     pub one_sided: bool,
-    #[clap(short, long)]
-    pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub payment_id: String,
 }
 
 impl MakeItRainArgs {
-    pub fn transaction_type(&self) -> MakeItRainTransactionType {
-        if self.burn_tari {
-            MakeItRainTransactionType::BurnTari
-        } else {
-            MakeItRainTransactionType::StealthOneSided
-        }
+    pub const fn transaction_type(&self) -> MakeItRainTransactionType {
+        MakeItRainTransactionType::StealthOneSided
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum MakeItRainTransactionType {
     StealthOneSided,
-    BurnTari,
 }
 
 impl Display for MakeItRainTransactionType {

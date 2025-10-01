@@ -369,7 +369,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         FixedHash::zero(),
         0,
         true,
-        &completed_txs[0].status,
+        completed_txs[0].status,
     )
     .unwrap();
 

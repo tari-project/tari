@@ -46,7 +46,6 @@ use crate::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         OutputFeatures,
         Transaction,
         TransactionError,
@@ -111,23 +110,25 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-        let recipient_view_key = recipient
-            .public_view_key()
-            .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?;
-
         let recipient_spend_key = recipient.public_spend_key();
 
         let sender_offset_public_key = sender_offset_key.pub_key;
 
-        let encrypted_data_shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, recipient_view_key)
-            .await?;
+        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: recipient
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
 
-        let encryption_private_key = shared_secret_to_output_encryption_key(&encrypted_data_shared_secret)
-            .map_err(|e| TransactionError::BuilderError(format!("Failed to derive encryption key: {}", e)))?;
-
-        let encryption_key_id = self.key_manager.import_key(encryption_private_key.clone()).await?;
+        let encryption_key_id = TariKeyId::DHEncryptedData {
+            private_key: sender_offset_key.key_id.clone().into(),
+            public_key: recipient
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
 
         let ephemeral_pubkeys =
             derive_multisig_ephemeral_pubkeys(&self.key_manager, &public_keys, &sender_offset_key.key_id).await?;
@@ -139,18 +140,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             message,
         )];
 
-        let shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(&sender_offset_key.key_id, recipient_view_key)
-            .await?;
-
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-
-        let commitment_mask_key_id = &self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
-
         let script_pubkey = self
             .key_manager
-            .stealth_address_script_spending_key(commitment_mask_key_id, recipient_spend_key)
+            .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)
             .await?;
 
         script_opcodes.push(Opcode::PushPubKey(script_pubkey.clone().into()));

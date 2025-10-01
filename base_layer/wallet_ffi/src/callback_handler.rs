@@ -322,20 +322,18 @@ where
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {msg:?}");
-                            match (*msg).clone() {
+                            match msg.as_ref() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
-                                    self.output_validation_complete_event(request_key,  0);
+                                    self.output_validation_complete_event(*request_key,  0);
                                     self.trigger_balance_refresh().await;
                                 },
                                 OutputManagerEvent::TxoValidationAlreadyBusy(request_key) => {
-                                    self.output_validation_complete_event(request_key,  1);
+                                    self.output_validation_complete_event(*request_key,  1);
                                 },
                                 OutputManagerEvent::TxoValidationInternalFailure(request_key) => {
-                                    self.output_validation_complete_event(request_key,  2);
+                                    self.output_validation_complete_event(*request_key,  2);
                                 },
-                                OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
-                                    self.output_validation_complete_event(request_key,  3);
-                                },
+                                OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => { self.output_validation_complete_event(*request_key,  3); },
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),

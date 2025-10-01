@@ -43,7 +43,6 @@ pub fn handler_get_public_spend_key(comm: &mut Comm) -> Result<(), AppSW> {
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(pk.as_bytes());
-    comm.reply_ok();
 
     Ok(())
 }

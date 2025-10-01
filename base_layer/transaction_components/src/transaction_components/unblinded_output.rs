@@ -147,8 +147,11 @@ impl UnblindedOutput {
         key_manager: &KM,
         payment_id: MemoField,
     ) -> Result<WalletOutput, TransactionError> {
-        let commitment_mask_key_id = key_manager.import_key(self.commitment_mask_key).await?;
-        let script_key_id = key_manager.import_key(self.script_private_key).await?;
+        let commitment_mask_key_id = key_manager.import_key(self.commitment_mask_key, None).await?;
+        let spending_key = key_manager.get_spend_key().await?;
+        let script_key_id = key_manager
+            .import_key(self.script_private_key, Some(spending_key.key_id))
+            .await?;
         let wallet_output = WalletOutput::new_with_rangeproof(
             self.version,
             self.value,

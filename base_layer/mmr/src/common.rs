@@ -31,8 +31,14 @@ use crate::{error::MerkleMountainRangeError, Hash};
 
 const ALL_ONES: usize = usize::MAX;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct LeafIndex(pub usize);
+
+impl LeafIndex {
+    pub fn value(&self) -> usize {
+        self.0
+    }
+}
 
 /// Returns the MMR node index derived from the leaf index.
 pub fn node_index(leaf_index: LeafIndex) -> usize {
@@ -43,11 +49,9 @@ pub fn node_index(leaf_index: LeafIndex) -> usize {
 }
 
 /// Returns the leaf index derived from the MMR node index.
-pub fn leaf_index(node_index: u32) -> u32 {
-    let n = checked_n_leaves(node_index as usize)
-        .expect("checked_n_leaves can only overflow for `usize::MAX` and that is not possible");
-    // Conversion is safe because n < node_index
-    n.try_into().unwrap()
+/// Returns None if the node index == usize::MAX
+pub fn leaf_index(node_index: usize) -> Option<usize> {
+    checked_n_leaves(node_index)
 }
 
 /// Is this position a leaf in the MMR?

@@ -35,6 +35,7 @@ use tari_common_types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         HashOutput,
         PrivateKey,
         UncompressedCommitment,
@@ -420,6 +421,14 @@ where
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self.fetch_invalid_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
+            },
+            OutputManagerRequest::GetManyOutputs { outputs } => {
+                let outputs = self
+                    .fetch_many_outputs(&outputs)?
+                    .into_iter()
+                    .map(|v| v.into())
+                    .collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
@@ -1162,7 +1171,7 @@ where
                         script_signatures.len()
                     )));
                 }
-                let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask).await?;
+                let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask, None).await?;
                 (
                     WalletOutput::new_from_transaction_output(
                         amount,
@@ -1262,10 +1271,14 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created dh shared secret");
 
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;
-        let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+        let spending_key_id = self.resources.key_manager.import_key(spending_key, None).await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key).await?;
+        let encryption_key_id = self
+            .resources
+            .key_manager
+            .import_key(encryption_private_key, None)
+            .await?;
 
         let sender_offset_public_key_self = self
             .resources
@@ -1450,7 +1463,7 @@ where
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                let spending_key_id = self.resources.key_manager.import_key(spending_key, None).await?;
                 let script_key = self
                     .pre_mine_script_key_from_payment_id(payment_id.clone(), tx_id)
                     .await?;
@@ -1535,10 +1548,14 @@ where
             .await?;
 
         let commitment_mask_key = shared_secret_to_output_spending_key(&shared_secret)?;
-        let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask_key).await?;
+        let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask_key, None).await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key).await?;
+        let encryption_key_id = self
+            .resources
+            .key_manager
+            .import_key(encryption_private_key, None)
+            .await?;
 
         let sender_offset_public_key = self
             .resources
@@ -1900,6 +1917,10 @@ where
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
+    }
+
+    pub fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_many_outputs(outputs)?)
     }
 
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
@@ -2607,7 +2628,7 @@ where
             EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key, None).await?;
 
                 let recovered_output = WalletOutput::new_from_transaction_output(
                     amount,
@@ -2785,7 +2806,8 @@ where
                             &spending_key,
                             committed_value.into(),
                         )? {
-                            let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                            let commitment_mask_key_id =
+                                self.resources.key_manager.import_key(spending_key, None).await?;
 
                             let rewound_output = WalletOutput::new_from_transaction_output(
                                 committed_value,
@@ -2815,7 +2837,7 @@ where
                         let commitment_mask_key_id = &self
                             .resources
                             .key_manager
-                            .import_key(commitment_mask_private_key.clone())
+                            .import_key(commitment_mask_private_key.clone(), None)
                             .await?;
 
                         if output.verify_mask(
@@ -2881,21 +2903,15 @@ where
                     pubkeys
                 );
 
-                let view_key = self.resources.key_manager.get_view_key().await?;
-
-                let shared_secret = self
+                if let Some((commitment_mask_key_id, committed_value, payment_id)) = self
                     .resources
                     .key_manager
-                    .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)
-                    .await?;
-
-                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-
-                if let Ok((commitment_mask_key_id, committed_value, payment_id)) = self
-                    .resources
-                    .key_manager
-                    .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(encryption_key))
-                    .await
+                    .try_output_key_recovery(
+                        output.commitment(),
+                        output.encrypted_data(),
+                        &output.sender_offset_public_key,
+                    )
+                    .await?
                 {
                     let script_spending_key = self
                         .resources

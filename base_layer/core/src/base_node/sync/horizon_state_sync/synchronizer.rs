@@ -733,7 +733,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 },
             }
 
-            if utxo_counter % 100 == 0 {
+            if utxo_counter.is_multiple_of(100) {
                 let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
                     current: utxo_counter,
                     total: self.num_outputs,

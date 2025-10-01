@@ -306,7 +306,7 @@ impl TariWorld {
     }
 
     pub async fn script_key_id(&mut self) -> TariKeyId {
-        match self.key_manager.import_key(self.wallet_private_key.clone()).await {
+        match self.key_manager.import_key(self.wallet_private_key.clone(), None).await {
             Ok(key_id) => key_id,
             Err(_) => TariKeyId::Imported {
                 key: CompressedPublicKey::from_secret_key(&self.wallet_private_key),

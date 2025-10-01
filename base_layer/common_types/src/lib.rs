@@ -23,7 +23,7 @@
 // This is the string used to derive the comms/spend key of the wallet
 pub const WALLET_COMMS_AND_SPEND_KEY_BRANCH: &str = "comms";
 
-pub mod burnt_proof;
+pub mod burn_proof;
 pub mod chain_metadata;
 pub mod dammsum;
 pub mod emoji;

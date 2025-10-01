@@ -46,7 +46,6 @@ use crate::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         CoinBaseExtra,
         CoreTransactionBuilder,
         KernelBuilder,
@@ -451,19 +450,21 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
     let sender_offset = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await?;
-    let shared_secret = key_manager
-        .get_diffie_hellman_shared_secret(
-            &sender_offset.key_id,
-            wallet_payment_address
-                .public_view_key()
-                .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
-        )
-        .await?;
-    let commitment_mask = shared_secret_to_output_spending_key(&shared_secret)?;
-    let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
+    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+        private_key: sender_offset.key_id.clone().into(),
+        public_key: wallet_payment_address
+            .public_view_key()
+            .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?
+            .clone(),
+    };
 
-    let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-    let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
+    let encryption_key_id = TariKeyId::DHEncryptedData {
+        private_key: sender_offset.key_id.clone().into(),
+        public_key: wallet_payment_address
+            .public_view_key()
+            .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?
+            .clone(),
+    };
 
     let script_spending_pubkey = if stealth_payment {
         key_manager
@@ -1204,7 +1205,10 @@ mod test {
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
 
-        let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
+        let script_key_id = key_manager
+            .import_key(wallet_private_spend_key.clone(), None)
+            .await
+            .unwrap();
         let payment_id_user_data = b"This is my payment id";
         let wallet_payment_address =
             tari_common_types::tari_address::TariAddress::new_dual_address_with_default_features(
