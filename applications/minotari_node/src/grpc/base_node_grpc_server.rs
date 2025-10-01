@@ -198,6 +198,7 @@ impl BaseNodeGrpcServer {
         self.config.grpc_server_allow_methods.to_vec().contains(&grpc_method)
     }
 
+    #[allow(clippy::result_large_err)]
     fn check_method_enabled(&self, method: GrpcMethod) -> Result<(), Status> {
         if !self.is_method_enabled(method) {
             warn!(

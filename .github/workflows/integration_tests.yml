@@ -33,7 +33,7 @@ permissions: {}
 
 env:
   toolchain: stable
-  nightly_toolchain: nightly-2025-06-01
+  nightly_toolchain: nightly-2025-06-24
   RUSTUP_PERMIT_COPY_RENAME: true
 
 concurrency:

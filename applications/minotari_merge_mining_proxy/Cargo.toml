@@ -3,6 +3,7 @@ name = "minotari_merge_mining_proxy"
 description = "The Tari merge mining proxy for xmrig"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

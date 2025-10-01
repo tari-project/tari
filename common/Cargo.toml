@@ -4,6 +4,7 @@ description = "Utilities and features for the Tari domain layer, shared across b
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

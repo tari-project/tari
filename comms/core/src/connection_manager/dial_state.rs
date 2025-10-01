@@ -75,7 +75,7 @@ impl DialState {
     pub fn send_reply(
         &mut self,
         result: Result<PeerConnection, ConnectionManagerError>,
-    ) -> Result<(), Result<PeerConnection, ConnectionManagerError>> {
+    ) -> Result<(), Box<Result<PeerConnection, ConnectionManagerError>>> {
         if let Some(reply) = self.reply_tx.take() {
             reply.send(result)?;
             return Ok(());

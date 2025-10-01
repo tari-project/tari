@@ -17,9 +17,8 @@ permissions: {}
 
 env:
   toolchain: stable
-  toolchain_msrv: 1.89.0
   toolchain_msrv-reject-older: 1.80.0
-  nightly_toolchain: nightly-2025-06-01
+  nightly_toolchain: nightly-2025-06-24
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -223,8 +222,7 @@ jobs:
         if: startsWith(matrix.rust,'msrv')
         run: |
           if [[ "${{ matrix.rust }}" == 'msrv' ]]; then
-            #version=$(grep -m1 '^rust-version' Cargo.toml | sed 's/[^0-9.]//g')
-            version=${{ env.toolchain_msrv }}
+            version=$(grep -m1 '^rust-version' Cargo.toml | sed 's/[^0-9.]//g')
           else
             version=${{ env.toolchain_msrv-reject-older }}
           fi
