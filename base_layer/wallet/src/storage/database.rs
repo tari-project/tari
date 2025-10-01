@@ -25,16 +25,24 @@ use std::{
     sync::Arc,
 };
 
-use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    seeds::cipher_seed::CipherSeed,
+    types::CompressedCommitment,
+    wallet_types::WalletType,
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
 };
 use tari_utilities::SafePassword;
 
-use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
+use crate::{
+    error::WalletStorageError,
+    storage::sqlite_db::models::DbBurnProof,
+    utxo_scanner_service::service::ScannedBlock,
+};
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -62,15 +70,12 @@ pub trait WalletBackend: Send + Sync + Clone {
     /// Change the passphrase used to encrypt the database
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
 
-    fn create_burnt_proof(
+    fn fetch_burn_proofs(&self) -> Result<Vec<DbBurnProof>, WalletStorageError>;
+    fn get_burn_proof_by_commitment(
         &self,
-        id: u32,
-        reciprocal_claim_public_key: String,
-        payload: String,
-    ) -> Result<(), WalletStorageError>;
-    fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError>;
-    fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError>;
-    fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError>;
+        commitment: &CompressedCommitment,
+    ) -> Result<Option<DbBurnProof>, WalletStorageError>;
+    fn delete_burn_proof(&self, id: i32) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -336,26 +341,19 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn create_burnt_proof(
+    pub fn get_all_burn_proofs(&self) -> Result<Vec<DbBurnProof>, WalletStorageError> {
+        self.db.fetch_burn_proofs()
+    }
+
+    pub fn get_burn_proof_by_commitment(
         &self,
-        id: u32,
-        reciprocal_claim_public_key: String,
-        payload: String,
-    ) -> Result<(), WalletStorageError> {
-        self.db.create_burnt_proof(id, reciprocal_claim_public_key, payload)?;
-        Ok(())
+        commitment: &CompressedCommitment,
+    ) -> Result<Option<DbBurnProof>, WalletStorageError> {
+        self.db.get_burn_proof_by_commitment(commitment)
     }
 
-    pub fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError> {
-        self.db.fetch_burnt_proof(id)
-    }
-
-    pub fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError> {
-        self.db.fetch_burnt_proofs()
-    }
-
-    pub fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError> {
-        self.db.delete_burnt_proof(id)
+    pub fn delete_burn_proof(&self, id: i32) -> Result<(), WalletStorageError> {
+        self.db.delete_burn_proof(id)
     }
 
     pub fn get_wallet_type(&self) -> Result<Option<WalletType>, WalletStorageError> {

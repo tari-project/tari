@@ -20,14 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::ristretto::RistrettoComSig;
+use serde::{Deserialize, Serialize};
 
-use crate::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey};
+use crate::{
+    serializers,
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature},
+};
 
-#[derive(Debug, Clone)]
-pub struct BurntProof {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BurnClaimProof {
+    /// Public key used in the DH exchange to derive the decryption key
     pub reciprocal_claim_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,
-    pub ownership_proof: Option<RistrettoComSig>,
-    pub range_proof: BulletRangeProof,
+    pub ownership_proof: CompressedSignature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncodedMerkleProof {
+    #[serde(with = "serializers::base64")]
+    pub block_hash: BlockHash,
+    #[serde(with = "serializers::base64")]
+    pub encoded_merkle_proof: Vec<u8>,
+    pub leaf_index: u64,
 }

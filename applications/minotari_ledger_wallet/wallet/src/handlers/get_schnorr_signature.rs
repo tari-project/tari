@@ -91,7 +91,6 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&signature.get_public_nonce().to_vec());
     comm.append(&signature.get_signature().to_vec());
-    comm.reply_ok();
 
     Ok(())
 }
@@ -150,7 +149,6 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&signature.get_public_nonce().to_vec());
     comm.append(&signature.get_signature().to_vec());
-    comm.reply_ok();
 
     Ok(())
 }

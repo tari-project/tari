@@ -31,7 +31,7 @@ use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{MemoField, OutputType, TransactionError, TransactionOutput, WalletOutput},
+    transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
     MicroMinotari,
 };
 use tari_utilities::hex::Hex;
@@ -235,7 +235,7 @@ where
                 TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());
-                self.master_key_manager.import_key(private_key).await?
+                self.master_key_manager.import_key(private_key, None).await?
             };
             let public_key = self.master_key_manager.get_public_key_at_key_id(&key).await?;
             (inputs!(public_key), key)
@@ -282,13 +282,15 @@ where
         };
         let (key, committed_value, payment_id) = match self
             .master_key_manager
-            .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
-            .await
+            .try_output_key_recovery(
+                output.commitment(),
+                output.encrypted_data(),
+                &output.sender_offset_public_key,
+            )
+            .await?
         {
-            Ok(value) => value,
-            // Key manager errors here are actual errors and should not be suppressed.
-            Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
-            Err(_) => return Ok(None),
+            Some(value) => value,
+            _ => return Ok(None),
         };
 
         Ok(Some((key, committed_value, payment_id)))

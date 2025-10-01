@@ -55,8 +55,8 @@ use crate::output_manager_service::{
     },
     UtxoSelectionCriteria,
 };
+
 /// API Request enum
-#[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
     GetBalancePaymentId(Vec<u8>),
@@ -110,6 +110,9 @@ pub enum OutputManagerRequest {
     GetOutputsByQuery(OutputBackendQuery),
     GetUnspentOutputs,
     GetInvalidOutputs,
+    GetManyOutputs {
+        outputs: Vec<FixedHash>,
+    },
     ValidateTxos,
     RevalidateTxos,
     CreateCoinSplit((Vec<CompressedCommitment>, MicroMinotari, usize, MicroMinotari)),
@@ -271,6 +274,7 @@ impl fmt::Display for OutputManagerRequest {
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
             ScanOutputsForMultisig(outputs) => write!(f, "ScanOutputsForMultisig: {:?}", outputs),
+            GetManyOutputs { outputs } => write!(f, "GetManyOutputs ({})", outputs.len()),
         }
     }
 }
@@ -598,6 +602,17 @@ where KM: TransactionKeyManagerInterface
             .await??
         {
             OutputManagerResponse::TransactionCancelled => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_many_outputs(&mut self, outputs: Vec<FixedHash>) -> Result<Vec<WalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetManyOutputs { outputs })
+            .await??
+        {
+            OutputManagerResponse::Outputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

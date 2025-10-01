@@ -109,14 +109,14 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
-            BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             BlockHeaderSyncError::PeerNotFound => None,
             BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 
             // short ban
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
             err @ BlockHeaderSyncError::RpcError { .. } |
-            err @ BlockHeaderSyncError::RpcRequestError { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::RpcRequestError { .. } |
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),

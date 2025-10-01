@@ -17,7 +17,7 @@ permissions: {}
 
 env:
   toolchain: stable
-  nightly_toolchain: nightly-2025-06-01
+  nightly_toolchain: nightly-2025-06-24
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -41,10 +41,10 @@ jobs:
       - name: checkout
         uses: actions/checkout@v5
       - name: toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.nightly_toolchain }}
-          components: clippy, rustfmt
+          toolchain: ${{ env.toolchain }}
+          components: clippy
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -72,16 +72,12 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
-      - name: rust-toolchain.toml override by renaming
-        run: mv rust-toolchain.toml rust-toolchain.toml.bak
-      - name: cargo format
-        run: cargo +${{ env.nightly_toolchain }} fmt --all -- --check
-      - name: rust-toolchain.toml.bak renaming back
-        run: mv rust-toolchain.toml.bak rust-toolchain.toml
       - name: Install cargo-lints
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
-        run: cargo lints clippy --all-targets --all-features
+        run: |
+          rustup component add --toolchain stable-x86_64-unknown-linux-gnu clippy
+          cargo lints clippy --all-targets --all-features
       - name: cargo machete
         run: |
           cargo install cargo-machete@0.7.0
@@ -92,12 +88,16 @@ jobs:
         run: |
           cargo install cargo-vet@0.10.0 --locked
           cargo vet
+      - name: Install nightly with rustfmt
+        run: rustup toolchain install ${{ env.nightly_toolchain }} --component rustfmt
+      - name: cargo format
+        run: cargo +${{ env.nightly_toolchain }} fmt --all -- --check
 
   ledger-build-tests:
     name: ledger build tests
     runs-on: [ubuntu-latest]
     env:
-      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:4.2.0"
+      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:4.15.0"
     steps:
       - name: checkout tari
         uses: actions/checkout@v5
@@ -268,7 +268,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v5
       - name: toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.toolchain }}
       - name: ubuntu dependencies

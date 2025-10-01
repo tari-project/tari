@@ -22,6 +22,7 @@
 
 // use diesel::result::Error as DieselError;
 // use tari_common_sqlite::error::{SqliteStorageError, StorageError};
+
 use tari_common_types::tari_address::TariAddressError;
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -88,6 +89,9 @@ pub enum KeyManagerServiceError {
     DecryptionFailed(String),
     #[error("Initialization error: `{0}`")]
     InitializationError(String),
+
+    #[error("Key manager does not have storage")]
+    NoStorage,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

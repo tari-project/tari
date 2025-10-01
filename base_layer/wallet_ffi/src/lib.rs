@@ -325,19 +325,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 .mined_timestamp
                 .map(|ts| ts.timestamp_millis() as u64)
                 .unwrap_or_default(),
-            status: match x.status {
-                OutputStatus::Unspent => 0,
-                OutputStatus::Spent => 1,
-                OutputStatus::EncumberedToBeReceived => 2,
-                OutputStatus::EncumberedToBeSpent => 3,
-                OutputStatus::Invalid => 4,
-                OutputStatus::CancelledInbound => 5,
-                OutputStatus::UnspentMinedUnconfirmed => 6,
-                OutputStatus::ShortTermEncumberedToBeReceived => 7,
-                OutputStatus::ShortTermEncumberedToBeSpent => 8,
-                OutputStatus::SpentMinedUnconfirmed => 9,
-                OutputStatus::NotStored => 10,
-            },
+            status: x.status.as_u8(),
             coinbase_extra: CString::new(x.wallet_output.features().coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),

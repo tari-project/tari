@@ -54,7 +54,7 @@ pub async fn create_memory_db_key_manager_with_range_proof_size(
     let key_ga = Key::from_slice(key.as_ref());
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(size);
-    TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
+    TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new_with_legacy_storage(
         Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
@@ -77,7 +77,7 @@ pub async fn create_memory_db_key_manager_from_seed(
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(rangeproof_size);
 
-    TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
+    TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new_with_legacy_storage(
         Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,

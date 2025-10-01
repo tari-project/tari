@@ -3,6 +3,7 @@ name = "tari_transaction_components"
 description = "Core Tari transaction components"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -10,6 +11,7 @@ license.workspace = true
 [features]
 ledger = ["minotari_ledger_wallet_comms"]
 wasm = ["wasm-bindgen"]
+
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }
@@ -21,7 +23,6 @@ tari_script = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_utilities = { workspace = true }
 
-
 anyhow = "1.0.53"
 async-trait = { version = "0.1.50" }
 bitflags = { version = "2.4", features = ["serde"] }
@@ -29,7 +30,7 @@ borsh = { version = "1.5.7", features = ["derive"] }
 
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "now"] }
 
 derivative = "2.2.0"
 decimal-rs = "0.1.42"

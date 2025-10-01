@@ -34,7 +34,6 @@ mod ui;
 mod utils;
 mod wallet_modes;
 pub use cli::{
-    BurnMinotariArgs,
     Cli,
     CliCommands,
     CoinSplitArgs,

@@ -29,26 +29,30 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
+    burn_proof::{BurnClaimProof, EncodedMerkleProof},
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{MemoField, Transaction, TransactionOutput},
+    transaction_components::{MemoField, Transaction, TransactionKernel, TransactionOutput},
     MicroMinotari,
 };
 
-use crate::transaction_service::{
-    error::TransactionStorageError,
-    storage::{
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+use crate::{
+    storage::sqlite_db::models::DbBurnProof,
+    transaction_service::{
+        error::TransactionStorageError,
+        storage::{
+            models::{
+                CompletedTransaction,
+                InboundTransaction,
+                OutboundTransaction,
+                TxCancellationReason,
+                WalletTransaction,
+            },
+            sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
         },
-        sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
     },
 };
 
@@ -134,7 +138,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         must_be_confirmed: bool,
-        status: &LegacyTransactionStatus,
+        status: LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -181,6 +185,20 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
     fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError>;
+    fn insert_burn_proof(
+        &self,
+        output_hash: FixedHash,
+        proof: &BurnClaimProof,
+
+        kernel: &TransactionKernel,
+    ) -> Result<(), TransactionStorageError>;
+    fn update_burn_proof_set_merkle_proof(
+        &self,
+        output_hash: &FixedHash,
+        merkle_proof: &EncodedMerkleProof,
+    ) -> Result<(), TransactionStorageError>;
+
+    fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -846,7 +864,7 @@ where T: TransactionBackend + 'static
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         must_be_confirmed: bool,
-        status: &LegacyTransactionStatus,
+        status: LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,
@@ -883,6 +901,27 @@ where T: TransactionBackend + 'static
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.db
             .find_completed_transactions_paginated(offset, limit, status_filter)
+    }
+
+    pub fn insert_burn_proof(
+        &self,
+        output_hash: FixedHash,
+        proof: &BurnClaimProof,
+        kernel: &TransactionKernel,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.insert_burn_proof(output_hash, proof, kernel)
+    }
+
+    pub fn update_burn_proof_set_merkle_proof(
+        &self,
+        output_hash: &FixedHash,
+        merkle_proof: &EncodedMerkleProof,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.update_burn_proof_set_merkle_proof(output_hash, merkle_proof)
+    }
+
+    pub fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError> {
+        self.db.fetch_burn_proof(output_hash)
     }
 }
 

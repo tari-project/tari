@@ -11,6 +11,7 @@ use tari_transaction_components::{
         models,
         models::{
             BlockUtxoInfo,
+            GenerateKernelMerkleProofResponse,
             GetUtxosByBlockRequest,
             GetUtxosByBlockResponse,
             MinimalUtxoSyncInfo,
@@ -56,6 +57,14 @@ pub enum Error {
     HeaderHashNotFound,
     #[error("Start header height {start_height} cannot be greater than the end header height {end_height}")]
     HeaderHeightMismatch { start_height: u64, end_height: u64 },
+    #[error("A general error occurred: {0}")]
+    General(anyhow::Error),
+}
+
+impl Error {
+    fn general(err: impl Into<anyhow::Error>) -> Self {
+        Error::General(err.into())
+    }
 }
 
 pub struct Service<B> {
@@ -500,6 +509,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             utxos,
             best_block_hash: tip_header.hash().to_vec(),
             best_block_height: tip_header.height(),
+        })
+    }
+
+    async fn generate_kernel_merkle_proof(
+        &self,
+        excess_sig: types::CompressedSignature,
+    ) -> Result<GenerateKernelMerkleProofResponse, Self::Error> {
+        let proof = self.db().generate_kernel_merkle_proof(excess_sig).await?;
+        Ok(GenerateKernelMerkleProofResponse {
+            encoded_merkle_proof: bincode::serialize(&proof.merkle_proof).map_err(Error::general)?,
+            block_hash: proof.block_hash,
+            leaf_index: proof.leaf_index.value() as u64,
         })
     }
 }

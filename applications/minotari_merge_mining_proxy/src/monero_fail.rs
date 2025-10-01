@@ -343,6 +343,8 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
+    use tokio::time::timeout;
+
     use crate::{
         config::MergeMiningProxyConfig,
         error::MmProxyError::HtmlParseError,
@@ -362,30 +364,38 @@ mod test {
         connection_test_timeout: Duration,
         monero_fail_url: &str,
     ) -> Vec<MonerodEntry> {
-        match get_monerod_info(
-            number_of_entries,
-            connection_test_timeout,
-            monero_fail_url,
-            get_tari_monerod_entries(monero_fail_url),
+        let result = timeout(
+            Duration::from_secs(10),
+            get_monerod_info(
+                number_of_entries,
+                connection_test_timeout,
+                monero_fail_url,
+                get_tari_monerod_entries(monero_fail_url),
+            ),
         )
-        .await
-        {
-            Ok(val) => val,
-            Err(HtmlParseError(val)) => {
-                if val.contains("No public monero servers available") {
+        .await;
+
+        match result {
+            Ok(Ok(val)) => val,
+            Ok(Err(HtmlParseError(val))) => {
+                if val.is_empty() || val.contains("No public monero servers available") {
                     println!("Cannot complete test: {val}");
                     vec![]
                 } else {
                     panic!("Unexpected error: {val}");
                 }
             },
-            Err(err) => {
+            Ok(Err(err)) => {
                 if err.to_string().contains("Failed to send request to monerod") {
                     println!("Cannot complete test: {err}");
                     vec![]
                 } else {
                     panic!("Unexpected error: {err}");
                 }
+            },
+            Err(_) => {
+                println!("Cannot complete test: operation timed out");
+                vec![]
             },
         }
     }
@@ -501,14 +511,19 @@ mod test {
     #[tokio::test]
     async fn test_table_structure() {
         let config = MergeMiningProxyConfig::default();
-        let html_content = match get_monerod_html(&config.monero_fail_url).await {
-            Ok(val) => val,
-            Err(err) => {
+
+        let html_content = match timeout(Duration::from_secs(10), get_monerod_html(&config.monero_fail_url)).await {
+            Ok(Ok(val)) => val,
+            Ok(Err(err)) => {
                 if err.to_string().contains("Failed to send request to monerod") {
                     println!("Cannot complete test: {err}");
                     return;
                 }
                 panic!("Unexpected error: {err}");
+            },
+            Err(_) => {
+                println!("Cannot complete test: operation timed out");
+                return;
             },
         };
 

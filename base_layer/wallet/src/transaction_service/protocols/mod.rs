@@ -29,6 +29,7 @@ use tari_comms::protocol::rpc;
 use crate::transaction_service::error::{TransactionServiceError, TransactionServiceProtocolError};
 
 pub mod check_faux_transaction_status;
+pub mod fetch_claim_burn_merkle_proofs;
 pub mod transaction_broadcast_protocol;
 pub mod transaction_validation_protocol;
 

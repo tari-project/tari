@@ -31,7 +31,6 @@ use crate::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         CoreTransactionBuilder,
         KernelBuilder,
         KernelFeatures,
@@ -176,28 +175,26 @@ where KM: TransactionKeyManagerInterface
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                destination
-                    .public_view_key()
-                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
-            )
-            .await?;
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-        let commitment_mask_key_id = self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
+        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_private_key.key_id.clone().into(),
+            public_key: destination
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
 
+        let encryption_key = TariKeyId::DHEncryptedData {
+            private_key: sender_offset_private_key.key_id.clone().into(),
+            public_key: destination
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
         let script_spending_key = self
             .key_manager
             .stealth_address_script_spending_key(&commitment_mask_key_id, destination.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self.key_manager.import_key(encryption_private_key).await?;
 
         let sender_offset_public_key = self
             .key_manager
@@ -239,24 +236,23 @@ where KM: TransactionKeyManagerInterface
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let shared_secret = self
-            .key_manager
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                destination
-                    .public_view_key()
-                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
-            )
-            .await?;
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-        let commitment_mask_key_id = self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
+        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+            private_key: sender_offset_private_key.key_id.clone().into(),
+            public_key: destination
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
+
+        let encryption_key = TariKeyId::DHEncryptedData {
+            private_key: sender_offset_private_key.key_id.clone().into(),
+            public_key: destination
+                .public_view_key()
+                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                .clone(),
+        };
 
         let script = push_pubkey_script(destination.public_spend_key());
-
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self.key_manager.import_key(encryption_private_key).await?;
 
         let sender_offset_public_key = self
             .key_manager
@@ -983,6 +979,10 @@ impl<KM> Debug for TransactionBuilder<KM> {
 
 #[cfg(test)]
 mod test {
+    use crate::transaction_components::one_sided::{
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_spending_key,
+    };
 
     async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {
         let cipher = CipherSeed::random();
@@ -990,8 +990,7 @@ mod test {
         OsRng.fill_bytes(key.as_mut());
         let factory = CryptoFactories::new(64);
 
-        let backend = MemoryKeyManagerBackend::new();
-        TransactionKeyManagerWrapper::new(cipher, backend, factory, Arc::new(WalletType::ProvidedKeys(keys))).await
+        TransactionKeyManagerWrapper::new(cipher, factory, Arc::new(WalletType::ProvidedKeys(keys))).await
     }
 
     use std::sync::Arc;
@@ -1015,7 +1014,6 @@ mod test {
         key_manager::{
             create_memory_key_manager,
             error::KeyManagerServiceError,
-            memory_key_manager::MemoryKeyManagerBackend,
             MemoryKeyManager,
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerWrapper,

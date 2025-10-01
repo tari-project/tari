@@ -1,11 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    burnt_proofs (id) {
+    burn_proofs (id) {
         id -> Integer,
-        reciprocal_claim_public_key -> Text,
-        payload -> Text,
-        burned_at -> Timestamp,
+        output_hash -> Binary,
+        commitment -> Binary,
+        burn_proof -> Binary,
+        kernel -> Binary,
+        kernel_merkle_proof -> Nullable<Binary>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
 
@@ -156,7 +160,7 @@ diesel::table! {
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
-    burnt_proofs,
+    burn_proofs,
     client_key_values,
     completed_transactions,
     inbound_transactions,

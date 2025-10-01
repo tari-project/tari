@@ -38,9 +38,7 @@ use crate::{
     key_manager::{interface::TransactionKeyManagerBackend, TransactionKeyManagerWrapper},
 };
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
-pub struct TransactionKeyManagerInitializer<T>
-where T: TransactionKeyManagerBackend
-{
+pub struct TransactionKeyManagerInitializer<T> {
     backend: Option<T>,
     master_seed: Option<CipherSeed>,
     crypto_factories: CryptoFactories,
@@ -51,7 +49,7 @@ impl<T> TransactionKeyManagerInitializer<T>
 where T: TransactionKeyManagerBackend + 'static
 {
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
-    pub fn new(
+    pub fn new_with_legacy_storage(
         backend: T,
         master_seed: Option<CipherSeed>,
         crypto_factories: CryptoFactories,
@@ -66,23 +64,45 @@ where T: TransactionKeyManagerBackend + 'static
     }
 }
 
+impl<T> TransactionKeyManagerInitializer<T> {
+    /// Creates a new [TransactionKeyManagerInitializer] from the [CipherSeed]
+    pub fn new(master_seed: CipherSeed, crypto_factories: CryptoFactories, wallet_type: Arc<WalletType>) -> Self {
+        Self {
+            backend: None,
+            master_seed,
+            crypto_factories,
+            wallet_type,
+        }
+    }
+}
 #[async_trait]
 impl<T> ServiceInitializer for TransactionKeyManagerInitializer<T>
 where T: TransactionKeyManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let backend = self
-            .backend
-            .take()
-            .expect("Cannot start Key Manager Service without setting a storage backend");
+        let key_manager = match self.backend.take() {
+            Some(backend) => {
+                let key_manager: TransactionKeyManagerWrapper<T> =
+                    TransactionKeyManagerWrapper::new_with_legacy_storage(
+                        self.master_seed.clone(),
+                        backend,
+                        self.crypto_factories.clone(),
+                        self.wallet_type.clone(),
+                    )
+                    .await?;
+                key_manager
+            },
+            None => {
+                let key_manager: TransactionKeyManagerWrapper<T> = TransactionKeyManagerWrapper::new(
+                    self.master_seed.clone(),
+                    self.crypto_factories.clone(),
+                    self.wallet_type.clone(),
+                )
+                .await?;
+                key_manager
+            },
+        };
 
-        let key_manager: TransactionKeyManagerWrapper<T> = TransactionKeyManagerWrapper::new(
-            self.master_seed.clone(),
-            backend,
-            self.crypto_factories.clone(),
-            self.wallet_type.clone(),
-        )
-        .await?;
         context.register_handle(key_manager);
 
         Ok(())

@@ -200,7 +200,6 @@ pub fn handler_get_script_offset(
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
     offset_ctx.reset();
-    comm.reply_ok();
 
     Ok(())
 }

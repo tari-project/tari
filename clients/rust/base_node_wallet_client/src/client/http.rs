@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
+use serde::de::DeserializeOwned;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::{
@@ -13,6 +14,7 @@ use tari_transaction_components::{
         models::{
             BlockHeader,
             FeePerGramStat,
+            GenerateKernelMerkleProofResponse,
             GetUtxosDeletedInfoResponse,
             GetUtxosMinedInfoResponse,
             SyncUtxosByBlockResponse,
@@ -24,7 +26,7 @@ use tari_transaction_components::{
     transaction_components::{Transaction, TransactionOutput},
     MicroMinotari,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{to_hex, Hex};
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
 
@@ -111,6 +113,41 @@ impl Client {
             *self.use_local_api_address.write().await = Some(true);
             Ok(&self.local_api_address)
         }
+    }
+
+    async fn generate_request_url(&self, path: &str, query: &[(&str, String)]) -> Result<Url, anyhow::Error> {
+        let base_url = self.http_server_address().await?;
+        let mut url = base_url.join(path)?;
+        if !query.is_empty() {
+            let query_string: String = query
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
+                .join("&");
+            url.set_query(Some(&query_string));
+        }
+        Ok(url)
+    }
+
+    async fn send_get_request<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query_params: &[(&str, String)],
+    ) -> Result<T, anyhow::Error> {
+        let timer = Instant::now();
+        let url = self.generate_request_url(path, query_params).await?;
+        let res = self.http_client.get(url).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {status}. {body}"
+            ));
+        }
+        let resp = res.json().await?;
+        self.set_last_latency(timer.elapsed()).await;
+        Ok(resp)
     }
 }
 
@@ -487,5 +524,20 @@ impl BaseNodeWalletClient for Client {
             avg_fee_per_gram: MicroMinotari::from(1),
             max_fee_per_gram: MicroMinotari::from(1),
         }) // Placeholder implementation
+    }
+
+    async fn get_kernel_merkle_proof(
+        &self,
+        excess_sig_nonce: &[u8],
+        excess_sig: &[u8],
+    ) -> Result<GenerateKernelMerkleProofResponse, anyhow::Error> {
+        let resp = self
+            .send_get_request("/generate_kernel_merkle_proof", &[
+                ("excess_sig_public_nonce", to_hex(excess_sig_nonce)),
+                ("excess_sig_signature", to_hex(excess_sig)),
+            ])
+            .await?;
+
+        Ok(resp)
     }
 }
