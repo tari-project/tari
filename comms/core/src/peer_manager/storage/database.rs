@@ -3132,7 +3132,7 @@ mod tests {
 
         // Assert that the addresses list contains a single empty entry
         assert_eq!(peer_from_db.addresses.addresses().len(), 1);
-        // Assert that all other va;ues are empty or zero
+        // Assert that all other values are empty or zero
         assert_eq!(peer_from_db.addresses.addresses()[0].address(), &Multiaddr::empty());
         assert_eq!(peer_from_db.addresses.addresses()[0].last_seen(), None,);
         assert_eq!(peer_from_db.addresses.addresses()[0].connection_attempts(), 0);
