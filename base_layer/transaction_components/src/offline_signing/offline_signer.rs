@@ -70,7 +70,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         payment_id: MemoField,
         sender_address: TariAddress,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionBuilderError> {
-        tx_builder.with_memo(payment_id.clone());
+        tx_builder.with_memo(payment_id.clone())
         // we do this to ensure the fee is calculated correctly
         tx_builder
             .add_stealth_recipient(
@@ -154,6 +154,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         sender: TariAddress,
         recipient: TariAddress,
     ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
+        tx_builder.with_memo(payment_id.clone())
         // we do this to ensure the fee is calculated correctly
         tx_builder
             .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
@@ -226,6 +227,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         sender: TariAddress,
         recipient: TariAddress,
     ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
+        tx_builder.with_memo(payment_id.clone())
         tx_builder
             .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
             .await?;
