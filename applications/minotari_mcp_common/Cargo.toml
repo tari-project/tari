@@ -2,6 +2,7 @@
 name = "minotari_mcp_common"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

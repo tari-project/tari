@@ -217,7 +217,7 @@ impl BlockTemplateManager<'_> {
             })
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {
-                status,
+                status: Box::new(status),
                 details: "failed to get new block template".to_string(),
             })?
             .into_inner();

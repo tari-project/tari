@@ -512,7 +512,7 @@ async fn submit_block(
                     wallet_payment_address: wallet_payment_address.to_hex(),
                 })
                 .await
-                .map_err(MinerError::GrpcStatus)?
+                .map_err(MinerError::from)?
                 .into_inner());
         }
     }
@@ -520,7 +520,7 @@ async fn submit_block(
     Ok(base_node_client
         .submit_block(block)
         .await
-        .map_err(MinerError::GrpcStatus)?
+        .map_err(MinerError::from)?
         .into_inner())
 }
 

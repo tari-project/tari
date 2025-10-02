@@ -30,7 +30,7 @@ pub enum MinerError {
     #[error("I/O error")]
     IOError(#[from] std::io::Error),
     #[error("gRPC error: {0}")]
-    GrpcStatus(#[from] tonic::Status),
+    GrpcStatus(Box<tonic::Status>),
     #[error("Connection error: {0}")]
     GrpcConnection(#[from] tonic::transport::Error),
     #[error("Node not ready")]
@@ -69,4 +69,10 @@ pub enum MinerError {
 
 pub fn err_empty(name: &str) -> MinerError {
     MinerError::EmptyObject(name.to_string())
+}
+
+impl From<tonic::Status> for MinerError {
+    fn from(status: tonic::Status) -> Self {
+        MinerError::GrpcStatus(Box::new(status))
+    }
 }
