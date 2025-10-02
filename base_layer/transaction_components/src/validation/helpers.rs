@@ -266,7 +266,6 @@ mod test {
             let mut key_manager = create_memory_key_manager().await.unwrap();
             let test_params = TestParams::new(&mut key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut key_manager = create_memory_key_manager().await.unwrap();
             let coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
