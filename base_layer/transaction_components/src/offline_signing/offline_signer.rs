@@ -70,6 +70,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         payment_id: MemoField,
         sender_address: TariAddress,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionBuilderError> {
+        tx_builder.with_memo(payment_id.clone());
         // we do this to ensure the fee is calculated correctly
         tx_builder
             .add_stealth_recipient(
