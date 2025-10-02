@@ -310,7 +310,7 @@ service Wallet {
   // {
   //   "is_success": false,
   //   "result": "",
-  //   "failure_message": "Destination address is malformed"
+  //   "failure_message": "Destination address is malformed."
   // }
   // ```
   rpc PrepareOneSidedTransactionForSigning (PrepareOneSidedTransactionForSigningRequest)  returns (PrepareOneSidedTransactionForSigningResponse);
