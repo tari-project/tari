@@ -803,7 +803,7 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
-        for recipient in self.recipient_outputs.iter_mut() {
+        for recipient in &mut self.recipient_outputs {
             Self::change_encrypted_data_if_fee_changed(
                 &self.key_manager,
                 &mut recipient.output,
@@ -862,7 +862,7 @@ where KM: TransactionKeyManagerInterface
             script_keys.push(input.output.script_key_id().clone());
         }
 
-        for output in self.custom_outputs.iter_mut() {
+        for output in &mut self.custom_outputs {
             Self::change_encrypted_data_if_fee_changed(&self.key_manager, output, &self.own_address, total_fee).await?;
             signature = &signature +
                 self.key_manager
