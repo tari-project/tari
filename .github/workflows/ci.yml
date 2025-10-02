@@ -224,7 +224,7 @@ jobs:
           if [[ "${{ matrix.rust }}" == 'msrv' ]]; then
             version=$(grep -m1 '^rust-version' Cargo.toml | sed 's/[^0-9.]//g')
           else
-            version=${{ env.toolchain_msrv-reject-older }}
+            version=${{ env.toolchain_msrv_reject_older }}
           fi
           echo "version=$version" >> $GITHUB_OUTPUT
           # Temporary disable toolchain pinning
