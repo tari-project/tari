@@ -1518,6 +1518,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_memo(payment_id.clone())
             .with_input(input.clone())
             .await?;
         let sender_offset_private_key_id_self = self
@@ -1669,7 +1670,8 @@ where
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_kernel_features(KernelFeatures::empty());
+            .with_kernel_features(KernelFeatures::empty())
+            .with_memo(payment_id.clone());
 
         for kmo in input_selection.iter() {
             tx_builder.with_input(kmo.wallet_output.clone()).await?;
