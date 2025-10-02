@@ -184,7 +184,7 @@ jobs:
         rust:
           - stable
           - msrv
-          # - msrv-reject-older
+          # - msrv_reject_older
 
     env:
       RUSTUP_PERMIT_COPY_RENAME: true
