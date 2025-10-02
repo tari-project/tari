@@ -610,24 +610,24 @@ impl PeerDatabaseSql {
                     .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
             });
         }
-        if peer.addresses.addresses().is_empty() {
-            new_addresses_sql.push(NewMultiaddrWithStatsSql {
-                address_id: None, // This will be set automatically
-                peer_id: 0,       // This will be set automatically
-                address: "".to_string(),
-                is_external: false,
-                last_seen: None,
-                connection_attempts: 0,
-                avg_initial_dial_time: None,
-                initial_dial_time_sample_count: 0,
-                avg_latency: None,
-                latency_sample_count: 0,
-                last_attempted: None,
-                last_failed_reason: None,
-                quality_score: None,
-                source: "null".to_string(),
-            });
-        }
+        // if peer.addresses.addresses().is_empty() {
+        //     new_addresses_sql.push(NewMultiaddrWithStatsSql {
+        //         address_id: None, // This will be set automatically
+        //         peer_id: 0,       // This will be set automatically
+        //         address: "".to_string(),
+        //         is_external: false,
+        //         last_seen: None,
+        //         connection_attempts: 0,
+        //         avg_initial_dial_time: None,
+        //         initial_dial_time_sample_count: 0,
+        //         avg_latency: None,
+        //         latency_sample_count: 0,
+        //         last_attempted: None,
+        //         last_failed_reason: None,
+        //         quality_score: None,
+        //         source: "null".to_string(),
+        //     });
+        // }
 
         let new_peer_sql = NewPeerWithAddressesSql {
             peer: new_peer_sql,
@@ -1047,6 +1047,35 @@ impl PeerDatabaseSql {
         })
     }
 
+    // Helper function to convert a Vec of left join query results into a Vec of Peer
+    fn peers_from_left_join_query(
+        results: Vec<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>
+    ) -> Result<Vec<Peer>, StorageError> {
+        use std::collections::HashMap;
+
+        if results.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut peer_map: HashMap<i64, (NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> =
+            HashMap::with_capacity(results.len());
+
+        for (peer, addr_opt) in results {
+            let entry = peer_map.entry(peer.peer_id).or_insert_with(|| (peer, Vec::new()));
+            if let Some(addr) = addr_opt {
+                entry.1.push(addr);
+            }
+        }
+
+        let peers = peer_map
+            .into_iter()
+            .map(|(_, (peer, addresses))| Peer::try_from((peer, addresses)))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(peers)
+    }
+
+
     // Helper function to convert a Vec of join query results into a Vec of Peer
     fn peers_from_join_query(results: Vec<(NewPeerSql, NewMultiaddrWithStatsSql)>) -> Result<Vec<Peer>, StorageError> {
         if results.is_empty() {
@@ -1092,24 +1121,27 @@ impl PeerDatabaseSql {
         let mut results;
         if start_bytes.len() > NodeId::byte_size() {
             results = peers::table
-                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .left_outer_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::public_key.like(format!("{partial_key}%")))
-                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+                .select((peers::all_columns, multi_addresses::all_columns.nullable()))
+                .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(&mut conn)?;
         } else {
             results = peers::table
-                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .left_outer_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::node_id.like(format!("{partial_key}%")))
-                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+                .select((peers::all_columns, multi_addresses::all_columns.nullable()))
+                .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(&mut conn)?;
 
             let mut public_key_match = peers::table
-                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .left_outer_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::public_key.like(format!("{partial_key}%")))
-                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+                .select((peers::all_columns, multi_addresses::all_columns.nullable()))
+                .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(&mut conn)?;
 
             results.append(&mut public_key_match);
         }
 
-        PeerDatabaseSql::peers_from_join_query(results)
+        PeerDatabaseSql::peers_from_left_join_query(results)
     }
 
     /// Return all peers in the database
@@ -1125,7 +1157,7 @@ impl PeerDatabaseSql {
         conn: &mut SqliteConnection,
     ) -> Result<Vec<Peer>, StorageError> {
         let mut query = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+            .left_outer_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
             .into_boxed(); // Enables dynamic query building
 
         if let Some(features) = features {
@@ -1139,9 +1171,9 @@ impl PeerDatabaseSql {
             }
         }
 
-        let results = query.load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(conn)?;
+        let results = query.load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(conn)?;
 
-        PeerDatabaseSql::peers_from_join_query(results)
+        PeerDatabaseSql::peers_from_left_join_query(results)
     }
 
     /// Return at most `n` peers from the database that are not banned and not deleted
@@ -1225,11 +1257,12 @@ impl PeerDatabaseSql {
         // Perform a join query to fetch peers and their addresses
         let node_id = node_id.to_hex();
         let results = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+            .left_outer_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
             .filter(peers::node_id.eq(node_id))
-            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(conn)?;
+            .select((peers::all_columns, multi_addresses::all_columns.nullable()))
+            .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(conn)?;
 
-        Ok(PeerDatabaseSql::peers_from_join_query(results)?.first().cloned())
+        Ok(PeerDatabaseSql::peers_from_left_join_query(results)?.first().cloned())
     }
 
     /// Get all peers based on a list of their node_ids
@@ -1266,20 +1299,22 @@ impl PeerDatabaseSql {
     ) -> Result<Vec<Peer>, StorageError> {
         if external_addresses_only {
             let results = peers::table
-                .inner_join(
+                .left_outer_join(
                     multi_addresses::table.on(multi_addresses::peer_id
                         .eq(peers::peer_id)
                         .and(multi_addresses::is_external.eq(true))),
                 )
                 .filter(peers::node_id.eq_any(node_ids))
-                .load(conn)?;
+                .select((peers::all_columns, multi_addresses::all_columns.nullable()))
+                .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(conn)?;
             PeerDatabaseSql::peers_from_join_query(results)
         } else {
             let results = peers::table
-                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .inner_joinleft_outer_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::node_id.eq_any(node_ids))
-                .load(conn)?;
-            PeerDatabaseSql::peers_from_join_query(results)
+                .select((peers::all_columns, multi_addresses::all_columns.nullable()))
+                .load::<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>(conn)?;
+            PeerDatabaseSql::peers_from_left_join_query(results)
         }
     }
 
@@ -1873,37 +1908,52 @@ fn u32_to_i32_infallible(value: u32) -> i32 {
 
 impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
     fn from(address: &MultiaddrWithStats) -> Self {
-        if address.address().is_empty() {
-            UpdateMultiaddrWithStatsSql {
-                address: None,
-                is_external: None,
-                last_seen: None,
-                connection_attempts: None,
-                avg_initial_dial_time: None,
-                initial_dial_time_sample_count: None,
-                avg_latency: None,
-                latency_sample_count: None,
-                last_attempted: None,
-                last_failed_reason: None,
-                quality_score: None,
-                source: None,
-            }
-        } else {
-            UpdateMultiaddrWithStatsSql {
-                address: Some(address.to_string()),
-                is_external: Some(address.is_external()),
-                last_seen: Some(address.last_seen()),
-                connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
-                avg_initial_dial_time: Some(duration_to_i64_ms_infallible(address.avg_initial_dial_time())),
-                initial_dial_time_sample_count: Some(u32_to_i32_infallible(address.initial_dial_time_sample_count())),
-                avg_latency: Some(duration_to_i64_ms_infallible(address.avg_latency())),
-                latency_sample_count: Some(u32_to_i32_infallible(address.latency_sample_count())),
-                last_attempted: Some(address.last_attempted()),
-                last_failed_reason: Some(address.last_failed_reason().map(|v| v.to_string())),
-                quality_score: Some(address.quality_score()),
-                source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
-            }
+        UpdateMultiaddrWithStatsSql {
+            address: Some(address.to_string()),
+            is_external: Some(address.is_external()),
+            last_seen: Some(address.last_seen()),
+            connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
+            avg_initial_dial_time: Some(duration_to_i64_ms_infallible(address.avg_initial_dial_time())),
+            initial_dial_time_sample_count: Some(u32_to_i32_infallible(address.initial_dial_time_sample_count())),
+            avg_latency: Some(duration_to_i64_ms_infallible(address.avg_latency())),
+            latency_sample_count: Some(u32_to_i32_infallible(address.latency_sample_count())),
+            last_attempted: Some(address.last_attempted()),
+            last_failed_reason: Some(address.last_failed_reason().map(|v| v.to_string())),
+            quality_score: Some(address.quality_score()),
+            source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
         }
+
+        // if address.address().is_empty() {
+        //     UpdateMultiaddrWithStatsSql {
+        //         address: None,
+        //         is_external: None,
+        //         last_seen: None,
+        //         connection_attempts: None,
+        //         avg_initial_dial_time: None,
+        //         initial_dial_time_sample_count: None,
+        //         avg_latency: None,
+        //         latency_sample_count: None,
+        //         last_attempted: None,
+        //         last_failed_reason: None,
+        //         quality_score: None,
+        //         source: None,
+        //     }
+        // } else {
+        //     UpdateMultiaddrWithStatsSql {
+        //         address: Some(address.to_string()),
+        //         is_external: Some(address.is_external()),
+        //         last_seen: Some(address.last_seen()),
+        //         connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
+        //         avg_initial_dial_time: Some(duration_to_i64_ms_infallible(address.avg_initial_dial_time())),
+        //         initial_dial_time_sample_count: Some(u32_to_i32_infallible(address.initial_dial_time_sample_count())),
+        //         avg_latency: Some(duration_to_i64_ms_infallible(address.avg_latency())),
+        //         latency_sample_count: Some(u32_to_i32_infallible(address.latency_sample_count())),
+        //         last_attempted: Some(address.last_attempted()),
+        //         last_failed_reason: Some(address.last_failed_reason().map(|v| v.to_string())),
+        //         quality_score: Some(address.quality_score()),
+        //         source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
+        //     }
+        // }
     }
 }
 
@@ -3015,6 +3065,8 @@ mod tests {
             peers_db.add_or_update_peer(peer).unwrap();
         }
         assert_eq!(peers_db.size(), 56);
+        let all_peers = peers_db.get_all_peers(None).unwrap();
+        assert_eq!(all_peers.len(), 56);
 
         // Assert that retrieved peers have external addresses only
         let nodes_with_external_addresses_only = peers_db
@@ -3139,26 +3191,8 @@ mod tests {
         assert!(peer_from_db.is_some());
         let peer_from_db = peer_from_db.unwrap();
 
-        // Assert that the addresses list contains a single empty entry
-        assert_eq!(peer_from_db.addresses.addresses().len(), 1);
-        // Assert that all other values are empty or zero
-        assert_eq!(peer_from_db.addresses.addresses()[0].address(), &Multiaddr::empty());
-        assert_eq!(peer_from_db.addresses.addresses()[0].last_seen(), None,);
-        assert_eq!(peer_from_db.addresses.addresses()[0].connection_attempts(), 0);
-        assert_eq!(peer_from_db.addresses.addresses()[0].avg_initial_dial_time(), None);
-        assert_eq!(
-            peer_from_db.addresses.addresses()[0].initial_dial_time_sample_count(),
-            0
-        );
-        assert_eq!(peer_from_db.addresses.addresses()[0].avg_latency(), None);
-        assert_eq!(peer_from_db.addresses.addresses()[0].latency_sample_count(), 0);
-        assert_eq!(peer_from_db.addresses.addresses()[0].last_attempted(), None);
-        assert_eq!(peer_from_db.addresses.addresses()[0].last_failed_reason(), None);
-        assert_eq!(peer_from_db.addresses.addresses()[0].quality_score(), None);
-        assert_eq!(
-            peer_from_db.addresses.addresses()[0].source(),
-            &PeerAddressSource::Config
-        );
+        // Assert that the addresses list is empty
+        assert!(peer_from_db.addresses.addresses().is_empty());
 
         // Assert that the node_id matches
         assert_eq!(peer_from_db.node_id, peer.node_id);
@@ -3166,5 +3200,19 @@ mod tests {
         // Assert that other fields match
         assert_eq!(peer_from_db.public_key, peer.public_key);
         assert_eq!(peer_from_db.features, peer.features);
+
+        // Test 'find_all_peers_match_partial_key'
+        for i in 1..NodeId::byte_size() {
+            let matches = peers_db
+                .find_all_peers_match_partial_key(&peer.node_id.as_bytes()[0..i])
+                .unwrap();
+            assert!(matches.contains(&peer));
+        }
+        for i in 1..CommsPublicKey::key_length() {
+            let matches = peers_db
+                .find_all_peers_match_partial_key(&peer.public_key.as_bytes()[0..i])
+                .unwrap();
+            assert!(matches.contains(&peer));
+        }
     }
 }
