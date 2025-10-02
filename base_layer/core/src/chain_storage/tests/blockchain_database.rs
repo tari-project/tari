@@ -502,7 +502,7 @@ mod fetch_header_containing_kernel_mmr {
         )
         .await;
 
-        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&mut key_manager).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
         let (block, _) = create_next_block(
             &db,
             &blocks[0],
@@ -636,7 +636,7 @@ mod validator_node_merkle_root {
             &mut key_manager,
         )
         .await;
-        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&mut key_manager).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
         let (block, _) = create_next_block(
             &db,
             &blocks[0],

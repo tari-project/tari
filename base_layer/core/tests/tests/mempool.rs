@@ -1210,7 +1210,7 @@ async fn consensus_validation_large_tx() {
     let amount = MicroMinotari::from(5_000_000);
 
     let input = outputs[1][0].clone();
-    let inputs = vec![input.to_transaction_input(&mut key_manager).await.unwrap()];
+    let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
     let input_script_keys = vec![input.script_key_id().clone()];
 
     let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight_params()).calculate(

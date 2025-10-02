@@ -1034,8 +1034,8 @@ async fn test_block_sync_body_validator() {
     .await
     .unwrap();
     let inputs = vec![
-        unblinded_utxo.to_transaction_input(&mut key_manager).await.unwrap(),
-        unblinded_utxo2.to_transaction_input(&mut key_manager).await.unwrap(),
+        unblinded_utxo.to_transaction_input(&key_manager).await.unwrap(),
+        unblinded_utxo2.to_transaction_input(&key_manager).await.unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {

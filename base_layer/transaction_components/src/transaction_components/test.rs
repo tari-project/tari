@@ -558,7 +558,7 @@ async fn inputs_not_malleable() {
     .await
     .expect("Failed to create wallet outputs");
     let mut stack = inputs[0].input_data().clone();
-    let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &mut key_manager).await;
+    let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager).await;
 
     stack
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
