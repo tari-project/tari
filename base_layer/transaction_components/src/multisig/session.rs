@@ -76,7 +76,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         public_keys: Vec<CompressedPublicKey>,
         recipient: TariAddress,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
-        fee: MicroMinotari,
         uuid: Uuid,
     ) -> Result<
         (
@@ -101,8 +100,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         OsRng.fill_bytes(message.as_mut());
 
         let user_data = uuid.as_bytes().to_vec();
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
         let payment_id =
-            MemoField::new_address_and_data(recipient.clone(), fee, true, TxType::PaymentToOther, user_data)
+            MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
         let sender_offset_key = self

@@ -1255,7 +1255,6 @@ where
                         Covenant::default(),
                     )
                     .await?;
-                let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
                 let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
                 let uuid = Uuid::new_v4();
                 let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
@@ -1265,19 +1264,11 @@ where
                         request.public_keys,
                         request.recipient_address.clone(),
                         tx_builder,
-                        fee_estimate,
                         uuid,
                     )
                     .await?;
 
                 let fee = tx.body.get_total_fee()?;
-                if fee_estimate != fee {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Fee estimate in memo field {} does not match actual fee {} for multisig UTXO creation",
-                        fee_estimate, fee
-                    );
-                }
 
                 self.resources
                     .output_manager_service
@@ -1998,13 +1989,6 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        if fee_estimate != fee {
-            warn!(
-                target: LOG_TARGET,
-                "Fee estimate in memo field {} does not match actual fee {} for send SHA atomic swap transaction",
-                fee_estimate, fee
-            );
-        }
         self.resources
             .output_manager_service
             .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
@@ -2138,13 +2122,6 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        if fee_estimate != fee {
-            warn!(
-                target: LOG_TARGET,
-                "Fee estimate in memo field {} does not match actual fee {} for send one-sided or stealth transaction",
-                fee_estimate, fee
-            );
-        }
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
@@ -2473,13 +2450,6 @@ where
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
-        if fee_estimate != finalized.fee {
-            debug!(
-                target: LOG_TARGET,
-                "Fee estimate in memo field {} does not match actual fee {} for send_many_one_sided_transactions",
-                fee_estimate, finalized.fee
-            );
-        }
 
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
