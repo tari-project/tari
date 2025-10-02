@@ -3,6 +3,7 @@ name = "tari_service_framework"
 description = "The Tari communication stack service framework"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

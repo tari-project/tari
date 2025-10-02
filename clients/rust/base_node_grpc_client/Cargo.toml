@@ -1,13 +1,14 @@
 [package]
 name = "minotari_node_grpc_client"
+description = "Base node GRPC client"
 version.workspace = true
 edition.workspace = true
-description = "Base node GRPC client"
-authors = ["The Tari Development Community"]
-repository = "https://github.com/tari-project/tari"
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
 homepage = "https://tari.com"
 readme = "README.md"
-license = "BSD-3-Clause"
+license.workspace = true
 
 [dependencies]
 minotari_app_grpc = { workspace = true }
