@@ -118,7 +118,7 @@ impl InnerService {
 
             let result = base_node_client.get_tip_info(tari_rpc::Empty {}).await.map_err(|err| {
                 MmProxyError::GrpcRequestError {
-                    status: err,
+                    status: Box::new(err),
                     details: "get_tip_info failed".to_string(),
                 }
             })?;
@@ -528,7 +528,7 @@ impl InnerService {
                 Ok(proxy::into_response(parts, &monero_resp))
             },
             Err(err) => Err(MmProxyError::GrpcRequestError {
-                status: err,
+                status: Box::new(err),
                 details: "failed to get header by hash".to_string(),
             }),
         }

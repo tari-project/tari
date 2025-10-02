@@ -94,13 +94,7 @@ use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
-    key_manager::{
-        ConfidentialOutputHasher,
-        SecretTransactionKeyManagerInterface,
-        TariKeyId,
-        TransactionKeyManagerInitializer,
-        TransactionKeyManagerInterface,
-    },
+    key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
     tari_amount::*,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -742,7 +736,10 @@ async fn send_one_sided_transaction_to_other() {
 
     // The payment id should match the finalized and recovered tx fee
     let mut payment_id_verified = false;
-    let bob_view_key_id = key_manager_handle.import_key(random_pvt_key.clone()).await.unwrap();
+    let bob_view_key_id = key_manager_handle
+        .import_key(random_pvt_key.clone(), None)
+        .await
+        .unwrap();
     for output in completed_tx.transaction.body.outputs() {
         let shared_secret = key_manager_handle
             .get_diffie_hellman_shared_secret(&bob_view_key_id, &output.sender_offset_public_key)

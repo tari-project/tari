@@ -73,7 +73,7 @@ pub enum MmProxyError {
     #[error("GRPC request failed with `{status}` {details}")]
     GrpcRequestError {
         #[source]
-        status: tonic::Status,
+        status: Box<tonic::Status>,
         details: String,
     },
     #[error("HTTP error: {0}")]
@@ -132,7 +132,7 @@ impl From<tonic::Status> for MmProxyError {
     fn from(status: tonic::Status) -> Self {
         Self::GrpcRequestError {
             details: String::from_utf8_lossy(status.details()).to_string(),
-            status,
+            status: Box::new(status),
         }
     }
 }
