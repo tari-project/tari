@@ -146,6 +146,9 @@ impl MultiaddrWithStats {
 
     /// Returns true if the address is an external address, i.e. not a loopback, unspecified or private IP address.
     pub fn is_external(&self) -> bool {
+        if self.address.is_empty() {
+            return false;
+        }
         let mut protocols = self.address.iter();
         let internal = match protocols.next() {
             Some(Protocol::Ip4(ip)) => ip.is_loopback() || ip.is_unspecified() || ip.is_private(),
