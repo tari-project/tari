@@ -41,6 +41,7 @@ use tari_core::{
         create_lmdb_database_with_stats_channel,
         BlockchainDatabase,
         ChainStorageError,
+        ConsensusConstantsTracker,
         LMDBDatabase,
         Validators,
     },
@@ -264,6 +265,22 @@ async fn build_node_context(
             ExitError::new(ExitCode::DatabaseError, err)
         }
     })?;
+
+    // Check for consensus constants changes before starting the node
+    let consensus_tracker = ConsensusConstantsTracker::new(&app_config.base_node.data_dir);
+    let current_constants = rules.consensus_constants_vec();
+    let current_height = {
+        let metadata = blockchain_db.get_chain_metadata().map_err(|e| {
+            ExitError::new(ExitCode::DatabaseError, format!("Failed to get chain metadata: {e}"))
+        })?;
+        metadata.best_block_height()
+    };
+    
+    if let Err(error_msg) = consensus_tracker.check_for_changes(&current_constants, current_height) {
+        error!(target: LOG_TARGET, "{}", error_msg);
+        eprintln!("\n{}\n", error_msg);
+        return Err(ExitError::new(ExitCode::ConfigError, error_msg));
+    }
 
     let mempool_validator = TransactionFullValidator::new(
         factories.clone(),
