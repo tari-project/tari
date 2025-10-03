@@ -231,4 +231,27 @@ mod tests {
         
         assert_eq!(tracked, deserialized);
     }
+
+    #[test]
+    fn test_consensus_constants_effective_height_detection() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let tracker = ConsensusConstantsTracker::new(temp_dir.path());
+
+        // Create constants with different networks to simulate different values
+        let constants_v1 = vec![
+            ConsensusConstantsBuilder::new(Network::LocalNet).build(),
+        ];
+        
+        let constants_v2 = vec![
+            ConsensusConstantsBuilder::new(Network::Esmeralda).build(),
+        ];
+
+        // First run with v1 constants at height 0
+        let result = tracker.check_for_changes(&constants_v1, 0);
+        assert!(result.is_ok(), "First run should pass");
+
+        // Second run with v2 constants but still at height 0 (same active constants)
+        let result = tracker.check_for_changes(&constants_v2, 0);
+        assert!(result.is_ok(), "Should pass when active constants haven't changed at height 0");
+    }
 }
