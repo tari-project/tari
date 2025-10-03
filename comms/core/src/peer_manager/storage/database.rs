@@ -3188,9 +3188,7 @@ mod tests {
 
         // Verify 'peers::table' has an entry but 'multi_addresses::table' not
         let mut conn = peers_db.connection.get_pooled_connection().unwrap();
-        let peer_query: Vec<NewPeerSql> = peers::table
-            .load::<NewPeerSql>(&mut conn)
-            .unwrap();
+        let peer_query: Vec<NewPeerSql> = peers::table.load::<NewPeerSql>(&mut conn).unwrap();
         assert_eq!(peer_query.len(), 1);
         let addresses_query: Vec<NewMultiaddrWithStatsSql> = multi_addresses::table
             .load::<NewMultiaddrWithStatsSql>(&mut conn)
