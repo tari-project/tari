@@ -21,14 +21,21 @@ pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
     pub sender_offset_key_id: Option<TariKeyId>,
+    pub custom_recovery_key_id: Option<TariKeyId>,
 }
 
 impl OutputPair {
-    pub fn new(output: WalletOutput, kernel_nonce: TariKeyId, sender_offset_key_id: Option<TariKeyId>) -> Self {
+    pub fn new(
+        output: WalletOutput,
+        kernel_nonce: TariKeyId,
+        sender_offset_key_id: Option<TariKeyId>,
+        custom_recovery_key_id: Option<TariKeyId>,
+    ) -> Self {
         Self {
             output,
             kernel_nonce,
             sender_offset_key_id,
+            custom_recovery_key_id,
         }
     }
 }

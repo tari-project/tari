@@ -1971,6 +1971,7 @@ where
                 destination.clone(),
                 output.clone(),
                 Some(sender_offset_private_key.key_id),
+                Some(encryption_key),
             )
             .await?;
 
@@ -2268,6 +2269,7 @@ where
                 dest_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key.key_id),
+                Some(encryption_key),
             )
             .await?;
 
@@ -2629,6 +2631,7 @@ where
                 Default::default(),
                 output.clone(),
                 Some(sender_offset_private_key.key_id),
+                Some(recovery_key_id),
             )
             .await?;
 

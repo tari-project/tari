@@ -147,12 +147,18 @@ where KM: TransactionKeyManagerInterface
         recipient_address: TariAddress,
         recipient_output: WalletOutput,
         sender_offset_key_id: Option<TariKeyId>,
+        custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
         let kernel_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        let recipient_output = OutputPair::new(recipient_output, kernel_nonce.key_id, sender_offset_key_id);
+        let recipient_output = OutputPair::new(
+            recipient_output,
+            kernel_nonce.key_id,
+            sender_offset_key_id,
+            custom_recovery_key_id,
+        );
         let recipient_details = RecipientDetails {
             output: recipient_output,
             recipient_address,
@@ -217,8 +223,13 @@ where KM: TransactionKeyManagerInterface
             .try_build(&self.key_manager)
             .await?;
 
-        self.add_recipient(destination, output.clone(), Some(sender_offset_private_key.key_id))
-            .await?;
+        self.add_recipient(
+            destination,
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(encryption_key),
+        )
+        .await?;
         Ok(output)
     }
 
@@ -275,8 +286,13 @@ where KM: TransactionKeyManagerInterface
             .try_build(&self.key_manager)
             .await?;
 
-        self.add_recipient(destination, output.clone(), Some(sender_offset_private_key.key_id))
-            .await?;
+        self.add_recipient(
+            destination,
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(encryption_key),
+        )
+        .await?;
         Ok(output)
     }
 
@@ -285,7 +301,7 @@ where KM: TransactionKeyManagerInterface
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        let pair = OutputPair::new(input, nonce.key_id, None);
+        let pair = OutputPair::new(input, nonce.key_id, None, None);
         self.inputs.push(pair);
         Ok(self)
     }
@@ -300,12 +316,13 @@ where KM: TransactionKeyManagerInterface
         &mut self,
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
+        custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
         let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id));
+        let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id), custom_recovery_key_id);
         self.custom_outputs.push(pair);
         Ok(self)
     }
@@ -604,6 +621,7 @@ where KM: TransactionKeyManagerInterface
             change_wallet_output,
             nonce.key_id,
             Some(sender_offset_public.key_id),
+            None,
         )))
     }
 
@@ -687,7 +705,6 @@ where KM: TransactionKeyManagerInterface
     async fn change_encrypted_data_if_fee_changed(
         key_manager: &KM,
         output_pair: &mut OutputPair,
-        recipient_address: &TariAddress,
         final_fee: MicroMinotari,
     ) -> Result<(), TransactionBuilderError> {
         let mut memo_field = output_pair.output.payment_id().clone();
@@ -707,52 +724,11 @@ where KM: TransactionKeyManagerInterface
                 );
             }
 
-            let encryption_key = TariKeyId::DHEncryptedData {
-                private_key: output_pair
-                    .sender_offset_key_id
-                    .as_ref()
-                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?
-                    .into(),
-                public_key: recipient_address
-                    .public_view_key()
-                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                    .clone(),
-            };
-
-            let custom_recovery_key_id = if key_manager
-                .extract_payment_id_from_encrypted_data(
-                    output_pair.output.encrypted_data(),
-                    output_pair.output.commitment(),
-                    Some(&encryption_key),
-                )
-                .await
-                .is_ok()
-            {
-                Some(&encryption_key)
-            } else if key_manager
-                .extract_payment_id_from_encrypted_data(
-                    output_pair.output.encrypted_data(),
-                    output_pair.output.commitment(),
-                    None,
-                )
-                .await
-                .is_ok()
-            {
-                None
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "[Update fee] Fee cannot be changed! Encrypted data cannot be decrypted for output '{}'",
-                    output_pair.output.commitment().to_hex()
-                );
-                return Ok(());
-            };
-
             memo_field.set_fee(final_fee);
             let encrypted_data = key_manager
                 .encrypt_data_for_recovery(
                     output_pair.output.commitment_mask_key_id(),
-                    custom_recovery_key_id,
+                    output_pair.custom_recovery_key_id.as_ref(),
                     output_pair.output.value().as_u64(),
                     memo_field.clone(),
                 )
@@ -801,13 +777,7 @@ where KM: TransactionKeyManagerInterface
         }
         let mut sent_outputs = Vec::new();
         for recipient in &mut self.recipient_outputs {
-            Self::change_encrypted_data_if_fee_changed(
-                &self.key_manager,
-                &mut recipient.output,
-                &recipient.recipient_address,
-                total_fee,
-            )
-            .await?;
+            Self::change_encrypted_data_if_fee_changed(&self.key_manager, &mut recipient.output, total_fee).await?;
 
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
@@ -860,7 +830,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         for output in &mut self.custom_outputs {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, output, &self.own_address, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&self.key_manager, output, total_fee).await?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -919,7 +889,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &mut change_output {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, change, &self.own_address, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&self.key_manager, change, total_fee).await?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
@@ -1175,7 +1145,7 @@ mod test {
             .unwrap();
         builder
             .with_lock_height(0)
-            .with_output(output, p.sender_offset_key_id)
+            .with_output(output, p.sender_offset_key_id, None)
             .await
             .unwrap()
             .with_input(input)
@@ -1221,7 +1191,7 @@ mod test {
             .unwrap();
         builder
             .with_lock_height(0)
-            .with_output(output, p.sender_offset_key_id)
+            .with_output(output, p.sender_offset_key_id, None)
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(2));
@@ -1260,7 +1230,7 @@ mod test {
             .with_input(input)
             .await
             .unwrap()
-            .with_output(output, p.sender_offset_key_id.clone())
+            .with_output(output, p.sender_offset_key_id.clone(), None)
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(1));
@@ -1302,6 +1272,7 @@ mod test {
                 .await
                 .unwrap(),
                 p1.sender_offset_key_id.clone(),
+                None,
             )
             .await
             .unwrap()
@@ -1310,6 +1281,7 @@ mod test {
                     .await
                     .unwrap(),
                 p2.sender_offset_key_id.clone(),
+                None,
             )
             .await
             .unwrap();
@@ -1368,7 +1340,7 @@ mod test {
         .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
 
@@ -1439,7 +1411,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         // Transaction should be complete
@@ -1502,7 +1474,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         let finalized = builder.build().await.unwrap();
@@ -1726,7 +1698,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         let _err = builder.build().await.unwrap_err();
@@ -1778,7 +1750,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed

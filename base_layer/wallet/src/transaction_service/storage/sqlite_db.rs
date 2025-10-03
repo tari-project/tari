@@ -2885,6 +2885,7 @@ mod test {
                 source_address.clone(),
                 output,
                 Some(receiver_test_params.sender_offset_key_id),
+                None,
             )
             .await
             .unwrap();

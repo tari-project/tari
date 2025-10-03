@@ -1011,7 +1011,7 @@ mod test {
             .with_input(double_spend_input)
             .await
             .unwrap()
-            .with_output(utxo, test_params.sender_offset_key_id)
+            .with_output(utxo, test_params.sender_offset_key_id, None)
             .await
             .unwrap();
 

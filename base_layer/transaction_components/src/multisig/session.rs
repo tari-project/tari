@@ -163,7 +163,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?;
 
         tx_builder
-            .add_recipient(recipient, output.clone(), Some(sender_offset_key.key_id))
+            .add_recipient(
+                recipient,
+                output.clone(),
+                Some(sender_offset_key.key_id),
+                Some(encryption_key_id),
+            )
             .await?;
 
         let finalized_builder = tx_builder.build().await?;

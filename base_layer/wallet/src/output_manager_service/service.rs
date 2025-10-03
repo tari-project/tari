@@ -1020,7 +1020,7 @@ where
             let ub = wallet_output.try_build(&self.resources.key_manager).await?;
 
             builder
-                .with_output(ub.clone(), sender_offset_key.key_id.clone())
+                .with_output(ub.clone(), sender_offset_key.key_id.clone(), None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
             db_outputs.push(DbWalletOutput::from_wallet_output(
@@ -1341,6 +1341,7 @@ where
                 recipient_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key_id_self.key_id),
+                Some(encryption_key_id),
             )
             .await?;
 
@@ -1608,6 +1609,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key_id_self.key_id),
+                Some(encryption_key_id),
             )
             .await?;
 
@@ -1688,7 +1690,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
+            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone(), None)
             .await
             .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2161,7 +2163,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2322,7 +2324,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2540,7 +2542,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id)
+            .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
             .await?;
 
         let finalized = tx_builder.build().await?;
