@@ -2095,7 +2095,7 @@ where
                 )
                 .await?
         };
-
+        tx_builder.with_memo(payment_id.clone());
         let finalized = tx_builder.build().await?;
 
         // Finalize
