@@ -972,13 +972,34 @@ where KM: TransactionKeyManagerInterface
             Some(o) => vec![o.output.output_hash()],
             None => vec![],
         };
+
+        let payment_id = if let Some(mut memo_field) = self.memo_field {
+            if let Some(fee) = memo_field.get_fee() {
+                if fee == total_fee {
+                    debug!(target: LOG_TARGET, "[Update fee] Fee ({}) was correct for entire transaction", total_fee);
+                } else {
+                    debug!(target: LOG_TARGET,
+                        "[Update fee] Fee changed from {} to {} for entire transaction",
+                        fee, total_fee
+                    );
+                }
+
+                memo_field.set_fee(total_fee);
+                memo_field
+            } else {
+                memo_field
+            }
+        } else {
+            MemoField::default()
+        };
+
         Ok(FinalizedTransaction {
             source_address: self.own_address,
             destination_addresses,
             amount,
             fee: total_fee,
             transaction: tx,
-            payment_id: self.memo_field.unwrap_or_default(),
+            payment_id,
             change: change_output.map(|o| o.output),
             sent_outputs,
             // Hashes of outputs being sent to others (excluding change)
