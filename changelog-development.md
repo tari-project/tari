@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.1.0-pre.4](https://github.com/tari-project/tari/compare/v5.1.0-pre.3...v5.1.0-pre.4) (2025-10-03)
+
+
+### Features
+
+* allow key manager to work without storage ([#7501](https://github.com/tari-project/tari/issues/7501)) ([9e3cb04](https://github.com/tari-project/tari/commit/9e3cb0421c40ede881dc71d56dc3fd28d16431b5))
+* claim burn kernel merkle proof ([#7473](https://github.com/tari-project/tari/issues/7473)) ([3e006b9](https://github.com/tari-project/tari/commit/3e006b9deee18b87997757711d2732e87cd885c9))
+* remove tcp public address requirement ([#7529](https://github.com/tari-project/tari/issues/7529)) ([b53b2d6](https://github.com/tari-project/tari/commit/b53b2d6753cabb215af765908ebb0b14cc9038fb))
+
+
+### Bug Fixes
+
+* add actual fee to memo field ([#7514](https://github.com/tari-project/tari/issues/7514)) ([c1ba951](https://github.com/tari-project/tari/commit/c1ba951a0fb4cc90e581eaa954ad35ce41f70dae))
+* payment_id is not preserved for outbound transactions with wallet recovery ([#7532](https://github.com/tari-project/tari/issues/7532)) ([8543ebb](https://github.com/tari-project/tari/commit/8543ebbd9d09e6afdaa92bdd4f6cb3487335fce2))
+* update ledger wallet sdk to newer ledger firmware ([#7520](https://github.com/tari-project/tari/issues/7520)) ([40eb380](https://github.com/tari-project/tari/commit/40eb3802705a1a3ec17fd7adad060300f439f774))
+
 ## [5.1.0-pre.3](https://github.com/tari-project/tari/compare/v5.1.0-pre.2...v5.1.0-pre.3) (2025-09-26)
 
 
