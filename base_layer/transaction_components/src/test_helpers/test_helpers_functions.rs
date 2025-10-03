@@ -623,7 +623,10 @@ pub async fn create_transaction_with<KM: TransactionKeyManagerInterface>(
     }
 
     for (output, script_offset_key_id) in outputs {
-        tx_builder.with_output(output, script_offset_key_id).await.unwrap();
+        tx_builder
+            .with_output(output, script_offset_key_id, None)
+            .await
+            .unwrap();
     }
     let finalized = tx_builder.build().await.unwrap();
 
@@ -715,7 +718,10 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
             .unwrap();
 
         outputs.push(output.clone());
-        tx_builder.with_output(output, sender_offset.key_id).await.unwrap();
+        tx_builder
+            .with_output(output, sender_offset.key_id, None)
+            .await
+            .unwrap();
     }
     for mut utxo in schema.to_outputs {
         let sender_offset = key_manager
@@ -737,7 +743,7 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
                 .unwrap(),
         );
 
-        tx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
+        tx_builder.with_output(utxo, sender_offset.key_id, None).await.unwrap();
     }
 
     tx_builder

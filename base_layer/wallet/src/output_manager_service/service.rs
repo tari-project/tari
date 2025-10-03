@@ -931,9 +931,10 @@ where
         }
         debug!(
             target: LOG_TARGET,
-            "Calculating fee for tx with: Fee per gram: {}. Num selected inputs: {}",
-            amount,
-            input_selection.num_selected()
+            "Calculated fee for tx: Fee per gram: {}. Fee {}. Num inputs: {}.",
+            fee_per_gram,
+            input_selection.as_final_fee(),
+            input_selection.num_selected(),
         );
 
         self.resources
@@ -1019,7 +1020,7 @@ where
             let ub = wallet_output.try_build(&self.resources.key_manager).await?;
 
             builder
-                .with_output(ub.clone(), sender_offset_key.key_id.clone())
+                .with_output(ub.clone(), sender_offset_key.key_id.clone(), None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
             db_outputs.push(DbWalletOutput::from_wallet_output(
@@ -1340,6 +1341,7 @@ where
                 recipient_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key_id_self.key_id),
+                Some(encryption_key_id),
             )
             .await?;
 
@@ -1608,6 +1610,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key_id_self.key_id),
+                Some(encryption_key_id),
             )
             .await?;
 
@@ -1689,7 +1692,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
+            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone(), None)
             .await
             .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -1840,7 +1843,7 @@ where
         for o in uo {
             utxos_total_value += o.wallet_output.value();
 
-            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value:?}");
+            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value}");
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = fee_calc.calculate(
@@ -1861,7 +1864,7 @@ where
                 total_output_features_and_scripts_byte_size + default_features_and_scripts_size,
             );
 
-            trace!(target: LOG_TARGET, "-- amt+fee = {amount:?} {fee_with_change}");
+            trace!(target: LOG_TARGET, "-- amt+fee = {amount} + {fee_with_change}");
             if utxos_total_value > amount + fee_with_change {
                 requires_change_output = true;
                 break;
@@ -2162,7 +2165,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2323,7 +2326,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2541,7 +2544,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id)
+            .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
             .await?;
 
         let finalized = tx_builder.build().await?;

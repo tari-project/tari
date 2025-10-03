@@ -803,7 +803,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .key_manager
             .encrypt_data_for_recovery(
                 change.output.commitment_mask_key_id(),
-                None,
+                change.custom_recovery_key_id.as_ref(),
                 change.output.value().as_u64(),
                 payment_id.clone(),
             )
@@ -824,6 +824,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             change_output,
             change.kernel_nonce.clone(),
             change.sender_offset_key_id.clone(),
+            change.custom_recovery_key_id.clone(),
         ))
     }
 }

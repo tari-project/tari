@@ -2795,7 +2795,7 @@ mod test {
             Network::LocalNet,
         )
         .unwrap();
-        let fee = builder.get_fee_estimate().unwrap();
+        let fee = builder.get_fee_estimate_without_change().unwrap();
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),
             destination_address: address,
@@ -2885,6 +2885,7 @@ mod test {
                 source_address.clone(),
                 output,
                 Some(receiver_test_params.sender_offset_key_id),
+                None,
             )
             .await
             .unwrap();

@@ -98,6 +98,8 @@ use tari_transaction_components::{
     tari_amount::*,
     transaction_components::{
         memo_field::{MemoField, TxType},
+        one_sided::shared_secret_to_output_encryption_key,
+        EncryptedData,
         KernelBuilder,
         OutputFeatures,
         RangeProofType,
@@ -469,6 +471,20 @@ async fn large_coin_split_transaction() {
         alice_oms.get_balance().await.unwrap().pending_incoming_balance,
         initial_wallet_value - fees
     );
+
+    // The payment id should match the finalized and recovered tx fee
+    let mut payment_id_verified = false;
+    for output in completed_tx.transaction.body.outputs() {
+        if let Ok(payment_id) = key_manager_handle
+            .extract_payment_id_from_encrypted_data(output.encrypted_data(), output.commitment(), None)
+            .await
+        {
+            assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
+            payment_id_verified = true;
+            break;
+        }
+    }
+    assert!(payment_id_verified);
 }
 
 #[tokio::test]
@@ -553,6 +569,20 @@ async fn single_transaction_burn_tari() {
         balance.pending_incoming_balance,
         initial_wallet_value - burn_value - fees
     );
+
+    // The payment id should match the finalized and recovered tx fee
+    let mut payment_id_verified = false;
+    for output in completed_tx.transaction.body.outputs() {
+        if let Ok(payment_id) = key_manager_handle
+            .extract_payment_id_from_encrypted_data(output.encrypted_data(), output.commitment(), None)
+            .await
+        {
+            assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
+            payment_id_verified = true;
+            break;
+        }
+    }
+    assert!(payment_id_verified);
 
     // Verify burn proof
     let challenge_bytes = ConfidentialOutputHasher::new("commitment_signature")
@@ -703,10 +733,33 @@ async fn send_one_sided_transaction_to_other() {
         }
     }
     assert!(found, "'TransactionCompletedImmediately(_)' event not found");
+
+    // The payment id should match the finalized and recovered tx fee
+    let mut payment_id_verified = false;
+    let bob_view_key_id = key_manager_handle
+        .import_key(random_pvt_key.clone(), None)
+        .await
+        .unwrap();
+    for output in completed_tx.transaction.body.outputs() {
+        let shared_secret = key_manager_handle
+            .get_diffie_hellman_shared_secret(&bob_view_key_id, &output.sender_offset_public_key)
+            .await
+            .unwrap();
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+        if let Ok((_, _, payment_id)) =
+            EncryptedData::decrypt_data(&encryption_key, output.commitment(), output.encrypted_data())
+        {
+            assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
+            payment_id_verified = true;
+            break;
+        }
+    }
+    assert!(payment_id_verified);
 }
 
 #[tokio::test]
 async fn recover_one_sided_transaction() {
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -785,6 +838,8 @@ async fn recover_one_sided_transaction() {
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
 
+    log::info!("Starting one-sided transaction");
+
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
     let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
@@ -806,6 +861,8 @@ async fn recover_one_sided_transaction() {
         .await
         .expect("Alice sending one-sided tx to Bob");
 
+    log::info!("One-sided transaction sent");
+
     let completed_tx = alice_ts
         .get_completed_transaction(tx_id)
         .await
@@ -819,6 +876,27 @@ async fn recover_one_sided_transaction() {
     // Bob should be able to claim 1 output.
     assert_eq!(1, recovered_outputs_1.len());
     assert_eq!(value, recovered_outputs_1[0].output.value());
+
+    // The payment id should match the finalized and recovered tx fee
+    let shared_secret = bob_key_manager_handle
+        .get_diffie_hellman_shared_secret(
+            &bob_view_key.key_id,
+            &recovered_outputs_1[0]
+                .output
+                .to_transaction_output()
+                .unwrap()
+                .sender_offset_public_key,
+        )
+        .await
+        .unwrap();
+    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let (_, _, payment_id) = EncryptedData::decrypt_data(
+        &encryption_key,
+        recovered_outputs_1[0].output.commitment(),
+        recovered_outputs_1[0].output.encrypted_data(),
+    )
+    .unwrap();
+    assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
     let recovered_outputs_2 = bob_oms
@@ -931,6 +1009,27 @@ async fn recover_stealth_one_sided_transaction() {
     // Bob should be able to claim 1 output.
     assert_eq!(1, recovered_outputs_1.len());
     assert_eq!(value, recovered_outputs_1[0].output.value());
+
+    // The payment id should match the finalized and recovered tx fee
+    let shared_secret = bob_key_manager_handle
+        .get_diffie_hellman_shared_secret(
+            &bob_view_key.key_id,
+            &recovered_outputs_1[0]
+                .output
+                .to_transaction_output()
+                .unwrap()
+                .sender_offset_public_key,
+        )
+        .await
+        .unwrap();
+    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let (_, _, payment_id) = EncryptedData::decrypt_data(
+        &encryption_key,
+        recovered_outputs_1[0].output.commitment(),
+        recovered_outputs_1[0].output.encrypted_data(),
+    )
+    .unwrap();
+    assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
     let recovered_outputs_2 = bob_oms
@@ -1070,6 +1169,121 @@ async fn test_htlc_send_and_claim() {
             .pending_incoming_balance,
         htlc_amount
     );
+}
+
+#[tokio::test]
+async fn test_htlc_send_and_claim_payment_id_fee() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str()
+    );
+
+    let alice_connection = make_wallet_database_memory_connection();
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        alice_connection,
+        shutdown.to_signal(),
+    )
+    .await;
+
+    let bob_connection = make_wallet_database_memory_connection();
+    let (_bob_ts_interface, _bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
+        bob_node_identity.clone(),
+        consensus_manager,
+        factories.clone(),
+        bob_connection.clone(),
+        shutdown.to_signal(),
+    )
+    .await;
+
+    log::info!(
+        "manage_single_transaction: Bob: '{}'",
+        bob_node_identity.node_id().short_str(),
+    );
+
+    let initial_wallet_value = 25000.into();
+    let uo1 = make_input(
+        &mut OsRng,
+        initial_wallet_value,
+        &OutputFeatures::default(),
+        &key_manager_handle,
+    )
+    .await;
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let value = 10000.into();
+
+    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_view_key.pub_key,
+        bob_node_identity.public_key().clone(),
+        network,
+    )
+    .unwrap();
+
+    let (tx_id, _pre_image, _output) = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address.clone(),
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("Alice sending HTLC transaction");
+
+    let completed_tx = alice_ts
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("Could not find completed HTLC tx");
+
+    let fees = completed_tx.fee;
+
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().pending_incoming_balance,
+        initial_wallet_value - fees
+    );
+
+    // The payment id should match the finalized and recovered tx fee
+    let mut payment_id_verified = false;
+    for output in completed_tx.transaction.body.outputs() {
+        let shared_secret = bob_key_manager_handle
+            .get_diffie_hellman_shared_secret(&bob_view_key.key_id, &output.sender_offset_public_key)
+            .await
+            .unwrap();
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+        if let Ok((_, _, payment_id)) =
+            EncryptedData::decrypt_data(&encryption_key, output.commitment(), output.encrypted_data())
+        {
+            assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
+            payment_id_verified = true;
+            break;
+        }
+    }
+    assert!(payment_id_verified);
 }
 
 #[tokio::test]
