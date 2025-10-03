@@ -26,6 +26,7 @@ use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
 use diesel::{
     self,
+    dsl::not,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
     ExpressionMethods,
@@ -733,6 +734,20 @@ impl PeerDatabaseSql {
             .first::<i64>(conn)?;
 
         // Update the associated multi-addresses
+        // - Remove all stale addresses that are not in the update list
+        let final_addr_list: Vec<String> = update_peer_sql
+            .addresses
+            .iter()
+            .filter_map(|a| a.address.clone())
+            .collect();
+
+        diesel::delete(
+            multi_addresses::table
+                .filter(multi_addresses::peer_id.eq(peer_id))
+                .filter(not(multi_addresses::address.eq_any(&final_addr_list))),
+        )
+        .execute(conn)?;
+        // - Update existing addresses and add new ones
         for address_update in update_peer_sql.addresses {
             let updated = diesel::update(
                 multi_addresses::table
@@ -3132,7 +3147,7 @@ mod tests {
         )
         .unwrap();
 
-        // Create a new peer and add a failure reason
+        // Create a new peer and remove all addresses
         let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
         peer.addresses = MultiaddressesWithStats::new(vec![]);
 

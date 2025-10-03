@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
-    cmp,
+    collections::HashMap,
     fmt::{Display, Formatter},
     ops::Index,
     time::Duration,
 };
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use log::trace;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,14 @@ impl MultiaddressesWithStats {
         };
         addresses.sort_addresses();
         addresses
+    }
+
+    /// Returns the newest `updated_at` among signed address sources in this set.
+    pub fn newest_claim_updated_at(&self) -> Option<DateTime<Utc>> {
+        self.addresses
+            .iter()
+            .filter_map(|a| a.source().peer_identity_claim().map(|c| c.signature.updated_at()))
+            .max()
     }
 
     pub fn empty() -> Self {
@@ -129,8 +137,65 @@ impl MultiaddressesWithStats {
         self.addresses.iter().map(|addr| addr.address())
     }
 
-    pub fn merge(&mut self, other: &MultiaddressesWithStats) {
-        for addr in &other.addresses {
+    /// Merges another set of addresses into this set, preserving usage stats where possible.
+    ///
+    /// Merge logic:
+    /// - If the incoming set has a strictly newer signed claim, all non-config addresses are replaced by the incoming
+    ///   set.
+    /// - If the incoming set is older, only usage stats for known addresses are updated.
+    /// - If neither set has a signed claim or timestamps are equal, addresses are merged individually.
+    ///
+    /// After merging, addresses are sorted by quality and truncated to the maximum allowed.
+    pub fn merge(&mut self, incoming: &MultiaddressesWithStats) {
+        // Only allow the newest signed advertised addresses.
+        let this_newest = self.newest_claim_updated_at();
+        let other_newest = incoming.newest_claim_updated_at();
+
+        match (this_newest, other_newest) {
+            // Incoming claim is strictly newer -> replace non-config addrs with incoming set
+            (Some(this), Some(other)) if other > this => {
+                // 1) Keep config addresses
+                let mut by_addr: HashMap<Multiaddr, MultiaddrWithStats> = self
+                    .addresses
+                    .iter()
+                    .filter(|a| a.source().is_config())
+                    .cloned()
+                    .map(|a| (a.address().clone(), a))
+                    .collect();
+
+                // 2) Insert/override with incoming advertised set
+                for item in &incoming.addresses {
+                    match by_addr.get_mut(item.address()) {
+                        Some(existing) => {
+                            // Merge stats and prefer newer/better source
+                            existing.merge(item);
+                        },
+                        None => {
+                            by_addr.insert(item.address().clone(), item.clone());
+                        },
+                    }
+                }
+
+                self.addresses = by_addr.into_values().collect();
+                self.sort_addresses();
+                return;
+            },
+
+            // Incoming set is older -> only update stats for known addresses; don't append stale ones
+            (Some(this), Some(other)) if other < this => {
+                for addr in &incoming.addresses {
+                    if let Some(existing) = self.find_address_mut(addr.address()) {
+                        existing.merge(addr);
+                    }
+                }
+                self.sort_addresses();
+                return;
+            },
+            // No signed timestamps or equal -> fall back to address-by-address merge
+            _ => {},
+        }
+
+        for addr in &incoming.addresses {
             if let Some(existing) = self.find_address_mut(addr.address()) {
                 existing.merge(addr);
             } else {
@@ -259,10 +324,22 @@ impl MultiaddressesWithStats {
         &self.addresses
     }
 
-    /// Sort the addresses with the greatest quality score first
+    /// Sort the addresses with the greatest quality score first. In case of a tie, advertised
+    /// addresses are preferred.
     fn sort_addresses(&mut self) {
-        self.addresses
-            .sort_by_key(|addr| cmp::Reverse(addr.quality_score().unwrap_or_default()));
+        self.addresses.sort_by(|a, b| {
+            let qual_a = a.quality_score().unwrap_or_default();
+            let qual_b = b.quality_score().unwrap_or_default();
+            match qual_b.cmp(&qual_a) {
+                std::cmp::Ordering::Equal => {
+                    // Advertised > Config on tie
+                    let a_if_config = if a.source().is_config() { 0 } else { 1 };
+                    let b_if_config = if b.source().is_config() { 0 } else { 1 };
+                    b_if_config.cmp(&a_if_config)
+                },
+                ord => ord,
+            }
+        });
         self.addresses.truncate(MAX_ADDRESSES)
     }
 }
@@ -316,7 +393,14 @@ impl Display for MultiaddressesWithStats {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
+    use digest::crypto_common::rand_core::OsRng;
+    use tari_crypto::keys::SecretKey;
+
     use super::*;
+    use crate::{
+        peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
+        types::{CommsPublicKey, CommsSecretKey},
+    };
 
     #[test]
     fn test_index_impl() {
@@ -483,5 +567,191 @@ mod test {
         assert!(net_addresses.addresses[0].last_failed_reason().is_none());
         assert!(net_addresses.addresses[1].last_failed_reason().is_none());
         assert!(net_addresses.addresses[2].last_failed_reason().is_none());
+    }
+
+    #[test]
+    fn it_merges_addresses_with_stats_correctly() {
+        use crate::net_address::multiaddr_with_stats::PeerAddressSource;
+
+        let addr1 = "/ip4/1.1.1.1/tcp/1000".parse::<Multiaddr>().unwrap();
+        let addr2 = "/ip4/2.2.2.2/tcp/2000".parse::<Multiaddr>().unwrap();
+        let addr3 = "/ip4/3.3.3.3/tcp/3000".parse::<Multiaddr>().unwrap();
+
+        let addr_set_1 = vec![addr1.clone(), addr2.clone()];
+        let set1 = MultiaddressesWithStats::from_addresses_with_source(
+            addr_set_1.clone(),
+            &PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: PeerIdentityClaim {
+                    addresses: addr_set_1.clone(),
+                    features: PeerFeatures::COMMUNICATION_NODE,
+                    signature: create_identity_signature(&addr_set_1),
+                },
+            },
+        );
+        assert!(set1.contains(&addr1));
+        assert!(set1.contains(&addr2));
+        assert_eq!(set1.len(), 2);
+
+        // Sleep to ensure different timestamp
+        std::thread::sleep(Duration::from_millis(150));
+        let addr_set_2 = vec![addr2.clone(), addr3.clone()];
+        let set2 = MultiaddressesWithStats::from_addresses_with_source(
+            addr_set_2.clone(),
+            &PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: PeerIdentityClaim {
+                    addresses: addr_set_2.clone(),
+                    features: PeerFeatures::COMMUNICATION_NODE,
+                    signature: create_identity_signature(&addr_set_2),
+                },
+            },
+        );
+
+        let set3 = MultiaddressesWithStats::from_addresses_with_source(
+            vec![addr1.clone(), addr3.clone()],
+            &PeerAddressSource::Config,
+        );
+
+        // Test case 1 - set1 is older, so only set should be retained
+
+        let mut set1_merge = set1.clone();
+        set1_merge.merge(&set2);
+
+        // Only addr2 and addr3 from set_2 should be present
+        assert_eq!(set1_merge.len(), 2);
+        assert!(set1_merge.contains(&addr2));
+        assert!(set1_merge.contains(&addr3));
+
+        // Test case 2 - set1 is older, only update stats for known addresses; don't append stale ones
+
+        let mut set1_update = set1.clone();
+        let addr_1_mut = set1_update.find_address_mut(&addr1).unwrap();
+        addr_1_mut.update_latency(Duration::from_secs(1));
+        let addr_2_mut = set1_update.find_address_mut(&addr2).unwrap();
+        addr_2_mut.update_latency(Duration::from_secs(2));
+
+        let mut set2_merge = set2.clone();
+        set2_merge.merge(&set1_update);
+
+        // Only addr2 and addr3 should be present
+
+        assert_eq!(set2_merge.len(), 2);
+        assert!(!set2_merge.contains(&addr1));
+        assert!(set2_merge.contains(&addr2));
+        assert!(set2_merge.contains(&addr3));
+
+        // Latency should be updated for addr2
+
+        assert_eq!(
+            set2_merge.find_address_mut(&addr2).unwrap().avg_latency(),
+            Some(Duration::from_secs(2))
+        );
+
+        // Test case 3 - merge with config addresses, which are always accepted
+
+        let mut set3_update = set3.clone();
+        let addr_1_mut = set3_update.find_address_mut(&addr1).unwrap();
+        addr_1_mut.update_latency(Duration::from_secs(4));
+        let addr_3_mut = set3_update.find_address_mut(&addr3).unwrap();
+        addr_3_mut.update_latency(Duration::from_secs(3));
+        set2_merge.merge(&set3_update);
+
+        // Only addr1, addr2 and addr3 should be present
+
+        assert_eq!(set2_merge.len(), 3);
+        assert!(set2_merge.contains(&addr1));
+        assert!(set2_merge.contains(&addr2));
+        assert!(set2_merge.contains(&addr3));
+
+        // Latency should be updated for addr1 and addr3
+
+        assert_eq!(
+            set2_merge.find_address_mut(&addr1).unwrap().avg_latency(),
+            Some(Duration::from_secs(4))
+        );
+        assert_eq!(
+            set2_merge.find_address_mut(&addr2).unwrap().avg_latency(),
+            Some(Duration::from_secs(2))
+        );
+        assert_eq!(
+            set2_merge.find_address_mut(&addr3).unwrap().avg_latency(),
+            Some(Duration::from_secs(3))
+        );
+    }
+
+    fn create_identity_signature(addresses: &[Multiaddr]) -> IdentitySignature {
+        let secret = CommsSecretKey::random(&mut OsRng);
+        let public_key = CommsPublicKey::from_secret_key(&secret);
+        let updated_at = Utc::now();
+        let identity = IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, addresses, updated_at);
+        assert!(
+            identity
+                .is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, addresses)
+                .unwrap(),
+            "Signature is not valid"
+        );
+        identity
+    }
+
+    #[test]
+    fn it_merges_when_config_overlaps() {
+        let addr_1 = "/ip4/9.9.9.9/tcp/9999".parse::<Multiaddr>().unwrap();
+        let addr_2 = "/ip4/7.7.7.7/tcp/7777".parse::<Multiaddr>().unwrap();
+
+        // Base has address as Config
+        let mut base = MultiaddressesWithStats::from_addresses_with_source(
+            vec![addr_1.clone(), addr_2.clone()],
+            &PeerAddressSource::Config,
+        );
+
+        // Incoming has the same address as base, but newer with an advertised source
+        let incoming = MultiaddressesWithStats::from_addresses_with_source(
+            vec![addr_1.clone()],
+            &PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: PeerIdentityClaim {
+                    addresses: vec![addr_1.clone()],
+                    features: PeerFeatures::COMMUNICATION_NODE,
+                    signature: create_identity_signature(std::slice::from_ref(&addr_1)),
+                },
+            },
+        );
+
+        base.merge(&incoming);
+        let a1 = base.find_address_mut(&addr_1).unwrap();
+        assert!(!a1.source().is_config());
+        let a2 = base.find_address_mut(&addr_2).unwrap();
+        assert!(a2.source().is_config());
+    }
+
+    #[test]
+    fn it_prefers_advertised_addresses_over_config_on_tie() {
+        use crate::net_address::multiaddr_with_stats::PeerAddressSource;
+
+        let addr_1 = "/ip4/1.1.1.1/tcp/1000".parse::<Multiaddr>().unwrap();
+        let addr_2 = "/ip4/2.2.2.2/tcp/2000".parse::<Multiaddr>().unwrap();
+
+        // Both addresses have the same quality score
+        let mut stats_1 = MultiaddrWithStats::new(addr_1.clone(), PeerAddressSource::Config);
+        let mut stats_2 = MultiaddrWithStats::new(addr_2.clone(), PeerAddressSource::FromPeerConnection {
+            peer_identity_claim: PeerIdentityClaim {
+                addresses: vec![addr_2.clone()],
+                features: PeerFeatures::COMMUNICATION_NODE,
+                signature: create_identity_signature(std::slice::from_ref(&addr_2)),
+            },
+        });
+
+        // Set the same quality score for both
+        stats_1.update_latency(Duration::from_millis(100));
+        stats_2.update_latency(Duration::from_millis(100));
+
+        let mut addresses = MultiaddressesWithStats::new(vec![stats_1, stats_2]);
+
+        assert_eq!(addresses.addresses()[0].address(), &addr_1);
+        assert_eq!(addresses.addresses()[1].address(), &addr_2);
+
+        addresses.sort_addresses();
+
+        // Advertised (addr2) should come before config (addr1)
+        assert_eq!(addresses.addresses()[0].address(), &addr_2);
+        assert_eq!(addresses.addresses()[1].address(), &addr_1);
     }
 }
