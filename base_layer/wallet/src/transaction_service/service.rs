@@ -2495,7 +2495,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 address.clone(),
                 amount,
-                MicroMinotari::zero(),
+                finalized.fee,
                 tx.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),
