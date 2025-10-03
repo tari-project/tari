@@ -2409,7 +2409,6 @@ where
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        let mut fee_in_memo = Some(fee_estimate);
         for (address, amount, memo) in &mut destinations {
             // Let's override the payment_id if the address says we should
             if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
@@ -2421,7 +2420,7 @@ where
                 .add_sender_address(
                     self.resources.one_sided_tari_address.clone(),
                     true,
-                    fee_in_memo.take().unwrap_or(MicroMinotari::zero()),
+                    fee_estimate,
                     if *address == self.resources.one_sided_tari_address ||
                         *address == self.resources.interactive_tari_address
                     {
