@@ -32,7 +32,6 @@ use crate::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::shared_secret_to_output_encryption_key,
         CoreTransactionBuilder,
         KernelBuilder,
         KernelFeatures,
@@ -684,15 +683,15 @@ where KM: TransactionKeyManagerInterface
         ))
     }
 
-    // Helper function to change the payet_id and encrypted data if the fee has changed due to a change output
+    // Helper function to change the memo field and encrypted data if the fee has changed due to a change output
     async fn change_encrypted_data_if_fee_changed(
         key_manager: &KM,
         output_pair: &mut OutputPair,
         recipient_address: &TariAddress,
         final_fee: MicroMinotari,
     ) -> Result<(), TransactionBuilderError> {
-        let mut payment_id = output_pair.output.payment_id().clone();
-        if let Some(existing_fee) = payment_id.get_fee() {
+        let mut memo_field = output_pair.output.payment_id().clone();
+        if let Some(existing_fee) = memo_field.get_fee() {
             if existing_fee == final_fee {
                 debug!(
                     target: LOG_TARGET,
@@ -708,19 +707,17 @@ where KM: TransactionKeyManagerInterface
                 );
             }
 
-            let shared_secret = key_manager
-                .get_diffie_hellman_shared_secret(
-                    output_pair
-                        .sender_offset_key_id
-                        .as_ref()
-                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
-                    recipient_address
-                        .public_view_key()
-                        .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
-                )
-                .await?;
-            let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-            let encryption_key = key_manager.import_key(encryption_private_key.clone(), None).await?;
+            let encryption_key = TariKeyId::DHEncryptedData {
+                private_key: output_pair
+                    .sender_offset_key_id
+                    .as_ref()
+                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?
+                    .into(),
+                public_key: recipient_address
+                    .public_view_key()
+                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                    .clone(),
+            };
 
             let custom_recovery_key_id = if key_manager
                 .extract_payment_id_from_encrypted_data(
@@ -751,13 +748,13 @@ where KM: TransactionKeyManagerInterface
                 return Ok(());
             };
 
-            payment_id.set_fee(final_fee);
+            memo_field.set_fee(final_fee);
             let encrypted_data = key_manager
                 .encrypt_data_for_recovery(
                     output_pair.output.commitment_mask_key_id(),
                     custom_recovery_key_id,
                     output_pair.output.value().as_u64(),
-                    payment_id.clone(),
+                    memo_field.clone(),
                 )
                 .await?;
             // This will change all the necessary fields in the wallet output
@@ -769,7 +766,7 @@ where KM: TransactionKeyManagerInterface
                         .sender_offset_key_id
                         .as_ref()
                         .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
-                    payment_id,
+                    memo_field,
                     key_manager,
                 )
                 .await?;
