@@ -74,24 +74,29 @@ impl ProactiveDialer {
             return Ok(0);
         }
 
-        let current_connections = pool.count_connected_nodes();
+        let eligible_connections = pool
+            .get_connected_node_ids()
+            .iter()
+            .filter(|p| !excluded_peers.contains(p))
+            .count();
         let target = self.config.target_connection_count;
 
         // Update metrics
 
-        if current_connections >= target {
+        if eligible_connections >= target {
             debug!(
                 target: LOG_TARGET,
-                "({task_id}) Current connections ({current_connections}) meet or exceed target ({target}), no proactive dialing needed",
+                "({task_id}) Eligible connections ({eligible_connections}) meet or exceed target ({target}), no \
+                proactive dialing needed",
             );
 
             return Ok(0);
         }
 
-        let needed = target.saturating_sub(current_connections);
+        let needed = target.saturating_sub(eligible_connections);
         debug!(
             target: LOG_TARGET,
-            "({task_id}) Proactive dialing: need {needed} more connections ({current_connections}/{target})",
+            "({task_id}) Proactive dialing: need {needed} more connections ({eligible_connections}/{target})",
 
         );
 
