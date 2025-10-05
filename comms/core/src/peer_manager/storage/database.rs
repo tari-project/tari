@@ -1146,7 +1146,7 @@ impl PeerDatabaseSql {
     }
 
     /// Return available dial candidates that are communication nodes, not banned, not deleted,
-    /// and not in the excluded node IDs list
+    /// not failed and not in the excluded node IDs list.
     pub fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
@@ -1165,6 +1165,7 @@ impl PeerDatabaseSql {
                     .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
             )
             .filter(peers::deleted_at.is_null())
+            .filter(multi_addresses::last_failed_reason.is_null())
             .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
                 "features & {} != 0",
                 PeerFeatures::COMMUNICATION_NODE.to_i32()
