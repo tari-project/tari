@@ -300,7 +300,7 @@ impl Peer {
 
     /// Update the peer's addresses. This call will invalidate the identity signature.
     pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) -> &mut Self {
-        self.addresses.update_addresses(addresses, source);
+        self.addresses.add_or_update_addresses(addresses, source);
         self
     }
 

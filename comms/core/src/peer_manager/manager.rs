@@ -595,9 +595,10 @@ fn add_internal_addresses(peer: &mut Peer) {
     addresses.push(address_7);
     addresses.shuffle(&mut rand::thread_rng());
 
-    let peer_address_source = create_peer_address_source_with_claim(addresses.clone(), peer.features);
-
-    peer.addresses.update_addresses(&addresses, &peer_address_source);
+    // Do not create a new PeerAddressSource with PeerIdentityClaim - use PeerAddressSource::Config - otherwise the
+    // previous claims and associated addresses will be discarded.
+    peer.addresses
+        .add_or_update_addresses(&addresses, &PeerAddressSource::Config);
 }
 
 #[cfg(test)]
@@ -979,7 +980,8 @@ mod test {
             .collect::<Vec<_>>();
         let peer_address_source = create_peer_address_source_with_claim(peer_addresses.clone(), peer.features);
         // Update the peer's addresses with a new claim
-        peer.addresses.update_addresses(&peer_addresses, &peer_address_source);
+        peer.addresses
+            .add_or_update_addresses(&peer_addresses, &peer_address_source);
 
         // Update the peer in the database
         peer_manager.add_or_update_peer(peer.clone()).await.unwrap();

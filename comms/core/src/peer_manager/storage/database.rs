@@ -543,7 +543,7 @@ impl PeerDatabaseSql {
             match self.get_peer_by_node_id_inner(node_id, conn)? {
                 Some(mut peer) => {
                     // Update existing
-                    peer.addresses.update_addresses(addresses, source);
+                    peer.addresses.add_or_update_addresses(addresses, source);
                     peer.features = *peer_features;
                     let update_peer_sql = PeerDatabaseSql::update_peer_sql(peer.clone())?;
                     self.update_peer_inner(update_peer_sql, conn)?;
@@ -2110,10 +2110,10 @@ mod tests {
         new_peer.metadata.insert(1, vec![1, 2, 3]);
         new_peer.metadata.insert(2, vec![4, 5, 6]);
         // - add another multi-address
-        let new_addr_str = "/ip4/127.0.0.1/udt/sctp/5678";
+        let new_addr: Multiaddr = "/ip4/127.0.0.1/udt/sctp/5678".parse().unwrap();
         new_peer
             .addresses
-            .add_address(&new_addr_str.parse().unwrap(), &PeerAddressSource::Config);
+            .add_or_update_addresses(std::slice::from_ref(&new_addr), &PeerAddressSource::Config);
         // - new stats for the first multi-address
         let mut address_to_update = new_peer.addresses.addresses().first().unwrap().clone();
         address_to_update.update_latency(Duration::from_millis(123));
@@ -2881,7 +2881,8 @@ mod tests {
             .cloned()
             .collect::<Vec<_>>();
         for address in &duplicate_address {
-            peer.addresses.add_address(address, &PeerAddressSource::Config)
+            peer.addresses
+                .add_or_update_addresses(std::slice::from_ref(address), &PeerAddressSource::Config)
         }
         peers_db.add_or_update_peer(peer.clone()).unwrap();
 

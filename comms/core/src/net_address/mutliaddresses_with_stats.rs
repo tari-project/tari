@@ -85,44 +85,16 @@ impl MultiaddressesWithStats {
             .and_then(|a| a.last_attempted())
     }
 
-    /// Adds a new net address to the peer. This function will not add a duplicate if the address
-    /// already exists.
-    pub fn add_address(&mut self, net_address: &Multiaddr, source: &PeerAddressSource) {
-        if let Some(addr_mut) = self.addresses.iter_mut().find(|x| x.address() == net_address) {
-            addr_mut.update_source_if_better(source);
-        } else {
-            self.addresses
-                .push(MultiaddrWithStats::new(net_address.clone(), source.clone()));
-        }
-
-        // Ensure that the addresses are sorted by quality
-        self.sort_addresses();
-    }
-
     pub fn contains(&self, net_address: &Multiaddr) -> bool {
         self.addresses.iter().any(|x| x.address() == net_address)
     }
 
-    /// Compares the existing set of addresses to the provided address set and remove missing addresses and
-    /// add new addresses without discarding the usage stats of the existing and remaining addresses.
-    pub fn update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) {
-        for address in addresses {
-            if let Some(addr) = self.addresses.iter_mut().find(|a| a.address() == address) {
-                addr.update_source_if_better(source);
-            }
-        }
-
-        let to_add = addresses
-            .iter()
-            .filter(|addr| !self.addresses.iter().any(|a| &a.address() == addr))
-            .collect::<Vec<_>>();
-
-        for address in to_add {
-            self.addresses
-                .push(MultiaddrWithStats::new(address.clone(), source.clone()));
-        }
-
-        self.sort_addresses();
+    /// Compares the existing set of addresses to the provided address set and remove missing addresses and add new
+    /// addresses without discarding the usage stats of the existing and remaining addresses. Where the source contains
+    /// a claim, only the most recent claim set will be retained. [Delegates to `merge()`]
+    pub fn add_or_update_addresses(&mut self, addresses: &[Multiaddr], source: &PeerAddressSource) {
+        let incoming = Self::from_addresses_with_source(addresses.to_vec(), source);
+        self.merge(&incoming);
     }
 
     /// Returns an iterator of addresses with states ordered from 'best' to 'worst' according to heuristics such as
@@ -479,8 +451,8 @@ mod test {
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses =
             MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
-        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
-        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address2), &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address3), &PeerAddressSource::Config);
 
         assert!(net_addresses.mark_last_seen_now(&net_address3));
         assert!(net_addresses.mark_last_seen_now(&net_address1));
@@ -501,10 +473,10 @@ mod test {
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses =
             MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
-        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
-        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address2), &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address3), &PeerAddressSource::Config);
         // Add duplicate address, this resets the quality score
-        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address2), &PeerAddressSource::Config);
         assert_eq!(net_addresses.addresses.len(), 3);
         assert_eq!(net_addresses.addresses[0].address(), &net_address1);
         assert_eq!(net_addresses.addresses[1].address(), &net_address2);
@@ -518,8 +490,8 @@ mod test {
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses =
             MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
-        net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
-        net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address2), &PeerAddressSource::Config);
+        net_addresses.add_or_update_addresses(std::slice::from_ref(&net_address3), &PeerAddressSource::Config);
 
         let priority_address = net_addresses.address_iter().next().unwrap();
         assert_eq!(priority_address, &net_address1);
