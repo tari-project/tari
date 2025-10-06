@@ -119,7 +119,7 @@ pub fn check_permitted_range_proof_types(
     output: &TransactionOutput,
 ) -> Result<(), AggregatedBodyValidationError> {
     let binding = constants.permitted_range_proof_types();
-    let permitted_range_proof_types = binding.iter().find(|&&t| t.0 == output.features.output_type).ok_or(
+    let permitted_range_proof_types = binding.iter().find(|&t| t.0 == output.features.output_type).ok_or(
         AggregatedBodyValidationError::OutputTypeNotMatchedToRangeProofType {
             output_type: output.features.output_type,
         },

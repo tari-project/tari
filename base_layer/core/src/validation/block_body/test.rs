@@ -599,7 +599,7 @@ mod orphan_validator {
         let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_output_types(&[OutputType::Coinbase])
+                    .with_permitted_output_types(vec![OutputType::Coinbase])
                     .with_coinbase_lockheight(0)
                     .build(),
             )
@@ -628,12 +628,16 @@ mod orphan_validator {
         let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types(&[
-                        (OutputType::Standard, &[RangeProofType::RevealedValue]),
-                        (OutputType::Coinbase, &[RangeProofType::RevealedValue]),
-                        (OutputType::Burn, &[RangeProofType::RevealedValue]),
-                        (OutputType::ValidatorNodeRegistration, &[RangeProofType::RevealedValue]),
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::RevealedValue]),
+                    .with_permitted_range_proof_types(vec![
+                        (OutputType::Standard, vec![RangeProofType::RevealedValue]),
+                        (OutputType::Coinbase, vec![RangeProofType::RevealedValue]),
+                        (OutputType::Burn, vec![RangeProofType::RevealedValue]),
+                        (OutputType::ValidatorNodeRegistration, vec![
+                            RangeProofType::RevealedValue,
+                        ]),
+                        (OutputType::CodeTemplateRegistration, vec![
+                            RangeProofType::RevealedValue,
+                        ]),
                     ])
                     .with_coinbase_lockheight(0)
                     .build(),
@@ -663,14 +667,16 @@ mod orphan_validator {
         let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types(&[
-                        (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::Coinbase, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::ValidatorNodeRegistration, &[
+                    .with_permitted_range_proof_types(vec![
+                        (OutputType::Standard, vec![RangeProofType::BulletProofPlus]),
+                        (OutputType::Coinbase, vec![RangeProofType::BulletProofPlus]),
+                        (OutputType::Burn, vec![RangeProofType::BulletProofPlus]),
+                        (OutputType::ValidatorNodeRegistration, vec![
                             RangeProofType::BulletProofPlus,
                         ]),
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::CodeTemplateRegistration, vec![
+                            RangeProofType::BulletProofPlus,
+                        ]),
                     ])
                     .with_coinbase_lockheight(0)
                     .build(),
@@ -697,7 +703,7 @@ mod orphan_validator {
         let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types(&[(OutputType::CodeTemplateRegistration, &[
+                    .with_permitted_range_proof_types(vec![(OutputType::CodeTemplateRegistration, vec![
                         RangeProofType::BulletProofPlus,
                     ])])
                     .with_coinbase_lockheight(0)

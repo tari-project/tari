@@ -4433,6 +4433,7 @@ dependencies = [
  "tari_storage",
  "tari_transaction_components",
  "tari_utilities",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "toml 0.5.11",

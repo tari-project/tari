@@ -18,6 +18,7 @@
 use std::{fmt, ops::Deref};
 
 use integer_encoding::VarInt;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 use tari_utilities::{hex::Hex, ByteArrayError};
 
@@ -632,7 +633,7 @@ impl fmt::Display for Opcode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OpcodeVersion {
     V0 = 0,

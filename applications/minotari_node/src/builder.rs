@@ -62,6 +62,7 @@ use tokio::sync::watch;
 
 use crate::{
     bootstrap::BaseNodeBootstrapper,
+    consensus_constants_tracker::ConsensusConstantsTracker,
     grpc::readiness_grpc_server::ReadinessStatusHandler,
     ApplicationConfig,
     DatabaseType,
@@ -264,6 +265,21 @@ async fn build_node_context(
             ExitError::new(ExitCode::DatabaseError, err)
         }
     })?;
+
+    // Check for consensus constants changes before starting the node
+    let consensus_tracker = ConsensusConstantsTracker::new(&app_config.base_node.data_dir);
+    let current_constants = rules.consensus_constants_vec();
+    let current_height = {
+        let metadata = blockchain_db
+            .get_chain_metadata()
+            .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Failed to get chain metadata: {e}")))?;
+        metadata.best_block_height()
+    };
+
+    if let Err(error_msg) = consensus_tracker.check_for_changes(current_constants, current_height) {
+        error!(target: LOG_TARGET, "{}", error_msg);
+        eprintln!("\n{}\n", error_msg);
+    }
 
     let mempool_validator = TransactionFullValidator::new(
         factories.clone(),
