@@ -33,6 +33,9 @@ pub mod wasm;
 
 mod format_currency;
 pub use format_currency::format_currency;
+use tari_common_types::transaction::TxId;
+
+use crate::{transaction_builder::RecipientDetails, transaction_components::TransactionOutput};
 
 pub mod weight;
 
@@ -62,5 +65,24 @@ impl BanReason {
     /// The duration of the ban
     pub fn ban_duration(&self) -> BanPeriod {
         self.ban_duration
+    }
+}
+
+// Helper function to derive a TxId from the first ransaction output, or a random TxId if there are no outputs
+pub(crate) fn tx_outputs_to_tx_id(outputs: &[TransactionOutput]) -> TxId {
+    if let Some(first_output) = outputs.first() {
+        TxId::new_deterministic(&first_output.hash())
+    } else {
+        TxId::new_random()
+    }
+}
+
+// Helper function to derive a TxId from the wallet output in the first recipient details, or a random TxId if there are
+// no outputs
+pub(crate) fn recipient_outputs_to_tx_id(outputs: &[RecipientDetails]) -> TxId {
+    if let Some(first_output) = outputs.first() {
+        first_output.output.output.to_tx_id()
+    } else {
+        TxId::new_random()
     }
 }

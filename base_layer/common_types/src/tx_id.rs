@@ -24,19 +24,62 @@ use std::{
     fmt,
     fmt::Formatter,
     hash::{Hash, Hasher},
+    sync::OnceLock,
 };
 
-use rand::{rngs::OsRng, RngCore};
+use blake2::Blake2bMac;
+use digest::{consts::U8, FixedOutput, OutputSizeUser, Update};
 use serde::{Deserialize, Serialize};
+
+type Blake2bTxIdMac = Blake2bMac<U8>; // 8-byte keyed BLAKE2b
+const MAC_SIZE: usize = 8;
+const TAG_TX_ID: &str = "tari/tx_id_64";
+static TX_ID_MAC: OnceLock<Blake2bTxIdMac> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct TxId(u64);
 
 impl TxId {
+    /// Initialize the TX_ID_MAC with the given view key. This must be called once before using
+    /// TxId::new_deterministic.
+    pub fn init_mac(view_key: &[u8]) {
+        let _unused = TX_ID_MAC.set(Self::blake2b_tx_id_mac(view_key, TAG_TX_ID));
+        debug_assert_eq!(Blake2bTxIdMac::output_size(), MAC_SIZE);
+    }
+
+    fn blake2b_tx_id_mac(key: &[u8], domain: &str) -> Blake2bTxIdMac {
+        Blake2bTxIdMac::new_with_salt_and_personal(
+            key,               // Unique key
+            b"",               // Salt is not used
+            domain.as_bytes(), // Domain separation string
+        )
+        .expect("key length ok")
+    }
+
+    /// Create a new random TxId. Only for temporary use.
     pub fn new_random() -> Self {
+        use rand::{rngs::OsRng, RngCore};
         TxId(OsRng.next_u64())
     }
 
+    /// Create a new TxId deterministically from the given 32-byte output hash.
+    pub fn new_deterministic(out_hash32: &[u8; 32]) -> Self {
+        let mac_result = TX_ID_MAC.get();
+        debug_assert!(
+            mac_result.is_some(),
+            "MAC should be initialized - call TxId::init_mac(&view_key)"
+        );
+        let mut mac = mac_result
+            .expect("MAC should be initialized - call TxId::init_mac(&view_key)")
+            .clone();
+        mac.update(out_hash32);
+        let out = mac.finalize_fixed();
+        let mut buffer = [0u8; MAC_SIZE];
+        buffer.copy_from_slice(&out);
+        TxId(u64::from_le_bytes(buffer))
+    }
+
+    /// Returns the inner u64 value.
     pub fn as_u64(self) -> u64 {
         self.0
     }
@@ -105,5 +148,38 @@ impl From<TxId> for u64 {
 impl fmt::Display for TxId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tx_id::TxId;
+
+    fn bytes32_inc(start: u8) -> [u8; 32] {
+        let mut a = [0u8; 32];
+        for (i, v) in a.iter_mut().enumerate() {
+            *v = start.wrapping_add(u8::try_from(i).unwrap());
+        }
+        a
+    }
+
+    #[test]
+    fn it_gives_deterministic_tx_ids() {
+        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+        TxId::init_mac(view_key);
+
+        let hash = bytes32_inc(0x10);
+
+        let id1 = TxId::new_deterministic(&hash);
+        let id2 = TxId::new_deterministic(&hash);
+        assert_eq!(id1, id2, "same inputs must produce same tx_id");
+
+        let hash = bytes32_inc(0x11);
+
+        let id3 = TxId::new_deterministic(&hash);
+        let id4 = TxId::new_deterministic(&hash);
+        assert_eq!(id3, id4, "same inputs must produce same tx_id");
+
+        assert_ne!(id1, id3, "different inputs must produce different tx_ids");
     }
 }

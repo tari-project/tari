@@ -237,6 +237,7 @@ where
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
+        TxId::init_mac(key_manager_handle.get_view_key().await?.pub_key.as_bytes());
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
@@ -426,7 +427,6 @@ where
                 value,
                 source_address,
                 LegacyImportStatus::Imported,
-                None,
                 None,
                 None,
                 wallet_output.to_transaction_output()?,

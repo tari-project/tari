@@ -1154,6 +1154,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn replace_tx_id_in_outputs(&self, tx_id_old: TxId, tx_id_new: TxId) -> Result<(), OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let tx_id_new_i64 = tx_id_new.as_i64_wrapped();
+        let tx_id_old_i64 = tx_id_old.as_i64_wrapped();
+
+        conn.immediate_transaction::<_, OutputManagerStorageError, _>(|conn| {
+            diesel::update(outputs::table.filter(outputs::spent_in_tx_id.eq(Some(tx_id_old_i64))))
+                .set(outputs::spent_in_tx_id.eq(Some(tx_id_new_i64)))
+                .execute(conn)?;
+
+            diesel::update(outputs::table.filter(outputs::received_in_tx_id.eq(Some(tx_id_old_i64))))
+                .set(outputs::received_in_tx_id.eq(Some(tx_id_new_i64)))
+                .execute(conn)?;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
     fn revalidate_unspent_output(&self, commitment: &CompressedCommitment) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;

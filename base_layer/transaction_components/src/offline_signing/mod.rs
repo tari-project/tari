@@ -89,6 +89,9 @@ mod test {
     }
     #[tokio::test]
     async fn offline_sign_is_valid() {
+        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+        TxId::init_mac(view_key);
+
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
@@ -127,7 +130,6 @@ mod test {
 
         // now we start the offline process
         let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -168,7 +170,6 @@ mod test {
 
         let init = offline_signing
             .prepare_one_sided_transaction_for_signing(
-                tx_id,
                 tx_builder,
                 bob_address,
                 amount,
@@ -204,6 +205,9 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn offline_deposit_multisign_is_valid() {
+        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+        TxId::init_mac(view_key);
+
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let charlie_key_manager = create_memory_key_manager().await.unwrap();
@@ -283,7 +287,6 @@ mod test {
 
         // now we start the offline process
         let offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -302,7 +305,6 @@ mod test {
         assert_eq!(alice_address, alice_address_s);
         let init = offline_signing
             .prepare_deposit_multisig_transaction(
-                tx_id,
                 tx_builder,
                 amount,
                 payment_id,
@@ -341,6 +343,9 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn offline_withdraw_multisign_is_valid() {
+        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+        TxId::init_mac(view_key);
+
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let charlie_key_manager = create_memory_key_manager().await.unwrap();
@@ -516,7 +521,6 @@ mod test {
 
         // now we start the offline process
         let offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
 
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
         let script = push_pubkey_script(&Default::default());
@@ -535,7 +539,6 @@ mod test {
         assert_eq!(alice_address, alice_address_s);
         let init = offline_signing
             .prepare_withdraw_multisig_transaction(
-                tx_id,
                 tx_builder,
                 total_amount,
                 payment_id,
@@ -562,6 +565,9 @@ mod test {
 
     #[tokio::test]
     async fn offline_sign_can_be_claimed() {
+        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+        TxId::init_mac(view_key);
+
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
@@ -615,7 +621,6 @@ mod test {
 
         let init = offline_signing
             .prepare_one_sided_transaction_for_signing(
-                TxId::new_random(),
                 tx_builder,
                 bob_address,
                 MicroMinotari(5000),
@@ -672,6 +677,9 @@ mod test {
 
     #[tokio::test]
     async fn view_only_cannot_sign_offline() {
+        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+        TxId::init_mac(view_key);
+
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
@@ -710,7 +718,6 @@ mod test {
 
         // now we start the offline process
         let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -751,7 +758,6 @@ mod test {
 
         let init = offline_signing
             .prepare_one_sided_transaction_for_signing(
-                tx_id,
                 tx_builder,
                 bob_address,
                 amount,

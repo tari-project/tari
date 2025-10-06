@@ -327,7 +327,6 @@ async fn setup_transaction_service_no_comms(
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
         scanner_handle,
-        transaction_service_handle.clone(),
     )
     .await
     .unwrap();
@@ -393,6 +392,11 @@ async fn setup_transaction_service_no_comms(
 
 #[tokio::test]
 async fn large_coin_split_transaction() {
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
+
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -490,6 +494,9 @@ async fn large_coin_split_transaction() {
 
 #[tokio::test]
 async fn single_transaction_burn_tari() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     // let _ = env_logger::builder().filter_level(log::LevelFilter::Debug).is_test(true).try_init();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -624,6 +631,9 @@ async fn single_transaction_burn_tari() {
 
 #[tokio::test]
 async fn send_one_sided_transaction_to_other() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -762,6 +772,9 @@ async fn send_one_sided_transaction_to_other() {
 
 #[tokio::test]
 async fn recover_one_sided_transaction() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -874,7 +887,7 @@ async fn recover_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
+        .scan_outputs_for_one_sided_payments(outputs.clone())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -903,15 +916,15 @@ async fn recover_one_sided_transaction() {
     assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
-        .await
-        .unwrap();
+    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
 #[tokio::test]
 async fn recover_stealth_one_sided_transaction() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -1008,7 +1021,7 @@ async fn recover_stealth_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
+        .scan_outputs_for_one_sided_payments(outputs.clone())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -1037,10 +1050,7 @@ async fn recover_stealth_one_sided_transaction() {
     assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
-        .await
-        .unwrap();
+    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
@@ -1179,6 +1189,9 @@ async fn test_htlc_send_and_claim() {
 
 #[tokio::test]
 async fn test_htlc_send_and_claim_payment_id_fee() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -1874,6 +1887,9 @@ async fn broadcast_all_completed_transactions_on_startup() {
 
 #[tokio::test]
 async fn test_update_faux_tx_on_oms_validation() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let factories = CryptoFactories::default();
 
     let connection = make_wallet_database_memory_connection();
@@ -1915,7 +1931,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             LegacyImportStatus::Imported,
             None,
             None,
-            None,
             uo_1.to_transaction_output().unwrap(),
             MemoField::open_from_string("blah", TxType::PaymentToOther),
         )
@@ -1929,7 +1944,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             LegacyImportStatus::OneSidedUnconfirmed,
             None,
             None,
-            None,
             uo_2.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-sided 1", TxType::PaymentToOther),
         )
@@ -1941,7 +1955,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(30000),
             alice_address,
             LegacyImportStatus::OneSidedConfirmed,
-            None,
             None,
             None,
             uo_3.to_transaction_output().unwrap(),
@@ -2054,6 +2067,9 @@ async fn test_update_faux_tx_on_oms_validation() {
 
 #[tokio::test]
 async fn test_update_coinbase_tx_on_oms_validation() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let factories = CryptoFactories::default();
 
     let connection = make_wallet_database_memory_connection();
@@ -2095,7 +2111,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             LegacyImportStatus::CoinbaseConfirmed,
             None,
             None,
-            None,
             uo_1.to_transaction_output().unwrap(),
             MemoField::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
         )
@@ -2109,7 +2124,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             LegacyImportStatus::CoinbaseUnconfirmed,
             None,
             None,
-            None,
             uo_2.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
         )
@@ -2121,7 +2135,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             MicroMinotari::from(30000),
             alice_address,
             LegacyImportStatus::CoinbaseUnconfirmed,
-            None,
             None,
             None,
             uo_3.to_transaction_output().unwrap(),

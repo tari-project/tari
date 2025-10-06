@@ -242,7 +242,6 @@ pub enum TransactionServiceRequest {
         amount: MicroMinotari,
         source_address: TariAddress,
         import_status: LegacyImportStatus,
-        tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
@@ -468,7 +467,6 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 source_address,
                 import_status,
-                tx_id,
                 current_height,
                 mined_timestamp,
                 payment_id,
@@ -476,7 +474,7 @@ impl fmt::Display for TransactionServiceRequest {
             } => write!(
                 f,
                 "ImportUtxoWithStatus (amount: {amount}, from: {source_address}, payment_id: {payment_id}, import \
-                 status: {import_status:?}, TxId: {tx_id:?}, height: {current_height:?}, mined at: {mined_timestamp:?}"
+                 status: {import_status:?}, height: {current_height:?}, mined at: {mined_timestamp:?}"
             ),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({tx_id})"),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
@@ -1422,7 +1420,6 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         source_address: TariAddress,
         import_status: LegacyImportStatus,
-        tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
@@ -1434,7 +1431,6 @@ impl TransactionServiceHandle {
                 amount,
                 source_address,
                 import_status,
-                tx_id,
                 current_height,
                 mined_timestamp,
                 scanned_output,

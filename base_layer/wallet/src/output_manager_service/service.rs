@@ -112,7 +112,7 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
-    transaction_service::handle::TransactionServiceHandle,
+    tx_outputs_to_tx_id,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -156,7 +156,6 @@ where
         connectivity: TWalletConnectivity,
         key_manager: TKeyManagerInterface,
         utxo_scanner_handle: UtxoScannerHandle,
-        transaction_service_handle: TransactionServiceHandle,
     ) -> Result<Self, OutputManagerError> {
         let view_key = key_manager.get_view_key().await?;
         let spend_key = key_manager.get_spend_key().await?;
@@ -187,7 +186,6 @@ where
             one_sided_tari_address,
             interactive_tari_address,
             utxo_scanner_handle,
-            transaction_service_handle,
             network,
         };
 
@@ -330,6 +328,9 @@ where
             OutputManagerRequest::UpdateOutputMetadataSignature(uo) => self
                 .update_output_metadata_signature(*uo)
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
+            OutputManagerRequest::ReplaceTxId { tx_id_old, tx_id_new } => self
+                .replace_tx_id_in_outputs(tx_id_old, tx_id_new)
+                .map(|_| OutputManagerResponse::TxIdReplaced),
             OutputManagerRequest::GetBalance => {
                 let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance(current_tip_for_time_lock_calculation)
@@ -361,7 +362,6 @@ where
                 .await
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::CreatePayToSelfTransaction {
-                tx_id,
                 amount,
                 selection_criteria,
                 output_features,
@@ -371,7 +371,6 @@ where
                 minimum_value_promise,
             } => self
                 .create_pay_to_self_transaction(
-                    tx_id,
                     amount,
                     selection_criteria,
                     *output_features,
@@ -483,14 +482,12 @@ where
                 .await
                 .map(OutputManagerResponse::Transaction),
 
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
-                self.resources.key_manager.clone(),
-                self.resources.db.clone(),
-                self.resources.transaction_service_handle.clone(),
-            )
-            .scan_and_recover_outputs(outputs)
-            .await
-            .map(OutputManagerResponse::RewoundOutputs),
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => {
+                StandardUtxoRecoverer::new(self.resources.key_manager.clone(), self.resources.db.clone())
+                    .scan_and_recover_outputs(outputs)
+                    .await
+                    .map(OutputManagerResponse::RewoundOutputs)
+            },
             OutputManagerRequest::ScanOutputs(outputs) => self
                 .scan_outputs_for_one_sided_payments(outputs)
                 .await
@@ -758,6 +755,13 @@ where
     /// Update an output's metadata signature, akin to 'finalize output'
     pub fn update_output_metadata_signature(&mut self, output: TransactionOutput) -> Result<(), OutputManagerError> {
         self.resources.db.update_output_metadata_signature(output)?;
+        Ok(())
+    }
+
+    /// Replace the TxId for all outputs that match the old_tx_id with the new_tx_id in `spent_in_tx_id` or
+    /// `received_in_tx_id` fields.
+    pub fn replace_tx_id_in_outputs(&mut self, tx_id_old: TxId, tx_id_new: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.replace_tx_id_in_outputs(tx_id_old, tx_id_new)?;
         Ok(())
     }
 
@@ -1033,16 +1037,19 @@ where
         }
 
         let finalized = builder.build().await?;
-        let tx_id = TxId::new_random();
-        if let Some(wallet_output) = finalized.change {
+        let tx_id = if let Some(wallet_output) = finalized.change {
+            let tx_id = TxId::new_deterministic(&wallet_output.output_hash());
             db_outputs.push(DbWalletOutput::from_wallet_output(
-                wallet_output,
+                wallet_output.clone(),
                 None,
                 OutputSource::default(),
                 Some(tx_id),
                 None,
             ));
-        }
+            tx_id
+        } else {
+            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
+        };
 
         self.resources
             .db
@@ -1625,7 +1632,6 @@ where
     #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
-        tx_id: TxId,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -1633,7 +1639,7 @@ where
         lock_height: Option<u64>,
         payment_id: MemoField,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotari, Transaction, TxId), OutputManagerError> {
         let covenant = Covenant::default();
 
         let features_and_scripts_byte_size = self
@@ -1701,12 +1707,16 @@ where
         let finalized = tx_builder.build().await?;
 
         let fee = finalized.fee;
-        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
-        if let Some(change) = finalized.change {
+        let tx_id = if let Some(change) = finalized.change {
+            let tx_id = TxId::new_deterministic(&change.output_hash());
             let change_output =
                 DbWalletOutput::from_wallet_output(change, None, OutputSource::default(), Some(tx_id), None);
             outputs.push(change_output);
-        }
+            tx_id
+        } else {
+            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
+        };
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
 
         trace!(
             target: LOG_TARGET,
@@ -1719,7 +1729,7 @@ where
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
         let tx = finalized.transaction;
 
-        Ok((fee, tx))
+        Ok((fee, tx, tx_id))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
@@ -2176,7 +2186,7 @@ where
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = TxId::new_random();
+        let tx_id = tx_outputs_to_tx_id(finalized.transaction.body.outputs());
 
         trace!(
             target: LOG_TARGET,
@@ -2339,7 +2349,7 @@ where
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = TxId::new_random();
+        let tx_id = tx_outputs_to_tx_id(finalized.transaction.body.outputs());
 
         trace!(
             target: LOG_TARGET,
@@ -2551,7 +2561,7 @@ where
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = TxId::new_random();
+        let tx_id = tx_outputs_to_tx_id(finalized.transaction.body.outputs());
 
         trace!(
             target: LOG_TARGET,
@@ -2667,11 +2677,9 @@ where
 
                 let finalized = builder.build().await?;
 
-                let tx_id = TxId::new_random();
-
-                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({tx_id}).");
                 let fee = finalized.fee;
-                if let Some(wallet_output) = finalized.change {
+                let tx_id = if let Some(wallet_output) = finalized.change {
+                    let tx_id = TxId::new_deterministic(&wallet_output.output_hash());
                     let change_output = DbWalletOutput::from_wallet_output(
                         wallet_output,
                         None,
@@ -2680,7 +2688,11 @@ where
                         None,
                     );
                     outputs.push(change_output);
-                }
+                    tx_id
+                } else {
+                    tx_outputs_to_tx_id(finalized.transaction.body.outputs())
+                };
+                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({tx_id}).");
 
                 self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
                 self.confirm_encumberance(tx_id, Vec::new())?;
@@ -2729,18 +2741,20 @@ where
 
         let mut outputs = Vec::new();
 
-        let tx_id = TxId::new_random();
-
-        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({tx_id}).");
         let finalized = builder.build().await?;
         let fee = finalized.fee;
 
-        if let Some(wallet_output) = finalized.change {
+        let tx_id = if let Some(wallet_output) = finalized.change {
+            let tx_id = TxId::new_deterministic(&wallet_output.output_hash());
             let change_output =
                 DbWalletOutput::from_wallet_output(wallet_output, None, OutputSource::HtlcRefund, Some(tx_id), None);
             outputs.push(change_output);
-        }
+            tx_id
+        } else {
+            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
+        };
         let tx = finalized.transaction;
+        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({tx_id}).");
 
         self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
         self.confirm_encumberance(tx_id, Vec::new())?;
@@ -2772,7 +2786,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut known_keys = Vec::new();
         let known_scripts = self.resources.db.get_all_known_one_sided_payment_scripts()?;
@@ -2790,7 +2804,7 @@ where
 
         let mut scanned_outputs = vec![];
 
-        for (output, tx_id) in outputs {
+        for output in outputs {
             if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                 if let Some(matched_key) = known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
                     let shared_secret = self
@@ -2822,7 +2836,7 @@ where
                                 script_private_key,
                             );
 
-                            scanned_outputs.push((rewound_output, OutputSource::OneSided, tx_id));
+                            scanned_outputs.push((rewound_output, OutputSource::OneSided));
                         }
                     }
                 }
@@ -2875,7 +2889,7 @@ where
                                 script_key,
                             );
 
-                            scanned_outputs.push((recovered_output, OutputSource::StealthOneSided, tx_id));
+                            scanned_outputs.push((recovered_output, OutputSource::StealthOneSided));
                         }
                     }
                 }
@@ -2889,12 +2903,12 @@ where
     #[allow(clippy::too_many_lines)]
     async fn scan_outputs_for_multisig(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         // 1. Get all your wallet's public keys (or just the spend key for now)
         let mut scanned_outputs = vec![];
 
-        for (output, tx_id) in outputs {
+        for output in outputs {
             // 2. Check if the script is a multisig script
 
             if let [Opcode::CheckMultiSigVerify(_m, _n, pubkeys, _msg), Opcode::PushPubKey(scanned_pk)] =
@@ -2903,7 +2917,7 @@ where
                 debug!(
                     target: LOG_TARGET,
                     "Found multisig script in output with tx_id: {:?}, pubkeys: {:?}",
-                    tx_id,
+                    TxId::new_deterministic(&output.hash()),
                     pubkeys
                 );
 
@@ -2942,7 +2956,7 @@ where
                         ExecutionStack::new(vec![]),
                         script_key,
                     );
-                    scanned_outputs.push((recovered_output, OutputSource::Multisig, tx_id));
+                    scanned_outputs.push((recovered_output, OutputSource::Multisig));
                 }
             }
         }
@@ -2953,12 +2967,12 @@ where
     // Import scanned outputs into the wallet
     fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(WalletOutput, OutputSource, Option<TxId>)>,
+        scanned_outputs: Vec<(WalletOutput, OutputSource)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, output_source, tx_id) in scanned_outputs {
-            let tx_id = tx_id.unwrap_or(TxId::new_random());
+        for (output, output_source) in scanned_outputs {
+            let tx_id = output.to_tx_id();
             let db_output = DbWalletOutput::from_wallet_output(output.clone(), None, output_source, Some(tx_id), None);
             let hash = db_output.hash;
 
@@ -2975,7 +2989,7 @@ where
                         db_output.wallet_output.value(),
                     );
 
-                    rewound_outputs.push(RecoveredOutput { output, tx_id, hash })
+                    rewound_outputs.push(RecoveredOutput { output, hash })
                 },
                 Err(OutputManagerStorageError::DuplicateOutput) => {
                     warn!(

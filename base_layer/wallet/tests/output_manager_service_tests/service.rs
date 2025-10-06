@@ -137,7 +137,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
         scanner_handle,
-        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -201,7 +200,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         connectivity,
         key_manager.clone(),
         scanner_handle,
-        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -308,6 +306,9 @@ async fn fee_estimate() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
@@ -430,6 +431,9 @@ async fn test_utxo_selection_no_chain_metadata() {
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_selection_with_chain_metadata() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     // setup with chain metadata at a height of 6
@@ -986,6 +990,9 @@ async fn sending_transaction_persisted_while_offline() {
 
 #[tokio::test]
 async fn coin_split_with_change() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -1054,6 +1061,9 @@ async fn coin_split_with_change() {
 
 #[tokio::test]
 async fn coin_split_no_change() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -1122,6 +1132,9 @@ async fn coin_split_no_change() {
 
 #[tokio::test]
 async fn it_handles_large_coin_splits() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -1972,6 +1985,9 @@ async fn test_get_status_by_tx_id() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn scan_for_recovery_test() {
+    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
+    TxId::init_mac(view_key);
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -2040,12 +2056,12 @@ async fn scan_for_recovery_test() {
     }
     let mut recoverable_outputs = Vec::new();
     for output in &recoverable_wallet_outputs {
-        recoverable_outputs.push((output.to_transaction_output().unwrap(), None));
+        recoverable_outputs.push(output.to_transaction_output().unwrap());
     }
 
     let mut non_recoverable_outputs = Vec::new();
     for output in non_recoverable_wallet_outputs {
-        non_recoverable_outputs.push((output.to_transaction_output().unwrap(), None));
+        non_recoverable_outputs.push(output.to_transaction_output().unwrap());
     }
 
     oms.output_manager_handle
@@ -2060,7 +2076,7 @@ async fn scan_for_recovery_test() {
                 .clone()
                 .into_iter()
                 .chain(non_recoverable_outputs.clone().into_iter())
-                .collect::<Vec<(TransactionOutput, Option<TxId>)>>(),
+                .collect::<Vec<TransactionOutput>>(),
         )
         .await
         .unwrap();
@@ -2107,7 +2123,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let result = oms
         .output_manager_handle
-        .scan_for_recoverable_outputs(vec![(rewindable_output, None)])
+        .scan_for_recoverable_outputs(vec![rewindable_output])
         .await;
     assert!(
         matches!(result.as_deref(), Ok([])),

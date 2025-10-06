@@ -24,7 +24,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use tari_core::transactions::format_currency;
+/// use transaction_components::format_currency;
 /// assert_eq!("12,345.12", format_currency("12345.12", ','));
 /// assert_eq!("12,345", format_currency("12345", ','));
 /// ```

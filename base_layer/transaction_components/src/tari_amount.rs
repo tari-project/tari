@@ -40,8 +40,8 @@ use super::format_currency;
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
 /// conversion errors etc.
 ///
-/// ```edition2018
-/// use tari_core::transactions::MicroMinotari;
+/// ```edition2021
+/// use transaction_components::MicroMinotari;
 ///
 /// let a = MicroMinotari::from(500);
 /// let b = MicroMinotari::from(50);
@@ -81,8 +81,8 @@ impl From<DecimalConvertError> for MicroMinotariError {
     }
 }
 /// A convenience constant that makes it easier to define Tari amounts.
-/// ```edition2018
-/// use tari_core::transactions::tari_amount::{uT, MicroMinotari, T};
+/// ```edition2021
+/// use transaction_components::tari_amount::{uT, MicroMinotari, T};
 /// assert_eq!(MicroMinotari::from(42), 42 * uT);
 /// assert_eq!(1 * T, 1_000_000.into());
 /// assert_eq!(3_000_000 * uT, 3 * T);

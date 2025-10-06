@@ -82,6 +82,9 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
+    /// Replace the TxId for all outputs that match the old_tx_id with the new_tx_id in `spent_in_tx_id` or
+    /// `received_in_tx_id` fields.
+    fn replace_tx_id_in_outputs(&self, tx_id_old: TxId, tx_id_new: TxId) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &CompressedCommitment) -> Result<(), OutputManagerStorageError>;
 

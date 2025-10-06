@@ -64,6 +64,10 @@ pub enum OutputManagerRequest {
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
+    ReplaceTxId {
+        tx_id_old: TxId,
+        tx_id_new: TxId,
+    },
     ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
     EncumberAggregateUtxo {
         tx_id: TxId,
@@ -96,7 +100,6 @@ pub enum OutputManagerRequest {
         covenant: Covenant,
     },
     CreatePayToSelfTransaction {
-        tx_id: TxId,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
@@ -136,9 +139,9 @@ pub enum OutputManagerRequest {
         num_outputs: usize,
     },
 
-    ScanForRecoverableOutputs(Vec<(TransactionOutput, Option<TxId>)>),
-    ScanOutputs(Vec<(TransactionOutput, Option<TxId>)>),
-    ScanOutputsForMultisig(Vec<(TransactionOutput, Option<TxId>)>),
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
+    ScanOutputsForMultisig(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroMinotari,
@@ -176,6 +179,7 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
+            ReplaceTxId { tx_id_old, tx_id_new } => write!(f, "ReplaceTxId '{}' with '{}'", tx_id_old, tx_id_new),
             ScrapeWallet { tx_id, fee_per_gram } => {
                 write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram})")
             },
@@ -286,6 +290,7 @@ pub enum OutputManagerResponse<KM> {
     OutputAdded,
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
+    TxIdReplaced,
     // RecipientTransactionGenerated(ReceiverTransactionProtocol),
     EncumberAggregateUtxo(
         Box<(
@@ -301,7 +306,7 @@ pub enum OutputManagerResponse<KM> {
     SpendBackupPreMineUtxo((Transaction, MicroMinotari, MicroMinotari)),
     OutputConfirmed,
     PendingTransactionConfirmed,
-    PayToSelfTransaction((MicroMinotari, Transaction)),
+    PayToSelfTransaction((MicroMinotari, Transaction, TxId)),
     TransactionBuilderToSend(Box<TransactionBuilder<KM>>),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
@@ -371,7 +376,6 @@ pub struct PublicRewindKeys {
 
 #[derive(Debug, Clone)]
 pub struct RecoveredOutput {
-    pub tx_id: TxId,
     pub output: WalletOutput,
     pub hash: FixedHash,
 }
@@ -797,7 +801,7 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn scan_for_recoverable_outputs(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
@@ -811,7 +815,7 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
@@ -821,7 +825,7 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn scan_outputs_for_multisig(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
@@ -913,6 +917,21 @@ where KM: TransactionKeyManagerInterface
         }
     }
 
+    pub async fn replace_tx_id_in_outputs(
+        &mut self,
+        tx_id_old: TxId,
+        tx_id_new: TxId,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ReplaceTxId { tx_id_old, tx_id_new })
+            .await??
+        {
+            OutputManagerResponse::TxIdReplaced => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn spend_backup_pre_mine_utxo(
         &mut self,
         tx_id: TxId,
@@ -940,7 +959,6 @@ where KM: TransactionKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     pub async fn create_pay_to_self_transaction(
         &mut self,
-        tx_id: TxId,
         amount: MicroMinotari,
         utxo_selection: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -948,11 +966,10 @@ where KM: TransactionKeyManagerInterface
         lock_height: Option<u64>,
         payment_id: MemoField,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotari, Transaction, TxId), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction {
-                tx_id,
                 amount,
                 selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
