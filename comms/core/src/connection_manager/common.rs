@@ -169,7 +169,7 @@ pub(super) fn validate_peer_identity_message(
     }
 
     if addresses.is_empty() {
-        return Err(PeerValidatorError::PeerIdentityNoAddresses.into());
+        debug!(target: LOG_TARGET, "validate_peer_identity_message - peer address claim contains no addresses.");
     }
 
     if addresses.len() > config.max_permitted_peer_addresses_per_claim {

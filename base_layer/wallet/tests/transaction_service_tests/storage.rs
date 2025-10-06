@@ -135,7 +135,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     )
     .await
     .unwrap();
-    builder.with_output(output.clone(), sender_offset.key_id).await.unwrap();
+    builder
+        .with_output(output.clone(), sender_offset.key_id, None)
+        .await
+        .unwrap();
     let finalized = builder.build().await.unwrap();
 
     let messages = ["Hey!", "Yo!", "Sup!"];
