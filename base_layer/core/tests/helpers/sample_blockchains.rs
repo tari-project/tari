@@ -174,7 +174,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
 
 pub fn consensus_constants(network: Network) -> ConsensusConstantsBuilder {
     ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 10, 1000)
+        .with_emission_amounts(100_000_000.into(), EMISSION.to_vec(), 10, 1000)
         .with_coinbase_lockheight(1)
 }
 

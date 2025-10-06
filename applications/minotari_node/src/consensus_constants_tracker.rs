@@ -26,40 +26,9 @@ use std::{
 };
 
 use log::*;
-use serde::{Deserialize, Serialize};
 use tari_transaction_components::consensus::ConsensusConstants;
 
 const LOG_TARGET: &str = "c::cs::consensus_tracker";
-
-/// A simplified representation of consensus constants for tracking changes
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TrackedConsensusConstants {
-    pub effective_from_height: u64,
-    pub coinbase_min_maturity: u64,
-    pub blockchain_version: u16,
-    pub future_time_limit: u64,
-    pub difficulty_block_window: u64,
-    pub max_block_transaction_weight: u64,
-    pub emission_initial: u64,
-    pub inflation_bips: u64,
-    pub tail_epoch_length: u64,
-}
-
-impl From<&ConsensusConstants> for TrackedConsensusConstants {
-    fn from(cc: &ConsensusConstants) -> Self {
-        Self {
-            effective_from_height: cc.effective_from_height(),
-            coinbase_min_maturity: cc.coinbase_min_maturity(),
-            blockchain_version: cc.blockchain_version().into(),
-            future_time_limit: cc.ftl().as_u64(),
-            difficulty_block_window: cc.difficulty_block_window(),
-            max_block_transaction_weight: cc.max_block_transaction_weight(),
-            emission_initial: cc.emission_amounts().0.as_u64(),
-            inflation_bips: cc.emission_amounts().2,
-            tail_epoch_length: cc.emission_amounts().3,
-        }
-    }
-}
 
 /// Tracks consensus constants to detect changes between node restarts
 pub struct ConsensusConstantsTracker {
@@ -74,7 +43,7 @@ impl ConsensusConstantsTracker {
     }
 
     /// Load the previously stored consensus constants
-    pub fn load_previous(&self) -> Option<Vec<TrackedConsensusConstants>> {
+    pub fn load_previous(&self) -> Option<Vec<ConsensusConstants>> {
         match fs::read_to_string(&self.storage_path) {
             Ok(content) => match serde_json::from_str(&content) {
                 Ok(constants) => {
@@ -96,25 +65,24 @@ impl ConsensusConstantsTracker {
             },
             Err(_) => {
                 debug!(
-                        target: LOG_TARGET,
-                        "No previous consensus constants file found at {}",
-                        self.storage_path.display()
-                    );
+                    target: LOG_TARGET,
+                    "No previous consensus constants file found at {}",
+                    self.storage_path.display()
+                );
                 None
             },
         }
     }
 
     /// Store the current consensus constants
-    pub fn store_current(&self, constants: &[ConsensusConstants]) -> Result<(), Box<dyn std::error::Error>> {
-        let tracked: Vec<TrackedConsensusConstants> = constants.iter().map(TrackedConsensusConstants::from).collect();
-        let content = serde_json::to_string_pretty(&tracked)?;
-        
+    pub fn store_current(&self, consensus_constants: &[ConsensusConstants]) -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_string_pretty(consensus_constants)?;
+
         // Ensure the directory exists
         if let Some(parent) = self.storage_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        
+
         fs::write(&self.storage_path, content)?;
         debug!(
             target: LOG_TARGET,
@@ -130,11 +98,8 @@ impl ConsensusConstantsTracker {
         current_constants: &[ConsensusConstants],
         current_height: u64,
     ) -> Result<(), String> {
-        let current_tracked: Vec<TrackedConsensusConstants> =
-            current_constants.iter().map(TrackedConsensusConstants::from).collect();
-
-        if let Some(previous_tracked) = self.load_previous() {
-            if current_tracked != previous_tracked {
+        if let Some(previous_constants) = self.load_previous() {
+            if current_constants != previous_constants {
                 info!(
                     target: LOG_TARGET,
                     "Consensus constants have changed since last startup"
@@ -146,22 +111,20 @@ impl ConsensusConstantsTracker {
                     .filter(|cc| cc.effective_from_height() <= current_height)
                     .max_by_key(|cc| cc.effective_from_height());
 
-                let previous_active = previous_tracked
+                let previous_active = previous_constants
                     .iter()
-                    .filter(|cc| cc.effective_from_height <= current_height)
-                    .max_by_key(|cc| cc.effective_from_height);
+                    .filter(|cc| cc.effective_from_height() <= current_height)
+                    .max_by_key(|cc| cc.effective_from_height());
 
                 if let (Some(current), Some(previous)) = (current_active, previous_active) {
-                    let current_active_tracked = TrackedConsensusConstants::from(current);
-                    if current_active_tracked != *previous {
+                    if current != previous {
                         return Err(format!(
-                            "CRITICAL: Consensus constants have changed and the new constants are already active!\n\
-                             Current height: {}\n\
-                             Active consensus constants changed from effective height {} to {}\n\
-                             This indicates a potential network fork or version mismatch.\n\
-                             Please verify you are running the correct version of the node for this network.",
+                            "CRITICAL: Consensus constants have changed and the new constants are already \
+                             active!\nCurrent height: {}\nActive consensus constants changed from effective height {} \
+                             to {}\nThis indicates a potential network fork or version mismatch.\nPlease verify you \
+                             are running the correct version of the node for this network.",
                             current_height,
-                            previous.effective_from_height,
+                            previous.effective_from_height(),
                             current.effective_from_height()
                         ));
                     }
@@ -184,10 +147,11 @@ impl ConsensusConstantsTracker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use tempfile::TempDir;
-    use tari_transaction_components::consensus::ConsensusConstantsBuilder;
     use tari_common::configuration::Network;
+    use tari_transaction_components::consensus::ConsensusConstantsBuilder;
+    use tempfile::TempDir;
+
+    use super::*;
 
     #[test]
     fn test_consensus_constants_tracker() {
@@ -196,13 +160,9 @@ mod tests {
         let tracker = ConsensusConstantsTracker::new(temp_dir.path());
 
         // Create some mock consensus constants
-        let constants1 = vec![
-            ConsensusConstantsBuilder::new(Network::Esmeralda).build(),
-        ];
-        
-        let constants2 = vec![
-            ConsensusConstantsBuilder::new(Network::LocalNet).build(),
-        ];
+        let constants1 = vec![ConsensusConstantsBuilder::new(Network::Esmeralda).build()];
+
+        let constants2 = vec![ConsensusConstantsBuilder::new(Network::LocalNet).build()];
 
         // First run - no previous constants, should pass
         let result = tracker.check_for_changes(&constants1, 0);
@@ -223,13 +183,12 @@ mod tests {
     #[test]
     fn test_tracked_consensus_constants_serialization() {
         let constants = ConsensusConstantsBuilder::new(Network::Esmeralda).build();
-        let tracked = TrackedConsensusConstants::from(&constants);
-        
+
         // Test serialization
-        let json = serde_json::to_string(&tracked).expect("Should serialize");
-        let deserialized: TrackedConsensusConstants = serde_json::from_str(&json).expect("Should deserialize");
-        
-        assert_eq!(tracked, deserialized);
+        let json = serde_json::to_string(&constants).expect("Should serialize");
+        let deserialized: ConsensusConstants = serde_json::from_str(&json).expect("Should deserialize");
+
+        assert_eq!(constants, deserialized);
     }
 
     #[test]
@@ -238,13 +197,9 @@ mod tests {
         let tracker = ConsensusConstantsTracker::new(temp_dir.path());
 
         // Create constants with different networks to simulate different values
-        let constants_v1 = vec![
-            ConsensusConstantsBuilder::new(Network::LocalNet).build(),
-        ];
-        
-        let constants_v2 = vec![
-            ConsensusConstantsBuilder::new(Network::Esmeralda).build(),
-        ];
+        let constants_v1 = vec![ConsensusConstantsBuilder::new(Network::LocalNet).build()];
+
+        let constants_v2 = vec![ConsensusConstantsBuilder::new(Network::Esmeralda).build()];
 
         // First run with v1 constants at height 0
         let result = tracker.check_for_changes(&constants_v1, 0);
@@ -252,6 +207,9 @@ mod tests {
 
         // Second run with v2 constants but still at height 0 (same active constants)
         let result = tracker.check_for_changes(&constants_v2, 0);
-        assert!(result.is_ok(), "Should pass when active constants haven't changed at height 0");
+        assert!(
+            result.is_ok(),
+            "Should pass when active constants haven't changed at height 0"
+        );
     }
 }

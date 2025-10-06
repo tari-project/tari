@@ -49,8 +49,6 @@ pub use blockchain_database::{
     MmrRoots,
     Validators,
 };
-mod consensus_constants_tracker;
-pub use consensus_constants_tracker::ConsensusConstantsTracker;
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
 mod consts;

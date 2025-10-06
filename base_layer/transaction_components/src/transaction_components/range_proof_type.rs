@@ -59,8 +59,8 @@ impl RangeProofType {
         FromPrimitive::from_u8(value)
     }
 
-    pub const fn all() -> &'static [Self] {
-        &[RangeProofType::BulletProofPlus, RangeProofType::RevealedValue]
+    pub fn all() -> Vec<Self> {
+        vec![RangeProofType::BulletProofPlus, RangeProofType::RevealedValue]
     }
 }
 
@@ -104,7 +104,7 @@ mod tests {
         }
 
         for variant in RangeProofType::all() {
-            let mask = 1 << *variant as u8;
+            let mask = 1 << variant as u8;
             check_duplicate(variant_bits, mask);
             match variant {
                 RangeProofType::BulletProofPlus => variant_bits |= mask,
