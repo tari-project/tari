@@ -75,18 +75,19 @@ async fn fetch_async_block() {
 #[tokio::test]
 async fn async_add_new_block() {
     let network = Network::LocalNet;
-    let (db, blocks, outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
+    let (db, blocks, outputs, consensus_manager, mut key_manager) = create_new_blockchain(network).await;
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
 
-    let txns = schema_to_transaction(&schema, &key_manager)
+    let txns = schema_to_transaction(&schema, &mut key_manager)
         .await
         .0
         .iter()
         .map(|t| t.deref().clone())
         .collect();
-    let new_block = chain_block_with_new_coinbase(blocks.last().unwrap(), txns, &consensus_manager, None, &key_manager)
-        .await
-        .0;
+    let new_block =
+        chain_block_with_new_coinbase(blocks.last().unwrap(), txns, &consensus_manager, None, &mut key_manager)
+            .await
+            .0;
 
     let new_block = db.prepare_new_block(new_block).unwrap();
     let db = AsyncBlockchainDb::new(db);
@@ -100,9 +101,9 @@ async fn async_add_new_block() {
 
 #[tokio::test]
 async fn async_add_block_fetch_orphan() {
-    let (db, _, _, consensus, key_manager) = create_blockchain_db_no_cut_through().await;
+    let (db, _, _, consensus, mut key_manager) = create_blockchain_db_no_cut_through().await;
 
-    let orphan = create_orphan_block(7, vec![], &consensus, &key_manager).await;
+    let orphan = create_orphan_block(7, vec![], &consensus, &mut key_manager).await;
     let block_hash = orphan.hash();
     let db = AsyncBlockchainDb::new(db);
     db.add_block(orphan.clone().into()).await.unwrap();

@@ -586,7 +586,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
     let gb_height = genesis_block.header().height;
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
-    let km = create_memory_db_key_manager().await.unwrap();
+    let mut km = create_memory_db_key_manager().await.unwrap();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
     let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
@@ -631,7 +631,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
             &rules,
             prev_block.block(),
             block_spec,
-            &km,
+            &mut km,
             &script_key_id,
             &wallet_payment_address,
             None,
@@ -776,7 +776,7 @@ impl TestBlockchain {
         Ok(blocks)
     }
 
-    pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, WalletOutput)> {
+    pub async fn create_chain(&mut self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, WalletOutput)> {
         let mut result = Vec::new();
         for spec in block_specs {
             result.push(self.create_chained_block(spec).await);
@@ -834,7 +834,6 @@ impl TestBlockchain {
         block: Arc<ChainBlock>,
     ) -> Result<BlockAddResult, ChainStorageError> {
         let result = self.db.add_block(block.to_arc_block())?;
-        // let smt = self.db.smt().read().unwrap().clone();
         self.chain.push((name, block));
         Ok(result)
     }
@@ -847,41 +846,61 @@ impl TestBlockchain {
         self.chain.last().cloned().unwrap()
     }
 
-    pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
-        let parent = self
-            .get_block_and_smt_by_name(block_spec.parent)
-            .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
-            .unwrap();
+    pub async fn create_chained_block(&mut self, block_spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
+        let parent = self.get_block_and_smt_by_name(block_spec.parent).unwrap();
+
         let difficulty = block_spec.difficulty;
+
+        // Destructure self to prove to the borrow checker that we are borrowing disjoint fields.
+        let Self {
+            db,
+            rules,
+            km,
+            script_key_id,
+            wallet_payment_address,
+            range_proof_type,
+            ..
+        } = self;
+
         let (block, coinbase) = create_block(
-            self.db(),
-            &self.rules,
+            db,
+            rules,
             parent.block(),
             block_spec,
-            &self.km,
-            &self.script_key_id,
-            &self.wallet_payment_address,
-            Some(self.range_proof_type),
+            km,
+            script_key_id,
+            wallet_payment_address,
+            Some(*range_proof_type),
         )
         .await;
+
         let block = mine_block(block, parent.accumulated_data(), difficulty);
         (block, coinbase)
     }
 
-    pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, WalletOutput) {
-        let parent = self
-            .get_block_and_smt_by_name(block_spec.parent)
-            .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
-            .unwrap();
+    pub async fn create_unmined_block(&mut self, block_spec: BlockSpec) -> (Block, WalletOutput) {
+        let parent = self.get_block_and_smt_by_name(block_spec.parent).unwrap();
+
+        // Destructure self to prove to the borrow checker that we are borrowing disjoint fields.
+        let Self {
+            db,
+            rules,
+            km,
+            script_key_id,
+            wallet_payment_address,
+            range_proof_type,
+            ..
+        } = self;
+
         let (mut block, outputs) = create_block(
-            self.db(),
-            &self.rules,
+            db,
+            rules,
             parent.block(),
             block_spec,
-            &self.km,
-            &self.script_key_id,
-            &self.wallet_payment_address,
-            Some(self.range_proof_type),
+            km,
+            script_key_id,
+            wallet_payment_address,
+            Some(*range_proof_type),
         )
         .await;
         block.body.sort();
@@ -893,7 +912,7 @@ impl TestBlockchain {
         mine_block(block, parent.accumulated_data(), difficulty)
     }
 
-    pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
+    pub async fn create_next_tip(&mut self, spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
         let (name, _) = self.get_tip_block();
         self.create_chained_block(spec.with_parent_block(name)).await
     }

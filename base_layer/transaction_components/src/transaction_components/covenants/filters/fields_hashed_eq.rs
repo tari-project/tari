@@ -71,7 +71,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let features = OutputFeatures {
             maturity: 42,
             sidechain_feature: Some(make_sample_sidechain_feature()),
@@ -81,7 +81,7 @@ mod test {
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(borsh::to_vec(&features).unwrap()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into()))).unwrap();
-        let input = create_input(&key_manager).await;
+        let input = create_input(&mut key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
             &input,
@@ -95,7 +95,7 @@ mod test {
                 };
                 outputs[7].features = features;
             },
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         let mut output_set = OutputSet::new(&outputs);

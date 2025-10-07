@@ -174,7 +174,7 @@ pub async fn mine_blocks_without_wallet(
     base_client: &mut BaseNodeClient,
     num_blocks: u64,
     weight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -200,7 +200,7 @@ pub async fn mine_blocks_without_wallet(
 
 pub async fn mine_block(
     base_client: &mut BaseNodeClient,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -236,7 +236,7 @@ pub async fn mine_block(
 async fn mine_block_without_wallet(
     base_client: &mut BaseNodeClient,
     weight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -275,7 +275,7 @@ async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClien
 async fn create_block_template_with_coinbase(
     base_client: &mut BaseNodeClient,
     weight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -340,7 +340,7 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
     let (template, wallet_output) = create_block_template_with_coinbase(
         &mut client,
         0,
-        &world.key_manager,
+        &mut world.key_manager,
         script_key_id,
         &world.default_payment_address.clone(),
         false,
@@ -353,7 +353,7 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
 
 pub async fn mine_block_before_submit(
     client: &mut BaseNodeClient,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,

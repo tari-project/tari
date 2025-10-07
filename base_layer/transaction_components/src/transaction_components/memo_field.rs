@@ -460,6 +460,16 @@ impl MemoField {
         }
     }
 
+    /// Helper function to set the 'fee' of a 'MemoField::TransactionInfo' or 'MemoField::AddressAndData'
+    pub fn set_fee(&mut self, amount: MicroMinotari) {
+        match &mut self.inner {
+            InnerMemoField::TransactionInfo { fee, .. } | InnerMemoField::AddressAndData { fee, .. } => {
+                *fee = amount;
+            },
+            _ => {},
+        }
+    }
+
     pub fn get_type(&self) -> TxType {
         match &self.inner {
             InnerMemoField::Open { tx_type, .. } |

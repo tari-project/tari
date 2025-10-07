@@ -48,10 +48,10 @@ mod tests {
     };
     #[tokio::test]
     async fn it_returns_the_outputset_unchanged() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let covenant = covenant!(identity()).unwrap();
-        let input = create_input(&key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |_| {}, &key_manager).await;
+        let input = create_input(&mut key_manager).await;
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |_| {}, &mut key_manager).await;
         let mut output_set = OutputSet::new(&outputs);
         let previous_len = output_set.len();
         IdentityFilter.filter(&mut context, &mut output_set).unwrap();

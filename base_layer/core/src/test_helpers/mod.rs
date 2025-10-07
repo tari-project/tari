@@ -122,7 +122,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
     rules: &BaseNodeConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
-    km: &MemoryDbKeyManager,
+    km: &mut MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     range_proof_type: Option<RangeProofType>,

@@ -32,7 +32,7 @@ pub trait Emission {
 #[derive(Debug, Clone)]
 pub struct EmissionSchedule {
     initial: MicroMinotari,
-    decay: &'static [u64],
+    decay: Vec<u64>,
     inflation_bips: u64,           // Tail inflation in basis points. 100 bips = 1 percentage point
     epoch_length: u64,             // The number of blocks in an inflation epoch
     initial_supply: MicroMinotari, // The supply at block 0, from pre-mine
@@ -115,7 +115,7 @@ impl EmissionSchedule {
     /// values are greater than or equal to 64.
     pub fn new(
         initial: MicroMinotari,
-        decay: &'static [u64],
+        decay: Vec<u64>,
         inflation_bips: u64,
         epoch_length: u64,
         initial_supply: MicroMinotari,
@@ -363,7 +363,7 @@ mod test {
         let epoch_length = 30 * 24 * 366;
         let halflife = 3 * 30 * 24 * 365;
         let a0 = MicroMinotari::from(12_923_971_428);
-        let decay = &[21u64, 22, 23, 25, 26, 37, 38, 40];
+        let decay = vec![21u64, 22, 23, 25, 26, 37, 38, 40];
         let premine = 6_300_000_000 * T;
         let schedule = EmissionSchedule::new(a0, decay, 100, epoch_length, premine);
         let mut iter = schedule.iter();
@@ -426,7 +426,7 @@ mod test {
         let height = 262_800_000; // 1000 years' problem
         let schedule = EmissionSchedule::new(
             MicroMinotari::from(10000000u64),
-            &[22, 23, 24, 26, 27],
+            vec![22, 23, 24, 26, 27],
             0,
             100000,
             MicroMinotari::from(0),
@@ -440,7 +440,7 @@ mod test {
         const INITIAL: u64 = 10_000_100;
         let schedule = EmissionSchedule::new(
             MicroMinotari::from(INITIAL),
-            &[2], // 0.25 decay
+            vec![2], // 0.25 decay
             1000,
             10,
             100 * T,

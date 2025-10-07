@@ -10690,7 +10690,7 @@ mod test {
                 error_ptr,
             );
             let alice_wallet_runtime = &(*alice_wallet).runtime;
-            let key_manager = &(*alice_wallet).wallet.key_manager_service;
+            let key_manager = &mut (*alice_wallet).wallet.key_manager_service;
 
             assert_eq!(error, 0);
             let mut test_outputs = Vec::with_capacity(10);
@@ -10891,7 +10891,7 @@ mod test {
                 let uo = (*alice_wallet).runtime.block_on(create_test_input(
                     (1000 * i).into(),
                     0,
-                    &(*alice_wallet).wallet.key_manager_service,
+                    &mut (*alice_wallet).wallet.key_manager_service,
                     vec![],
                     None,
                 ));
@@ -11046,7 +11046,7 @@ mod test {
                     let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(
                         15000.into(),
                         0,
-                        &(*alice_wallet).wallet.key_manager_service,
+                        &mut (*alice_wallet).wallet.key_manager_service,
                         vec![],
                         Some(payment_id.clone()),
                     ));
@@ -11140,7 +11140,7 @@ mod test {
                 let uo = (*alice_wallet).runtime.block_on(create_test_input(
                     (15000 * i).into(),
                     0,
-                    &(*alice_wallet).wallet.key_manager_service,
+                    &mut (*alice_wallet).wallet.key_manager_service,
                     vec![],
                     None,
                 ));
@@ -11388,7 +11388,7 @@ mod test {
                 let uo = (*alice_wallet).runtime.block_on(create_test_input(
                     (15000 * i).into(),
                     0,
-                    &(*alice_wallet).wallet.key_manager_service,
+                    &mut (*alice_wallet).wallet.key_manager_service,
                     vec![],
                     None,
                 ));
@@ -11641,7 +11641,7 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            let key_manager = &(*alice_wallet).wallet.key_manager_service;
+            let key_manager = &mut (*alice_wallet).wallet.key_manager_service;
             for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
@@ -11766,13 +11766,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let key_manager = create_memory_db_key_manager().await.unwrap();
+            let mut key_manager = create_memory_db_key_manager().await.unwrap();
             let utxo_1 = create_wallet_output_with_data(
                 script!(Nop).unwrap(),
                 OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
+                &TestParams::new(&mut key_manager).await,
                 MicroMinotari(1234u64),
-                &key_manager,
+                &mut key_manager,
             )
             .await
             .unwrap();
@@ -11893,7 +11893,7 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            let key_manager = &(*wallet_ptr).wallet.key_manager_service;
+            let key_manager = &mut (*wallet_ptr).wallet.key_manager_service;
 
             let node_identity =
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -12132,13 +12132,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let key_manager = create_memory_db_key_manager().await.unwrap();
+            let mut key_manager = create_memory_db_key_manager().await.unwrap();
             let utxo_1 = create_wallet_output_with_data(
                 script!(Nop).unwrap(),
                 OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
+                &TestParams::new(&mut key_manager).await,
                 MicroMinotari(1234u64),
-                &key_manager,
+                &mut key_manager,
             )
             .await
             .unwrap();

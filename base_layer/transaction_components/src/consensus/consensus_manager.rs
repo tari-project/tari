@@ -245,7 +245,7 @@ impl ConsensusManagerBuilder {
             .expect("Consensus constants should not be empty");
         let emission = EmissionSchedule::new(
             cc.emission_initial,
-            cc.emission_decay,
+            cc.emission_decay.clone(),
             cc.inflation_bips,
             cc.tail_epoch_length,
             cc.pre_mine_value(),

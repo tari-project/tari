@@ -70,13 +70,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     #[allow(clippy::too_many_lines)]
     pub async fn create_deposit_multisig_transaction(
-        &self,
+        &mut self,
         amount: MicroMinotari,
         party_number: u8,
         public_keys: Vec<CompressedPublicKey>,
         recipient: TariAddress,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
-        fee_per_gram: MicroMinotari,
         uuid: Uuid,
     ) -> Result<
         (
@@ -101,8 +100,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         OsRng.fill_bytes(message.as_mut());
 
         let user_data = uuid.as_bytes().to_vec();
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
         let payment_id =
-            MemoField::new_address_and_data(recipient.clone(), fee_per_gram, true, TxType::PaymentToOther, user_data)
+            MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
         let sender_offset_key = self
@@ -157,13 +157,18 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?
             .with_script_key(TariKeyId::Zero)
             .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_key.key_id, &recipient)
+            .sign_as_sender_and_receiver_verified(&mut self.key_manager, &sender_offset_key.key_id, &recipient)
             .await?
             .try_build(&self.key_manager)
             .await?;
 
         tx_builder
-            .add_recipient(recipient, output.clone(), Some(sender_offset_key.key_id))
+            .add_recipient(
+                recipient,
+                output.clone(),
+                Some(sender_offset_key.key_id),
+                Some(encryption_key_id),
+            )
             .await?;
 
         let finalized_builder = tx_builder.build().await?;

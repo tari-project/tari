@@ -404,7 +404,7 @@ mod test {
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
-                let key_manager = create_memory_key_manager().await.unwrap();
+                let mut key_manager = create_memory_key_manager().await.unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -416,7 +416,7 @@ mod test {
                         script: script![Drop Nop].unwrap(),
                         ..Default::default()
                     },
-                    &key_manager,
+                    &mut key_manager,
                 )
                 .await
                 .remove(0);
@@ -447,7 +447,7 @@ mod test {
 
             #[tokio::test]
             async fn it_returns_false_if_not_eq() {
-                let key_manager = create_memory_key_manager().await.unwrap();
+                let mut key_manager = create_memory_key_manager().await.unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -463,7 +463,7 @@ mod test {
                         value: MicroMinotari(123456),
                         ..Default::default()
                     },
-                    &key_manager,
+                    &mut key_manager,
                 )
                 .await
                 .remove(0);
@@ -501,7 +501,7 @@ mod test {
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
-                let key_manager = create_memory_key_manager().await.unwrap();
+                let mut key_manager = create_memory_key_manager().await.unwrap();
                 let output = create_outputs(
                     1,
                     UtxoTestParams {
@@ -512,11 +512,11 @@ mod test {
                         script: script![Drop Nop].unwrap(),
                         ..Default::default()
                     },
-                    &key_manager,
+                    &mut key_manager,
                 )
                 .await
                 .remove(0);
-                let mut input = create_input(&key_manager).await;
+                let mut input = create_input(&mut key_manager).await;
                 if let SpentOutput::OutputData {
                     features,
                     commitment,
@@ -578,7 +578,7 @@ mod test {
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
-                let key_manager = create_memory_key_manager().await.unwrap();
+                let mut key_manager = create_memory_key_manager().await.unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
                     output_type: OutputType::Coinbase,
@@ -594,7 +594,7 @@ mod test {
                         value: MicroMinotari(123456),
                         ..Default::default()
                     },
-                    &key_manager,
+                    &mut key_manager,
                 )
                 .await
                 .remove(0);
@@ -626,7 +626,7 @@ mod test {
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {
-                let key_manager = create_memory_key_manager().await.unwrap();
+                let mut key_manager = create_memory_key_manager().await.unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
                     range_proof_type: RangeProofType::RevealedValue,
@@ -640,7 +640,7 @@ mod test {
                         value: MicroMinotari(123456),
                         ..Default::default()
                     },
-                    &key_manager,
+                    &mut key_manager,
                 )
                 .await
                 .pop()

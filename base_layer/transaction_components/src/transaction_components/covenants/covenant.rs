@@ -204,9 +204,9 @@ mod test {
 
     #[tokio::test]
     async fn it_succeeds_when_empty() {
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
-        let input = create_input(&key_manager).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let outputs = create_outputs(10, UtxoTestParams::default(), &mut key_manager).await;
+        let input = create_input(&mut key_manager).await;
         let covenant = covenant!().unwrap();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 10);
@@ -214,12 +214,12 @@ mod test {
 
     #[tokio::test]
     async fn it_executes_the_covenant() {
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut outputs = create_outputs(10, UtxoTestParams::default(), &mut key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
-        let mut input = create_input(&key_manager).await;
+        let mut input = create_input(&mut key_manager).await;
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,
@@ -232,12 +232,12 @@ mod test {
 
     #[tokio::test]
     async fn test_borsh_de_serialization() {
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut outputs = create_outputs(10, UtxoTestParams::default(), &mut key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
-        let mut input = create_input(&key_manager).await;
+        let mut input = create_input(&mut key_manager).await;
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,

@@ -18,6 +18,7 @@ use tari_common_types::{
     },
 };
 use tari_script::{push_pubkey_script, script, ExecutionStack};
+use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -146,12 +147,18 @@ where KM: TransactionKeyManagerInterface
         recipient_address: TariAddress,
         recipient_output: WalletOutput,
         sender_offset_key_id: Option<TariKeyId>,
+        custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
         let kernel_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        let recipient_output = OutputPair::new(recipient_output, kernel_nonce.key_id, sender_offset_key_id);
+        let recipient_output = OutputPair::new(
+            recipient_output,
+            kernel_nonce.key_id,
+            sender_offset_key_id,
+            custom_recovery_key_id,
+        );
         let recipient_details = RecipientDetails {
             output: recipient_output,
             recipient_address,
@@ -211,13 +218,22 @@ where KM: TransactionKeyManagerInterface
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_private_key.key_id, &destination)
+            .sign_as_sender_and_receiver_verified(
+                &mut self.key_manager,
+                &sender_offset_private_key.key_id,
+                &destination,
+            )
             .await?
             .try_build(&self.key_manager)
             .await?;
 
-        self.add_recipient(destination, output.clone(), Some(sender_offset_private_key.key_id))
-            .await?;
+        self.add_recipient(
+            destination,
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(encryption_key),
+        )
+        .await?;
         Ok(output)
     }
 
@@ -269,13 +285,22 @@ where KM: TransactionKeyManagerInterface
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_private_key.key_id, &destination)
+            .sign_as_sender_and_receiver_verified(
+                &mut self.key_manager,
+                &sender_offset_private_key.key_id,
+                &destination,
+            )
             .await?
             .try_build(&self.key_manager)
             .await?;
 
-        self.add_recipient(destination, output.clone(), Some(sender_offset_private_key.key_id))
-            .await?;
+        self.add_recipient(
+            destination,
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(encryption_key),
+        )
+        .await?;
         Ok(output)
     }
 
@@ -284,7 +309,7 @@ where KM: TransactionKeyManagerInterface
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        let pair = OutputPair::new(input, nonce.key_id, None);
+        let pair = OutputPair::new(input, nonce.key_id, None, None);
         self.inputs.push(pair);
         Ok(self)
     }
@@ -299,12 +324,13 @@ where KM: TransactionKeyManagerInterface
         &mut self,
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
+        custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
         let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id));
+        let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id), custom_recovery_key_id);
         self.custom_outputs.push(pair);
         Ok(self)
     }
@@ -338,7 +364,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     pub async fn get_pre_build_change_output(
-        &self,
+        &mut self,
     ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
         self.add_change_if_required().await
     }
@@ -365,7 +391,7 @@ where KM: TransactionKeyManagerInterface
         &self.custom_outputs
     }
 
-    pub fn get_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+    pub fn get_fee_estimate_without_change(&self) -> Result<MicroMinotari, TransactionBuilderError> {
         let num_outputs = self.custom_outputs.len() + self.recipient_outputs.len();
         let num_inputs = self.inputs.len();
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
@@ -404,7 +430,7 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
-    async fn add_change_if_required(&self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+    async fn add_change_if_required(&mut self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
         let total_being_spent =
             self.inputs
                 .iter()
@@ -430,7 +456,7 @@ where KM: TransactionKeyManagerInterface
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
             })?;
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        let fee_without_change = self.get_fee_estimate()?;
+        let fee_without_change = self.get_fee_estimate_without_change()?;
         let temp_script = script!(PushPubKey(Box::default()))?;
         let change_features_and_scripts_size = OutputFeatures::default()
             .get_serialized_size()
@@ -535,7 +561,7 @@ where KM: TransactionKeyManagerInterface
         Ok(memo)
     }
 
-    async fn build_change(&self, amount: MicroMinotari) -> Result<Option<OutputPair>, TransactionBuilderError> {
+    async fn build_change(&mut self, amount: MicroMinotari) -> Result<Option<OutputPair>, TransactionBuilderError> {
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key().await?;
         let memo = self.create_change_memo(amount).await?;
@@ -603,6 +629,7 @@ where KM: TransactionKeyManagerInterface
             change_wallet_output,
             nonce.key_id,
             Some(sender_offset_public.key_id),
+            None,
         )))
     }
 
@@ -682,12 +709,62 @@ where KM: TransactionKeyManagerInterface
         ))
     }
 
+    // Helper function to change the memo field and encrypted data if the fee has changed due to a change output
+    async fn change_encrypted_data_if_fee_changed(
+        key_manager: &KM,
+        output_pair: &mut OutputPair,
+        final_fee: MicroMinotari,
+    ) -> Result<(), TransactionBuilderError> {
+        let mut memo_field = output_pair.output.payment_id().clone();
+        if let Some(existing_fee) = memo_field.get_fee() {
+            if existing_fee == final_fee {
+                debug!(
+                    target: LOG_TARGET,
+                    "[Update fee] Fee ({}) was correct for output '{}'",
+                    existing_fee, output_pair.output.commitment().to_hex()
+                );
+                return Ok(());
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "[Update fee] Changing fee changed from {} to {} for output '{}'",
+                    existing_fee, final_fee, output_pair.output.commitment().to_hex()
+                );
+            }
+
+            memo_field.set_fee(final_fee);
+            let encrypted_data = key_manager
+                .encrypt_data_for_recovery(
+                    output_pair.output.commitment_mask_key_id(),
+                    output_pair.custom_recovery_key_id.as_ref(),
+                    output_pair.output.value().as_u64(),
+                    memo_field.clone(),
+                )
+                .await?;
+            // This will change all the necessary fields in the wallet output
+            output_pair
+                .output
+                .change_encrypted_data(
+                    encrypted_data,
+                    output_pair
+                        .sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    memo_field,
+                    key_manager,
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
-        let (total_fee, change_output) = self.add_change_if_required().await?;
+        let (total_fee, mut change_output) = self.add_change_if_required().await?;
         let mut core_tx_builder = CoreTransactionBuilder::new();
 
         let (total_public_nonce, total_public_excess) = self
@@ -707,7 +784,9 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &self.recipient_outputs {
+        for recipient in &mut self.recipient_outputs {
+            Self::change_encrypted_data_if_fee_changed(&self.key_manager, &mut recipient.output, total_fee).await?;
+
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
@@ -758,7 +837,8 @@ where KM: TransactionKeyManagerInterface
             script_keys.push(input.output.script_key_id().clone());
         }
 
-        for output in &self.custom_outputs {
+        for output in &mut self.custom_outputs {
+            Self::change_encrypted_data_if_fee_changed(&self.key_manager, output, total_fee).await?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -816,7 +896,8 @@ where KM: TransactionKeyManagerInterface
             sender_offset_keys.push(sender_offset_key_id);
         }
 
-        if let Some(change) = &change_output {
+        if let Some(change) = &mut change_output {
+            Self::change_encrypted_data_if_fee_changed(&self.key_manager, change, total_fee).await?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
@@ -899,13 +980,34 @@ where KM: TransactionKeyManagerInterface
             Some(o) => vec![o.output.output_hash()],
             None => vec![],
         };
+
+        let payment_id = if let Some(mut memo_field) = self.memo_field {
+            if let Some(fee) = memo_field.get_fee() {
+                if fee == total_fee {
+                    debug!(target: LOG_TARGET, "[Update fee] Fee ({}) was correct for entire transaction", total_fee);
+                } else {
+                    debug!(target: LOG_TARGET,
+                        "[Update fee] Fee changed from {} to {} for entire transaction",
+                        fee, total_fee
+                    );
+                }
+
+                memo_field.set_fee(total_fee);
+                memo_field
+            } else {
+                memo_field
+            }
+        } else {
+            MemoField::default()
+        };
+
         Ok(FinalizedTransaction {
             source_address: self.own_address,
             destination_addresses,
             amount,
             fee: total_fee,
             transaction: tx,
-            payment_id: self.memo_field.unwrap_or_default(),
+            payment_id,
             change: change_output.map(|o| o.output),
             sent_outputs,
             // Hashes of outputs being sent to others (excluding change)
@@ -1037,8 +1139,8 @@ mod test {
     #[allow(clippy::identity_op)]
     async fn change_edge_case() {
         // Create some inputs
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let p = TestParams::new(&key_manager).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let p = TestParams::new(&mut key_manager).await;
         let constants = create_consensus_constants(0);
         let weighting = constants.transaction_weight_params();
         let tx_fee = Fee::new(*weighting).calculate(1.into(), 1, 1, 1, 0);
@@ -1051,7 +1153,7 @@ mod test {
             // one under the amount required to pay the fee for a change output
             2000 * uT + tx_fee + fee_for_change_output - 1 * uT,
             0,
-            &key_manager,
+            &mut key_manager,
             vec![],
             None,
         )
@@ -1062,7 +1164,7 @@ mod test {
                     value: 2000 * uT,
                     ..Default::default()
                 },
-                &key_manager,
+                &mut key_manager,
             )
             .await
             .unwrap();
@@ -1072,7 +1174,7 @@ mod test {
             .unwrap();
         builder
             .with_lock_height(0)
-            .with_output(output, p.sender_offset_key_id)
+            .with_output(output, p.sender_offset_key_id, None)
             .await
             .unwrap()
             .with_input(input)
@@ -1099,15 +1201,15 @@ mod test {
     #[tokio::test]
     async fn too_many_inputs() {
         // Create some inputs
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let p = TestParams::new(&key_manager).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let p = TestParams::new(&mut key_manager).await;
 
         let output = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
             &p,
             MicroMinotari(500),
-            &key_manager,
+            &mut key_manager,
         )
         .await
         .unwrap();
@@ -1118,11 +1220,11 @@ mod test {
             .unwrap();
         builder
             .with_lock_height(0)
-            .with_output(output, p.sender_offset_key_id)
+            .with_output(output, p.sender_offset_key_id, None)
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(2));
-        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![], None).await;
+        let input_base = create_test_input(MicroMinotari(50), 0, &mut key_manager, vec![], None).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).await.unwrap();
         }
@@ -1134,16 +1236,16 @@ mod test {
     #[tokio::test]
     async fn not_enough_funds() {
         // Create some inputs
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![], None).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let p = TestParams::new(&mut key_manager).await;
+        let input = create_test_input(MicroMinotari(400), 0, &mut key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
             &p,
             MicroMinotari(400),
-            &key_manager,
+            &mut key_manager,
         )
         .await
         .unwrap();
@@ -1157,7 +1259,7 @@ mod test {
             .with_input(input)
             .await
             .unwrap()
-            .with_output(output, p.sender_offset_key_id.clone())
+            .with_output(output, p.sender_offset_key_id.clone(), None)
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(1));
@@ -1172,10 +1274,10 @@ mod test {
 
     #[tokio::test]
     async fn zero_recipient_outputs() {
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let p1 = TestParams::new(&key_manager).await;
-        let p2 = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let p1 = TestParams::new(&mut key_manager).await;
+        let p2 = TestParams::new(&mut key_manager).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &mut key_manager, vec![], None).await;
         let mut builder =
             TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
                 .await
@@ -1194,19 +1296,21 @@ mod test {
                     output_features.clone(),
                     &p1,
                     MicroMinotari(500),
-                    &key_manager,
+                    &mut key_manager,
                 )
                 .await
                 .unwrap(),
                 p1.sender_offset_key_id.clone(),
+                None,
             )
             .await
             .unwrap()
             .with_output(
-                create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager)
+                create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &mut key_manager)
                     .await
                     .unwrap(),
                 p2.sender_offset_key_id.clone(),
+                None,
             )
             .await
             .unwrap();
@@ -1222,9 +1326,9 @@ mod test {
     async fn single_recipient_no_change() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_key_manager().await.unwrap();
-        let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
+        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key = TestParams::new(&mut key_manager).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &mut key_manager, vec![], None).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
         let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
@@ -1257,7 +1361,7 @@ mod test {
         .with_sender_offset_public_key(bob_public_key)
         .with_script_key(bob_key.script_key_id)
         .with_minimum_value_promise(0.into())
-        .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+        .sign_as_sender_and_receiver_verified(&mut key_manager, &bob_sender_offset.key_id, &Default::default())
         .await
         .unwrap()
         .try_build(&key_manager)
@@ -1265,7 +1369,7 @@ mod test {
         .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
 
@@ -1285,13 +1389,13 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn single_recipient_with_change() {
         let rules = create_consensus_manager();
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         // Alice's parameters
-        let alice_key = TestParams::new(&key_manager).await;
+        let alice_key = TestParams::new(&mut key_manager).await;
         // Bob's parameters
-        let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None).await;
+        let bob_key = TestParams::new(&mut key_manager).await;
+        let input = create_test_input(MicroMinotari(25000), 0, &mut key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
             .await
@@ -1328,7 +1432,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_as_sender_and_receiver_verified(&mut key_manager, &bob_sender_offset.key_id, &Default::default())
             .await
             .unwrap()
             .try_build(&key_manager)
@@ -1336,7 +1440,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         // Transaction should be complete
@@ -1352,13 +1456,13 @@ mod test {
     #[tokio::test]
     async fn single_recipient_multiple_inputs_with_change() {
         let rules = create_consensus_manager();
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         // Bob's parameters
-        let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
+        let bob_key = TestParams::new(&mut key_manager).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
             .await
@@ -1391,7 +1495,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_as_sender_and_receiver_verified(&mut key_manager, &bob_sender_offset.key_id, &Default::default())
             .await
             .unwrap()
             .try_build(&key_manager)
@@ -1399,7 +1503,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         let finalized = builder.build().await.unwrap();
@@ -1414,11 +1518,11 @@ mod test {
     #[tokio::test]
     async fn add_stealth_recipient() {
         let rules = create_consensus_manager();
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
-        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
             .await
@@ -1501,11 +1605,11 @@ mod test {
     #[tokio::test]
     async fn add_depricated_one_sided_recipient() {
         let rules = create_consensus_manager();
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
-        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
             .await
@@ -1584,9 +1688,9 @@ mod test {
     #[tokio::test]
     async fn disallow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
-        let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
+        let input = create_test_input(utxo_amount, 0, &mut key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let mut builder =
             TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
@@ -1599,7 +1703,7 @@ mod test {
             .await
             .unwrap();
 
-        let bob_key = TestParams::new(&key_manager).await;
+        let bob_key = TestParams::new(&mut key_manager).await;
         let bob_sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
@@ -1615,7 +1719,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_as_sender_and_receiver_verified(&mut key_manager, &bob_sender_offset.key_id, &Default::default())
             .await
             .unwrap()
             .try_build(&key_manager)
@@ -1623,7 +1727,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         let _err = builder.build().await.unwrap_err();
@@ -1635,9 +1739,9 @@ mod test {
     #[tokio::test]
     async fn allow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
-        let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
+        let input = create_test_input(utxo_amount, 0, &mut key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let mut builder =
             TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
@@ -1651,7 +1755,7 @@ mod test {
             .unwrap()
             .with_prevent_fee_gt_amount(false);
 
-        let bob_key = TestParams::new(&key_manager).await;
+        let bob_key = TestParams::new(&mut key_manager).await;
         let bob_sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
@@ -1667,7 +1771,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_as_sender_and_receiver_verified(&mut key_manager, &bob_sender_offset.key_id, &Default::default())
             .await
             .unwrap()
             .try_build(&key_manager)
@@ -1675,7 +1779,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
             .await
             .unwrap();
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
@@ -1689,7 +1793,7 @@ mod test {
     async fn create_multi_recipients_transaction() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let mut alice_key_manager = create_memory_key_manager().await.unwrap();
         let bob_key_manager = create_memory_key_manager().await.unwrap();
         let carol_key_manager = create_memory_key_manager().await.unwrap();
 
@@ -1714,7 +1818,7 @@ mod test {
         )
         .unwrap();
 
-        let input = create_test_input(MicroMinotari(5000), 0, &alice_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(5000), 0, &mut alice_key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(
             consensus_constants.clone(),
@@ -1759,7 +1863,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn recover_multi_recipients_transaction() {
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let mut alice_key_manager = create_memory_key_manager().await.unwrap();
         let alice_keys = ProvidedKeysWallet {
             public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -1808,7 +1912,7 @@ mod test {
         )
         .unwrap();
 
-        let input = create_test_input(MicroMinotari(5000), 0, &alice_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(5000), 0, &mut alice_key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(
             consensus_constants.clone(),
@@ -2044,7 +2148,7 @@ mod test {
     async fn create_very_large_multi_recipients_transaction() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let mut alice_key_manager = create_memory_key_manager().await.unwrap();
         let bob_key_manager = create_memory_key_manager().await.unwrap();
 
         let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
@@ -2057,7 +2161,7 @@ mod test {
             None,
         )
         .unwrap();
-        let input = create_test_input(MicroMinotari(500000), 0, &alice_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(500000), 0, &mut alice_key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(
             consensus_constants.clone(),
