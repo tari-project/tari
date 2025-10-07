@@ -711,7 +711,7 @@ where KM: TransactionKeyManagerInterface
 
     // Helper function to change the memo field and encrypted data if the fee has changed due to a change output
     async fn change_encrypted_data_if_fee_changed(
-        key_manager: &KM,
+        key_manager: &mut KM,
         output_pair: &mut OutputPair,
         final_fee: MicroMinotari,
     ) -> Result<(), TransactionBuilderError> {
@@ -785,7 +785,7 @@ where KM: TransactionKeyManagerInterface
         }
         let mut sent_outputs = Vec::new();
         for recipient in &mut self.recipient_outputs {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, &mut recipient.output, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, &mut recipient.output, total_fee).await?;
 
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
@@ -838,7 +838,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         for output in &mut self.custom_outputs {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, output, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, output, total_fee).await?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -897,7 +897,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &mut change_output {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, change, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, change, total_fee).await?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self

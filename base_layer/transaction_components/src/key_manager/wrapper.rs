@@ -124,10 +124,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     /// Get the birthday of the wallet seed
     pub async fn get_birthday(&self) -> Option<u16> {
-        let lock = self.transaction_key_manager_inner.read().await;
-        lock.master_seed()
+        self.transaction_key_manager_inner
+            .master_seed()
             .map(|s| s.birthday())
-            .or_else(|| match lock.get_wallet_type().as_ref() {
+            .or_else(|| match self.transaction_key_manager_inner.get_wallet_type().as_ref() {
                 WalletType::ProvidedKeys(keys) => keys.birthday,
                 _ => None,
             })

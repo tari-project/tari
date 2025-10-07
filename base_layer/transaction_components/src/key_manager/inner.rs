@@ -174,7 +174,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         };
         self.key_managers.insert(
             branch.to_string(),
-            TariKeyManager::<KeyDigest>::from(self.master_seed.clone(), state.branch_seed, state.primary_key_index),
+            TariKeyManager::<KeyDigest>::from(seed, state.branch_seed, state.primary_key_index),
         );
         Ok(result)
     }
