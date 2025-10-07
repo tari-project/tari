@@ -72,7 +72,7 @@ pub async fn create_coinbase(
     value: MicroMinotari,
     maturity_height: u64,
     extra: Option<CoinBaseExtra>,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager).await;
     let public_exess = key_manager
@@ -131,7 +131,7 @@ pub async fn create_coinbase(
 async fn genesis_template(
     coinbase_value: MicroMinotari,
     consensus_constants: &ConsensusConstants,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (NewBlockTemplate, WalletOutput) {
     let header = BlockHeader::new(consensus_constants.blockchain_version().into());
     let (utxo, kernel, output) = create_coinbase(
@@ -157,7 +157,7 @@ async fn genesis_template(
 /// value, and the maturity is zero.
 pub async fn create_genesis_block(
     consensus_constants: &ConsensusConstants,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (ChainBlock, WalletOutput) {
     create_genesis_block_with_coinbase_value(
         consensus_constants.emission_amounts().0,
@@ -202,7 +202,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
 pub async fn create_genesis_block_with_coinbase_value(
     coinbase_value: MicroMinotari,
     consensus_constants: &ConsensusConstants,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (ChainBlock, WalletOutput) {
     let (template, output) = genesis_template(coinbase_value, consensus_constants, key_manager).await;
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
@@ -231,7 +231,7 @@ pub async fn create_genesis_block_with_coinbase_value(
 pub async fn create_genesis_block_with_utxos(
     values: &[MicroMinotari],
     consensus_constants: &ConsensusConstants,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (ChainBlock, Vec<WalletOutput>) {
     let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
     let script = script!(Nop).unwrap();
@@ -275,7 +275,7 @@ pub async fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     header.version = consensus.consensus_constants(header.height).blockchain_version().into();
@@ -332,7 +332,7 @@ pub async fn chain_block_with_new_coinbase(
     transactions: Vec<Transaction>,
     consensus_manager: &BaseNodeConsensusManager,
     extra: Option<CoinBaseExtra>,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> (NewBlockTemplate, WalletOutput) {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
@@ -375,7 +375,7 @@ pub async fn append_block<B: BlockchainBackend>(
     txns: Vec<Transaction>,
     consensus: &BaseNodeConsensusManager,
     achieved_difficulty: Difficulty,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     append_block_with_coinbase(db, prev_block, txns, consensus, achieved_difficulty, key_manager).await
 }
@@ -388,7 +388,7 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
     txns: Vec<Transaction>,
     consensus_manager: &BaseNodeConsensusManager,
     achieved_difficulty: Difficulty,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
@@ -432,7 +432,7 @@ pub async fn generate_new_block<B: BlockchainBackend>(
     outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let coinbase_value = consensus.emission_schedule().block_reward(db.get_height().unwrap() + 1);
     generate_new_block_with_coinbase(db, blocks, outputs, schemas, coinbase_value, consensus, key_manager).await
@@ -446,7 +446,7 @@ pub async fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
     schemas: Vec<TransactionSchema>,
     achieved_difficulty: Difficulty,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
     let mut block_utxos = Vec::new();
@@ -468,7 +468,7 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     schemas: Vec<TransactionSchema>,
     coinbase_value: MicroMinotari,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
     let mut block_utxos = Vec::new();
@@ -511,7 +511,7 @@ pub async fn generate_block<B: BlockchainBackend>(
     blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let prev_block = blocks.last().unwrap();
     let template = chain_block_with_new_coinbase(prev_block, transactions, consensus, None, key_manager)
@@ -532,7 +532,7 @@ pub async fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_new_coinbase(blocks.last().unwrap(), transactions, consensus, None, key_manager)
         .await
@@ -580,7 +580,7 @@ pub async fn construct_chained_blocks<B: BlockchainBackend>(
     block0: ChainBlock,
     consensus: &BaseNodeConsensusManager,
     n: usize,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Vec<ChainBlock> {
     let mut prev_block = block0;
     let mut blocks = Vec::new();

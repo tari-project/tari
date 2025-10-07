@@ -71,18 +71,18 @@ use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&key_manager).await,
+        &TestParams::new(&mut key_manager).await,
         MicroMinotari::from(100_000),
-        &key_manager,
+        &mut key_manager,
     )
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet)
         .await
         .unwrap();

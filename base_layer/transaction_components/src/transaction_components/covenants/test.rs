@@ -40,7 +40,7 @@ use crate::{
 pub async fn create_outputs<KM: TransactionKeyManagerInterface>(
     n: usize,
     utxo_params: UtxoTestParams,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> Vec<TransactionOutput> {
     let mut outputs = Vec::new();
     for _i in 0..n {
@@ -51,7 +51,7 @@ pub async fn create_outputs<KM: TransactionKeyManagerInterface>(
     outputs
 }
 
-pub async fn create_input<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TransactionInput {
+pub async fn create_input<KM: TransactionKeyManagerInterface>(key_manager: &mut KM) -> TransactionInput {
     let params = TestParams::new(key_manager).await;
     let output = params.create_output(Default::default(), key_manager).await.unwrap();
     output.to_transaction_input(key_manager).await.unwrap()

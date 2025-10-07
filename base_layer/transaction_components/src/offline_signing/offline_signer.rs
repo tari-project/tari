@@ -295,10 +295,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 
     pub async fn sign_locked_transaction(
-        &self,
+        &mut self,
         request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
-        let signer = OneSidedSigner::new(&self.key_manager);
+        let mut signer = OneSidedSigner::new(&mut self.key_manager);
         let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
         Ok(SignedOneSidedTransactionResult {
@@ -309,10 +309,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 
     pub async fn sign_locked_deposit_multisig_transaction(
-        &self,
+        &mut self,
         request: PrepareDepositMultisigTransactionResult,
     ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
-        let signer = OneSidedSigner::new(&self.key_manager);
+        let mut signer = OneSidedSigner::new(&mut self.key_manager);
         let signed_transaction = signer
             .sign_multisig_transaction(request.tx_id, request.info.clone())
             .await?;
@@ -325,10 +325,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 
     pub async fn sign_locked_withdraw_multisig_transaction(
-        &self,
+        &mut self,
         request: PrepareWithdrawMultisigTransactionResult,
     ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
-        let signer = OneSidedSigner::new(&self.key_manager);
+        let mut signer = OneSidedSigner::new(&mut self.key_manager);
 
         let signed_transaction = signer
             .sign_multisig_withdraw_transaction(request.tx_id, request.info.clone())

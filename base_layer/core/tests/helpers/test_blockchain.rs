@@ -85,7 +85,7 @@ impl TestBlockchain {
         &self.consensus_manager
     }
 
-    pub async fn build_block(&self, block: TestBlockBuilderInner) -> (Block, WalletOutput) {
+    pub async fn build_block(&mut self, block: TestBlockBuilderInner) -> (Block, WalletOutput) {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
@@ -94,7 +94,7 @@ impl TestBlockchain {
             block.transactions,
             &self.consensus_manager,
             None,
-            &self.key_manager,
+            &mut self.key_manager,
         )
         .await;
 

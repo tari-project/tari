@@ -33,7 +33,7 @@ async fn test_block_sync_happy_path() {
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
 
     // Create the network with Alice node and Bob node
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             BlockchainDatabaseConfig::default(),
             BlockchainDatabaseConfig::default(),
@@ -50,7 +50,7 @@ async fn test_block_sync_happy_path() {
         &initial_coinbase,
         5,
         &consensus_manager,
-        &key_manager,
+        &mut key_manager,
         &[3; 5],
         &None,
     )
@@ -98,7 +98,7 @@ async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             BlockchainDatabaseConfig::default(),
             BlockchainDatabaseConfig::default(),
@@ -115,7 +115,7 @@ async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
         &initial_coinbase,
         10,
         &consensus_manager,
-        &key_manager,
+        &mut key_manager,
         &[3; 10],
         &None,
     )
@@ -158,7 +158,7 @@ async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             BlockchainDatabaseConfig::default(),
             BlockchainDatabaseConfig::default(),
@@ -175,7 +175,7 @@ async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
         &initial_coinbase,
         10,
         &consensus_manager,
-        &key_manager,
+        &mut key_manager,
         &[3; 10],
         &None,
     )
@@ -221,7 +221,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_1() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Bob (archival node) and Carol (archival node)
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             // Carol is an archival node
             BlockchainDatabaseConfig::default(),
@@ -240,7 +240,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_1() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &key_manager,
+        &mut key_manager,
         3,
         10,                           // > follow_up_transaction_in_block + intermediate_height + 1
         2,                            // < intermediate_height,
@@ -330,7 +330,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_2() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Bob (archival node) and Carol (archival node)
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             // Carol is an archival node
             BlockchainDatabaseConfig::default(),
@@ -349,7 +349,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_2() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &key_manager,
+        &mut key_manager,
         3,
         10,                           // > follow_up_transaction_in_block + intermediate_height + 1
         2,                            // < intermediate_height,

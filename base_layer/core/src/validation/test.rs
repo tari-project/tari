@@ -196,10 +196,10 @@ async fn chain_balance_validation() {
         .unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let pre_mine_value = 5000 * uT;
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let (pre_mine_utxo, pre_mine_key_id, _) = create_utxo(
         pre_mine_value,
-        &key_manager,
+        &mut key_manager,
         &OutputFeatures::default(),
         &TariScript::default(),
         &Covenant::default(),
@@ -207,7 +207,7 @@ async fn chain_balance_validation() {
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
+        &mut key_manager,
         pre_mine_key_id,
         0.into(),
         0,
@@ -288,7 +288,7 @@ async fn chain_balance_validation() {
     let coinbase_value = consensus_manager.get_block_reward_at(1);
     let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
-        &key_manager,
+        &mut key_manager,
         &OutputFeatures::create_coinbase(1, None, RangeProofType::BulletProofPlus),
         &TariScript::default(),
         &Covenant::default(),
@@ -297,7 +297,7 @@ async fn chain_balance_validation() {
     .await;
 
     let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
+        &mut key_manager,
         coinbase_key_id,
         0.into(),
         0,
@@ -355,7 +355,7 @@ async fn chain_balance_validation() {
     let v = consensus_manager.get_block_reward_at(2) + uT;
     let (coinbase, spending_key_id, _) = create_utxo(
         v,
-        &key_manager,
+        &mut key_manager,
         &OutputFeatures::create_coinbase(1, None, RangeProofType::BulletProofPlus),
         &TariScript::default(),
         &Covenant::default(),
@@ -363,7 +363,7 @@ async fn chain_balance_validation() {
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
+        &mut key_manager,
         spending_key_id,
         0.into(),
         0,
@@ -424,10 +424,10 @@ async fn chain_balance_validation_burned() {
         .unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let pre_mine_value = 5000 * uT;
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let (pre_mine_utxo, pre_mine_key_id, _) = create_utxo(
         pre_mine_value,
-        &key_manager,
+        &mut key_manager,
         &OutputFeatures::default(),
         &TariScript::default(),
         &Covenant::default(),
@@ -435,7 +435,7 @@ async fn chain_balance_validation_burned() {
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
+        &mut key_manager,
         pre_mine_key_id,
         0.into(),
         0,
@@ -517,7 +517,7 @@ async fn chain_balance_validation_burned() {
     let coinbase_value = consensus_manager.get_block_reward_at(1) - MicroMinotari::from(100);
     let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
-        &key_manager,
+        &mut key_manager,
         &OutputFeatures::create_coinbase(1, None, RangeProofType::RevealedValue),
         &TariScript::default(),
         &Covenant::default(),
@@ -525,7 +525,7 @@ async fn chain_balance_validation_burned() {
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
+        &mut key_manager,
         coinbase_key_id,
         0.into(),
         0,
@@ -543,7 +543,7 @@ async fn chain_balance_validation_burned() {
 
     let (burned, burned_key_id, _) = create_utxo(
         100.into(),
-        &key_manager,
+        &mut key_manager,
         &OutputFeatures::create_burn_output(),
         &TariScript::default(),
         &Covenant::default(),
@@ -552,7 +552,7 @@ async fn chain_balance_validation_burned() {
     .await;
 
     let (pk2, sig2) = create_random_signature_from_secret_key(
-        &key_manager,
+        &mut key_manager,
         burned_key_id,
         0.into(),
         0,
@@ -624,14 +624,14 @@ mod transaction_validator {
 
     #[tokio::test]
     async fn it_rejects_coinbase_outputs() {
-        let key_manager = create_memory_db_key_manager().await.unwrap();
+        let mut key_manager = create_memory_db_key_manager().await.unwrap();
         let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
         let validator =
             TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
         let features = OutputFeatures::create_coinbase(0, None, RangeProofType::BulletProofPlus);
-        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &mut key_manager)
         {
             Ok((tx, _, _)) => tx,
             Err(e) => panic!("Error found: {e}"),
@@ -647,7 +647,7 @@ mod transaction_validator {
 
     #[tokio::test]
     async fn coinbase_extra_must_be_empty() {
-        let key_manager = create_memory_db_key_manager().await.unwrap();
+        let mut key_manager = create_memory_db_key_manager().await.unwrap();
         let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
@@ -655,7 +655,7 @@ mod transaction_validator {
             TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = CoinBaseExtra::try_from(b"deadbeef".to_vec()).unwrap();
-        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &mut key_manager)
         {
             Ok((tx, _, _)) => tx,
             Err(e) => panic!("Error found: {e}"),

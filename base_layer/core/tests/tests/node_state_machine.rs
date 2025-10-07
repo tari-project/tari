@@ -71,9 +71,9 @@ use crate::helpers::{
 async fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
+    let (prev_block, _) = create_genesis_block(&consensus_constants, &mut key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
@@ -132,13 +132,13 @@ async fn test_listening_lagging() {
         vec![],
         &consensus_manager,
         Difficulty::from_u64(4).unwrap(),
-        &key_manager,
+        &mut key_manager,
     )
     .await
     .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &mut key_manager).await)
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -157,9 +157,9 @@ async fn test_listening_lagging() {
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
+    let (gen_block, _) = create_genesis_block(&consensus_constants, &mut key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(gen_block.clone())
@@ -198,13 +198,13 @@ async fn test_listening_initial_fallen_behind() {
         vec![],
         &consensus_manager,
         Difficulty::from_u64(4).unwrap(),
-        &key_manager,
+        &mut key_manager,
     )
     .await
     .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &mut key_manager).await)
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -225,13 +225,13 @@ async fn test_listening_initial_fallen_behind() {
         vec![],
         &consensus_manager,
         Difficulty::from_u64(4).unwrap(),
-        &key_manager,
+        &mut key_manager,
     )
     .await
     .unwrap();
     // charlie Block 2 - with block event and liveness service metadata update
     let mut prev_block = charlie_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &mut key_manager).await)
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
