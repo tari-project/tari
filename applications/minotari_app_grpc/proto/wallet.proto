@@ -249,7 +249,13 @@ service Wallet {
   //       - **Type**: `uint64`  
   //       - **Description**: Fee rate in µT per gram of transaction weight.  
   //       - **Validation**: Must be set to a reasonable network value.
-  //
+  //     - `payment_type`:
+  //       - **Type**: `enum PaymentType`
+  //       - **Description**: Defines the transaction style.
+  //       - **Options**:
+  //         - `STANDARD_MIMBLEWIMBLE = 0` *(deprecated)*
+  //         - `ONE_SIDED = 1` *(deprecated)*
+  //         - `ONE_SIDED_TO_STEALTH_ADDRESS = 2` *(recommended)*
   //   - **Optional Fields**:
   //     - `raw_payment_id`:  
   //       - **Type**: `bytes`  
@@ -425,11 +431,9 @@ service Wallet {
   //
   // - `signatures` (required):
   //   - **Type**: `repeated bytes`
-  //   - **Description**: A list of Schnorr signatures from all participants in the multisig script.
-  //   - **Validation**:
-  //     - Must contain at least one signature.
-  //     - Each signature must be valid and correctly formatted.
-  //     - All required cosigners must be represented for successful validation.
+  //   - **Description**: A list of raw signature byte arrays used in the multisig withdrawal.
+  //     Each item may represent a full or partial signature, or a concatenated sequence of signature fragments.
+  //     The interpretation depends on the signing scheme used by the multisig script.
   //
   // - `recipient_address` (required):
   //   - **Type**: `bytes`
