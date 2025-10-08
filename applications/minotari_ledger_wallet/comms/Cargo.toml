@@ -1,9 +1,11 @@
 [package]
 name = "minotari_ledger_wallet_comms"
+description = "Helper library for Minotari Ledger Wallet application"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]

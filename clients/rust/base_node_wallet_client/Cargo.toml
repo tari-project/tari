@@ -1,5 +1,6 @@
 [package]
 name = "minotari_node_wallet_client"
+description = "Tari node wallet client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

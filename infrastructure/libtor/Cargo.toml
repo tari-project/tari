@@ -1,5 +1,6 @@
 [package]
 name = "tari_libtor"
+description = "Tari libtor bindings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

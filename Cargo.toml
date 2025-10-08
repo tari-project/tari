@@ -33,6 +33,7 @@ members = [
     "infrastructure/storage",
     "infrastructure/tari_script",
     "infrastructure/test_utils",
+    "infrastructure/max_size",
     "buildtools/deps_only",
     "applications/minotari_node",
     "applications/minotari_console_wallet",
