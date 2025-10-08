@@ -1,11 +1,11 @@
 # syntax = docker/dockerfile:1.3
 
 # https://hub.docker.com/_/rust
-ARG RUST_VERSION=1.84
-ARG OS_BASE=bookworm
+ARG RUST_VERSION=1.90.0
+ARG OS_BASE=trixie
 
 # rust source compile with cross platform build support
-FROM --platform=$BUILDPLATFORM rust:$RUST_VERSION-${OS_BASE} as builder
+FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-${OS_BASE} as builder
 
 # Declare to make available
 ARG BUILDPLATFORM
@@ -84,8 +84,9 @@ RUN cargo build ${RUST_TARGET} \
     # Copy executable out of the cache so it is available in the runtime image.
     cp -v /tari/target/${BUILD_TARGET}release/${APP_EXEC} /tari/${APP_EXEC}
 
+# https://hub.docker.com/_/debian
 # Create runtime base minimal image for the target platform executables
-FROM --platform=$TARGETPLATFORM bitnami/minideb:${OS_BASE} as runtime
+FROM --platform=$TARGETPLATFORM debian:${OS_BASE}-slim as runtime
 
 ARG BUILDPLATFORM
 ARG TARGETOS
