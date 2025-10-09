@@ -33,7 +33,7 @@ tonic = { version = "0.13.1", features = ["tls-webpki-roots"] }
 tracing = "0.1"
 anyhow = "1.0.53"
 bincode = "1.3.1"
-borsh = "1.5.7"
+borsh = { workspace = true }
 bytes = "1.1"
 chrono = { version = "0.4", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
@@ -44,17 +44,17 @@ futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 hyper = { version = "0.14.12", features = ["default","server"] }
 jsonrpc = "0.12.0"
-log = { version = "0.4.8", features = ["std"] }
+log = { workspace = true, features = ["std"] }
 markup5ever = "0.12.1"
 monero = { version = "0.21.0", features = ["serde"] }
 reqwest = { version = "0.11.4", features = ["json"] }
-serde = { version = "1.0.136", features = ["derive"] }
-serde_json = "1.0.57"
-thiserror = "1.0.26"
-tokio = { version = "1.44", features = ["macros"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
 url = "2.1.1"
 scraper = "0.19.0"
-rand = "0.8"
+rand = { workspace = true }
 blake2 = "0.10"
 
 [build-dependencies]
