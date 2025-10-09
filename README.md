@@ -1,3 +1,13 @@
+<!-- CI / Build Status -->
+[![CI](../../actions/workflows/ci.yml/badge.svg?branch=development)](../../actions/workflows/ci.yml)
+[![Integration Tests](../../actions/workflows/integration_tests.yml/badge.svg?branch=development)](../../actions/workflows/integration_tests.yml)
+[![Docker Build](../../actions/workflows/build_dockers.yml/badge.svg?branch=development)](../../actions/workflows/build_dockers.yml)
+[![Binary Build](../../actions/workflows/build_binaries.yml/badge.svg?branch=development)](../../actions/workflows/build_binaries.yml)
+
+<!-- Release & License -->
+[![Release](https://img.shields.io/github/v/release/tari-project/tari?sort=semver)](https://github.com/tari-project/tari/releases)
+[![License](https://img.shields.io/github/license/tari-project/tari)](https://github.com/tari-project/tari/blob/development/LICENSE)
+
 [![Coverage Status](https://coveralls.io/repos/github/tari-project/tari/badge.svg?branch=development)](https://coveralls.io/github/tari-project/tari?branch=development)
 
 # The Tari protocol
