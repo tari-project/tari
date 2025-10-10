@@ -125,7 +125,10 @@ where
                 None,
             );
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output_with_tx_id(output.to_tx_id(), db_output) {
+            if let Err(e) = self
+                .db
+                .add_unspent_output_with_tx_id(output.calculate_tx_id(), db_output)
+            {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         continue;

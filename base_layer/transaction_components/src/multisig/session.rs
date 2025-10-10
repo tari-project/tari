@@ -53,7 +53,6 @@ use crate::{
         WalletOutput,
         WalletOutputBuilder,
     },
-    tx_outputs_to_tx_id,
     MicroMinotari,
     TransactionBuilder,
     TransactionBuilderError,
@@ -176,16 +175,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let finalized_builder = tx_builder.build().await?;
 
-        let (change_hashes, change, tx_id) = match finalized_builder.change {
+        let (change_hashes, change) = match finalized_builder.change {
             Some(change_output) => {
                 let hash = change_output.output_hash();
-                let tx_id = TxId::new_deterministic(&hash);
-                (vec![hash], Some(vec![change_output]), tx_id)
+                (vec![hash], Some(vec![change_output]))
             },
-            None => {
-                let tx_id = tx_outputs_to_tx_id(finalized_builder.transaction.body.outputs());
-                (vec![], None, tx_id)
-            },
+            None => (vec![], None),
         };
 
         let sent_hashes = vec![output.output_hash()];
@@ -196,7 +191,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             sent_hashes,
             change_hashes,
             change,
-            tx_id,
+            finalized_builder.tx_id,
         ))
     }
 

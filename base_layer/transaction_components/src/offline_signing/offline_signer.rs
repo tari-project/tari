@@ -22,7 +22,7 @@
 
 use std::str::FromStr;
 
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
+use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
@@ -43,7 +43,6 @@ use crate::{
         },
         one_sided_signer::OneSidedSigner,
     },
-    recipient_outputs_to_tx_id,
     transaction_components::{MemoField, OutputFeatures, TransactionError},
     MicroMinotari,
     TransactionBuilder,
@@ -104,23 +103,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
 
         let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
-            (fee, Some(mut change_output)) => {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output.output.set_script_key_id(
                     self.make_key_id_export_safe(change_output.output.script_key_id())
                         .await
                         .map_err(TransactionError::BuilderError)?,
                 );
-                let tx_id = TxId::new_deterministic(&change_output.output.output_hash());
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
                     tx_id,
                 )
             },
-            (fee, None) => {
-                let tx_id = recipient_outputs_to_tx_id(tx_builder.recipient_outputs());
-                (fee, None, tx_id)
-            },
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
         let metadata = TransactionMetadata {
             fee,
@@ -177,23 +172,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let outputs = Vec::new();
 
         let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
-            (fee, Some(mut change_output)) => {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output.output.set_script_key_id(
                     self.make_key_id_export_safe(change_output.output.script_key_id())
                         .await
                         .map_err(TransactionError::BuilderError)?,
                 );
-                let tx_id = TxId::new_deterministic(&change_output.output.output_hash());
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
                     tx_id,
                 )
             },
-            (fee, None) => {
-                let tx_id = recipient_outputs_to_tx_id(tx_builder.recipient_outputs());
-                (fee, None, tx_id)
-            },
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
 
         let metadata = TransactionMetadata {
@@ -262,23 +253,19 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
 
         let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
-            (fee, Some(mut change_output)) => {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output.output.set_script_key_id(
                     self.make_key_id_export_safe(change_output.output.script_key_id())
                         .await
                         .map_err(TransactionError::BuilderError)?,
                 );
-                let tx_id = TxId::new_deterministic(&change_output.output.output_hash());
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
                     tx_id,
                 )
             },
-            (fee, None) => {
-                let tx_id = recipient_outputs_to_tx_id(tx_builder.recipient_outputs());
-                (fee, None, tx_id)
-            },
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
 
         let metadata = TransactionMetadata {

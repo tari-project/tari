@@ -1037,24 +1037,20 @@ where
         }
 
         let finalized = builder.build().await?;
-        let tx_id = if let Some(wallet_output) = finalized.change {
-            let tx_id = TxId::new_deterministic(&wallet_output.output_hash());
+        if let Some(wallet_output) = finalized.change {
             db_outputs.push(DbWalletOutput::from_wallet_output(
                 wallet_output.clone(),
                 None,
                 OutputSource::default(),
-                Some(tx_id),
+                Some(finalized.tx_id),
                 None,
             ));
-            tx_id
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
-        };
+        }
 
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        Ok((tx_id, finalized.transaction))
+            .encumber_outputs(finalized.tx_id, input_selection.into_selected(), db_outputs)?;
+        Ok((finalized.tx_id, finalized.transaction))
     }
 
     async fn pre_mine_script_key_from_payment_id(
@@ -1707,29 +1703,25 @@ where
         let finalized = tx_builder.build().await?;
 
         let fee = finalized.fee;
-        let tx_id = if let Some(change) = finalized.change {
-            let tx_id = TxId::new_deterministic(&change.output_hash());
+        if let Some(change) = finalized.change {
             let change_output =
-                DbWalletOutput::from_wallet_output(change, None, OutputSource::default(), Some(tx_id), None);
+                DbWalletOutput::from_wallet_output(change, None, OutputSource::default(), Some(finalized.tx_id), None);
             outputs.push(change_output);
-            tx_id
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
-        };
-        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
+        }
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", finalized.tx_id);
 
         trace!(
             target: LOG_TARGET,
-            "Encumber send to self transaction ({tx_id}) outputs."
+            "Encumber send to self transaction ({}) outputs.",
+            finalized.tx_id
         );
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
-        self.confirm_encumberance(tx_id, Vec::new())?;
-        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
-        let tx = finalized.transaction;
+            .encumber_outputs(finalized.tx_id, input_selection.into_selected(), outputs)?;
+        self.confirm_encumberance(finalized.tx_id, Vec::new())?;
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", finalized.tx_id);
 
-        Ok((fee, tx, tx_id))
+        Ok((fee, finalized.transaction, finalized.tx_id))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
@@ -2678,27 +2670,24 @@ where
                 let finalized = builder.build().await?;
 
                 let fee = finalized.fee;
-                let tx_id = if let Some(wallet_output) = finalized.change {
-                    let tx_id = TxId::new_deterministic(&wallet_output.output_hash());
+                if let Some(wallet_output) = finalized.change {
                     let change_output = DbWalletOutput::from_wallet_output(
                         wallet_output,
                         None,
                         OutputSource::AtomicSwap,
-                        Some(tx_id),
+                        Some(finalized.tx_id),
                         None,
                     );
                     outputs.push(change_output);
-                    tx_id
-                } else {
-                    tx_outputs_to_tx_id(finalized.transaction.body.outputs())
                 };
-                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({tx_id}).");
+                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", finalized.tx_id);
 
-                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-                self.confirm_encumberance(tx_id, Vec::new())?;
-                let tx = finalized.transaction;
+                self.resources
+                    .db
+                    .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
+                self.confirm_encumberance(finalized.tx_id, Vec::new())?;
 
-                Ok((tx_id, fee, amount - fee, tx))
+                Ok((finalized.tx_id, fee, amount - fee, finalized.transaction))
             } else {
                 Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
                     "Atomic swap: Blinding factor could not open the commitment!".to_string(),
@@ -2744,21 +2733,23 @@ where
         let finalized = builder.build().await?;
         let fee = finalized.fee;
 
-        let tx_id = if let Some(wallet_output) = finalized.change {
-            let tx_id = TxId::new_deterministic(&wallet_output.output_hash());
-            let change_output =
-                DbWalletOutput::from_wallet_output(wallet_output, None, OutputSource::HtlcRefund, Some(tx_id), None);
+        if let Some(wallet_output) = finalized.change {
+            let change_output = DbWalletOutput::from_wallet_output(
+                wallet_output,
+                None,
+                OutputSource::HtlcRefund,
+                Some(finalized.tx_id),
+                None,
+            );
             outputs.push(change_output);
-            tx_id
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
         };
-        let tx = finalized.transaction;
-        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({tx_id}).");
+        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({}).", finalized.tx_id);
 
-        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-        self.confirm_encumberance(tx_id, Vec::new())?;
-        Ok((tx_id, fee, amount - fee, tx))
+        self.resources
+            .db
+            .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
+        self.confirm_encumberance(finalized.tx_id, Vec::new())?;
+        Ok((finalized.tx_id, fee, amount - fee, finalized.transaction))
     }
 
     /// Persist a one-sided payment script for a Comms Public/Private key. These are the scripts that this wallet knows
@@ -2972,7 +2963,7 @@ where
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source) in scanned_outputs {
-            let tx_id = output.to_tx_id();
+            let tx_id = output.calculate_tx_id();
             let db_output = DbWalletOutput::from_wallet_output(output.clone(), None, output_source, Some(tx_id), None);
             let hash = db_output.hash;
 

@@ -1388,14 +1388,11 @@ where
                     )
                     .await?;
                 let (change_hashes, change, tx_id) = match finalized_transaction.change {
-                    Some(change_output) => {
-                        let hash = change_output.output_hash();
-                        (
-                            vec![hash],
-                            Some(vec![change_output.clone()]),
-                            TxId::new_deterministic(&hash),
-                        )
-                    },
+                    Some(change_output) => (
+                        vec![change_output.output_hash()],
+                        Some(vec![change_output.clone()]),
+                        change_output.calculate_tx_id(),
+                    ),
                     None => (
                         vec![],
                         None,
@@ -1992,42 +1989,39 @@ where
 
         // Finalize
         let finalized = tx_builder.build().await?;
-        let tx_id = if let Some(change) = &finalized.change {
-            TxId::new_deterministic(&change.output_hash())
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
-        };
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _size = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
+        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(finalized.tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(finalized.tx_id, change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 destination,
                 amount,
@@ -2048,7 +2042,7 @@ where
 
         let tx_output = output.to_transaction_output()?;
 
-        Ok(Box::new((tx_id, pre_image, tx_output)))
+        Ok(Box::new((finalized.tx_id, pre_image, tx_output)))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2129,39 +2123,36 @@ where
         };
         tx_builder.with_memo(payment_id.clone());
         let finalized = tx_builder.build().await?;
-        let tx_id = if let Some(change) = &finalized.change {
-            TxId::new_deterministic(&change.output_hash())
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
-        };
 
         // Finalize
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
         let change = finalized.change.clone().map(|change| vec![change]);
-        self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
+        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(finalized.tx_id, change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address.clone(),
                 amount,
@@ -2180,7 +2171,7 @@ where
         )
         .await?;
 
-        Ok(tx_id)
+        Ok(finalized.tx_id)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2301,42 +2292,39 @@ where
             .await?;
 
         let finalized = tx_builder.build().await?;
-        let tx_id = if let Some(change) = &finalized.change {
-            TxId::new_deterministic(&change.output_hash())
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
-        };
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
+        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(finalized.tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(finalized.tx_id, change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let received_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address,
                 amount,
@@ -2355,7 +2343,7 @@ where
         )
         .await?;
 
-        Ok(tx_id)
+        Ok(finalized.tx_id)
     }
 
     async fn replace_tx_id_in_outputs(
@@ -2483,33 +2471,30 @@ where
         }
 
         let finalized = tx_builder.build().await?;
-        let tx_id = if let Some(change) = finalized.change.clone() {
-            TxId::new_deterministic(&change.output_hash())
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body().outputs())
-        };
 
         // Finalize
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
 
-        self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
+        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(finalized.tx_id, change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
@@ -2519,12 +2504,12 @@ where
             .map(|o| o.output.clone())
             .collect::<Vec<WalletOutput>>();
 
-        check_transaction_size(&tx, tx_id)?;
+        check_transaction_size(&tx, finalized.tx_id)?;
         let (first_address, first_amount, first_memo) = destinations.remove(0);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 first_address,
                 first_amount,
@@ -2547,10 +2532,10 @@ where
         }
 
         // Save the other transactions with zero fee and random tx_id to the database
-        let mut tx_ids = vec![tx_id];
+        let mut tx_ids = vec![finalized.tx_id];
         for (address, amount, memo) in destinations {
             let new_tx_id = if let Some(pos) = outputs.iter().position(|o| o.value() == amount) {
-                let tx_id = TxId::new_deterministic(&outputs.get(pos).expect("pos exists").output_hash());
+                let tx_id = outputs.get(pos).expect("pos exists").calculate_tx_id();
                 outputs.swap_remove(pos);
                 tx_id
             } else {
@@ -2578,7 +2563,7 @@ where
             self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
             trace!(
                 target: LOG_TARGET,
-                "Created transaction for ({tx_id})."
+                "Created transaction for ({}).", finalized.tx_id
             );
         }
 
@@ -2703,35 +2688,32 @@ where
             .await?;
 
         let finalized = tx_builder.build().await?;
-        let tx_id = if let Some(change) = &finalized.change {
-            TxId::new_deterministic(&change.output_hash())
-        } else {
-            tx_outputs_to_tx_id(finalized.transaction.body.outputs())
-        };
 
-        self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
+        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, output, None)
+            .add_output_with_tx_id(finalized.tx_id, output, None)
             .await?;
 
         let change = finalized.change.map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(finalized.tx_id, change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
 
-        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
-            tx_id,
+            finalized.tx_id,
             self.resources.one_sided_tari_address.clone(),
             TariAddress::default(),
             amount,
@@ -2761,7 +2743,7 @@ where
 
         self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
             .await?;
-        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", finalized.tx_id);
 
         // Generate claim proof if needed
         let mut burn_proof = None;
@@ -2789,7 +2771,7 @@ where
             burn_proof = Some(proof);
         }
 
-        Ok((tx_id, burn_proof))
+        Ok((finalized.tx_id, burn_proof))
     }
 
     async fn register_validator_node(

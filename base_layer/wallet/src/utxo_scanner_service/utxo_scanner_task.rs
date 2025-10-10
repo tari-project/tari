@@ -743,7 +743,7 @@ where
                         "{:?}: Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         self.mode,
-                        wo.to_tx_id()
+                        wo.calculate_tx_id()
                     );
                 },
                 Err(e) => return Err(e.into()),

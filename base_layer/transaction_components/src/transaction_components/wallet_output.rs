@@ -429,8 +429,8 @@ impl WalletOutput {
         Ok(input)
     }
 
-    /// Get the deterministic TxId for this output
-    pub fn to_tx_id(&self) -> TxId {
+    /// Calculate the deterministic TxId for this output
+    pub fn calculate_tx_id(&self) -> TxId {
         TxId::new_deterministic(&self.output_hash)
     }
 
