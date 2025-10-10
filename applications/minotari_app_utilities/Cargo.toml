@@ -1,5 +1,6 @@
 [package]
 name = "minotari_app_utilities"
+description = "Utilities for Minotari applications"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
