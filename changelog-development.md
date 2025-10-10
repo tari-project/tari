@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.1-pre.0](https://github.com/tari-project/tari/compare/v5.1.0...v5.1.1-pre.0) (2025-10-10)
+
+
+### Features
+
+* custom db timeout for grpc ([#7544](https://github.com/tari-project/tari/issues/7544)) ([b68156c](https://github.com/tari-project/tari/commit/b68156c717af6ee0d4efe0a961ac87e13015d9f9))
+
 ## [5.1.0-rc.1](https://github.com/tari-project/tari/compare/v5.1.0-rc.0...v5.1.0-rc.1) (2025-10-07)
 
 
