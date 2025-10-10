@@ -430,8 +430,8 @@ impl WalletOutput {
     }
 
     /// Calculate the deterministic TxId for this output
-    pub fn calculate_tx_id(&self) -> TxId {
-        TxId::new_deterministic(&self.output_hash)
+    pub fn calculate_tx_id(&self, mac_key: &[u8]) -> TxId {
+        TxId::new_deterministic(mac_key, &self.output_hash)
     }
 
     /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs

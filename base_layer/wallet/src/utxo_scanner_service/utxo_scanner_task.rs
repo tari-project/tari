@@ -709,6 +709,7 @@ where
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
+        let view_key = self.key_manager.get_view_key().await?.pub_key;
         for (wo, import_status, to) in utxos {
             let source_address = if wo.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
@@ -743,7 +744,7 @@ where
                         "{:?}: Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         self.mode,
-                        wo.calculate_tx_id()
+                        wo.calculate_tx_id(view_key.as_bytes())
                     );
                 },
                 Err(e) => return Err(e.into()),

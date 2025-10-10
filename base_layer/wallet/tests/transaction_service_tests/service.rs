@@ -394,9 +394,6 @@ async fn setup_transaction_service_no_comms(
 async fn large_coin_split_transaction() {
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
 
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -494,9 +491,6 @@ async fn large_coin_split_transaction() {
 
 #[tokio::test]
 async fn single_transaction_burn_tari() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     // let _ = env_logger::builder().filter_level(log::LevelFilter::Debug).is_test(true).try_init();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -631,9 +625,6 @@ async fn single_transaction_burn_tari() {
 
 #[tokio::test]
 async fn send_one_sided_transaction_to_other() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -772,9 +763,6 @@ async fn send_one_sided_transaction_to_other() {
 
 #[tokio::test]
 async fn recover_one_sided_transaction() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
@@ -922,9 +910,6 @@ async fn recover_one_sided_transaction() {
 
 #[tokio::test]
 async fn recover_stealth_one_sided_transaction() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -1189,9 +1174,6 @@ async fn test_htlc_send_and_claim() {
 
 #[tokio::test]
 async fn test_htlc_send_and_claim_payment_id_fee() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -1887,9 +1869,6 @@ async fn broadcast_all_completed_transactions_on_startup() {
 
 #[tokio::test]
 async fn test_update_faux_tx_on_oms_validation() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let factories = CryptoFactories::default();
 
     let connection = make_wallet_database_memory_connection();
@@ -2067,9 +2046,6 @@ async fn test_update_faux_tx_on_oms_validation() {
 
 #[tokio::test]
 async fn test_update_coinbase_tx_on_oms_validation() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let factories = CryptoFactories::default();
 
     let connection = make_wallet_database_memory_connection();

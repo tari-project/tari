@@ -19,7 +19,7 @@ use tari_common_types::{
     },
 };
 use tari_script::{push_pubkey_script, script, ExecutionStack};
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     consensus::ConsensusConstants,
@@ -514,17 +514,22 @@ where KM: TransactionKeyManagerInterface
                 return Err(TransactionBuilderError::FeeGreaterThanAmount { fee, sent: total_sent });
             }
         }
+        let view_key = self.key_manager.get_view_key().await?.pub_key;
         let tx_id = if calculate_tx_id {
             Some(
                 change
                     .as_ref()
-                    .map(|c| c.output.calculate_tx_id())
+                    .map(|c| c.output.calculate_tx_id(view_key.clone().as_bytes()))
                     .or_else(|| {
                         self.recipient_outputs
                             .first()
-                            .map(|r| r.output.output.calculate_tx_id())
+                            .map(|r| r.output.output.calculate_tx_id(view_key.clone().as_bytes()))
                     })
-                    .or_else(|| self.custom_outputs.first().map(|c| c.output.calculate_tx_id()))
+                    .or_else(|| {
+                        self.custom_outputs
+                            .first()
+                            .map(|c| c.output.calculate_tx_id(view_key.clone().as_bytes()))
+                    })
                     .unwrap_or_else(TxId::new_random),
             )
         } else {
@@ -969,10 +974,11 @@ where KM: TransactionKeyManagerInterface
         core_tx_builder.with_kernel(kernel);
         let tx = core_tx_builder.build()?;
 
+        let view_key = self.key_manager.get_view_key().await?.pub_key;
         let tx_id = if let Some(wallet_output) = &change_output {
-            wallet_output.output.calculate_tx_id()
+            wallet_output.output.calculate_tx_id(view_key.as_bytes())
         } else {
-            tx_outputs_to_tx_id(tx.body.outputs())
+            tx_outputs_to_tx_id(view_key.as_bytes(), tx.body.outputs())
         };
 
         let destination_addresses = self

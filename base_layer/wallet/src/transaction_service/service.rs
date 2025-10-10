@@ -1387,16 +1387,22 @@ where
                         consensus_constants,
                     )
                     .await?;
+                let view_key = self
+                    .resources
+                    .transaction_key_manager_service
+                    .get_view_key()
+                    .await?
+                    .pub_key;
                 let (change_hashes, change, tx_id) = match finalized_transaction.change {
                     Some(change_output) => (
                         vec![change_output.output_hash()],
                         Some(vec![change_output.clone()]),
-                        change_output.calculate_tx_id(),
+                        change_output.calculate_tx_id(view_key.as_bytes()),
                     ),
                     None => (
                         vec![],
                         None,
-                        tx_outputs_to_tx_id(finalized_transaction.transaction.body.outputs()),
+                        tx_outputs_to_tx_id(view_key.as_bytes(), finalized_transaction.transaction.body.outputs()),
                     ),
                 };
                 self.resources
@@ -1613,7 +1619,15 @@ where
                     .iter()
                     .map(|o| o.hash())
                     .collect::<Vec<HashOutput>>();
-                let tx_id = tx_outputs_to_tx_id(transaction.body.outputs());
+                let tx_id = tx_outputs_to_tx_id(
+                    self.resources
+                        .transaction_key_manager_service
+                        .get_view_key()
+                        .await?
+                        .pub_key
+                        .as_bytes(),
+                    transaction.body.outputs(),
+                );
                 self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
                 let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
@@ -1676,7 +1690,15 @@ where
                     .iter()
                     .map(|o| o.hash())
                     .collect::<Vec<HashOutput>>();
-                let tx_id = tx_outputs_to_tx_id(transaction.body.outputs());
+                let tx_id = tx_outputs_to_tx_id(
+                    self.resources
+                        .transaction_key_manager_service
+                        .get_view_key()
+                        .await?
+                        .pub_key
+                        .as_bytes(),
+                    transaction.body.outputs(),
+                );
                 self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
                 let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
@@ -2533,9 +2555,18 @@ where
 
         // Save the other transactions with zero fee and random tx_id to the database
         let mut tx_ids = vec![finalized.tx_id];
+        let view_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_view_key()
+            .await?
+            .pub_key;
         for (address, amount, memo) in destinations {
             let new_tx_id = if let Some(pos) = outputs.iter().position(|o| o.value() == amount) {
-                let tx_id = outputs.get(pos).expect("pos exists").calculate_tx_id();
+                let tx_id = outputs
+                    .get(pos)
+                    .expect("pos exists")
+                    .calculate_tx_id(view_key.as_bytes());
                 outputs.swap_remove(pos);
                 tx_id
             } else {
@@ -3588,7 +3619,15 @@ where
                 )
             };
 
-        let tx_id = TxId::new_deterministic(&scanned_output.hash());
+        let tx_id = TxId::new_deterministic(
+            self.resources
+                .transaction_key_manager_service
+                .get_view_key()
+                .await?
+                .pub_key
+                .as_bytes(),
+            &scanned_output.hash(),
+        );
         self.db.add_utxo_import_transaction_with_status(
             tx_id,
             amount,

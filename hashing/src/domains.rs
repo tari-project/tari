@@ -1,9 +1,8 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use blake2::{Blake2b, Blake2bMac};
-use digest::consts::{U64, U8};
+use blake2::Blake2b;
+use digest::consts::U64;
 use tari_crypto::{hash_domain, hasher};
-use tari_crypto::hashing::MacDomain;
 // These are the hash domains that are also used in tari-dan.
 
 hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);

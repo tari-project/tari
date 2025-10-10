@@ -37,7 +37,6 @@ mod test {
         key_branches::TransactionKeyManagerBranch,
         seeds::cipher_seed::CipherSeed,
         tari_address::{TariAddress, TariAddressFeatures},
-        transaction::TxId,
         wallet_types::{ProvidedKeysWallet, WalletType},
     };
     use tari_script::{
@@ -89,9 +88,6 @@ mod test {
     }
     #[tokio::test]
     async fn offline_sign_is_valid() {
-        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-        TxId::init_mac(view_key);
-
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
@@ -205,9 +201,6 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn offline_deposit_multisign_is_valid() {
-        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-        TxId::init_mac(view_key);
-
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let charlie_key_manager = create_memory_key_manager().await.unwrap();
@@ -343,9 +336,6 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn offline_withdraw_multisign_is_valid() {
-        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-        TxId::init_mac(view_key);
-
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let charlie_key_manager = create_memory_key_manager().await.unwrap();
@@ -565,9 +555,6 @@ mod test {
 
     #[tokio::test]
     async fn offline_sign_can_be_claimed() {
-        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-        TxId::init_mac(view_key);
-
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
@@ -677,9 +664,6 @@ mod test {
 
     #[tokio::test]
     async fn view_only_cannot_sign_offline() {
-        let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-        TxId::init_mac(view_key);
-
         let rules = create_consensus_manager();
         let alice_key_manager = create_memory_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {

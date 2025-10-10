@@ -31,7 +31,7 @@ use tari_transaction_components::{
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
     MicroMinotari,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
@@ -125,9 +125,10 @@ where
                 None,
             );
             let output_hex = db_output.commitment.to_hex();
+            let view_key = self.master_key_manager.get_view_key().await?.pub_key;
             if let Err(e) = self
                 .db
-                .add_unspent_output_with_tx_id(output.calculate_tx_id(), db_output)
+                .add_unspent_output_with_tx_id(output.calculate_tx_id(view_key.as_bytes()), db_output)
             {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {

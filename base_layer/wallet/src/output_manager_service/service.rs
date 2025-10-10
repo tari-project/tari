@@ -2178,7 +2178,10 @@ where
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = tx_outputs_to_tx_id(finalized.transaction.body.outputs());
+        let tx_id = tx_outputs_to_tx_id(
+            self.resources.key_manager.get_view_key().await?.pub_key.as_bytes(),
+            finalized.transaction.body.outputs(),
+        );
 
         trace!(
             target: LOG_TARGET,
@@ -2341,7 +2344,10 @@ where
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = tx_outputs_to_tx_id(finalized.transaction.body.outputs());
+        let tx_id = tx_outputs_to_tx_id(
+            self.resources.key_manager.get_view_key().await?.pub_key.as_bytes(),
+            finalized.transaction.body.outputs(),
+        );
 
         trace!(
             target: LOG_TARGET,
@@ -2553,7 +2559,10 @@ where
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = tx_outputs_to_tx_id(finalized.transaction.body.outputs());
+        let tx_id = tx_outputs_to_tx_id(
+            self.resources.key_manager.get_view_key().await?.pub_key.as_bytes(),
+            finalized.transaction.body.outputs(),
+        );
 
         trace!(
             target: LOG_TARGET,
@@ -2887,7 +2896,7 @@ where
             }
         }
 
-        self.import_onesided_outputs(scanned_outputs)
+        self.import_onesided_outputs(scanned_outputs, &view_key.pub_key)
     }
 
     // Scanning outputs addressed to this wallet
@@ -2899,6 +2908,7 @@ where
         // 1. Get all your wallet's public keys (or just the spend key for now)
         let mut scanned_outputs = vec![];
 
+        let view_key = self.resources.key_manager.get_view_key().await?.pub_key;
         for output in outputs {
             // 2. Check if the script is a multisig script
 
@@ -2908,7 +2918,7 @@ where
                 debug!(
                     target: LOG_TARGET,
                     "Found multisig script in output with tx_id: {:?}, pubkeys: {:?}",
-                    TxId::new_deterministic(&output.hash()),
+                    TxId::new_deterministic(view_key.as_bytes(), &output.hash()),
                     pubkeys
                 );
 
@@ -2952,18 +2962,19 @@ where
             }
         }
 
-        self.import_onesided_outputs(scanned_outputs)
+        self.import_onesided_outputs(scanned_outputs, &view_key)
     }
 
     // Import scanned outputs into the wallet
     fn import_onesided_outputs(
         &self,
         scanned_outputs: Vec<(WalletOutput, OutputSource)>,
+        view_key: &CompressedPublicKey,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source) in scanned_outputs {
-            let tx_id = output.calculate_tx_id();
+            let tx_id = output.calculate_tx_id(view_key.as_bytes());
             let db_output = DbWalletOutput::from_wallet_output(output.clone(), None, output_source, Some(tx_id), None);
             let hash = db_output.hash;
 

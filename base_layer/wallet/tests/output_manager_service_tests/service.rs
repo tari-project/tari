@@ -306,9 +306,6 @@ async fn fee_estimate() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
@@ -431,9 +428,6 @@ async fn test_utxo_selection_no_chain_metadata() {
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_selection_with_chain_metadata() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     // setup with chain metadata at a height of 6
@@ -990,9 +984,6 @@ async fn sending_transaction_persisted_while_offline() {
 
 #[tokio::test]
 async fn coin_split_with_change() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -1061,9 +1052,6 @@ async fn coin_split_with_change() {
 
 #[tokio::test]
 async fn coin_split_no_change() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -1132,9 +1120,6 @@ async fn coin_split_no_change() {
 
 #[tokio::test]
 async fn it_handles_large_coin_splits() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -1985,9 +1970,6 @@ async fn test_get_status_by_tx_id() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn scan_for_recovery_test() {
-    let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
-    TxId::init_mac(view_key);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
