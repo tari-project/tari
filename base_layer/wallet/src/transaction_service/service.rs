@@ -1393,7 +1393,7 @@ where
                         (
                             vec![hash],
                             Some(vec![change_output.clone()]),
-                            TxId::new_deterministic(&change_output.output_hash()),
+                            TxId::new_deterministic(&hash),
                         )
                     },
                     None => (

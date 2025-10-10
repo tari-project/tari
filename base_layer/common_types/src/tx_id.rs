@@ -24,7 +24,7 @@ use std::{
     fmt,
     fmt::Formatter,
     hash::{Hash, Hasher},
-    sync::OnceLock,
+    sync::RwLock,
 };
 
 use blake2::Blake2bMac;
@@ -34,7 +34,8 @@ use serde::{Deserialize, Serialize};
 type Blake2bTxIdMac = Blake2bMac<U8>; // 8-byte keyed BLAKE2b
 const MAC_SIZE: usize = 8;
 const TAG_TX_ID: &str = "tari/tx_id_64";
-static TX_ID_MAC: OnceLock<Blake2bTxIdMac> = OnceLock::new();
+
+static TX_ID_MAC: RwLock<Option<Blake2bTxIdMac>> = RwLock::new(None);
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct TxId(u64);
@@ -43,7 +44,8 @@ impl TxId {
     /// Initialize the TX_ID_MAC with the given view key. This must be called once before using
     /// TxId::new_deterministic.
     pub fn init_mac(view_key: &[u8]) {
-        let _unused = TX_ID_MAC.set(Self::blake2b_tx_id_mac(view_key, TAG_TX_ID));
+        let mut lock = TX_ID_MAC.write().unwrap();
+        *lock = Some(Self::blake2b_tx_id_mac(view_key, TAG_TX_ID));
         debug_assert_eq!(Blake2bTxIdMac::output_size(), MAC_SIZE);
     }
 
@@ -64,12 +66,13 @@ impl TxId {
 
     /// Create a new TxId deterministically from the given 32-byte output hash.
     pub fn new_deterministic(out_hash32: &[u8; 32]) -> Self {
-        let mac_result = TX_ID_MAC.get();
+        let mac_result = TX_ID_MAC.read().unwrap();
         debug_assert!(
             mac_result.is_some(),
             "MAC should be initialized - call TxId::init_mac(&view_key)"
         );
         let mut mac = mac_result
+            .as_ref()
             .expect("MAC should be initialized - call TxId::init_mac(&view_key)")
             .clone();
         mac.update(out_hash32);
@@ -168,18 +171,38 @@ mod tests {
         let view_key = b"example-view-key-32bytes-len----"; // 32 bytes
         TxId::init_mac(view_key);
 
-        let hash = bytes32_inc(0x10);
+        let hash_1 = bytes32_inc(0x10);
 
-        let id1 = TxId::new_deterministic(&hash);
-        let id2 = TxId::new_deterministic(&hash);
+        let id1 = TxId::new_deterministic(&hash_1);
+        let id2 = TxId::new_deterministic(&hash_1);
         assert_eq!(id1, id2, "same inputs must produce same tx_id");
 
-        let hash = bytes32_inc(0x11);
+        let hash_2 = bytes32_inc(0x11);
 
-        let id3 = TxId::new_deterministic(&hash);
-        let id4 = TxId::new_deterministic(&hash);
+        let id3 = TxId::new_deterministic(&hash_2);
+        let id4 = TxId::new_deterministic(&hash_2);
         assert_eq!(id3, id4, "same inputs must produce same tx_id");
 
         assert_ne!(id1, id3, "different inputs must produce different tx_ids");
+    }
+
+    #[test]
+    fn it_can_be_re_initialized() {
+        let hash = bytes32_inc(0x10);
+
+        let view_key = b"example-view-key-32bytes-len---1"; // 32 bytes
+        TxId::init_mac(view_key);
+
+        let id1 = TxId::new_deterministic(&hash);
+
+        let view_key = b"example-view-key-32bytes-len---2"; // 32 bytes
+        TxId::init_mac(view_key);
+
+        let id2 = TxId::new_deterministic(&hash);
+
+        assert_ne!(
+            id1, id2,
+            "the same hash input with a different mac init must produce different tx_ids"
+        );
     }
 }
