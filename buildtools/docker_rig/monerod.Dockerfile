@@ -10,11 +10,11 @@
 # https://github.com/monero-project/monero/releases
 ARG MONERO_VERSION=0.18.3.4
 
-# https://hub.docker.com/r/bitnami/minideb
+# https://hub.docker.com/_/debian
 ARG OS_BASE=bookworm
 
 # Declare stage using linux/amd64 base image
-FROM --platform=linux/amd64 bitnami/minideb:${OS_BASE} AS build-stage-amd64
+FROM --platform=linux/amd64 debian:${OS_BASE}-slim AS build-stage-amd64
 
 # Platform Args
 ARG MONERO_ARCH=x64
@@ -26,7 +26,7 @@ ARG MONERO_AMD64_SHA256=51ba03928d189c1c11b5379cab17dd9ae8d2230056dc05c872d0f8db
 ARG MONERO_VERSION
 
 # Declare stage using linux/arm64 base image
-FROM --platform=linux/arm64 bitnami/minideb:${OS_BASE} AS build-stage-arm64
+FROM --platform=linux/arm64 debian:${OS_BASE}-slim AS build-stage-arm64
 
 # Platform Args
 ARG MONERO_ARCH=armv8
@@ -69,7 +69,7 @@ RUN curl https://dlsrc.getmonero.org/cli/monero-linux-$MONERO_ARCH-v$MONERO_VERS
   rm -r monero-*
 
 
-FROM bitnami/minideb:${OS_BASE} AS runtime-stage
+FROM debian:${OS_BASE}-slim AS runtime-stage
 
 # Bring over the Args from platform selection
 ARG BUILDPLATFORM
