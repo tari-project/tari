@@ -5,7 +5,10 @@ use std::cmp;
 
 use log::trace;
 use serde_valid::{validation, Validate};
-use tari_common_types::{types, types::FixedHashSizeError};
+use tari_common_types::{
+    types,
+    types::{FixedHash, FixedHashSizeError},
+};
 use tari_transaction_components::{
     rpc::{
         models,
@@ -192,6 +195,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
         // pagination
         let start_header_height = start_header.height + (request.page * request.limit);
+        if start_header_height > tip_header.header().height {
+            return Err(Error::HeaderHeightMismatch {
+                start_height: start_header.height,
+                end_height: tip_header.header().height,
+            });
+        }
         let start_header = self
             .db
             .fetch_header(start_header_height)
@@ -200,17 +209,18 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 height: start_header_height,
             })?;
 
-        if start_header.height > tip_header.header().height {
-            return Err(Error::HeaderHeightMismatch {
-                start_height: start_header.height,
-                end_height: tip_header.header().height,
-            });
-        }
-
         // fetch utxos
         let mut utxos = vec![];
         let mut current_header = start_header;
         let mut fetched_utxos = 0;
+        let spending_end_header_hash = self
+            .db
+            .fetch_header(tip_header.header().height.saturating_sub(1000))
+            .await?
+            .ok_or_else(|| Error::HeaderNotFound {
+                height: start_header_height,
+            })?
+            .hash();
         let next_header_to_request;
         loop {
             let current_header_hash = current_header.hash();
@@ -221,30 +231,36 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 current_header.height,
                 current_header_hash.to_hex()
             );
-
-            let outputs_with_statuses = self
-                .db
-                .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
-                .await?;
+            let outputs = if request.exclude_spent {
+                self.db
+                    .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(spending_end_header_hash))
+                    .await?
+                    .into_iter()
+                    .filter(|(_, spent)| !spent)
+                    .map(|(output, _spent)| output)
+                    .collect::<Vec<TransactionOutput>>()
+            } else {
+                self.db
+                    .fetch_outputs_in_block_with_spend_state(current_header_hash, None)
+                    .await?
+                    .into_iter()
+                    .map(|(output, _spent)| output)
+                    .collect::<Vec<TransactionOutput>>()
+            };
             let mut inputs = self
                 .db
-                .fetch_inputs_in_block(current_header.hash())
+                .fetch_inputs_in_block(current_header_hash)
                 .await?
                 .into_iter()
-                .map(|input| input.output_hash().to_vec())
-                .collect::<Vec<Vec<u8>>>();
-
-            let outputs = outputs_with_statuses
-                .into_iter()
-                .map(|(output, _spent)| output)
-                .collect::<Vec<TransactionOutput>>();
+                .map(|input| input.output_hash())
+                .collect::<Vec<FixedHash>>();
 
             for output_chunk in outputs.chunks(2000) {
                 let inputs_to_send = if inputs.is_empty() {
                     Vec::new()
                 } else {
                     let num_to_drain = inputs.len().min(2000);
-                    inputs.drain(..num_to_drain).collect()
+                    inputs.drain(..num_to_drain).map(|h| h.to_vec()).collect()
                 };
 
                 let output_block_response = BlockUtxoInfo {
@@ -268,7 +284,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             for input_chunk in inputs.chunks(2000) {
                 let output_block_response = BlockUtxoInfo {
                     outputs: Vec::new(),
-                    inputs: input_chunk.to_vec(),
+                    inputs: input_chunk.iter().map(|h| h.to_vec()).collect::<Vec<_>>().to_vec(),
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
                     mined_timestamp: current_header.timestamp.as_u64(),
