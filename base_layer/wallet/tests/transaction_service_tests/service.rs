@@ -1204,14 +1204,15 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity,
-        consensus_manager.clone(),
-        factories.clone(),
-        alice_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts_interface, _bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(

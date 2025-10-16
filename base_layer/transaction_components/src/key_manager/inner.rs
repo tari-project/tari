@@ -133,7 +133,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 "A master seed must be provided unless wallet type is provided keys.".to_string(),
             ));
         }
-        let create_standard_branches = master_seed.is_some() && !wallet_type.is_provided_keys();
+        let create_standard_branches = master_seed.is_some();
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
             db: db.map(|db| Arc::new(RwLock::new(db))),
