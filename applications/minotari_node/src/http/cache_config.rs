@@ -118,14 +118,21 @@ impl HttpCacheConfig {
         if !self.dynamic {
             return default;
         }
+        // The variables are as follows:
+        // max_age: how long the client can cache the response
+        // s_maxage: how long shared caches (e.g., CDNs) can cache
+        // stale_while_revalidate: how long the client/shared cache can use a stale response while revalidating
+        // So for us the important one is the s_maxage, as that determines how long intermediaries can cache responses.
+        // The max_age is more about client-side caching, which is less critical for us as our wallets wont do caching
+        // as it will only be called once.
         let (max_age, s_maxage, stale_while_revalidate) = match tip_height.saturating_sub(height) {
-            0..=10 => (30, 15, 15),            // within 10 blocks of tip (30s)
-            11..=100 => (300, 150, 75),        // within 100 blocks of tip (11 blocks = 22min, cache 5 mins)
-            101..=1000 => (1200, 600, 300),    // within 1000 blocks of tip (101 blocks = 6.7 hours, cache 20 mins)
-            1001..=2000 => (1800, 900, 450),   // within 2000 blocks of tip (1001 blocks = 2.7 days, cache 30 mins)
-            2001..=10000 => (3600, 1800, 900), // within 10000 blocks of tip (11 blocks = 5.5 days, cache 1 hour)
-            _ => (86400, 43200, 21600),        /* more than 10000 blocks from tip (10001 blocks = 27 days, cache 30
-                                                 * days) */
+            0..=10 => (30, 30, 15),          // within 10 blocks of tip (30s)
+            11..=100 => (300, 300, 60),      // within 100 blocks of tip (11 blocks = 22min, cache 5 mins)
+            101..=1000 => (360, 1200, 60),   // within 1000 blocks of tip (101 blocks = 6.7 hours, cache 20 mins)
+            1001..=2000 => (360, 1800, 60),  // within 2000 blocks of tip (1001 blocks = 2.7 days, cache 30 mins)
+            2001..=10000 => (360, 3600, 60), // within 10000 blocks of tip (11 blocks = 5.5 days, cache 1 hour)
+            _ => (360, 86400, 60),           /* more than 10000 blocks from tip (10001 blocks = 27 days, cache 30
+                                               * days) */
         };
         match key {
             RouteKey::GetTipInfo => default,
