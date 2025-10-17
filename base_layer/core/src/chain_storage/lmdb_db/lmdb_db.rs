@@ -2839,13 +2839,10 @@ impl BlockchainBackend for LMDBDatabase {
         })
     }
 
-    fn fetch_inputs_in_block(
-        &self,
-        previous_header_hash: &HashOutput,
-    ) -> Result<Vec<TransactionInput>, ChainStorageError> {
+    fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         Ok(
-            lmdb_fetch_matching_after(&txn, &self.inputs_db, previous_header_hash.as_slice())?
+            lmdb_fetch_matching_after(&txn, &self.inputs_db, header_hash.as_slice())?
                 .into_iter()
                 .map(|(_, f): (_, TransactionInputRowData)| f.input)
                 .collect(),
