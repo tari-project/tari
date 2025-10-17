@@ -269,17 +269,17 @@ mod tests {
         };
         // (delta_from_tip, expected max-age, s-maxage, swr)
         let cases = [
-            (0u64, 30, 15, 15),
-            (10, 30, 15, 15),
-            (11, 300, 150, 75),
-            (100, 300, 150, 75),
-            (101, 1200, 600, 300),
-            (1000, 1200, 600, 300),
-            (1001, 1800, 900, 450),
-            (2000, 1800, 900, 450),
-            (2001, 3600, 1800, 900),
-            (10000, 3600, 1800, 900),
-            (10001, 86400, 43200, 21600),
+            (0u64, 30, 30, 15),
+            (10, 30, 30, 15),
+            (11, 300, 300, 60),
+            (100, 300, 300, 60),
+            (101, 360, 1200, 60),
+            (1000, 360, 1200, 60),
+            (1001, 360, 1800, 60),
+            (2000, 360, 1800, 60),
+            (2001, 360, 3600, 60),
+            (10000, 360, 3600, 60),
+            (10001, 360, 86400, 60),
         ];
         let tip = 50_000u64;
         for (delta, max_age, s_maxage, swr) in cases {
@@ -308,7 +308,7 @@ mod tests {
         // height > tip should saturate to 0 delta and thus use the 0..=10 bucket
         let tip = 100;
         let height = 200; // greater than tip
-        let expected = "public, max-age=30, s-maxage=15, stale-while-revalidate=15";
+        let expected = "public, max-age=30, s-maxage=30, stale-while-revalidate=15";
         let got = cfg.cache_control_for(RouteKey::GetHeaderByHeight, tip, height);
         assert_eq!(got, expected);
     }
