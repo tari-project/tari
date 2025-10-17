@@ -27,12 +27,12 @@ minotari_app_utilities = { workspace = true }
 minotari_app_grpc = { workspace = true }
 minotari_node_grpc_client = { workspace = true }
 tari_common = { workspace = true }
-tokio = { version = "1.44", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "1.0"
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
 clap = { version = "3.2", features = ["derive", "env"] }
-log = "0.4"
+log = { workspace = true }
 async-trait = "0.1"
 tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
 chrono = { version = "0.4", features = ["serde"] }
