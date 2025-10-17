@@ -295,7 +295,7 @@ impl BaseNodeWalletClient for Client {
         let start_header_hash_hex = start_header_hash.to_hex();
         let client = self.http_client.clone();
 
-        let limit = 10;
+        let limit = 50;
         tokio::spawn(async move {
             let mut page = 0;
             let mut has_next_page = true;

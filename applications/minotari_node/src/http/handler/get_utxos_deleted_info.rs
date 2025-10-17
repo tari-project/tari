@@ -74,6 +74,6 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     let body = Json(response);
     let mut response = body.into_response();
-    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetUtxosDeletedInfo);
+    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetUtxosDeletedInfo, 0, 0);
     Ok(response)
 }
