@@ -284,11 +284,11 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
             if fetched_utxos >= request.limit {
                 next_header_to_request = current_header.hash().to_vec();
-                // this is a special edge case, our request has reached the page limit, but we are also not done with
+                // This is a special edge case, our request has reached the page limit, but we are also not done with
                 // the block. We also dont want to split up the block over two requests. So we need to ensure that we
                 // remove the partial block we added so that it can be requested fully in the next request. We also dont
                 // want to get in a loop where the block cannot fit into the page limit, so if the block is the same as
-                // the first one, we just send it as it, partial. If net we remove it and let it be sent in the next
+                // the first one, we just send it as is, partial. If not we remove it and let it be sent in the next
                 // request.
                 if utxos.first().ok_or(Error::General(anyhow::anyhow!("No utxos founds")))? // should never happen as we always add at least one block
                     .header_hash ==
@@ -299,12 +299,11 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     break;
                 }
                 while !utxos.is_empty() &&
-                    utxos.last().ok_or(Error::General(anyhow::anyhow!("No utxos founds")))? // should never happen as we always add at least one block
+                    utxos.last().ok_or(Error::General(anyhow::anyhow!("No utxos found")))? // should never happen as we always add at least one block
                     .header_hash ==
                         current_header.hash().to_vec()
                 {
                     utxos.pop();
-                    fetched_utxos -= 1;
                 }
                 break;
             }
