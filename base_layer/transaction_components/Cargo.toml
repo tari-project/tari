@@ -23,10 +23,10 @@ tari_script = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_utilities = { workspace = true }
 
-anyhow = "1.0.53"
+anyhow = { workspace = true }
 async-trait = { version = "0.1.50" }
 bitflags = { version = "2.4", features = ["serde"] }
-borsh = { version = "1.5.7", features = ["derive"] }
+borsh = { workspace = true, features = ["derive"] }
 
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
@@ -43,18 +43,18 @@ num-traits = "0.2.15"
 num-derive = "0.4.2"
 
 primitive-types = { version = "0.12", features = ["serde"] }
-tokio = { version = "1.44", features = ["sync"] }
-log = "0.4"
-rand = "0.8"
+tokio = { workspace = true, features = ["sync"] }
+log = { workspace = true }
+rand = { workspace = true }
 serde_repr = "0.1.8"
 serde_valid = "1.0.5"
 strum = "0.22"
 strum_macros = "0.22"
 tari_crypto = { workspace = true, features = ["borsh"] }
 
-thiserror = "1.0.26"
-serde = { version = "1.0.106", features = ["derive"] }
-serde_json = "1.0.39"
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 blake2 = "0.10"
 semver = { version = "1.0", features = ["serde"] }
 uuid = "1.17.0"

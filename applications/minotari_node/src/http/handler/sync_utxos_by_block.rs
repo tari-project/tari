@@ -39,6 +39,9 @@ pub struct SyncUtxosByBlockQueryParams {
     pub limit: u64,
     #[param(value_type = u64, example = 0)]
     pub page: u64,
+    #[serde(default)]
+    #[param(value_type = bool, example = false)]
+    pub exclude_spent: bool,
 }
 
 impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
@@ -47,6 +50,7 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
             start_header_hash: params.start_header_hash,
             limit: params.limit,
             page: params.page,
+            exclude_spent: params.exclude_spent,
         }
     }
 }

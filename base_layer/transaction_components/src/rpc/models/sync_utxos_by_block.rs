@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_valid::Validate;
 use utoipa::ToSchema;
 
-#[derive(Serialize, Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate, Debug)]
 pub struct SyncUtxosByBlockRequest {
     pub start_header_hash: Vec<u8>,
     #[validate(minimum = 1)]
@@ -12,6 +12,7 @@ pub struct SyncUtxosByBlockRequest {
     pub limit: u64,
     #[validate(minimum = 0)]
     pub page: u64,
+    pub exclude_spent: bool,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug)]

@@ -37,7 +37,7 @@ minotari_wallet = { path = "../base_layer/wallet" }
 minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 
-anyhow = "1.0.53"
+anyhow = { workspace = true }
 async-trait = "0.1.50"
 chrono = { version = "0.4", default-features = false }
 csv = "1.1"
@@ -49,14 +49,14 @@ cucumber = { version = "0.21.1", features = [
 futures = { version = "^0.3.1" }
 indexmap = "1.9.1"
 libc = "0.2.65"
-log = { version = "0.4.8", features = ["std"] }
-rand = "0.8"
+log = { workspace = true, features = ["std"] }
+rand = { workspace = true }
 reqwest = "0.11.11"
-serde_json = "1.0.64"
+serde_json = { workspace = true }
 tempfile = "3.3.0"
-thiserror = "^1.0.20"
+thiserror = { workspace = true }
 time = "0.3.36"
-tokio = { version = "1.44", features = [
+tokio = { workspace = true, features = [
     "macros",
     "time",
     "sync",
