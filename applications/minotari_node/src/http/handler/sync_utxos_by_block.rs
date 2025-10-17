@@ -39,6 +39,9 @@ pub struct SyncUtxosByBlockQueryParams {
     pub limit: u64,
     #[param(value_type = u64, example = 0)]
     pub page: u64,
+    #[serde(default)]
+    #[param(value_type = bool, example = false)]
+    pub exclude_spent: bool,
 }
 
 impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
@@ -47,8 +50,7 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
             start_header_hash: params.start_header_hash,
             limit: params.limit,
             page: params.page,
-            // TODO: remove
-            exclude_spent: true,
+            exclude_spent: params.exclude_spent,
         }
     }
 }
@@ -71,14 +73,22 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received sync_utxos_by_block request: {params:?}");
     let request = params.into();
-
+    let tip_info = query_service.get_tip_info().await.map_err(error_handler_with_message)?;
+    let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
     let response = query_service
         .sync_utxos_by_block(request)
         .await
         .map_err(error_handler_with_message)?;
+    let last_height = response.blocks.last().map(|b| b.height).unwrap_or(0);
 
     let body = Json(response);
     let mut response = body.into_response();
-    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::SyncUtxosByBlock);
+    apply_cache_control(
+        response.headers_mut(),
+        &cache_cfg,
+        RouteKey::SyncUtxosByBlock,
+        tip_height,
+        last_height,
+    );
     Ok(response)
 }

@@ -13,17 +13,17 @@ license.workspace = true
 [dependencies]
 tari_shutdown = { workspace = true }
 
-anyhow = "1.0.53"
+anyhow = { workspace = true }
 async-trait = "0.1.50"
 futures = { version = "^0.3.16", features = ["async-await"] }
-log = "0.4.8"
-thiserror = "1.0.26"
-tokio = { version = "1.44", features = ["rt", "sync"] }
+log = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
 tower-service = { version = "0.3" }
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }
 
-tokio = { version = "1.44", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 futures-test = { version = "0.3.3" }
 tower = "0.4"

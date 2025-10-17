@@ -45,6 +45,6 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     let tip_info = query_service.get_tip_info().await.map_err(error_handler_with_message)?;
     let body = Json(tip_info);
     let mut response = body.into_response();
-    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetTipInfo);
+    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetTipInfo, 0, 0);
     Ok(response)
 }

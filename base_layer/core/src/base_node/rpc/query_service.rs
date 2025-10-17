@@ -5,7 +5,10 @@ use std::cmp;
 
 use log::trace;
 use serde_valid::{validation, Validate};
-use tari_common_types::{types, types::FixedHashSizeError};
+use tari_common_types::{
+    types,
+    types::{FixedHash, FixedHashSizeError},
+};
 use tari_transaction_components::{
     rpc::{
         models,
@@ -34,6 +37,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
+const SYNC_UTXOS_SPEND_TIP_SAFETY_LIMIT: u64 = 1000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -192,6 +196,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
         // pagination
         let start_header_height = start_header.height + (request.page * request.limit);
+        if start_header_height > tip_header.header().height {
+            return Err(Error::HeaderHeightMismatch {
+                start_height: start_header.height,
+                end_height: tip_header.header().height,
+            });
+        }
         let start_header = self
             .db
             .fetch_header(start_header_height)
@@ -200,17 +210,26 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 height: start_header_height,
             })?;
 
-        if start_header.height > tip_header.header().height {
-            return Err(Error::HeaderHeightMismatch {
-                start_height: start_header.height,
-                end_height: tip_header.header().height,
-            });
-        }
-
         // fetch utxos
         let mut utxos = vec![];
         let mut current_header = start_header;
         let mut fetched_utxos = 0;
+        let spending_end_header_hash = self
+            .db
+            .fetch_header(
+                tip_header
+                    .header()
+                    .height
+                    .saturating_sub(SYNC_UTXOS_SPEND_TIP_SAFETY_LIMIT),
+            )
+            .await?
+            .ok_or_else(|| Error::HeaderNotFound {
+                height: tip_header
+                    .header()
+                    .height
+                    .saturating_sub(SYNC_UTXOS_SPEND_TIP_SAFETY_LIMIT),
+            })?
+            .hash();
         let next_header_to_request;
         loop {
             let current_header_hash = current_header.hash();
@@ -221,31 +240,36 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 current_header.height,
                 current_header_hash.to_hex()
             );
-
-            let outputs_with_statuses = self
-                .db
-                .fetch_outputs_in_block_with_spend_state(current_header.hash(), Some(current_header_hash))
-                .await?;
+            let outputs = if request.exclude_spent {
+                self.db
+                    .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(spending_end_header_hash))
+                    .await?
+                    .into_iter()
+                    .filter(|(_, spent)| !spent)
+                    .map(|(output, _spent)| output)
+                    .collect::<Vec<TransactionOutput>>()
+            } else {
+                self.db
+                    .fetch_outputs_in_block_with_spend_state(current_header_hash, None)
+                    .await?
+                    .into_iter()
+                    .map(|(output, _spent)| output)
+                    .collect::<Vec<TransactionOutput>>()
+            };
             let mut inputs = self
                 .db
-                .fetch_inputs_in_block(current_header.hash())
+                .fetch_inputs_in_block(current_header_hash)
                 .await?
                 .into_iter()
-                .map(|input| input.output_hash().to_vec())
-                .collect::<Vec<Vec<u8>>>();
-
-            let outputs = outputs_with_statuses
-                .into_iter()
-                .filter(|(_, spent)| !spent || !request.exclude_spent)
-                .map(|(output, _spent)| output)
-                .collect::<Vec<TransactionOutput>>();
+                .map(|input| input.output_hash())
+                .collect::<Vec<FixedHash>>();
 
             for output_chunk in outputs.chunks(2000) {
                 let inputs_to_send = if inputs.is_empty() {
                     Vec::new()
                 } else {
                     let num_to_drain = inputs.len().min(2000);
-                    inputs.drain(..num_to_drain).collect()
+                    inputs.drain(..num_to_drain).map(|h| h.to_vec()).collect()
                 };
 
                 let output_block_response = BlockUtxoInfo {
@@ -269,7 +293,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             for input_chunk in inputs.chunks(2000) {
                 let output_block_response = BlockUtxoInfo {
                     outputs: Vec::new(),
-                    inputs: input_chunk.to_vec(),
+                    inputs: input_chunk.iter().map(|h| h.to_vec()).collect::<Vec<_>>().to_vec(),
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
                     mined_timestamp: current_header.timestamp.as_u64(),
@@ -284,7 +308,28 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 break;
             }
             if fetched_utxos >= request.limit {
-                next_header_to_request = current_header.hash().to_vec();
+                next_header_to_request = current_header_hash.to_vec();
+                // This is a special edge case, our request has reached the page limit, but we are also not done with
+                // the block. We also dont want to split up the block over two requests. So we need to ensure that we
+                // remove the partial block we added so that it can be requested fully in the next request. We also dont
+                // want to get in a loop where the block cannot fit into the page limit, so if the block is the same as
+                // the first one, we just send it as is, partial. If not we remove it and let it be sent in the next
+                // request.
+                if utxos.first().ok_or(Error::General(anyhow::anyhow!("No utxos founds")))? // should never happen as we always add at least one block
+                    .header_hash ==
+                    current_header_hash.to_vec()
+                {
+                    // special edge case where the first block is also the last block we can send, so we just send it as
+                    // is, partial
+                    break;
+                }
+                while !utxos.is_empty() &&
+                    utxos.last().ok_or(Error::General(anyhow::anyhow!("No utxos found")))? // should never happen as we always add at least one block
+                    .header_hash ==
+                        current_header_hash.to_vec()
+                {
+                    utxos.pop();
+                }
                 break;
             }
 

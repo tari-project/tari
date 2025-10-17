@@ -13,4 +13,4 @@ license.workspace = true
 futures = "^0.3"
 
 [dev-dependencies]
-tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
