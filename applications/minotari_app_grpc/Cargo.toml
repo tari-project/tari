@@ -10,12 +10,12 @@ license.workspace = true
 
 [features]
 default = ["base_node"]
-base_node = ["tari_core"]
+base_node = ["tari_core", "tari_comms"]
 
 
 [dependencies]
 tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
+tari_comms = { workspace = true, optional = true }
 tari_core = { workspace = true, optional = true}
 tari_crypto = { workspace = true }
 tari_script = { workspace = true }
