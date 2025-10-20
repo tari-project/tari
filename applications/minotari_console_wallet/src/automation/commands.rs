@@ -71,8 +71,8 @@ use tari_common_types::{
         UncompressedPublicKey,
         UncompressedSignature,
     },
-    wallet_types::WalletType,
 };
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_core::blocks::pre_mine::get_pre_mine_items;
 use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};

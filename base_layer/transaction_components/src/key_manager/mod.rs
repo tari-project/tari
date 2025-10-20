@@ -26,19 +26,11 @@ use digest::consts::U64;
 pub use wrapper::TransactionKeyManagerWrapper;
 mod interface;
 pub use interface::{
-    KeyManagerBranch,
-    KeyManagerState,
     SecretTransactionKeyManagerInterface,
-    SerializedKeyString,
-    TariKeyAndId,
-    TariKeyId,
-    TransactionKeyManagerBackend,
     TransactionKeyManagerInterface,
     TxoStage,
 };
-
-mod key_id;
-pub use initializer::TransactionKeyManagerInitializer;
+pub mod key_id;
 
 mod inner;
 /// This is a memory database implementation of the `TransactionKeyManager` trait.
@@ -54,19 +46,14 @@ use crate::consensus::DomainSeparatedConsensusHasher;
 pub mod memory_key_manager;
 pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};
 
-pub mod tari_key_manager;
 mod key_manager;
+pub mod wallet_types;
 
-pub const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
+
 use tari_hashing::ConfidentialOutputHashDomain;
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 
-#[derive(Debug, PartialEq)]
-pub enum AddResult {
-    NewEntry,
-    AlreadyExists,
-}
 
 // key manager key digest used
-pub type KeyDigest = Blake2b<U64>;
+

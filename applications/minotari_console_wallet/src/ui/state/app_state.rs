@@ -50,8 +50,8 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedPublicKey, PrivateKey},
-    wallet_types::WalletType,
 };
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     tari_amount::{uT, MicroMinotari},

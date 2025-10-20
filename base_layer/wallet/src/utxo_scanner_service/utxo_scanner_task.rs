@@ -35,8 +35,9 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TxId},
     types::{BlockHash, FixedHash, HashOutput},
-    wallet_types::WalletType,
 };
+
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{

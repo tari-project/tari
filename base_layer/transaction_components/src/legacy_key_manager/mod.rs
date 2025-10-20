@@ -56,6 +56,8 @@ pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};
 
 pub mod tari_key_manager;
 
+pub mod wallet_types;
+
 pub const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
 use tari_hashing::ConfidentialOutputHashDomain;
 /// Hasher used in the DAN to derive masks and encrypted value keys

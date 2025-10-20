@@ -30,12 +30,13 @@
 
 use std::sync::Arc;
 
-use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
+use tari_common_types::{seeds::cipher_seed::CipherSeed};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+
 
 use crate::{
     crypto_factories::CryptoFactories,
-    legacy_key_manager::{interface::TransactionKeyManagerBackend, TransactionKeyManagerWrapper},
+    legacy_key_manager::{wallet_types::WalletType,interface::TransactionKeyManagerBackend, TransactionKeyManagerWrapper},
 };
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct TransactionKeyManagerInitializer<T> {

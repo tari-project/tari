@@ -52,8 +52,9 @@ use tari_common::{
 use tari_common_types::{
     seeds::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage},
     types::{CompressedPublicKey, PrivateKey},
-    wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
+
+use tari_transaction_components::legacy_key_manager::wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;

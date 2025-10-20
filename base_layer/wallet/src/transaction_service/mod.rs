@@ -24,7 +24,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use log::*;
 use tari_common::configuration::Network;
-use tari_common_types::wallet_types::WalletType;
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
 use tari_service_framework::{
     async_trait,

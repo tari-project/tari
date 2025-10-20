@@ -43,8 +43,9 @@ use tari_common_types::{
         RangeProof,
         SignatureWithDomain,
     },
-    wallet_types::WalletType,
 };
+
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::{types::CommsSecretKey, NodeIdentity};
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_hashing::WalletMessageSigningDomain;

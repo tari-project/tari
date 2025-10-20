@@ -27,13 +27,13 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
-    wallet_types::WalletType,
 };
 use zeroize::Zeroizing;
 
 use crate::{
     crypto_factories::CryptoFactories,
     legacy_key_manager::{
+        wallet_types::WalletType,
         error::{KeyManagerServiceError, KeyManagerStorageError},
         KeyManagerState,
         TransactionKeyManagerBackend,

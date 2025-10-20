@@ -30,17 +30,21 @@ use thiserror::Error;
 
 use crate::transaction_components::TransactionError;
 #[derive(Debug, Error, PartialEq)]
-pub enum CoreKeyManagerError {
-    // #[error("KeyManagerError: `{0}`")]
-    // KeyManagerError(#[from] KeyManagerError),
+pub enum KeyManagerError {
     #[error("Error generating Commitment and PublicKey signature: `{0}`")]
     CommitmentAndPublicKeySignatureError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
+    #[error("Ledger error: `{0}`")]
+    LedgerError(String),
+    #[error("Invalid wallet type: `{0}`")]
+    InvalidWalletType(String),
+    #[error("Failed to encrypt: `{0}`")]
+    EncryptionFailed(String),
 }
 
-impl From<CommitmentAndPublicKeySignatureError> for CoreKeyManagerError {
+impl From<CommitmentAndPublicKeySignatureError> for KeyManagerError {
     fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
-        CoreKeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
+        KeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
     }
 }

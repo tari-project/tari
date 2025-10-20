@@ -30,8 +30,8 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     seeds::cipher_seed::CipherSeed,
     types::CompressedCommitment,
-    wallet_types::WalletType,
 };
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},

@@ -131,8 +131,9 @@ use tari_common_types::{
         SignatureWithDomain,
         UncompressedPublicKey,
     },
-    wallet_types::WalletType,
 };
+
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_crypto::{
     keys::SecretKey,

@@ -25,10 +25,10 @@ use std::{iter, mem::size_of, sync::Arc};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
+use tari_common_types::{seeds::cipher_seed::CipherSeed};
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
-    legacy_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerWrapper},
+    legacy_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerWrapper, wallet_types::WalletType},
 };
 use zeroize::Zeroizing;
 

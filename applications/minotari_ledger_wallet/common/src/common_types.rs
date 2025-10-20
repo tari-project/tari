@@ -1,8 +1,9 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::string::String;
-
+use alloc::fmt;
+use alloc::string::{String, ToString};
+use core::str::FromStr;
 use crate::utils;
 
 /// Ledger application status words.
@@ -96,41 +97,71 @@ impl Instruction {
 }
 
 /// Key manager branches shared by the Ledger application and the wallet.
+// #[repr(u8)]
+// #[derive(Debug, Copy, Clone, PartialEq)]
+// pub enum Branch {
+//     DataEncryption = 0x00,
+//     MetadataEphemeralNonce = 0x01,
+//     CommitmentMask = 0x02,
+//     Nonce = 0x03,
+//     KernelNonce = 0x04,
+//     SenderOffset = 0x05,
+//     OneSidedSenderOffset = 0x06,
+//     Spend = 0x07,
+//     RandomKey = 0x08,
+//     PreMine = 0x09,
+//     CodeTemplateAuthor = 0x0a,
+// }
+//
+// impl Branch {
+//     pub fn as_byte(self) -> u8 {
+//         self as u8
+//     }
+//
+//     pub fn from_byte(value: u8) -> Option<Self> {
+//         match value {
+//             0x00 => Some(Branch::DataEncryption),
+//             0x01 => Some(Branch::MetadataEphemeralNonce),
+//             0x02 => Some(Branch::CommitmentMask),
+//             0x03 => Some(Branch::Nonce),
+//             0x04 => Some(Branch::KernelNonce),
+//             0x05 => Some(Branch::SenderOffset),
+//             0x06 => Some(Branch::OneSidedSenderOffset),
+//             0x07 => Some(Branch::Spend),
+//             0x08 => Some(Branch::RandomKey),
+//             0x09 => Some(Branch::PreMine),
+//             0x0a => Some(Branch::CodeTemplateAuthor),
+//             _ => None,
+//         }
+//     }
+// }
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Branch {
-    DataEncryption = 0x00,
-    MetadataEphemeralNonce = 0x01,
-    CommitmentMask = 0x02,
-    Nonce = 0x03,
-    KernelNonce = 0x04,
-    SenderOffset = 0x05,
+pub enum LedgerKeyBranch{
     OneSidedSenderOffset = 0x06,
-    Spend = 0x07,
-    RandomKey = 0x08,
+    Random0 = 0x08,
     PreMine = 0x09,
-    CodeTemplateAuthor = 0x0a,
+    Spend = 0x07,
 }
 
-impl Branch {
-    pub fn as_byte(self) -> u8 {
-        self as u8
+impl FromStr for LedgerKeyBranch {
+    type Err = String;
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        match id {
+            "OneSidedSenderOffset" => Ok(LedgerKeyBranch::OneSidedSenderOffset),
+            "Random" => Ok(LedgerKeyBranch::Random),
+            "PreMine" => Ok(LedgerKeyBranch::PreMine),
+            _ => Err("Invalid ledger key branch".to_string()),
+        }
     }
+}
 
-    pub fn from_byte(value: u8) -> Option<Self> {
-        match value {
-            0x00 => Some(Branch::DataEncryption),
-            0x01 => Some(Branch::MetadataEphemeralNonce),
-            0x02 => Some(Branch::CommitmentMask),
-            0x03 => Some(Branch::Nonce),
-            0x04 => Some(Branch::KernelNonce),
-            0x05 => Some(Branch::SenderOffset),
-            0x06 => Some(Branch::OneSidedSenderOffset),
-            0x07 => Some(Branch::Spend),
-            0x08 => Some(Branch::RandomKey),
-            0x09 => Some(Branch::PreMine),
-            0x0a => Some(Branch::CodeTemplateAuthor),
-            _ => None,
+impl fmt::Display for LedgerKeyBranch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LedgerKeyBranch::OneSidedSenderOffset => write!(f, "OneSidedSenderOffset"),
+            LedgerKeyBranch::Random => write!(f, "Random"),
+            LedgerKeyBranch::PreMine => write!(f, "PreMine"),
         }
     }
 }

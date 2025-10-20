@@ -40,6 +40,8 @@ use crate::{
         TransactionKeyManagerWrapper,
     },
 };
+use crate::key_manager::wallet_types::WalletType;
+
 pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 
 pub async fn create_memory_key_manager_with_range_proof_size(
@@ -73,36 +75,5 @@ pub struct MemoryKeyManagerBackend {}
 impl MemoryKeyManagerBackend {
     pub fn new() -> Self {
         Self {}
-    }
-}
-
-#[async_trait::async_trait]
-impl TransactionKeyManagerBackend for MemoryKeyManagerBackend {
-    async fn get_key_manager(&self, _branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
-        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
-    }
-
-    async fn add_key_manager(&self, _key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
-        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
-    }
-
-    async fn increment_key_index(&self, _branch: &str) -> Result<(), KeyManagerStorageError> {
-        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
-    }
-
-    async fn set_key_index(&self, _branch: &str, _index: u64) -> Result<(), KeyManagerStorageError> {
-        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
-    }
-
-    async fn insert_imported_key(
-        &self,
-        _public_key: CompressedPublicKey,
-        _private_key: PrivateKey,
-    ) -> Result<(), KeyManagerStorageError> {
-        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
-    }
-
-    async fn get_imported_key(&self, _public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
-        Err(KeyManagerStorageError::UnexpectedResult("Not implemented".to_string()))
     }
 }

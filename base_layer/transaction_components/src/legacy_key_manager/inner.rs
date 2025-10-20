@@ -55,7 +55,6 @@ use tari_common_types::{
         UncompressedSignature,
         WalletMessageSchnorrSignature,
     },
-    wallet_types::WalletType,
 };
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
@@ -77,6 +76,7 @@ use crate::legacy_key_manager::{
     tari_key_manager::TariKeyManager,
     AddResult,
     KeyDigest,
+    wallet_types::WalletType,
 };
 
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";

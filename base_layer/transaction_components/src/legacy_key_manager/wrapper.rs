@@ -40,7 +40,6 @@ use tari_common_types::{
         RangeProof,
         WalletMessageSchnorrSignature,
     },
-    wallet_types::WalletType,
 };
 use tari_crypto::hashing::DomainSeparatedHash;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
@@ -48,6 +47,7 @@ use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use crate::{
     crypto_factories::CryptoFactories,
     legacy_key_manager::{
+        wallet_types::WalletType,
         error::KeyManagerServiceError,
         interface::{SecretTransactionKeyManagerInterface, TariKeyAndId, TransactionKeyManagerBackend, TxoStage},
         AddResult,

@@ -40,19 +40,20 @@ use tari_utilities::hex::{ Hex};
 
 
 use crate::{
-    legacy_key_manager::error::{KeyManagerServiceError},
+    legacy_key_manager::error::{KeyManagerError},
     transaction_components::{
         EncryptedData,
         KernelFeatures,
         MemoField,
         RangeProofType,
-        TransactionError,
+        KeyManagerError,
         TransactionInputVersion,
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
     MicroMinotari,
 };
+use crate::key_manager::error::KeyManagerError;
 use crate::key_manager::key_id::{TariKeyAndId, TariKeyId};
 
 pub const VIEW_KEY_DERIVATION_PATH: &str = "data encryption";
@@ -65,76 +66,76 @@ pub enum TxoStage {
     Output,
 }
 
-#[async_trait::async_trait]
+
 pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Gets a randomly generated key, which the key manager will manage
-    async fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError>;
+    fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
 
     /// Gets the key id at the specified index
-    async fn get_public_key_at_key_id(&self, key_id: &TariKeyId)
-        -> Result<CompressedPublicKey, KeyManagerServiceError>;
+    fn get_public_key_at_key_id(&self, key_id: &TariKeyId)
+        -> Result<CompressedPublicKey, KeyManagerError>;
 
     /// Add a new key to be tracked
-    async fn import_key(
+    fn import_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<TariKeyId>,
-    ) -> Result<TariKeyId, KeyManagerServiceError>;
+    ) -> Result<TariKeyId, KeyManagerError>;
 
     /// Gets the pedersen commitment for the specified index
-    async fn get_commitment(
+    fn get_commitment(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
-    ) -> Result<CompressedCommitment, KeyManagerServiceError>;
+    ) -> Result<CompressedCommitment, KeyManagerError>;
 
-    async fn verify_mask(
+    fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerServiceError>;
+    ) -> Result<bool, KeyManagerError>;
 
-    async fn get_view_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError>;
+    fn get_view_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
 
-    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError>;
+    fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerError>;
 
-    async fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError>;
+    fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
 
-    async fn get_next_commitment_mask_and_script_key(
+    fn get_next_commitment_mask_and_script_key(
         &mut self,
-    ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerServiceError>;
+    ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError>;
 
-    async fn find_script_key_id_from_commitment_mask_key_id(
+    fn find_script_key_id_from_commitment_mask_key_id(
         &self,
         commitment_mask_key_id: &TariKeyId,
         public_script_key: Option<&CompressedPublicKey>,
-    ) -> Result<Option<TariKeyId>, KeyManagerServiceError>;
+    ) -> Result<Option<TariKeyId>, KeyManagerError>;
 
-    async fn get_diffie_hellman_shared_secret(
+    fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
-    ) -> Result<CompressedPublicKey, KeyManagerServiceError>;
+    ) -> Result<CompressedPublicKey, KeyManagerError>;
 
-    async fn construct_range_proof(
+    fn construct_range_proof(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
         min_value: u64,
-    ) -> Result<RangeProof, TransactionError>;
+    ) -> Result<RangeProof, KeyManagerError>;
 
-    async fn get_script_signature(
+    fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    async fn get_partial_script_signature(
+    fn get_partial_script_signature(
         &self,
         commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
@@ -142,9 +143,9 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    async fn get_partial_txo_kernel_signature(
+    fn get_partial_txo_kernel_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
@@ -154,51 +155,51 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
-    ) -> Result<CompressedSignature, TransactionError>;
+    ) -> Result<CompressedSignature, KeyManagerError>;
 
-    async fn get_txo_kernel_signature_excess_with_offset(
+    fn get_txo_kernel_signature_excess_with_offset(
         &self,
         commitment_mask_key_id: &TariKeyId,
         nonce: &TariKeyId,
-    ) -> Result<CompressedPublicKey, TransactionError>;
+    ) -> Result<CompressedPublicKey, KeyManagerError>;
 
-    async fn get_txo_private_kernel_offset(
+    fn get_txo_private_kernel_offset(
         &self,
         commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
-    ) -> Result<PrivateKey, TransactionError>;
+    ) -> Result<PrivateKey, KeyManagerError>;
 
-    async fn encrypt_data_for_recovery(
+    fn encrypt_data_for_recovery(
         &self,
         commitment_mask_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
         payment_id: MemoField,
-    ) -> Result<EncryptedData, TransactionError>;
+    ) -> Result<EncryptedData, KeyManagerError>;
 
-    async fn try_output_key_recovery(
+    fn try_output_key_recovery(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, TransactionError>;
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, KeyManagerError>;
 
-    async fn is_this_output_ours(
+    fn is_this_output_ours(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<PrivateKey>,
-    ) -> Result<bool, TransactionError>;
+    ) -> Result<bool, KeyManagerError>;
 
-    async fn get_script_offset(
+    fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, TransactionError>;
+    ) -> Result<PrivateKey, KeyManagerError>;
 
     // Look into perhaps removing all nonce here, if the signer and receiver are the same it should not be required to
     // share or pre calc the nonces
-    async fn get_metadata_signature(
+    fn get_metadata_signature(
         &mut self,
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
@@ -206,9 +207,9 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    async fn get_one_sided_metadata_signature(
+    fn get_one_sided_metadata_signature(
         &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
@@ -218,34 +219,34 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    async fn sign_message_with_spend_key(
+    fn sign_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_key: Option<&CompressedPublicKey>,
-    ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError>;
+    ) -> Result<WalletMessageSchnorrSignature, KeyManagerError>;
 
-    async fn sign_script_message(
+    fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
         challenge: &[u8],
-    ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError>;
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
-    async fn sign_script_message_with_spend_key(
+    fn sign_script_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
-    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError>;
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
-    async fn sign_with_nonce_and_challenge(
+    fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<CompressedSignature, TransactionError>;
+    ) -> Result<CompressedSignature, KeyManagerError>;
 
-    async fn get_receiver_partial_metadata_signature(
+    fn get_receiver_partial_metadata_signature(
         &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
@@ -254,12 +255,12 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
     // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
     // signers, this can be left as none
-    async fn get_sender_partial_metadata_signature(
+    fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
         sender_offset_key_id: &TariKeyId,
@@ -267,31 +268,31 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    async fn generate_burn_claim_signature(
+    fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
         amount: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<CompressedSignature, TransactionError>;
+    ) -> Result<CompressedSignature, KeyManagerError>;
 
-    async fn stealth_address_script_spending_key(
+    fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
-    ) -> Result<CompressedPublicKey, TransactionError>;
+    ) -> Result<CompressedPublicKey, KeyManagerError>;
 
-    async fn add_offset_to_spend_key(
+    fn add_offset_to_spend_key(
         &self,
         spend_key_id: &TariKeyId,
         sender_offset_pub_key: &CompressedPublicKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError>;
+    ) -> Result<TariKeyId, KeyManagerError>;
 }
 
-#[async_trait::async_trait]
+
 pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
     /// Gets the pedersen commitment for the specified index
-    async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+    fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerError>;
 }
 
