@@ -109,6 +109,7 @@ use crate::{
     },
     MicroMinotari,
 };
+use crate::transaction_components::one_sided::public_key_to_output_encryption_key;
 
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
@@ -593,7 +594,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
         };
-        let key = CompressedPublicKey::from_secret_key(&self.get_private_view_key().await?);
+        let key = CompressedPublicKey::from_secret_key(&self.().await?);
         Ok(TariKeyAndId { key_id, pub_key: key })
     }
 
@@ -669,7 +670,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(key)
     }
 
-    pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {get_private_view_key
         match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {

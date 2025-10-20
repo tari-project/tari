@@ -97,14 +97,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         value: u64,
     ) -> Result<bool, KeyManagerError>;
 
-    fn get_view_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
+    fn get_view_key(&self) -> TariKeyAndId;
 
-    fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerError>;
+    fn get_private_view_key(&self) -> PrivateKey;
 
-    fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
+    fn get_spend_key(&self) -> TariKeyAndId;
 
     fn get_next_commitment_mask_and_script_key(
-        &mut self,
+        &self,
     ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError>;
 
     fn find_script_key_id_from_commitment_mask_key_id(
@@ -200,7 +200,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     // Look into perhaps removing all nonce here, if the signer and receiver are the same it should not be required to
     // share or pre calc the nonces
     fn get_metadata_signature(
-        &mut self,
+        &self,
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
@@ -210,7 +210,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     fn get_one_sided_metadata_signature(
-        &mut self,
+        &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
@@ -247,7 +247,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ) -> Result<CompressedSignature, KeyManagerError>;
 
     fn get_receiver_partial_metadata_signature(
-        &mut self,
+        &self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
@@ -282,12 +282,6 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError>;
-
-    fn add_offset_to_spend_key(
-        &self,
-        spend_key_id: &TariKeyId,
-        sender_offset_pub_key: &CompressedPublicKey,
-    ) -> Result<TariKeyId, KeyManagerError>;
 }
 
 

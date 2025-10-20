@@ -41,6 +41,10 @@ pub enum KeyManagerError {
     InvalidWalletType(String),
     #[error("Failed to encrypt: `{0}`")]
     EncryptionFailed(String),
+    #[error("Invalid key id string: `{0}`")]
+    InvalidKeyId(String),
+    #[error("Unexpected error: `{0}`")]
+    UnexpectedError(String),
 }
 
 impl From<CommitmentAndPublicKeySignatureError> for KeyManagerError {
