@@ -24,7 +24,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     transaction_builder::{
         error::TransactionBuilderError,
         models::{FinalizedTransaction, OutputPair, RecipientDetails},
@@ -1113,7 +1113,7 @@ mod test {
     use super::*;
     use crate::{
         crypto_factories::CryptoFactories,
-        key_manager::{
+        legacy_key_manager::{
             create_memory_key_manager,
             error::KeyManagerServiceError,
             MemoryKeyManager,

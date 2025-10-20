@@ -587,7 +587,7 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         crypto_factories::CryptoFactories,
-        key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
+        legacy_key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
         MicroMinotari,

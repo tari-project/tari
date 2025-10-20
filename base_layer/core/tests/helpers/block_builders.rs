@@ -48,7 +48,7 @@ use tari_node_components::blocks::{
 use tari_script::script;
 use tari_transaction_components::{
     consensus::{emission::Emission, ConsensusConstants},
-    key_manager::{TransactionKeyManagerInterface, TxoStage},
+    legacy_key_manager::{TransactionKeyManagerInterface, TxoStage},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
     transaction_components::{

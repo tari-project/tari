@@ -35,7 +35,7 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 
 use crate::{
     crypto_factories::CryptoFactories,
-    key_manager::{interface::TransactionKeyManagerBackend, TransactionKeyManagerWrapper},
+    legacy_key_manager::{interface::TransactionKeyManagerBackend, TransactionKeyManagerWrapper},
 };
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct TransactionKeyManagerInitializer<T> {

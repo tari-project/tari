@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tari_common_types::tari_address::TariAddress;
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
-    key_manager::TariKeyId,
+    legacy_key_manager::TariKeyId,
     tari_amount::T,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     test_helpers::schema_to_transaction,

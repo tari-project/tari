@@ -27,7 +27,7 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
-use tari_transaction_components::key_manager::{error::KeyManagerStorageError, KeyManagerState};
+use tari_transaction_components::legacy_key_manager::{error::KeyManagerStorageError, KeyManagerState};
 use tari_utilities::{ByteArray, Hidden};
 
 use crate::{schema::key_manager_states, storage::sqlite_db::Encryptable};

@@ -40,7 +40,7 @@ use tari_common_types::{
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
-    key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::TransactionKeyManagerInterface,
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
         one_sided::shared_secret_to_output_encryption_key,

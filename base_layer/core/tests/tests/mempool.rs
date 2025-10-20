@@ -52,7 +52,7 @@ use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     fee::Fee,
-    key_manager::{TransactionKeyManagerInterface, TxoStage},
+    legacy_key_manager::{TransactionKeyManagerInterface, TxoStage},
     tari_amount::{uT, MicroMinotari, T},
     tari_proof_of_work::Difficulty,
     test_helpers::{

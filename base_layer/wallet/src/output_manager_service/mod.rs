@@ -47,7 +47,7 @@ use tari_service_framework::{
 use tari_transaction_components::{
     consensus::NetworkConsensus,
     crypto_factories::CryptoFactories,
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    legacy_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
 };
 use tokio::sync::broadcast;
 

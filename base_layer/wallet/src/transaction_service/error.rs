@@ -38,7 +38,7 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
+    legacy_key_manager::error::KeyManagerServiceError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };

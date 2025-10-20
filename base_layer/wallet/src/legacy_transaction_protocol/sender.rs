@@ -30,7 +30,7 @@ use tari_common_types::{
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
-    key_manager::TariKeyId,
+    legacy_key_manager::TariKeyId,
     tari_amount::*,
     transaction_components::{
         covenants::Covenant,

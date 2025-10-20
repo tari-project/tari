@@ -4,7 +4,7 @@
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_components::legacy_key_manager::TransactionKeyManagerInterface;
 use tari_utilities::ByteArray;
 
 use crate::{

@@ -37,7 +37,7 @@ use tari_crypto::{
 use tari_hashing::KeyManagerDomain;
 use zeroize::Zeroize;
 
-use crate::key_manager::HASHER_LABEL_DERIVE_KEY;
+use crate::legacy_key_manager::HASHER_LABEL_DERIVE_KEY;
 
 #[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]

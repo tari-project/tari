@@ -32,7 +32,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
-    key_manager::TariKeyId,
+    legacy_key_manager::TariKeyId,
     tari_amount::{uT, T},
     tari_proof_of_work::Difficulty,
     test_helpers::schema_to_transaction,

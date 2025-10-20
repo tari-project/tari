@@ -34,7 +34,7 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::{key_manager::error::KeyManagerServiceError, transaction_components::EncryptedDataError};
+use crate::{legacy_key_manager::error::KeyManagerServiceError, transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]

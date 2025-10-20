@@ -41,7 +41,7 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_components::legacy_key_manager::TransactionKeyManagerInterface;
 use tokio::sync::Mutex;
 use tonic::Status;
 

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::hex::{from_hex, Hex};
 
 use crate::{
-    key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
     transaction_builder::OutputPair,
     transaction_components::TransactionError,
 };

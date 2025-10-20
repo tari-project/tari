@@ -76,7 +76,7 @@ use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessH
 use tari_transaction_components::{
     consensus::NetworkConsensus,
     generate_coinbase_with_wallet_output,
-    key_manager::{create_memory_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    legacy_key_manager::{create_memory_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         memo_field::{MemoField, TxType},

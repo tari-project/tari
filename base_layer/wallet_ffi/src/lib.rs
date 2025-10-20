@@ -146,7 +146,7 @@ use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     helpers::borsh::FromBytes,
-    key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
@@ -9360,7 +9360,7 @@ mod test {
     use tari_test_utils::random;
     use tari_transaction_components::{
         covenant,
-        key_manager::SecretTransactionKeyManagerInterface,
+        legacy_key_manager::SecretTransactionKeyManagerInterface,
         test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;

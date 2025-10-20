@@ -38,7 +38,7 @@ use tari_common_types::{
 use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
 use tari_transaction_components::{
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    legacy_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
         one_sided::public_key_to_output_encryption_key,

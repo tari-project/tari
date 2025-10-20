@@ -52,7 +52,7 @@ use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedDat
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_proof_of_work::Difficulty,
     transaction_components::{
         memo_field::{MemoField, TxType},

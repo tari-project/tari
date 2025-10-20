@@ -32,7 +32,7 @@ use tari_common_types::{
     types::CompressedSignature,
 };
 use tari_transaction_components::{
-    key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::TransactionKeyManagerInterface,
     rpc::models::{TxLocation, TxSubmissionRejectionReason},
     transaction_components::Transaction,
 };

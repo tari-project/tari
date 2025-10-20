@@ -23,7 +23,7 @@
 use std::convert::TryInto;
 
 use crate::{
-    key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::TransactionKeyManagerInterface,
     test_helpers::{TestParams, UtxoTestParams},
     transaction_components::{
         covenants::{context::CovenantContext, Covenant},

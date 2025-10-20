@@ -25,7 +25,7 @@ use std::str::FromStr;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 
 use crate::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     offline_signing::{
         marshal_output_pair::MarshalOutputPair,
         models::{

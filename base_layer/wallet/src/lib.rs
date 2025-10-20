@@ -19,7 +19,7 @@ pub mod storage;
 pub mod test_utils;
 pub mod transaction_service;
 
-use tari_transaction_components::key_manager::TransactionKeyManagerWrapper;
+use tari_transaction_components::legacy_key_manager::TransactionKeyManagerWrapper;
 pub mod util;
 pub mod wallet;
 

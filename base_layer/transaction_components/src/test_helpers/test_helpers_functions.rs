@@ -36,7 +36,7 @@ use crate::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,

@@ -47,7 +47,7 @@ use tari_test_utils::paths::create_temporary_data_path;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
-    key_manager::TariKeyId,
+    legacy_key_manager::TariKeyId,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
 };

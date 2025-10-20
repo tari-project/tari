@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
 use crate::{
-    key_manager::TariKeyId,
+    legacy_key_manager::TariKeyId,
     transaction_components::{MemoField, Transaction, WalletOutput},
     MicroMinotari,
 };

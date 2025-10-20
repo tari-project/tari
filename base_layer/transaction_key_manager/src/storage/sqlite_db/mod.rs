@@ -34,7 +34,7 @@ use tari_common_types::{
     encryption::Encryptable,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_transaction_components::key_manager::{
+use tari_transaction_components::legacy_key_manager::{
     error::KeyManagerStorageError,
     KeyManagerState,
     TransactionKeyManagerBackend,

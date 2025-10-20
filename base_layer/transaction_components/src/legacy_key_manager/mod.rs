@@ -37,7 +37,7 @@ pub use interface::{
     TxoStage,
 };
 
-mod key_id;
+mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;
 
 mod inner;
@@ -55,7 +55,6 @@ pub mod memory_key_manager;
 pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};
 
 pub mod tari_key_manager;
-mod key_manager;
 
 pub const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
 use tari_hashing::ConfidentialOutputHashDomain;

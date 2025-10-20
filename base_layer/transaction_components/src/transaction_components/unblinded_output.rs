@@ -33,7 +33,7 @@ use tari_script::{ExecutionStack, TariScript};
 
 use super::{RangeProofType, TransactionOutputVersion};
 use crate::{
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    legacy_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     transaction_components::{
         covenants::Covenant,
         EncryptedData,

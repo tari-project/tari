@@ -27,7 +27,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
-    key_manager::{AddResult, TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerWrapper},
+    legacy_key_manager::{AddResult, TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerWrapper},
 };
 use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 

@@ -59,7 +59,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{uT, MicroMinotari, T},
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},

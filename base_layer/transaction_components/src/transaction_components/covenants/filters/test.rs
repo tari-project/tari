@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         covenants::{
             context::CovenantContext,

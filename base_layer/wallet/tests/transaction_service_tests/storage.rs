@@ -53,7 +53,7 @@ use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_builder::TransactionBuilder,
     transaction_components::{

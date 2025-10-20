@@ -28,7 +28,7 @@ use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
-    key_manager::{error::KeyManagerServiceError, TransactionKeyManagerWrapper},
+    legacy_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerWrapper},
 };
 use zeroize::Zeroizing;
 

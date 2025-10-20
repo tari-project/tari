@@ -40,7 +40,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     multisig::script::{derive_multisig_ephemeral_pubkeys, get_multi_sig_script_components},
     transaction_builder::FinalizedTransaction,
     transaction_components::{

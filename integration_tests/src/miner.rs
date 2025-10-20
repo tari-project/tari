@@ -35,7 +35,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_core::consensus::BaseNodeConsensusManager;
 use tari_transaction_components::{
     generate_coinbase_with_wallet_output,
-    key_manager::TariKeyId,
+    legacy_key_manager::TariKeyId,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},

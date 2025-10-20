@@ -78,7 +78,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
     transaction_components::{

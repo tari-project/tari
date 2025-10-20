@@ -30,7 +30,7 @@ use minotari_wallet::output_manager_service::{
 };
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_components::legacy_key_manager::TransactionKeyManagerInterface;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.

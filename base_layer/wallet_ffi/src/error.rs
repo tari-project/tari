@@ -34,7 +34,7 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_transaction_components::key_manager::error::KeyManagerServiceError;
+use tari_transaction_components::legacy_key_manager::error::KeyManagerServiceError;
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";

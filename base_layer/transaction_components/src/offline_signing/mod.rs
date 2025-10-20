@@ -54,7 +54,7 @@ mod test {
         crypto_factories::CryptoFactories,
         fee::Fee,
         helpers::borsh::SerializedSize,
-        key_manager::{
+        legacy_key_manager::{
             create_memory_key_manager,
             error::KeyManagerServiceError,
             MemoryKeyManager,

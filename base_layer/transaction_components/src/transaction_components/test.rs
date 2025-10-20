@@ -38,7 +38,7 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    key_manager::{
+    legacy_key_manager::{
         create_memory_key_manager,
         memory_key_manager::create_memory_key_manager_with_range_proof_size,
         TransactionKeyManagerInterface,
@@ -614,7 +614,7 @@ mod validate_internal_consistency {
     use super::*;
     use crate::{
         covenant,
-        key_manager::TransactionKeyManagerInterface,
+        legacy_key_manager::TransactionKeyManagerInterface,
         test_helpers::{create_transaction_with, create_wallet_outputs},
         transaction_components::covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
     };

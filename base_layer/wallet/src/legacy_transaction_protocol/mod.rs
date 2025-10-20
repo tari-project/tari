@@ -12,7 +12,7 @@ pub mod recipient;
 pub mod sender;
 pub use recipient::ReceiverTransactionProtocol;
 pub use sender::SenderTransactionProtocol;
-use tari_transaction_components::{key_manager::error::KeyManagerServiceError, transaction_components::KernelFeatures};
+use tari_transaction_components::{legacy_key_manager::error::KeyManagerServiceError, transaction_components::KernelFeatures};
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {

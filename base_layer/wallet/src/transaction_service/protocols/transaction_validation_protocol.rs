@@ -28,7 +28,7 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TxId},
     types::{BlockHash, CompressedSignature, FixedHash},
 };
-use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, rpc::models::TxLocation};
+use tari_transaction_components::{legacy_key_manager::TransactionKeyManagerInterface, rpc::models::TxLocation};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{

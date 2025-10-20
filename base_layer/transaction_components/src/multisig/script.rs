@@ -24,7 +24,7 @@ use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_script::{Opcode, TariScript};
 
 use crate::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{one_sided::diffie_hellman_stealth_domain_hasher, TransactionError},
 };
 

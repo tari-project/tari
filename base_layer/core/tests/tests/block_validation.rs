@@ -61,7 +61,7 @@ use tari_transaction_components::{
         ConsensusConstantsBuilder,
     },
     crypto_factories::CryptoFactories,
-    key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::TransactionKeyManagerInterface,
     tari_amount::{uT, T},
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowData},
     test_helpers::{create_wallet_output_with_data, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},

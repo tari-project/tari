@@ -32,7 +32,7 @@ use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
-    key_manager::TxoStage,
+    legacy_key_manager::TxoStage,
     tari_amount::{uT, MicroMinotari},
     test_helpers::{create_random_signature_from_secret_key, create_utxo},
     transaction_components::{

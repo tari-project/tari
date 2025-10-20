@@ -35,7 +35,7 @@ use crate::{
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
     },
-    key_manager::{
+    legacy_key_manager::{
         error::KeyManagerServiceError,
         CoreKeyManagerError,
         TariKeyId,
@@ -521,7 +521,7 @@ mod test {
         coinbase_builder::CoinbaseBuildError,
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         crypto_factories::CryptoFactories,
-        key_manager::{create_memory_key_manager, MemoryKeyManager},
+        legacy_key_manager::{create_memory_key_manager, MemoryKeyManager},
         tari_amount::uT,
         test_helpers::{create_consensus_constants, TestParams},
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},

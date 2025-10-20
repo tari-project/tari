@@ -14,6 +14,7 @@ pub use coinbase_builder::{
 };
 pub mod consensus;
 pub mod fee;
+pub mod legacy_key_manager;
 pub mod key_manager;
 pub mod tari_amount;
 pub use tari_amount::MicroMinotari;

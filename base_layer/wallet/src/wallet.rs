@@ -55,7 +55,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{
+    legacy_key_manager::{
         error::KeyManagerServiceError,
         tari_key_manager::TariKeyManager,
         KeyDigest,

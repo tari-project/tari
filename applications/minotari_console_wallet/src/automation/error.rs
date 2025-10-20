@@ -38,7 +38,7 @@ use tari_common_types::types::FixedHashSizeError;
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_script::ScriptError;
 use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
+    legacy_key_manager::error::KeyManagerServiceError,
     tari_amount::MicroMinotariError,
     transaction_components::TransactionError,
 };

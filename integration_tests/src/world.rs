@@ -40,7 +40,7 @@ use tari_core::consensus::BaseNodeConsensusManager;
 use tari_crypto::keys::SecretKey;
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{Transaction, WalletOutput},
 };
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};

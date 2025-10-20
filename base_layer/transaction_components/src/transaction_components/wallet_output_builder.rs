@@ -27,7 +27,7 @@ use tari_common_types::{
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{
         covenants::Covenant,
         EncryptedData,
@@ -354,7 +354,7 @@ mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
     use super::*;
-    use crate::key_manager::create_memory_key_manager;
+    use crate::legacy_key_manager::create_memory_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {
