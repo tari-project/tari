@@ -69,6 +69,19 @@ impl WalletType {
         }
     }
 
+    pub fn get_private_spend_key(&self) -> Option<PrivateKey> {
+        match self {
+            WalletType::SeedWords(seed_words_wallet) => {
+               Some(seed_words_wallet.spend_key().clone())
+            },
+            WalletType::Ledger(_) => None,
+            WalletType::ViewWallet(_) => None,
+            WalletType::SpendWallet(spend_wallet) => {
+                Some(spend_wallet.private_spend_key().clone())
+            },
+        }
+    }
+
     pub fn get_view_key(&self) -> &PrivateKey {
         match self {
             WalletType::SeedWords(seed_words_wallet) => seed_words_wallet.view_key(),
@@ -176,6 +189,16 @@ impl SpendWallet{
         }
     }
 
+    pub fn construct_new(cipher_seed: CipherSeed, spend_account: u64, view_account: u64, birthday: Option<u16>) -> Result<Self, ByteArrayError> {
+        let view_key = derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string(), view_account)?;
+        let private_spend_key = derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string(), spend_account)?;
+        Ok(Self {
+            private_spend_key,
+            view_key,
+            birthday,
+        })
+    }
+
     pub fn private_spend_key(&self) -> &PrivateKey {
         &self.private_spend_key
     }
@@ -242,8 +265,8 @@ pub const SPEND_KEY_BRANCH: &str = "comms";
 
 impl SeedWordsWallet {
     pub fn construct_new(cipher_seed: CipherSeed) -> Result<Self, ByteArrayError> {
-        let view_key = Self::derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string())?;
-        let spend_key = Self::derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string())?;
+        let view_key = Self::derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string(), 0)?;
+        let spend_key = Self::derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string(). 0)?;
         Ok(Self {
             cipher_seed,
             spend_key,
@@ -251,20 +274,7 @@ impl SeedWordsWallet {
         })
     }
 
-    fn derive_private_key(seed: &CipherSeed, branch_seed: String) -> Result<PrivateKey, ByteArrayError> {
-        // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
-        // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
-        // input
-        let derive_key = DomainSeparatedHasher::<KeyDigest, KeyManagerDomain>::new_with_label(HASHER_LABEL_DERIVE_KEY)
-            .chain(seed.entropy())
-            .chain(branch_seed.as_bytes())
-            .chain(0u64.to_le_bytes())
-            .finalize();
 
-        let derive_key = derive_key.as_ref();
-        let s = PrivateKey::from_uniform_bytes(derive_key)?;
-        Ok(s)
-    }
 
     pub fn cipher_seed(&self) -> &CipherSeed {
         &self.cipher_seed
@@ -288,4 +298,19 @@ impl Display for SeedWordsWallet {
         write!(f, "View key '{}', ", public_view_key)?;
         Ok(())
     }
+}
+
+fn derive_private_key(seed: &CipherSeed, branch_seed: String, account : u64) -> Result<PrivateKey, ByteArrayError> {
+    // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
+    // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
+    // input
+    let derive_key = DomainSeparatedHasher::<KeyDigest, KeyManagerDomain>::new_with_label(HASHER_LABEL_DERIVE_KEY)
+        .chain(seed.entropy())
+        .chain(branch_seed.as_bytes())
+        .chain(account.to_le_bytes())
+        .finalize();
+
+    let derive_key = derive_key.as_ref();
+    let s = PrivateKey::from_uniform_bytes(derive_key)?;
+    Ok(s)
 }

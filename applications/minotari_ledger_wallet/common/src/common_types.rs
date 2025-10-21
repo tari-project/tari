@@ -138,8 +138,9 @@ impl Instruction {
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum LedgerKeyBranch{
+    MetadataEphemeralNonce = 0x01,
     OneSidedSenderOffset = 0x06,
-    Random0 = 0x08,
+    Random = 0x08,
     PreMine = 0x09,
     Spend = 0x07,
 }

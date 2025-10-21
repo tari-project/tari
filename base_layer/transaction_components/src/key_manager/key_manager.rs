@@ -39,18 +39,19 @@ use tari_crypto::keys::SecretKey;
 use tari_crypto::range_proof::RangeProofService;
 use tari_crypto::ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness};
 use tari_utilities::ByteArray;
-use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_dh_shared_secret, ledger_get_one_sided_metadata_signature, ledger_get_public_key, ledger_get_script_offset, ledger_get_script_signature, ScriptSignatureKey};
+use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_dh_shared_secret, ledger_get_one_sided_metadata_signature, ledger_get_public_key, ledger_get_raw_schnorr_signature, ledger_get_script_offset, ledger_get_script_schnorr_signature, ledger_get_script_signature, ScriptSignatureKey};
 use tari_common_types::encryption::encrypt_bytes_integral_nonce;
 use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use tari_common_types::tari_address::TariAddress;
 use tari_common_types::types::{ComAndPubSignature, CommsDHKE, CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, RangeProof, SignatureWithDomain, UncompressedComAndPubSignature, UncompressedSignature, WalletMessageSchnorrSignature};
-use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
+use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
 use crate::crypto_factories::CryptoFactories;
 use crate::key_manager::error::KeyManagerError;
 use crate::key_manager::wallet_types::WalletType;
 use crate::key_manager::interface::TransactionKeyManagerInterface;
 use crate::key_manager::key_id::{LedgerKeys, TariKeyAndId, TariKeyId};
 use crate::key_manager::TxoStage;
+use crate::legacy_key_manager::ConfidentialOutputHasher;
 use crate::legacy_key_manager::error::KeyManagerServiceError;
 use crate::MicroMinotari;
 use crate::transaction_components::{EncryptedData, KernelFeatures, MemoField, TransactionError, TransactionInput, TransactionKernel, TransactionOutput};
@@ -132,6 +133,11 @@ impl KeyManager {
         let shared_secret_key = self.import_key(secret, None)?;
 
         Ok(shared_secret_key)
+    }
+
+    fn  get_private_spend_key(&self) -> Result<PrivateKey, KeyManagerError>{
+        self.wallet_type.get_private_spend_key().ok_or(KeyManagerError::InvalidWalletType(format!("Trying to access private spend key on wallet that does not have access to it {}", self.wallet_type)))
+
     }
 }
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
@@ -870,22 +876,86 @@ impl TransactionKeyManagerInterface for KeyManager {
         &self,
         private_key_id: &TariKeyId,
         challenge: &[u8],
-    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>{
+        if let Some(ledger) = self.wallet_type.get_ledger_details() {
+            if let TariKeyId::LedgerKey { branch, index } = private_key_id {
+                let signature = ledger_get_script_schnorr_signature(
+                    ledger.account,
+                    *index,
+                    TransactionKeyManagerBranch::from_key(branch),
+                    challenge,
+                )?;
+                return Ok(signature)
+            }
+        }
+
+                let private_key = self.get_private_key(private_key_id)?;
+                let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut OsRng)?;
+
+                Ok(CompressedCheckSigSchnorrSignature::new_from_schnorr(signature))
+        }
+
 
     fn sign_script_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
-    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
+        let spend_key = self.get_spend_key()?;
 
-    fn sign_with_nonce_and_challenge(
+        if let Some(sender_offset_pub_key) = sender_offset_pub_key {
+            self
+                .sign_script_message(
+                    &self
+                        .add_offset_to_spend_key(&spend_key.key_id, sender_offset_pub_key)?,
+                    message,
+                )
+                .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()))
+        } else {
+            self
+                .sign_script_message(&spend_key.key_id, message)
+                .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()))
+        }
+    }
+
+fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<CompressedSignature, KeyManagerError>;
+    ) -> Result<CompressedSignature, KeyManagerError> {
+    match (private_key_id, nonce) {
+        (TariKeyId::LedgerKey { branch: private_key_branch, index: private_key_index },TariKeyId::LedgerKey { branch: nonce_branch, index: nonce_index })  => {
+            if let Some(ledger) = self.wallet_type.get_ledger_details() {
+                let signature = ledger_get_raw_schnorr_signature(
+                    ledger.account,
+                    *private_key_index,
+                    TransactionKeyManagerBranch::from_key(private_key_branch),
+                    *nonce_index,
+                    TransactionKeyManagerBranch::from_key(nonce_branch),
+                    challenge,
+                )
+                    .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?
+                Ok(signature)
+            } else {
+                Err(KeyManagerError::InvalidWalletType("Trying to access Ledger key on non-Ledger wallet".to_string()))
+            }
+        },
+        (TariKeyId::LedgerKey { .. },_) | (_, TariKeyId::LedgerKey {..})=> {
+            Err(KeyManagerError::LedgerError("Trying to access Ledger key paired to a non ledger key".to_string()))
+        }
+            _ => {
+            let private_key = self.get_private_key(private_key_id)?;
+            let private_nonce = self.get_private_key(nonce)?;
+            let signature = UncompressedSignature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
 
-    fn get_receiver_partial_metadata_signature(
+            Ok(CompressedSignature::new_from_schnorr(signature))
+        },
+    }
+}
+
+
+fn get_receiver_partial_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
@@ -894,7 +964,34 @@ impl TransactionKeyManagerInterface for KeyManager {
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, KeyManagerError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>{
+    let ephemeral_commitment_nonce = self.get_random_internal_key()?;
+    let (nonce_a, nonce_b) = self
+        .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)?;
+    let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);
+    let commitment_private_key = self.get_private_key(commitment_mask_key_id)?;
+    let commitment = self.crypto_factories.commitment.commit(&commitment_private_key, value);
+    let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+        txo_version,
+        sender_offset_public_key,
+        &(CompressedCommitment::from_commitment(ephemeral_commitment)),
+        ephemeral_pubkey,
+        &(CompressedCommitment::from_commitment(commitment)),
+        metadata_signature_message,
+    );
+
+    let metadata_signature = UncompressedComAndPubSignature::sign(
+        value,
+        &commitment_private_key,
+        &PrivateKey::default(),
+        &nonce_a,
+        &nonce_b,
+        &PrivateKey::default(),
+        &challenge,
+        &*self.crypto_factories.commitment,
+    )?;
+    Ok(ComAndPubSignature::new_from_capk_signature(metadata_signature))
+}
 
     // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
     // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
@@ -907,20 +1004,225 @@ impl TransactionKeyManagerInterface for KeyManager {
         ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, KeyManagerError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>{
+        let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id)?;
+        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id)?;
+
+        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+            txo_version,
+            &sender_offset_public_key,
+            ephemeral_commitment,
+            &ephemeral_pubkey,
+            commitment,
+            metadata_signature_message,
+        );
+
+        let sender_partial_metadata_signature_self = self
+            .sign_with_nonce_and_challenge(sender_offset_key_id, ephemeral_private_nonce_id, &challenge)?;
+
+        let metadata_signature = ComAndPubSignature::new(
+            Default::default(),
+            sender_partial_metadata_signature_self
+                .get_compressed_public_nonce()
+                .clone(),
+            Default::default(),
+            Default::default(),
+            sender_partial_metadata_signature_self.get_signature().clone(),
+        );
+
+        Ok(metadata_signature)
+    }
 
     fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
         amount: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<CompressedSignature, KeyManagerError>;
+    ) -> Result<CompressedSignature, KeyManagerError>{
+        let mask = self.get_private_key(commitment_mask_key_id)?;
+        let commitment =
+            CompressedCommitment::from_commitment(self.crypto_factories.commitment.commit(&mask, &amount.into()));
+
+        let message = ConfidentialOutputHasher::new("commitment_signature")
+            .chain(&commitment)
+            .chain(claim_public_key)
+            .finalize();
+
+        let s = UncompressedSignature::sign(&mask, message, &mut OsRng)
+            .map_err(|e| TransactionError::InvalidSignatureError(format!("Failed to sign burn claim proof: {}", e)))?;
+        Ok(CompressedSignature::new_from_schnorr(s))
+    }
 
     fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
-    ) -> Result<CompressedPublicKey, KeyManagerError>;
+    ) -> Result<CompressedPublicKey, KeyManagerError>{
+        let private_key = self.get_private_key(commitment_mask_key_id)?;
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+        let hasher = hasher.chain(private_key.as_bytes()).finalize();
+        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
+            .map_err(|_| KeyManagerServiceError::UnknownError("Invalid commitment mask private key".to_string()))?;
+        let public_key = CompressedPublicKey::from_secret_key(&private_key);
+        let public_key = spend_key.to_public_key()? + &public_key.to_public_key()?;
+        Ok(CompressedPublicKey::new_from_pk(public_key))
+    }
 
+}
+
+impl SecretTransactionKeyManagerInterface for KeyManager{
+    fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerError>{
+        match key_id {
+
+            TariKeyId::Zero => Ok(PrivateKey::default()),
+            TariKeyId::SpendKey => self.get_private_spend_key(),
+            TariKeyId::ViewKey => Ok(self.get_private_view_key()),
+            TariKeyId::Derived { key } => {
+                let inner_key = TariKeyId::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let commitment_mask = self.get_private_key(&inner_key)?;
+                   let spend_key = self.get_private_spend_key()?;
+                let hasher =
+                    DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                        HASHER_LABEL_STEALTH_KEY,
+                    );
+                let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                    KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
+                })?;
+                let private_key = private_key + spend_key;
+                Ok(private_key)
+
+
+        }
+            crate::legacy_key_manager::TariKeyId::Imported { key } => {
+                if let Some(db) = &self.db {
+                    let pvt_key = db.write().await.get_imported_key(key).await?;
+                    return Ok(pvt_key);
+                }
+                Err(KeyManagerServiceError::NoStorage)
+            },
+            crate::legacy_key_manager::TariKeyId::Managed { branch, index } => {
+                match &*self.wallet_type {
+                    crate::legacy_key_manager::wallet_types::WalletType::DerivedKeys => {},
+                    crate::legacy_key_manager::wallet_types::WalletType::Ledger(wallet) => {
+                        if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                            return wallet
+                                .view_key
+                                .clone()
+                                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(key_id.to_string()));
+                        }
+
+                        // If we're trying to access any of the private keys, just say no bueno
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::PreMine.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::RandomKey.get_branch_key() == branch
+                        {
+                            return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()));
+                        }
+                    },
+                    crate::legacy_key_manager::wallet_types::WalletType::ProvidedKeys(wallet) => {
+                        if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                            return Ok(wallet.view_key.clone());
+                        }
+
+                        // If we're trying to access any of the private keys, just say no bueno
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
+                            return wallet.private_spend_key.clone().ok_or(
+                                KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
+                            );
+                        }
+                    },
+                }
+
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or_else(|| self.unknown_key_branch_error("get_private_key", branch))?;
+                let key = km.get_private_key(*index)?;
+                Ok(key)
+            },
+            TariKeyId::Derived { key } => {
+                let key = crate::legacy_key_manager::TariKeyId::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+
+                let commitment_mask = Box::pin(self.get_private_key(&key))?;
+
+
+
+                match &*self.wallet_type {
+                    crate::legacy_key_manager::wallet_types::WalletType::Ledger(_) => {
+                        Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()))
+                    },
+                    crate::legacy_key_manager::wallet_types::WalletType::DerivedKeys => {
+                        let km = self
+                            .key_managers
+                            .get(&TransactionKeyManagerBranch::Spend.get_branch_key())
+                            .ok_or_else(|| {
+                                self.unknown_key_branch_error(
+                                    "get_private_key",
+                                    &TransactionKeyManagerBranch::Spend.get_branch_key(),
+                                )
+                            })?;
+                        let private_alpha = km.get_private_key(0)?;
+                        let hasher =
+                            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                                HASHER_LABEL_STEALTH_KEY,
+                            );
+                        let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
+                        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                            KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
+                        })?;
+                        let private_key = private_key + private_alpha;
+                        Ok(private_key)
+                    },
+                    crate::legacy_key_manager::wallet_types::WalletType::ProvidedKeys(wallet) => {
+                        let private_alpha = wallet.private_spend_key.clone().ok_or(
+                            KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
+                        )?;
+
+                        let hasher =
+                            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                                HASHER_LABEL_STEALTH_KEY,
+                            );
+                        let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
+                        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                            KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
+                        })?;
+                        let private_key = private_key + private_alpha;
+                        Ok(private_key)
+                    },
+                }
+            },
+            crate::legacy_key_manager::TariKeyId::DHCommitmentMask {
+                public_key,
+                private_key,
+            } => {
+                let key = crate::legacy_key_manager::TariKeyId::from_str(private_key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
+                let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
+                Ok(commitment_mask_private_key)
+            },
+            crate::legacy_key_manager::TariKeyId::DHEncryptedData {
+                public_key,
+                private_key,
+            } => {
+                let key = crate::legacy_key_manager::TariKeyId::from_str(private_key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
+                let commitment_mask_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                Ok(commitment_mask_private_key)
+            },
+            crate::legacy_key_manager::TariKeyId::Encrypted { encrypted, key } => {
+                let key = crate::legacy_key_manager::TariKeyId::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let private_key = Box::pin(self.decrypt_encrypted_key(encrypted, key)).await?;
+                Ok(private_key)
+            },
+        }
+    }
 
 }
