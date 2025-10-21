@@ -49,7 +49,7 @@ pub struct HeaderSyncState {
 impl HeaderSyncState {
     pub fn new(mut sync_peers: Vec<SyncPeer>, local_metadata: ChainMetadata) -> Self {
         // Sort by latency lowest to highest
-        sync_peers.sort_by(|a, b| match a.claimed_difficulty().cmp(&b.claimed_difficulty()) {
+        sync_peers.sort_by(|a, b| match b.claimed_difficulty().cmp(&a.claimed_difficulty()) {
             Ordering::Less => Ordering::Less,
             // No latency goes to the end
             Ordering::Greater => Ordering::Greater,
@@ -202,5 +202,89 @@ impl HeaderSyncState {
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::indexing_slicing)]
+    use std::time::Duration;
+
+    use primitive_types::U512;
+    use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
+    use tari_comms::peer_manager::NodeId;
+
+    use super::HeaderSyncState;
+    use crate::base_node::{chain_metadata_service::PeerChainMetadata, sync::SyncPeer};
+
+    fn make_chain_metadata(difficulty: u64) -> ChainMetadata {
+        ChainMetadata::new(0, FixedHash::zero(), 0, 0, U512::from(difficulty), 0).expect("valid chain metadata")
+    }
+
+    fn make_sync_peer(difficulty: u64, latency: Option<Duration>) -> SyncPeer {
+        let node_id = NodeId::new();
+        let cm = make_chain_metadata(difficulty);
+        let pcm = PeerChainMetadata::new(node_id, cm, latency);
+        SyncPeer::from(pcm)
+    }
+
+    #[test]
+    fn sort_by_difficulty_then_latency() {
+        // Mixed peers
+        let p1 = make_sync_peer(1, Some(Duration::from_millis(50)));
+        let p2 = make_sync_peer(2, Some(Duration::from_millis(10)));
+        let p3 = make_sync_peer(2, None);
+        let p4 = make_sync_peer(1, Some(Duration::from_millis(20)));
+
+        let local = make_chain_metadata(1);
+        let state = HeaderSyncState::new(vec![p1.clone(), p2.clone(), p3.clone(), p4.clone()], local);
+        let ordered = state.into_sync_peers();
+
+        // Expect ascending by difficulty, then by latency (Some before None, lower is better)
+        let lens: Vec<(u128, Option<u128>)> = ordered
+            .iter()
+            .map(|p| (p.claimed_difficulty().low_u128(), p.latency().map(|d| d.as_millis())))
+            .collect();
+
+        assert_eq!(lens.len(), 4);
+        assert_eq!(lens[0], (2, Some(10)));
+        assert_eq!(lens[1], (2, None));
+        assert_eq!(lens[2], (1, Some(20)));
+        assert_eq!(lens[3], (1, Some(50)));
+    }
+
+    #[test]
+    fn none_latency_goes_to_end_for_equal_difficulty() {
+        let a = make_sync_peer(5, Some(Duration::from_millis(30)));
+        let b = make_sync_peer(5, None);
+        let c = make_sync_peer(5, Some(Duration::from_millis(10)));
+
+        let local = make_chain_metadata(1);
+        let state = HeaderSyncState::new(vec![a.clone(), b.clone(), c.clone()], local);
+        let ordered = state.into_sync_peers();
+
+        let lens: Vec<(u128, Option<u128>)> = ordered
+            .iter()
+            .map(|p| (p.claimed_difficulty().low_u128(), p.latency().map(|d| d.as_millis())))
+            .collect();
+
+        assert_eq!(lens, vec![(5, Some(10)), (5, Some(30)), (5, None)]);
+    }
+
+    #[test]
+    fn equal_none_latencies_are_last_with_equal_difficulty() {
+        let a = make_sync_peer(7, Some(Duration::from_millis(5)));
+        let b = make_sync_peer(7, None);
+        let c = make_sync_peer(7, None);
+
+        let local = make_chain_metadata(1);
+        let state = HeaderSyncState::new(vec![b, a, c], local);
+        let ordered = state.into_sync_peers();
+
+        // First should be the one with latency, last two should have None (order between them may vary)
+        assert_eq!(ordered[0].claimed_difficulty().low_u128(), 7);
+        assert_eq!(ordered[0].latency().map(|d| d.as_millis()), Some(5));
+        assert!(ordered[1].latency().is_none());
+        assert!(ordered[2].latency().is_none());
     }
 }
