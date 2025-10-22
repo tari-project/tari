@@ -22,14 +22,13 @@
 //
 use log::*;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     types::{CompressedCommitment, PrivateKey},
 };
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
-
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use crate::{
     consensus::{
         emission::{Emission, EmissionSchedule},

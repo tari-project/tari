@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{CompressedPublicKey, FixedHash},
 };
@@ -35,7 +34,7 @@ use tari_script::{
 };
 use tari_utilities::ByteArray;
 use uuid::Uuid;
-
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use crate::{
     consensus::ConsensusConstants,
     fee::Fee,

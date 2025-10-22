@@ -148,6 +148,23 @@ pub enum LedgerKeyBranch {
     Spend = 0x07,
 }
 
+impl LedgerKeyBranch {
+    pub fn as_byte(self) -> u8 {
+        self as u8
+    }
+
+    pub fn from_byte(value: u8) -> Option<Self> {
+        match value {
+            0x01 => Some(LedgerKeyBranch::MetadataEphemeralNonce),
+            0x06 => Some(LedgerKeyBranch::OneSidedSenderOffset),
+            0x08 => Some(LedgerKeyBranch::Random),
+            0x09 => Some(LedgerKeyBranch::PreMine),
+            0x07 => Some(LedgerKeyBranch::Spend),
+            _ => None,
+        }
+    }
+}
+
 impl FromStr for LedgerKeyBranch {
     type Err = String;
 
@@ -167,6 +184,8 @@ impl fmt::Display for LedgerKeyBranch {
             LedgerKeyBranch::OneSidedSenderOffset => write!(f, "OneSidedSenderOffset"),
             LedgerKeyBranch::Random => write!(f, "Random"),
             LedgerKeyBranch::PreMine => write!(f, "PreMine"),
+            LedgerKeyBranch::Spend => write!(f, "Spend"),
+            LedgerKeyBranch::MetadataEphemeralNonce => write!(f, "MetadataEphemeralNonce"),
         }
     }
 }

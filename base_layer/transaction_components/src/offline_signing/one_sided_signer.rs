@@ -23,7 +23,6 @@ use rand::{rngs::OsRng, RngCore};
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{
         CompressedCommitment,
@@ -34,6 +33,7 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
 
 use crate::{

@@ -28,7 +28,6 @@ use rand::{rngs::OsRng, RngCore};
 use semver::Version;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
 };
@@ -45,13 +44,8 @@ const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
 
 /// The script signature key
 pub enum ScriptSignatureKey {
-    Managed {
-        branch: TransactionKeyManagerBranch,
-        index: u64,
-    },
-    Derived {
-        branch_key: PrivateKey,
-    },
+    Managed { branch: LedgerKeyBranch, index: u64 },
+    Derived { branch_key: PrivateKey },
 }
 
 /// Verify that the ledger application is working properly.
@@ -110,10 +104,10 @@ fn verify() -> Result<(), LedgerDeviceError> {
 
     let account = OsRng.next_u64();
     let private_key_index = OsRng.next_u64();
-    let private_key_branch = TransactionKeyManagerBranch::OneSidedSenderOffset;
+    let private_key_branch = LedgerKeyBranch::OneSidedSenderOffset;
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
-    let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce)
+    let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, &private_key_branch, &nonce)
     {
         Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
             Ok(public_key) => {
@@ -146,7 +140,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
             )))
         },
     };
-    match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
+    match ledger_get_script_schnorr_signature(account, private_key_index, &private_key_branch, &nonce) {
         Ok(signature_b) => {
             if signature_a == signature_b {
                 return Err(LedgerDeviceError::Processing(
@@ -235,7 +229,7 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
 pub fn ledger_get_public_key_legacy(
     account: u64,
     index: u64,
-    branch: TransactionKeyManagerBranch,
+    branch: LedgerKeyBranch,
 ) -> Result<RistrettoPublicKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
@@ -371,9 +365,9 @@ pub fn ledger_get_script_offset(
     account: u64,
     partial_script_offset: &PrivateKey,
     derived_script_keys: &[PrivateKey],
-    script_key_indexes: &[(TransactionKeyManagerBranch, u64)],
+    script_key_indexes: &[(LedgerKeyBranch, u64)],
     derived_sender_offsets: &[PrivateKey],
-    sender_offset_indexes: &[(TransactionKeyManagerBranch, u64)],
+    sender_offset_indexes: &[(LedgerKeyBranch, u64)],
 ) -> Result<PrivateKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
@@ -472,7 +466,7 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
 pub fn ledger_get_dh_shared_secret(
     account: u64,
     index: u64,
-    branch: TransactionKeyManagerBranch,
+    branch: LedgerKeyBranch,
     public_key: &CompressedPublicKey,
 ) -> Result<DiffieHellmanSharedSecret<RistrettoPublicKey>, LedgerDeviceError> {
     debug!(
@@ -508,9 +502,9 @@ pub fn ledger_get_dh_shared_secret(
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
-    private_key_branch: TransactionKeyManagerBranch,
+    private_key_branch: LedgerKeyBranch,
     nonce_index: u64,
-    nonce_branch: TransactionKeyManagerBranch,
+    nonce_branch: LedgerKeyBranch,
     challenge: &[u8; 64],
 ) -> Result<CompressedSignature, LedgerDeviceError> {
     debug!(
@@ -552,7 +546,7 @@ pub fn ledger_get_raw_schnorr_signature(
 pub fn ledger_get_script_schnorr_signature(
     account: u64,
     private_key_index: u64,
-    private_key_branch: TransactionKeyManagerBranch,
+    private_key_branch: &LedgerKeyBranch,
     nonce: &[u8],
 ) -> Result<CompressedCheckSigSchnorrSignature, LedgerDeviceError> {
     debug!(

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
-
+use strum::IntoEnumIterator;
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use digest::consts::{U32, U64};
@@ -36,10 +36,8 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
 };
 use rand::{rngs::OsRng, RngCore};
-use strum::IntoEnumIterator;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
-    key_branches::{TransactionKeyManagerBranch, PRE_MINE},
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     types::{
@@ -69,7 +67,8 @@ use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, 
 use tari_utilities::{ByteArray, Hidden};
 use tokio::sync::RwLock;
 use zeroize::Zeroize;
-
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use crate::legacy_key_manager::{
     error::KeyManagerServiceError,
     interface::TariKeyAndId,
@@ -92,7 +91,6 @@ use crate::{
     transaction_components::{
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
-            public_key_to_output_encryption_key,
             shared_secret_to_output_encryption_key,
             shared_secret_to_output_spending_key,
         },
@@ -215,7 +213,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 {
                     let random_index = OsRng.next_u64();
 
-                    let branch = TransactionKeyManagerBranch::RandomKey;
+                    let branch = LedgerKeyBranch::Random;
                     let public_key = CompressedPublicKey::new_from_pk(
                         ledger_get_public_key(ledger.account, random_index, branch)
                             .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?,
@@ -334,7 +332,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 let public_key = ledger_get_public_key(
                                     ledger.account,
                                     *index,
-                                    TransactionKeyManagerBranch::from_key(branch),
+                                    TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                                 )
                                 .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
                                 return Ok(CompressedPublicKey::new_from_pk(public_key));
@@ -794,7 +792,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                             return ledger_get_dh_shared_secret(
                                 ledger.account,
                                 *index,
-                                TransactionKeyManagerBranch::from_key(branch),
+                                TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                                 public_key,
                             )
                             .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()));
@@ -832,7 +830,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                             ledger_get_dh_shared_secret(
                                 ledger.account,
                                 *index,
-                                TransactionKeyManagerBranch::from_key(branch),
+                                TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                                 public_key,
                             )
                             .map_err(TransactionError::LedgerDeviceError)
@@ -907,7 +905,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 {
                     let signature_key = match script_key_id {
                         TariKeyId::Managed { branch, index } => ScriptSignatureKey::Managed {
-                            branch: TransactionKeyManagerBranch::from_key(branch),
+                            branch: TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                             index: *index,
                         },
                         TariKeyId::Derived { key: key_str } => {
@@ -1097,7 +1095,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     TransactionKeyManagerBranch::RandomKey |
                                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         script_key_indexes
-                                            .push((TransactionKeyManagerBranch::from_key(branch), *index));
+                                            .push(TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap() *index);
                                     },
                                     _ => {
                                         partial_script_offset =
@@ -1135,7 +1133,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     TransactionKeyManagerBranch::RandomKey |
                                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         sender_offset_indexes
-                                            .push((TransactionKeyManagerBranch::from_key(branch), *index));
+                                            .push((TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(), *index));
                                     },
                                     _ => {
                                         partial_script_offset =
@@ -1243,7 +1241,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                             let signature = ledger_get_script_schnorr_signature(
                                 ledger.account,
                                 *index,
-                                TransactionKeyManagerBranch::from_key(branch),
+                                &TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                                 challenge,
                             )?;
                             Ok(signature)
@@ -1356,9 +1354,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     let signature = ledger_get_raw_schnorr_signature(
                                         ledger.account,
                                         *private_key_index,
-                                        TransactionKeyManagerBranch::from_key(private_key_branch),
+                                        TransactionKeyManagerBranch::from_key(private_key_branch).into_ledger().unwrap(),
                                         *nonce_index,
-                                        TransactionKeyManagerBranch::from_key(nonce_branch),
+                                        TransactionKeyManagerBranch::from_key(nonce_branch).into_ledger().unwrap(),
                                         challenge,
                                     )
                                     .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;

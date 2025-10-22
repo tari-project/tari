@@ -24,7 +24,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
 };
-
+use digest::consts::U64;
 use blake2::Blake2b;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
@@ -39,9 +39,8 @@ use tari_crypto::{
 use tari_hashing::KeyManagerDomain;
 use tari_utilities::ByteArrayError;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum WalletType {
-    #[default]
     SeedWords(SeedWordsWallet),
     Ledger(LedgerWallet),
     ViewWallet(ViewWallet),

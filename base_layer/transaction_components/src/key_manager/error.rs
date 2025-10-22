@@ -23,9 +23,7 @@
 // use diesel::result::Error as DieselError;
 // use tari_common_sqlite::error::{SqliteStorageError, StorageError};
 
-use tari_common_types::tari_address::TariAddressError;
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
-use tari_utilities::{hex::HexError, ByteArrayError};
+use tari_crypto::{ signatures::CommitmentAndPublicKeySignatureError};
 use thiserror::Error;
 
 use crate::transaction_components::TransactionError;

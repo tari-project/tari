@@ -24,6 +24,7 @@ use std::str::FromStr;
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
+use digest::consts::U64;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_dh_shared_secret,
@@ -38,11 +39,9 @@ use minotari_ledger_wallet_comms::accessor_methods::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     encryption::encrypt_bytes_integral_nonce,
-    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{
         ComAndPubSignature,
-        CommsDHKE,
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
@@ -64,15 +63,16 @@ use tari_crypto::{
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::ByteArray;
-
+use tari_utilities::{ByteArray, Hidden};
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use crate::{
     crypto_factories::CryptoFactories,
     key_manager::{
         error::KeyManagerError,
         interface::TransactionKeyManagerInterface,
-        key_id::{LedgerKeys, TariKeyAndId, TariKeyId},
+        key_id::{TariKeyAndId, TariKeyId},
         wallet_types::WalletType,
+        SecretTransactionKeyManagerInterface,
         TxoStage,
     },
     legacy_key_manager::{error::KeyManagerServiceError, ConfidentialOutputHasher},
@@ -86,15 +86,20 @@ use crate::{
         EncryptedData,
         KernelFeatures,
         MemoField,
+        RangeProofType,
         TransactionError,
         TransactionInput,
+        TransactionInputVersion,
         TransactionKernel,
+        TransactionKernelVersion,
         TransactionOutput,
+        TransactionOutputVersion,
     },
     MicroMinotari,
 };
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 
+#[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
     wallet_type: WalletType,
@@ -246,7 +251,7 @@ impl KeyManager {
             let signature = ledger_get_script_schnorr_signature(
                 ledger.account,
                 *index,
-                TransactionKeyManagerBranch::from_key(branch),
+                branch,
                 challenge,
             )
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
@@ -567,7 +572,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         }
     }
 
-    fn get_next_commitment_mask_and_script_key(&mut self) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError> {
+    fn get_next_commitment_mask_and_script_key(&self) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError> {
         let commitment_mask = self.get_random_internal_key()?;
         let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
@@ -681,7 +686,7 @@ impl TransactionKeyManagerInterface for KeyManager {
             let r_y = PrivateKey::random(&mut OsRng);
             let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
             let ephemeral_pubkey = CompressedPublicKey::from_secret_key(&r_y);
-            let script_private_key = self.get_private_key(script_key_id).await?;
+            let script_private_key = self.get_private_key(script_key_id)?;
 
             let challenge = TransactionInput::finalize_script_signature_challenge(
                 txi_version,

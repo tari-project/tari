@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::consts::U64;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{
@@ -34,18 +33,15 @@ use tari_common_types::{
     },
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::hex::Hex;
 
 use crate::{
     key_manager::{
         error::KeyManagerError,
         key_id::{TariKeyAndId, TariKeyId},
     },
-    legacy_key_manager::error::KeyManagerError,
     transaction_components::{
         EncryptedData,
         KernelFeatures,
-        KeyManagerError,
         MemoField,
         RangeProofType,
         TransactionInputVersion,

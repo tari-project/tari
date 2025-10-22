@@ -20,9 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use minotari_ledger_wallet_common::common_types::Branch;
 use strum_macros::EnumIter;
-
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use crate::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
 
 #[repr(u8)]
@@ -30,17 +29,17 @@ use crate::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
 // These byte reps must stay in sync with the ledger representations at:
 // applications/minotari_ledger_wallet/wallet/src/main.rs
 pub enum TransactionKeyManagerBranch {
-    DataEncryption = Branch::DataEncryption as u8,
-    MetadataEphemeralNonce = Branch::MetadataEphemeralNonce as u8,
-    CommitmentMask = Branch::CommitmentMask as u8,
-    Nonce = Branch::Nonce as u8,
-    KernelNonce = Branch::KernelNonce as u8,
-    SenderOffset = Branch::SenderOffset as u8,
-    OneSidedSenderOffset = Branch::OneSidedSenderOffset as u8,
-    Spend = Branch::Spend as u8,
-    RandomKey = Branch::RandomKey as u8,
-    PreMine = Branch::PreMine as u8,
-    CodeTemplateAuthor = Branch::CodeTemplateAuthor as u8,
+        DataEncryption = 0x00,
+        MetadataEphemeralNonce = 0x01,
+        CommitmentMask = 0x02,
+        Nonce = 0x03,
+        KernelNonce = 0x04,
+        SenderOffset = 0x05,
+        OneSidedSenderOffset = 0x06,
+        Spend = 0x07,
+        RandomKey = 0x08,
+        PreMine = 0x09,
+        CodeTemplateAuthor = 0x0a,
 }
 
 pub const DATA_ENCRYPTION: &str = "data encryption";
@@ -90,26 +89,39 @@ impl TransactionKeyManagerBranch {
         }
     }
 
-    pub fn as_byte(self) -> u8 {
-        self as u8
-    }
+    pub fn into_ledger(self) -> Option<LedgerKeyBranch>{
+        match self{
+            TransactionKeyManagerBranch::DataEncryption => None,
+            TransactionKeyManagerBranch::MetadataEphemeralNonce => Some(LedgerKeyBranch::MetadataEphemeralNonce),
+            TransactionKeyManagerBranch::CommitmentMask => None,
+            TransactionKeyManagerBranch::Nonce => None,
+            TransactionKeyManagerBranch::KernelNonce => None,
+            TransactionKeyManagerBranch::SenderOffset => None,
+            TransactionKeyManagerBranch::OneSidedSenderOffset => Some(LedgerKeyBranch::OneSidedSenderOffset),
+            TransactionKeyManagerBranch::RandomKey => Some(LedgerKeyBranch::Random),
+            TransactionKeyManagerBranch::Spend => Some(LedgerKeyBranch::Spend),
+            TransactionKeyManagerBranch::PreMine => Some(LedgerKeyBranch::PreMine),
+            TransactionKeyManagerBranch::CodeTemplateAuthor => None,
 
-    pub fn from_byte(value: u8) -> Option<Self> {
-        match Branch::from_byte(value) {
-            Some(Branch::DataEncryption) => Some(TransactionKeyManagerBranch::DataEncryption),
-            Some(Branch::MetadataEphemeralNonce) => Some(TransactionKeyManagerBranch::MetadataEphemeralNonce),
-            Some(Branch::CommitmentMask) => Some(TransactionKeyManagerBranch::CommitmentMask),
-            Some(Branch::Nonce) => Some(TransactionKeyManagerBranch::Nonce),
-            Some(Branch::KernelNonce) => Some(TransactionKeyManagerBranch::KernelNonce),
-            Some(Branch::SenderOffset) => Some(TransactionKeyManagerBranch::SenderOffset),
-            Some(Branch::OneSidedSenderOffset) => Some(TransactionKeyManagerBranch::OneSidedSenderOffset),
-            Some(Branch::Spend) => Some(TransactionKeyManagerBranch::Spend),
-            Some(Branch::RandomKey) => Some(TransactionKeyManagerBranch::RandomKey),
-            Some(Branch::PreMine) => Some(TransactionKeyManagerBranch::PreMine),
-            Some(Branch::CodeTemplateAuthor) => Some(TransactionKeyManagerBranch::CodeTemplateAuthor),
-            None => None,
         }
     }
+
+        pub fn from_byte(value: u8) -> Option<Self> {
+            match value {
+                0x00 => Some(TransactionKeyManagerBranch::DataEncryption),
+                0x01 => Some(TransactionKeyManagerBranch::MetadataEphemeralNonce),
+                0x02 => Some(TransactionKeyManagerBranch::CommitmentMask),
+                0x03 => Some(TransactionKeyManagerBranch::Nonce),
+                0x04 => Some(TransactionKeyManagerBranch::KernelNonce),
+                0x05 => Some(TransactionKeyManagerBranch::SenderOffset),
+                0x06 => Some(TransactionKeyManagerBranch::OneSidedSenderOffset),
+                0x07 => Some(TransactionKeyManagerBranch::Spend),
+                0x08 => Some(TransactionKeyManagerBranch::RandomKey),
+                0x09 => Some(TransactionKeyManagerBranch::PreMine),
+                0x0a => Some(TransactionKeyManagerBranch::CodeTemplateAuthor),
+                _ => None,
+            }
+        }
 
     pub fn is_ledger_branch(value: &str) -> bool {
         let branch = TransactionKeyManagerBranch::from_key(value);

@@ -6,7 +6,6 @@ use std::{fmt, fmt::Debug};
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     types::{
         CompressedCommitment,
@@ -19,7 +18,7 @@ use tari_common_types::{
 };
 use tari_script::{push_pubkey_script, script, ExecutionStack};
 use tari_utilities::hex::Hex;
-
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use crate::{
     consensus::ConsensusConstants,
     fee::Fee,

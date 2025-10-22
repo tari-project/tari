@@ -27,8 +27,6 @@ pub use interface::{SecretTransactionKeyManagerInterface, TransactionKeyManagerI
 pub mod key_id;
 
 pub mod error;
-pub use error::CoreKeyManagerError;
-pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
