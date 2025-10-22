@@ -240,7 +240,7 @@ mod tests {
         let state = HeaderSyncState::new(vec![p1.clone(), p2.clone(), p3.clone(), p4.clone()], local);
         let ordered = state.into_sync_peers();
 
-        // Expect ascending by difficulty, then by latency (Some before None, lower is better)
+        // Expect descending by difficulty (highest first), then by latency (Some before None, lower is better)
         let lens: Vec<(u128, Option<u128>)> = ordered
             .iter()
             .map(|p| (p.claimed_difficulty().low_u128(), p.latency().map(|d| d.as_millis())))

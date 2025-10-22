@@ -54,7 +54,7 @@ pub struct BlockchainSyncConfig {
     /// The number of initial rounds of seed peer based bootstrapping.
     #[serde(default = "default_num_initial_sync_rounds_seed_bootstrap")]
     pub num_initial_sync_rounds_seed_bootstrap: usize,
-    /// The number of initial rounds of seed peer based bootstrapping.
+    /// The maximum reorg depth allowed during header synchronization.
     #[serde(default = "max_reorg_depth_allowed")]
     pub max_reorg_depth_allowed: usize,
 }
