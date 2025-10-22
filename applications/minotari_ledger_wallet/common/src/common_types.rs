@@ -1,9 +1,12 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::fmt;
-use alloc::string::{String, ToString};
+use alloc::{
+    fmt,
+    string::{String, ToString},
+};
 use core::str::FromStr;
+
 use crate::utils;
 
 /// Ledger application status words.
@@ -137,7 +140,7 @@ impl Instruction {
 // }
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum LedgerKeyBranch{
+pub enum LedgerKeyBranch {
     MetadataEphemeralNonce = 0x01,
     OneSidedSenderOffset = 0x06,
     Random = 0x08,
@@ -147,6 +150,7 @@ pub enum LedgerKeyBranch{
 
 impl FromStr for LedgerKeyBranch {
     type Err = String;
+
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         match id {
             "OneSidedSenderOffset" => Ok(LedgerKeyBranch::OneSidedSenderOffset),

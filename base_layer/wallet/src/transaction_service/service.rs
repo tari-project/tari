@@ -54,8 +54,6 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
-
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
@@ -79,7 +77,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    legacy_key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{wallet_types::WalletType, SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
     transaction_components::{

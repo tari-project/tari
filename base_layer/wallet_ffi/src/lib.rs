@@ -132,8 +132,6 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
-
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_crypto::{
     keys::SecretKey,
@@ -147,7 +145,7 @@ use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     helpers::borsh::FromBytes,
-    legacy_key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::{wallet_types::WalletType, TransactionKeyManagerInterface},
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,

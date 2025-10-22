@@ -33,8 +33,8 @@ use zeroize::Zeroizing;
 use crate::{
     crypto_factories::CryptoFactories,
     legacy_key_manager::{
-        wallet_types::WalletType,
         error::{KeyManagerServiceError, KeyManagerStorageError},
+        wallet_types::WalletType,
         KeyManagerState,
         TransactionKeyManagerBackend,
         TransactionKeyManagerWrapper,

@@ -24,7 +24,6 @@ use std::{marker::PhantomData, sync::Arc};
 
 use log::*;
 use tari_common::configuration::Network;
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
 use tari_service_framework::{
     async_trait,
@@ -36,7 +35,7 @@ use tari_service_framework::{
 use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    legacy_key_manager::TransactionKeyManagerInterface,
+    legacy_key_manager::{wallet_types::WalletType, TransactionKeyManagerInterface},
 };
 use tokio::sync::broadcast;
 

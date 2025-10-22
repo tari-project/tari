@@ -47,9 +47,9 @@ use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use crate::{
     crypto_factories::CryptoFactories,
     legacy_key_manager::{
-        wallet_types::WalletType,
         error::KeyManagerServiceError,
         interface::{SecretTransactionKeyManagerInterface, TariKeyAndId, TransactionKeyManagerBackend, TxoStage},
+        wallet_types::WalletType,
         AddResult,
         TariKeyId,
         TransactionKeyManagerInner,

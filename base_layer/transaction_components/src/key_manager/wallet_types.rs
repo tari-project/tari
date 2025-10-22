@@ -24,16 +24,20 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
 };
-use tari_common_types::types::UncompressedPublicKey;
-use tari_hashing::KeyManagerDomain;
+
 use blake2::Blake2b;
 use serde::{Deserialize, Serialize};
-use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_crypto::keys::{PublicKey, SecretKey};
-use tari_utilities::ByteArrayError;
 use tari_common::configuration::Network;
-use tari_common_types::seeds::cipher_seed::CipherSeed;
-use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+use tari_common_types::{
+    seeds::cipher_seed::CipherSeed,
+    types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey},
+};
+use tari_crypto::{
+    hashing::DomainSeparatedHasher,
+    keys::{PublicKey, SecretKey},
+};
+use tari_hashing::KeyManagerDomain;
+use tari_utilities::ByteArrayError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
 pub enum WalletType {
@@ -71,14 +75,10 @@ impl WalletType {
 
     pub fn get_private_spend_key(&self) -> Option<PrivateKey> {
         match self {
-            WalletType::SeedWords(seed_words_wallet) => {
-               Some(seed_words_wallet.spend_key().clone())
-            },
+            WalletType::SeedWords(seed_words_wallet) => Some(seed_words_wallet.spend_key().clone()),
             WalletType::Ledger(_) => None,
             WalletType::ViewWallet(_) => None,
-            WalletType::SpendWallet(spend_wallet) => {
-                Some(spend_wallet.private_spend_key().clone())
-            },
+            WalletType::SpendWallet(spend_wallet) => Some(spend_wallet.private_spend_key().clone()),
         }
     }
 
@@ -95,7 +95,6 @@ impl WalletType {
         let view_key = self.get_view_key();
         CompressedPublicKey::from_secret_key(view_key)
     }
-
 }
 
 impl Display for WalletType {
@@ -117,12 +116,8 @@ pub struct ViewWallet {
     birthday: Option<u16>,
 }
 
-impl ViewWallet{
-    pub fn new_with_spend_key(
-        private_spend_key: PrivateKey,
-        view_key: PrivateKey,
-        birthday: Option<u16>,
-    ) -> Self {
+impl ViewWallet {
+    pub fn new_with_spend_key(private_spend_key: PrivateKey, view_key: PrivateKey, birthday: Option<u16>) -> Self {
         let public_spend_key = CompressedPublicKey::from_secret_key(&private_spend_key);
         Self {
             public_spend_key,
@@ -132,11 +127,7 @@ impl ViewWallet{
         }
     }
 
-    pub fn new(
-        public_spend_key: CompressedPublicKey,
-        view_key: PrivateKey,
-        birthday: Option<u16>,
-    ) -> Self {
+    pub fn new(public_spend_key: CompressedPublicKey, view_key: PrivateKey, birthday: Option<u16>) -> Self {
         Self {
             public_spend_key,
             private_spend_key: None,
@@ -176,12 +167,8 @@ pub struct SpendWallet {
     birthday: Option<u16>,
 }
 
-impl SpendWallet{
-    pub fn new(
-        private_spend_key: PrivateKey,
-        view_key: PrivateKey,
-        birthday: Option<u16>,
-    ) -> Self {
+impl SpendWallet {
+    pub fn new(private_spend_key: PrivateKey, view_key: PrivateKey, birthday: Option<u16>) -> Self {
         Self {
             private_spend_key,
             view_key,
@@ -189,7 +176,12 @@ impl SpendWallet{
         }
     }
 
-    pub fn construct_new(cipher_seed: CipherSeed, spend_account: u64, view_account: u64, birthday: Option<u16>) -> Result<Self, ByteArrayError> {
+    pub fn construct_new(
+        cipher_seed: CipherSeed,
+        spend_account: u64,
+        view_account: u64,
+        birthday: Option<u16>,
+    ) -> Result<Self, ByteArrayError> {
         let view_key = derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string(), view_account)?;
         let private_spend_key = derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string(), spend_account)?;
         Ok(Self {
@@ -238,12 +230,7 @@ impl Display for LedgerWallet {
 }
 
 impl LedgerWallet {
-    pub fn new(
-        account: u64,
-        network: Network,
-        public_alpha: CompressedPublicKey,
-        view_key: PrivateKey,
-    ) -> Self {
+    pub fn new(account: u64, network: Network, public_alpha: CompressedPublicKey, view_key: PrivateKey) -> Self {
         Self {
             account,
             public_alpha,
@@ -253,7 +240,7 @@ impl LedgerWallet {
     }
 }
 
-struct SeedWordsWallet{
+struct SeedWordsWallet {
     cipher_seed: CipherSeed,
     spend_key: PrivateKey,
     view_key: PrivateKey,
@@ -266,15 +253,13 @@ pub const SPEND_KEY_BRANCH: &str = "comms";
 impl SeedWordsWallet {
     pub fn construct_new(cipher_seed: CipherSeed) -> Result<Self, ByteArrayError> {
         let view_key = Self::derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string(), 0)?;
-        let spend_key = Self::derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string(). 0)?;
+        let spend_key = Self::derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string().0)?;
         Ok(Self {
             cipher_seed,
             spend_key,
             view_key,
         })
     }
-
-
 
     pub fn cipher_seed(&self) -> &CipherSeed {
         &self.cipher_seed
@@ -291,7 +276,6 @@ impl SeedWordsWallet {
 
 impl Display for SeedWordsWallet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-
         let public_spend_key = UncompressedPublicKey::from_secret_key(&self.spend_key);
         let public_view_key = UncompressedPublicKey::from_secret_key(&self.view_key);
         write!(f, "Spend key '{}', ", public_spend_key)?;
@@ -300,7 +284,7 @@ impl Display for SeedWordsWallet {
     }
 }
 
-fn derive_private_key(seed: &CipherSeed, branch_seed: String, account : u64) -> Result<PrivateKey, ByteArrayError> {
+fn derive_private_key(seed: &CipherSeed, branch_seed: String, account: u64) -> Result<PrivateKey, ByteArrayError> {
     // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
     // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
     // input

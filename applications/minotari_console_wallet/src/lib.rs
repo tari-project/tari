@@ -53,12 +53,11 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
-use tari_common_types::{seeds::cipher_seed::CipherSeed, };
+use tari_common_types::seeds::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};

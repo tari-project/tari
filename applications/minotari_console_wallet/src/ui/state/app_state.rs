@@ -51,9 +51,9 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
+    legacy_key_manager::wallet_types::WalletType,
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         memo_field::{MemoField, TxType},

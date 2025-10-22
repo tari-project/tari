@@ -5,10 +5,10 @@
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_transaction_components::{
+    legacy_key_manager::wallet_types::WalletType,
     transaction_components::memo_field::{MemoField, TxType},
     MicroMinotari,
 };
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{

@@ -44,8 +44,6 @@ use tari_common_types::{
         SignatureWithDomain,
     },
 };
-
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_comms::{types::CommsSecretKey, NodeIdentity};
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_hashing::WalletMessageSigningDomain;
@@ -59,6 +57,7 @@ use tari_transaction_components::{
     legacy_key_manager::{
         error::KeyManagerServiceError,
         tari_key_manager::TariKeyManager,
+        wallet_types::WalletType,
         KeyDigest,
         KeyManagerBranch,
         SecretTransactionKeyManagerInterface,

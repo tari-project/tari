@@ -20,22 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod wrapper;
 use blake2::Blake2b;
 use digest::consts::U64;
-pub use wrapper::TransactionKeyManagerWrapper;
 mod interface;
-pub use interface::{
-    SecretTransactionKeyManagerInterface,
-    TransactionKeyManagerInterface,
-    TxoStage,
-};
+pub use interface::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface, TxoStage};
 pub mod key_id;
-
-mod inner;
-/// This is a memory database implementation of the `TransactionKeyManager` trait.
-pub use inner::TransactionKeyManagerInner;
-pub use inner::LEDGER_NOT_SUPPORTED;
 
 pub mod error;
 pub use error::CoreKeyManagerError;
@@ -43,17 +32,11 @@ pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
-pub mod memory_key_manager;
-pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};
-
 mod key_manager;
 pub mod wallet_types;
-
 
 use tari_hashing::ConfidentialOutputHashDomain;
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 
-
 // key manager key digest used
-

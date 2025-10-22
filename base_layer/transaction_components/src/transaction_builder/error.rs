@@ -6,7 +6,11 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::{legacy_key_manager::error::KeyManagerServiceError, transaction_components::TransactionError, MicroMinotari};
+use crate::{
+    legacy_key_manager::error::KeyManagerServiceError,
+    transaction_components::TransactionError,
+    MicroMinotari,
+};
 
 #[derive(Debug, Error)]
 pub enum TransactionBuilderError {

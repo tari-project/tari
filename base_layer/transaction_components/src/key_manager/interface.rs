@@ -34,31 +34,29 @@ use tari_common_types::{
     },
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::hex::{ Hex};
-
-
-
+use tari_utilities::hex::Hex;
 
 use crate::{
-    legacy_key_manager::error::{KeyManagerError},
+    key_manager::{
+        error::KeyManagerError,
+        key_id::{TariKeyAndId, TariKeyId},
+    },
+    legacy_key_manager::error::KeyManagerError,
     transaction_components::{
         EncryptedData,
         KernelFeatures,
+        KeyManagerError,
         MemoField,
         RangeProofType,
-        KeyManagerError,
         TransactionInputVersion,
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
     MicroMinotari,
 };
-use crate::key_manager::error::KeyManagerError;
-use crate::key_manager::key_id::{TariKeyAndId, TariKeyId};
 
 pub const VIEW_KEY_DERIVATION_PATH: &str = "data encryption";
 pub const SPEND_KEY_DERIVATION_PATH: &str = "comms";
-
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum TxoStage {
@@ -66,15 +64,12 @@ pub enum TxoStage {
     Output,
 }
 
-
 pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
-
     /// Gets a randomly generated key, which the key manager will manage
     fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
 
     /// Gets the key id at the specified index
-    fn get_public_key_at_key_id(&self, key_id: &TariKeyId)
-        -> Result<CompressedPublicKey, KeyManagerError>;
+    fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError>;
 
     /// Add a new key to be tracked
     fn import_key(
@@ -103,9 +98,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     fn get_spend_key(&self) -> TariKeyAndId;
 
-    fn get_next_commitment_mask_and_script_key(
-        &self,
-    ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError>;
+    fn get_next_commitment_mask_and_script_key(&self) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError>;
 
     fn find_script_key_id_from_commitment_mask_key_id(
         &self,
@@ -284,9 +277,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ) -> Result<CompressedPublicKey, KeyManagerError>;
 }
 
-
 pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
     /// Gets the pedersen commitment for the specified index
     fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerError>;
 }
-

@@ -28,12 +28,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
-use std::str::FromStr;
-use serde::{Deserialize, Serialize};
-use tari_utilities::hex::{from_hex, Hex};
-use tari_common_types::types::CompressedPublicKey;
+use std::{fmt, str::FromStr};
+
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::CompressedPublicKey;
+use tari_utilities::hex::{from_hex, Hex};
 pub const VIEW_KEY_BRANCH: &str = "view_key";
 pub const SPEND_KEY_BRANCH: &str = "spend_key";
 pub const DERIVED_KEY_BRANCH: &str = "derived";
@@ -69,7 +69,6 @@ pub enum TariKeyId {
         index: u64,
     },
 }
-
 
 impl FromStr for TariKeyId {
     type Err = String;
@@ -131,14 +130,14 @@ impl FromStr for TariKeyId {
                         return Err("Wrong spend key format".to_string());
                     }
                     Ok(TariKeyId::SpendKey)
-                }
+                },
                 VIEW_KEY_BRANCH => {
                     if parts.len() != 1 {
                         return Err("Wrong view key format".to_string());
                     }
                     Ok(TariKeyId::ViewKey)
-                }
-                LEDGER_KEY_BRANCH=> {
+                },
+                LEDGER_KEY_BRANCH => {
                     if parts.len() != 3 {
                         return Err("Wrong ledger key format".to_string());
                     }
@@ -150,7 +149,7 @@ impl FromStr for TariKeyId {
                         .parse()
                         .map_err(|_| "Invalid ledger key index".to_string())?;
                     Ok(TariKeyId::LedgerKey { branch, index })
-                }
+                },
                 _ => Err("Wrong generic format".to_string()),
             },
         }
@@ -182,7 +181,7 @@ impl fmt::Display for TariKeyId {
             TariKeyId::ViewKey => write!(f, "{VIEW_KEY_BRANCH}"),
             TariKeyId::LedgerKey { branch, index } => {
                 write!(f, "{LEDGER_KEY_BRANCH}.{}.{}", branch, index)
-            }
+            },
         }
     }
 }
@@ -227,7 +226,6 @@ pub struct TariKeyAndId {
     pub pub_key: CompressedPublicKey,
     pub key_id: TariKeyId,
 }
-
 
 #[cfg(test)]
 mod test {

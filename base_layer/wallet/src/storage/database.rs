@@ -26,16 +26,12 @@ use std::{
 };
 
 use log::*;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    seeds::cipher_seed::CipherSeed,
-    types::CompressedCommitment,
-};
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
+use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::CipherSeed, types::CompressedCommitment};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
 };
+use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_utilities::SafePassword;
 
 use crate::{

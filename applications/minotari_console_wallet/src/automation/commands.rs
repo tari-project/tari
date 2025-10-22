@@ -72,14 +72,13 @@ use tari_common_types::{
         UncompressedSignature,
     },
 };
-use tari_transaction_components::legacy_key_manager::wallet_types::WalletType;
 use tari_core::blocks::pre_mine::get_pre_mine_items;
 use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    legacy_key_manager::{wallet_types::WalletType, TariKeyId, TransactionKeyManagerInterface},
     multisig::script::is_multisig_utxo,
     offline_signing::models::{
         PrepareDepositMultisigTransactionResult,

@@ -174,9 +174,6 @@ where KM: TransactionKeyManagerInterface
         output_features: OutputFeatures,
         memo_field: MemoField,
     ) -> Result<WalletOutput, TransactionBuilderError> {
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used. We have to wait until the sender transaction protocol creates a
-        // sender_offset_private_key for us, so we can use it to create the shared secret
         let sender_offset_private_key = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())

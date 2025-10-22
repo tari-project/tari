@@ -74,9 +74,9 @@ use crate::legacy_key_manager::{
     error::KeyManagerServiceError,
     interface::TariKeyAndId,
     tari_key_manager::TariKeyManager,
+    wallet_types::WalletType,
     AddResult,
     KeyDigest,
-    wallet_types::WalletType,
 };
 
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
@@ -92,6 +92,7 @@ use crate::{
     transaction_components::{
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
+            public_key_to_output_encryption_key,
             shared_secret_to_output_encryption_key,
             shared_secret_to_output_spending_key,
         },
@@ -109,7 +110,6 @@ use crate::{
     },
     MicroMinotari,
 };
-use crate::transaction_components::one_sided::public_key_to_output_encryption_key;
 
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
@@ -594,7 +594,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
         };
-        let key = CompressedPublicKey::from_secret_key(&self.().await?);
+        let key = CompressedPublicKey::from_secret_key(&self.get_private_view_key().await?);
         Ok(TariKeyAndId { key_id, pub_key: key })
     }
 
@@ -670,7 +670,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(key)
     }
 
-    pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {get_private_view_key
+    pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {

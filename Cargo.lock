@@ -8121,6 +8121,7 @@ dependencies = [
  "hex",
  "integer-encoding",
  "log",
+ "minotari_ledger_wallet_common",
  "minotari_ledger_wallet_comms",
  "newtype-ops",
  "num-derive 0.4.2",
