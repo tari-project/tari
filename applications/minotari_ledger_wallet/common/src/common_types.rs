@@ -7,8 +7,9 @@ use alloc::{
 };
 use core::str::FromStr;
 
-use crate::utils;
+use serde::{Deserialize, Serialize};
 
+use crate::utils;
 /// Ledger application status words.
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -139,7 +140,7 @@ impl Instruction {
 //     }
 // }
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LedgerKeyBranch {
     MetadataEphemeralNonce = 0x01,
     OneSidedSenderOffset = 0x06,

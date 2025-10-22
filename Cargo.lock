@@ -4306,6 +4306,7 @@ name = "minotari_ledger_wallet_common"
 version = "5.1.0-rc.1"
 dependencies = [
  "bs58 0.5.1",
+ "serde",
 ]
 
 [[package]]

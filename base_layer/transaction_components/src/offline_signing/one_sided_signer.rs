@@ -1,4 +1,5 @@
 use rand::{rngs::OsRng, RngCore};
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 // Copyright 2025. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -33,7 +34,6 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
 
 use crate::{

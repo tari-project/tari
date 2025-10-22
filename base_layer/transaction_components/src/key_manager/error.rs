@@ -23,10 +23,14 @@
 // use diesel::result::Error as DieselError;
 // use tari_common_sqlite::error::{SqliteStorageError, StorageError};
 
-use tari_crypto::{ signatures::CommitmentAndPublicKeySignatureError};
+use tari_crypto::{
+    errors::RangeProofError,
+    signatures::{CommitmentAndPublicKeySignatureError, SchnorrSignatureError},
+};
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::transaction_components::TransactionError;
+use crate::transaction_components::{EncryptedDataError, TransactionError};
 #[derive(Debug, Error, PartialEq)]
 pub enum KeyManagerError {
     #[error("Error generating Commitment and PublicKey signature: `{0}`")]
@@ -43,10 +47,34 @@ pub enum KeyManagerError {
     InvalidKeyId(String),
     #[error("Unexpected error: `{0}`")]
     UnexpectedError(String),
+    #[error("Byte array error: `{0}`")]
+    ByteArrayError(String),
+    #[error("Invalid range proof: `{0}`")]
+    RangeProofError(String),
+    #[error("EncryptedData error: `{0}`")]
+    EncryptedDataError(#[from] EncryptedDataError),
+}
+
+impl From<RangeProofError> for KeyManagerError {
+    fn from(e: RangeProofError) -> Self {
+        KeyManagerError::RangeProofError(e.to_string())
+    }
 }
 
 impl From<CommitmentAndPublicKeySignatureError> for KeyManagerError {
     fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
         KeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for KeyManagerError {
+    fn from(e: ByteArrayError) -> Self {
+        KeyManagerError::ByteArrayError(e.to_string())
+    }
+}
+
+impl From<SchnorrSignatureError> for KeyManagerError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        KeyManagerError::TransactionError(TransactionError::InvalidSignatureError(e.to_string()))
     }
 }

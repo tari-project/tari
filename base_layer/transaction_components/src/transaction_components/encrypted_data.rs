@@ -267,7 +267,7 @@ impl Default for EncryptedData {
     }
 }
 // EncryptedOpenings errors
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum EncryptedDataError {
     #[error("Encryption failed: {0}")]
     EncryptionFailed(Error),

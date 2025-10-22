@@ -24,15 +24,11 @@ use std::{convert::TryFrom, sync::Arc};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::types::{
-    CompressedCommitment,
-    CompressedPublicKey,
-    CompressedSignature,
-    PrivateKey,
-    UncompressedSignature,
+use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, UncompressedSignature},
 };
 use tari_crypto::keys::SecretKey;
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use crate::{

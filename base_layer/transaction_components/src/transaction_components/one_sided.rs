@@ -72,8 +72,25 @@ pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result
     )
 }
 
+/// Generate an output spending key from a Diffie-Hellman shared secret
+pub fn public_key_to_output_spending_key(public_key: &CompressedPublicKey) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_uniform_bytes(
+        WalletOutputSpendingKeysDomainHasher::new()
+            .chain(public_key.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
+}
+
 /// Stealth address domain separated hasher using Diffie-Hellman shared secret
-pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: CommsDHKE) -> DomainSeparatedHash<Blake2b<U64>> {
+pub fn diffie_hellman_stealth_domain_hasher_dhke(diffie_hellman: CommsDHKE) -> DomainSeparatedHash<Blake2b<U64>> {
+    WalletHasher::new_with_label("stealth_address")
+        .chain(diffie_hellman.as_bytes())
+        .finalize()
+}
+
+/// Stealth address domain separated hasher using Diffie-Hellman shared secret
+pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: &CompressedPublicKey) -> DomainSeparatedHash<Blake2b<U64>> {
     WalletHasher::new_with_label("stealth_address")
         .chain(diffie_hellman.as_bytes())
         .finalize()

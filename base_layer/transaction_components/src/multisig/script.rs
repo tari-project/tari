@@ -25,7 +25,7 @@ use tari_script::{Opcode, TariScript};
 
 use crate::{
     legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{one_sided::diffie_hellman_stealth_domain_hasher, TransactionError},
+    transaction_components::{one_sided::diffie_hellman_stealth_domain_hasher_dhke, TransactionError},
 };
 
 pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {
@@ -54,7 +54,7 @@ pub async fn derive_multisig_ephemeral_pubkey<KM: TransactionKeyManagerInterface
         .get_diffie_hellman_shared_secret(sender_offset_key, public_key)
         .await?;
 
-    let stealth_hash = diffie_hellman_stealth_domain_hasher(dh_shared_secret);
+    let stealth_hash = diffie_hellman_stealth_domain_hasher_dhke(dh_shared_secret);
     let private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
 
     let shared_secret = UncompressedPublicKey::from_secret_key(&private_key);

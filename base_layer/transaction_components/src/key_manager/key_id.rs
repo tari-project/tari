@@ -142,7 +142,7 @@ impl FromStr for TariKeyId {
                         return Err("Wrong ledger key format".to_string());
                     }
                     let branch_str = parts.get(1).expect("Already checked");
-                    let branch = LedgerKeys::from_str(branch_str)?;
+                    let branch = LedgerKeyBranch::from_str(branch_str)?;
                     let index: u64 = parts
                         .get(2)
                         .expect("Already checked")

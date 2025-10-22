@@ -24,8 +24,9 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
 };
-use digest::consts::U64;
+
 use blake2::Blake2b;
+use digest::consts::U64;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -239,6 +240,7 @@ impl LedgerWallet {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 struct SeedWordsWallet {
     cipher_seed: CipherSeed,
     spend_key: PrivateKey,
@@ -251,8 +253,8 @@ pub const SPEND_KEY_BRANCH: &str = "comms";
 
 impl SeedWordsWallet {
     pub fn construct_new(cipher_seed: CipherSeed) -> Result<Self, ByteArrayError> {
-        let view_key = Self::derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string(), 0)?;
-        let spend_key = Self::derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string().0)?;
+        let view_key = derive_private_key(&cipher_seed, VIEW_KEY_BRANCH.to_string(), 0)?;
+        let spend_key = derive_private_key(&cipher_seed, SPEND_KEY_BRANCH.to_string(), 0)?;
         Ok(Self {
             cipher_seed,
             spend_key,

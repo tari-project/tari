@@ -20,13 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
-use strum::IntoEnumIterator;
+
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use digest::consts::{U32, U64};
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
-    ledger_get_dh_shared_secret,
+    ledger_get_dh_shared_secret_dhke,
     ledger_get_one_sided_metadata_signature,
     ledger_get_public_key,
     ledger_get_raw_schnorr_signature,
@@ -36,8 +37,10 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
 };
 use rand::{rngs::OsRng, RngCore};
+use strum::IntoEnumIterator;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
+    key_branches::TransactionKeyManagerBranch,
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     types::{
@@ -67,8 +70,7 @@ use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, 
 use tari_utilities::{ByteArray, Hidden};
 use tokio::sync::RwLock;
 use zeroize::Zeroize;
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
+
 use crate::legacy_key_manager::{
     error::KeyManagerServiceError,
     interface::TariKeyAndId,
@@ -90,7 +92,7 @@ use crate::{
     },
     transaction_components::{
         one_sided::{
-            diffie_hellman_stealth_domain_hasher,
+            diffie_hellman_stealth_domain_hasher_dhke,
             shared_secret_to_output_encryption_key,
             shared_secret_to_output_spending_key,
         },
@@ -215,7 +217,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
                     let branch = LedgerKeyBranch::Random;
                     let public_key = CompressedPublicKey::new_from_pk(
-                        ledger_get_public_key(ledger.account, random_index, branch)
+                        ledger_get_public_key(ledger.account, random_index, &branch)
                             .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?,
                     );
                     Ok(TariKeyAndId {
@@ -332,7 +334,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 let public_key = ledger_get_public_key(
                                     ledger.account,
                                     *index,
-                                    TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
+                                    &TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                                 )
                                 .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
                                 return Ok(CompressedPublicKey::new_from_pk(public_key));
@@ -409,7 +411,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()))?;
 
         // 2. Hash the shared secret for stealth domain separation
-        let stealth_hash = diffie_hellman_stealth_domain_hasher(shared_secret);
+        let stealth_hash = diffie_hellman_stealth_domain_hasher_dhke(shared_secret);
 
         // 3. Convert hash to a private key
         let shared_secret_private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
@@ -789,7 +791,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
                         #[cfg(feature = "ledger")]
                         {
-                            return ledger_get_dh_shared_secret(
+                            return ledger_get_dh_shared_secret_dhke(
                                 ledger.account,
                                 *index,
                                 TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
@@ -827,14 +829,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
                         #[cfg(feature = "ledger")]
                         {
-                            ledger_get_dh_shared_secret(
+                            ledger_get_dh_shared_secret_dhke(
                                 ledger.account,
                                 *index,
                                 TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                                 public_key,
                             )
                             .map_err(TransactionError::LedgerDeviceError)
-                            .map(diffie_hellman_stealth_domain_hasher)
+                            .map(diffie_hellman_stealth_domain_hasher_dhke)
                         }
                     },
                     _ => Err(TransactionError::from(self.branch_not_supported_error(
@@ -851,7 +853,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             _ => {
                 let secret_key = self.get_private_key(secret_key_id).await?;
                 let dh = CommsDHKE::new(&secret_key, &public_key.to_public_key()?);
-                Ok(diffie_hellman_stealth_domain_hasher(dh))
+                Ok(diffie_hellman_stealth_domain_hasher_dhke(dh))
             },
         }
     }
@@ -1094,8 +1096,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     TransactionKeyManagerBranch::PreMine |
                                     TransactionKeyManagerBranch::RandomKey |
                                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                                        script_key_indexes
-                                            .push(TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap() *index);
+                                        script_key_indexes.push((
+                                            TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
+                                            *index,
+                                        ));
                                     },
                                     _ => {
                                         partial_script_offset =
@@ -1132,8 +1136,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     TransactionKeyManagerBranch::PreMine |
                                     TransactionKeyManagerBranch::RandomKey |
                                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                                        sender_offset_indexes
-                                            .push((TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(), *index));
+                                        sender_offset_indexes.push((
+                                            TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
+                                            *index,
+                                        ));
                                     },
                                     _ => {
                                         partial_script_offset =
@@ -1354,9 +1360,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     let signature = ledger_get_raw_schnorr_signature(
                                         ledger.account,
                                         *private_key_index,
-                                        TransactionKeyManagerBranch::from_key(private_key_branch).into_ledger().unwrap(),
+                                        &TransactionKeyManagerBranch::from_key(private_key_branch)
+                                            .into_ledger()
+                                            .unwrap(),
                                         *nonce_index,
-                                        TransactionKeyManagerBranch::from_key(nonce_branch).into_ledger().unwrap(),
+                                        &TransactionKeyManagerBranch::from_key(nonce_branch)
+                                            .into_ledger()
+                                            .unwrap(),
                                         challenge,
                                     )
                                     .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;

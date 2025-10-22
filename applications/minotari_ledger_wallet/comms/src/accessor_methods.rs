@@ -109,7 +109,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
     OsRng.fill_bytes(&mut nonce);
     let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, &private_key_branch, &nonce)
     {
-        Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
+        Ok(signature) => match ledger_get_public_key(account, private_key_index, &private_key_branch) {
             Ok(public_key) => {
                 let schnorr_signature = signature.to_schnorr_signature().map_err(|e| {
                     LedgerDeviceError::Processing(format!(
@@ -262,7 +262,7 @@ pub fn ledger_get_public_key_legacy(
 pub fn ledger_get_public_key(
     account: u64,
     index: u64,
-    branch: LedgerKeyBranch,
+    branch: &LedgerKeyBranch,
 ) -> Result<RistrettoPublicKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
@@ -463,7 +463,7 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
 }
 
 /// Get the Diffie-Hellman shared secret from the ledger device
-pub fn ledger_get_dh_shared_secret(
+pub fn ledger_get_dh_shared_secret_dhke(
     account: u64,
     index: u64,
     branch: LedgerKeyBranch,
@@ -498,13 +498,47 @@ pub fn ledger_get_dh_shared_secret(
     }
 }
 
+pub fn ledger_get_dh_shared_secret(
+    account: u64,
+    index: u64,
+    branch: &LedgerKeyBranch,
+    public_key: &CompressedPublicKey,
+) -> Result<CompressedPublicKey, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_dh_shared_secret: account '{account}', index '{index}', branch '{branch:?}'"
+    );
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&index.to_le_bytes());
+    data.extend_from_slice(&u64::from(branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(&public_key.to_vec());
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 33 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetDHSharedSecret: expected 1 + 32 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let shared_secret =
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            Ok(shared_secret)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {e}"))),
+    }
+}
+
 ///  Get the raw schnorr signature from the ledger device
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
-    private_key_branch: LedgerKeyBranch,
+    private_key_branch: &LedgerKeyBranch,
     nonce_index: u64,
-    nonce_branch: LedgerKeyBranch,
+    nonce_branch: &LedgerKeyBranch,
     challenge: &[u8; 64],
 ) -> Result<CompressedSignature, LedgerDeviceError> {
     debug!(
