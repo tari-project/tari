@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_utilities::hex::{from_hex, Hex};
 
 use crate::{
-    legacy_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{TransactionKeyManagerInterface},
     transaction_builder::OutputPair,
     transaction_components::TransactionError,
 };
@@ -59,39 +58,29 @@ impl MarshalOutputPair {
 
     pub async fn unmarshal<KM: TransactionKeyManagerInterface>(
         &mut self,
-        key_manager: &KM,
+        _key_manager: &KM,
     ) -> Result<(), TransactionError> {
-        self.output_pair.kernel_nonce =
-            MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_kernel_nonce).await?;
-        if let Some(sender_offset_key_id) = &self.encrypted_sender_offset_key {
-            self.output_pair.sender_offset_key_id =
-                Some(MarshalOutputPair::import_encrypted_key(key_manager, sender_offset_key_id).await?);
-        }
-        self.output_pair
-            .output
-            .set_commitment_mask_key_id(
-                MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_commitment_mask).await?,
-                key_manager,
-            )
-            .await?;
+        // self.output_pair.kernel_nonce =
+        //     MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_kernel_nonce).await?;
+        // if let Some(sender_offset_key_id) = &self.encrypted_sender_offset_key {
+        //     self.output_pair.sender_offset_key_id =
+        //         Some(MarshalOutputPair::import_encrypted_key(key_manager, sender_offset_key_id).await?);
+        // }
+        // self.output_pair
+        //     .output
+        //     .set_commitment_mask_key_id(
+        //         MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_commitment_mask).await?,
+        //         key_manager,
+        //     )
+        //     .await?;
         Ok(())
     }
 
-    async fn encrypt_key<KM: TransactionKeyManagerInterface>(
-        key_manager: &KM,
-        key_id: &TariKeyId,
-    ) -> Result<String, KeyManagerServiceError> {
-        let encrypted = key_manager.encrypted_key(key_id, None).await?;
-        Ok(encrypted.to_hex())
-    }
-
-    async fn import_encrypted_key<KM: TransactionKeyManagerInterface>(
-        key_manager: &KM,
-        encrypted: &str,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
-        let encrypted_bytes =
-            from_hex(encrypted).map_err(|err| KeyManagerServiceError::DecryptionFailed(err.to_string()))?;
-        let key_id = key_manager.import_encrypted_key(encrypted_bytes, None).await?;
-        Ok(key_id)
-    }
+    // async fn encrypt_key<KM: TransactionKeyManagerInterface>(
+    //     key_manager: &KM,
+    //     key_id: &TariKeyId,
+    // ) -> Result<String, KeyManagerError> {
+    //     let encrypted = key_manager.encrypted_key(key_id, None).await?;
+    //     Ok(encrypted.to_hex())
+    // }
 }

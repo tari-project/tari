@@ -47,7 +47,7 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        legacy_key_manager::create_memory_key_manager,
+        legacy_key_manager::create_new_random_key_manager,
         transaction_components::covenants::{
             filters::test::setup_filter_test,
             test::{create_input, create_outputs},
@@ -56,7 +56,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_output_with_specific_hash() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let output = create_outputs(1, Default::default(), &mut key_manager).await.remove(0);
         let output_hash = output.hash();
         let covenant = covenant!(output_hash_eq(@hash(output_hash))).unwrap();

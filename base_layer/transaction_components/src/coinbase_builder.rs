@@ -22,7 +22,6 @@
 //
 use log::*;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     types::{CompressedCommitment, PrivateKey},
 };
@@ -35,13 +34,7 @@ use crate::{
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
     },
-    legacy_key_manager::{
-        error::KeyManagerServiceError,
-        CoreKeyManagerError,
-        TariKeyId,
-        TransactionKeyManagerInterface,
-        TxoStage,
-    },
+    key_manager::{error::KeyManagerError, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         covenants::Covenant,
@@ -97,7 +90,7 @@ pub enum CoinbaseBuildError {
     #[error("An invalid transaction has been encountered: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Key manager error: {0}")]
-    CoreKeyManagerError(String),
+    KeyManagerError(String),
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(String),
     #[error("Conversion error: {0}")]
@@ -110,15 +103,9 @@ impl From<ByteArrayError> for CoinbaseBuildError {
     }
 }
 
-impl From<CoreKeyManagerError> for CoinbaseBuildError {
-    fn from(err: CoreKeyManagerError) -> Self {
-        CoinbaseBuildError::CoreKeyManagerError(err.to_string())
-    }
-}
-
-impl From<KeyManagerServiceError> for CoinbaseBuildError {
-    fn from(err: KeyManagerServiceError) -> Self {
-        CoinbaseBuildError::KeyManagerServiceError(err.to_string())
+impl From<KeyManagerError> for CoinbaseBuildError {
+    fn from(err: KeyManagerError) -> Self {
+        CoinbaseBuildError::KeyManagerError(err.to_string())
     }
 }
 
@@ -226,7 +213,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
     /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
     /// on the output and kernel, and the maturity schedule is set from the consensus rules.
-    pub async fn build(
+    pub fn build(
         self,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
@@ -234,7 +221,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
-        self.build_with_reward(constants, reward, payment_id).await
+        self.build_with_reward(constants, reward, payment_id)
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
@@ -243,8 +230,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     /// set from the consensus rules.
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
-    pub async fn build_with_reward(
-        mut self,
+    pub fn build_with_reward(
+        self,
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,
         payment_id: MemoField,
@@ -267,44 +254,32 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let kernel_version = TransactionKernelVersion::get_current_version();
         let kernel_message =
             TransactionKernel::build_kernel_signature_message(&kernel_version, 0.into(), 0, &kernel_features, &None);
-        let public_nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+        let public_nonce = self.key_manager.get_random_key(None, false)?;
 
-        let public_commitment_mask_key = self
-            .key_manager
-            .get_public_key_at_key_id(&commitment_mask_key_id)
-            .await?;
+        let public_commitment_mask_key = self.key_manager.get_public_key_at_key_id(&commitment_mask_key_id)?;
 
-        let kernel_signature = self
-            .key_manager
-            .get_partial_txo_kernel_signature(
-                &commitment_mask_key_id,
-                &public_nonce.key_id,
-                &public_nonce.pub_key,
-                &public_commitment_mask_key,
-                &kernel_version,
-                &kernel_message,
-                &kernel_features,
-                TxoStage::Output,
-            )
-            .await?;
+        let kernel_signature = self.key_manager.get_partial_txo_kernel_signature(
+            &commitment_mask_key_id,
+            &public_nonce.key_id,
+            &public_nonce.pub_key,
+            &public_commitment_mask_key,
+            &kernel_version,
+            &kernel_message,
+            &kernel_features,
+            TxoStage::Output,
+        )?;
 
         let excess = CompressedCommitment::from_compressed_key(public_commitment_mask_key);
         // generate tx details
         let value: u64 = total_reward.into();
         let output_features =
             OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra, range_proof_type);
-        let encrypted_data = self
-            .key_manager
-            .encrypt_data_for_recovery(
-                &commitment_mask_key_id,
-                Some(&encryption_key_id),
-                total_reward.into(),
-                payment_id.clone(),
-            )
-            .await?;
+        let encrypted_data = self.key_manager.encrypt_data_for_recovery(
+            &commitment_mask_key_id,
+            Some(&encryption_key_id),
+            total_reward.into(),
+            payment_id.clone(),
+        )?;
         let minimum_value_promise = match range_proof_type {
             RangeProofType::BulletProofPlus => MicroMinotari::zero(),
             RangeProofType::RevealedValue => MicroMinotari(value),
@@ -320,19 +295,16 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &minimum_value_promise,
         );
 
-        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key_id).await?;
+        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key_id)?;
 
-        let metadata_sig = self
-            .key_manager
-            .get_metadata_signature(
-                &commitment_mask_key_id,
-                &value.into(),
-                &sender_offset_key_id,
-                &output_version,
-                &metadata_message,
-                output_features.range_proof_type,
-            )
-            .await?;
+        let metadata_sig = self.key_manager.get_metadata_signature(
+            &commitment_mask_key_id,
+            &value.into(),
+            &sender_offset_key_id,
+            &output_version,
+            &metadata_message,
+            output_features.range_proof_type,
+        )?;
 
         let wallet_output = WalletOutput::new(
             output_version,
@@ -350,8 +322,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             minimum_value_promise,
             payment_id,
             &self.key_manager,
-        )
-        .await?;
+        )?;
         let output = wallet_output
             .to_transaction_output()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -382,7 +353,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
 /// Clients that do not need to spend the wallet output must call this function to generate a coinbase transaction,
 /// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
-pub async fn generate_coinbase<KM: TransactionKeyManagerInterface>(
+pub fn generate_coinbase<KM: TransactionKeyManagerInterface>(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
@@ -408,14 +379,13 @@ pub async fn generate_coinbase<KM: TransactionKeyManagerInterface>(
         consensus_constants,
         range_proof_type,
         payment_id,
-    )
-    .await?;
+    )?;
     Ok((coinbase_output, coinbase_kernel))
 }
 
 /// Clients that need to spend the wallet output must call this function to generate a coinbase transaction,
 /// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
-pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInterface>(
+pub fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInterface>(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
@@ -447,9 +417,7 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
         .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {e}, size too large")))?
     };
 
-    let sender_offset = key_manager
-        .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-        .await?;
+    let sender_offset = key_manager.get_random_key(None, false)?;
     let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
         private_key: sender_offset.key_id.clone().into(),
         public_key: wallet_payment_address
@@ -468,8 +436,7 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
 
     let script_spending_pubkey = if stealth_payment {
         key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, wallet_payment_address.public_spend_key())
-            .await?
+            .stealth_address_script_spending_key(&commitment_mask_key_id, wallet_payment_address.public_spend_key())?
     } else {
         wallet_payment_address.public_spend_key().clone()
     };
@@ -484,8 +451,7 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
         .with_script(script)
         .with_extra(extra.clone())
         .with_range_proof_type(range_proof_type)
-        .build_with_reward(consensus_constants, reward, payment_id)
-        .await?;
+        .build_with_reward(consensus_constants, reward, payment_id)?;
 
     let output = transaction
         .body()
@@ -521,7 +487,7 @@ mod test {
         coinbase_builder::CoinbaseBuildError,
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         crypto_factories::CryptoFactories,
-        legacy_key_manager::{create_memory_key_manager, MemoryKeyManager},
+        key_manager::create_new_random_key_manager,
         tari_amount::uT,
         test_helpers::{create_consensus_constants, TestParams},
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
@@ -537,7 +503,7 @@ mod test {
     ) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build();
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let key_manager = create_new_random_key_manager().unwrap();
         let factories = CryptoFactories::default();
         (CoinbaseBuilder::new(key_manager.clone()), rules, factories, key_manager)
     }
@@ -1201,7 +1167,7 @@ mod test {
 
     #[tokio::test]
     async fn test_generate_coinbase_with_payment_id_from_address() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
 

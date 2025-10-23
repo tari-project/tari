@@ -39,8 +39,8 @@ use crate::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     legacy_key_manager::{
-        create_memory_key_manager,
-        memory_key_manager::create_memory_key_manager_with_range_proof_size,
+        create_new_random_key_manager,
+        memory_key_manager::create_new_random_key_manager_with_range_proof_size,
         TransactionKeyManagerInterface,
     },
     tari_amount::{uT, T},
@@ -58,7 +58,7 @@ use crate::{
 
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let test_params = TestParams::new(&mut key_manager).await;
 
     let i = test_params
@@ -82,7 +82,7 @@ fn test_smt_hashes() {
 
 #[tokio::test]
 async fn key_manager_input() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let test_params = TestParams::new(&mut key_manager).await;
 
     let i = test_params
@@ -114,7 +114,7 @@ async fn key_manager_input() {
 #[tokio::test]
 async fn range_proof_verification() {
     let factories = CryptoFactories::new(32);
-    let mut key_manager = create_memory_key_manager_with_range_proof_size(32).await.unwrap();
+    let mut key_manager = create_new_random_key_manager_with_range_proof_size(32).await.unwrap();
     // Directly test the tx_output verification
     let test_params_1 = TestParams::new(&mut key_manager).await;
     let test_params_2 = TestParams::new(&mut key_manager).await;
@@ -177,7 +177,7 @@ async fn range_proof_verification() {
 #[tokio::test]
 async fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let wallet_output1 = TestParams::new(&mut key_manager)
         .await
         .create_output(
@@ -268,7 +268,7 @@ async fn range_proof_verification_batch() {
 
 #[tokio::test]
 async fn sender_signature_verification() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let test_params = TestParams::new(&mut key_manager).await;
     let wallet_output = test_params
         .create_output(Default::default(), &mut key_manager)
@@ -434,7 +434,7 @@ fn check_timelocks() {
 #[tokio::test]
 async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &mut key_manager)
         .await
         .expect("Failed to create tx");
@@ -447,7 +447,7 @@ async fn test_validate_internal_consistency() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn check_cut_through() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let (tx, _, outputs) = test_helpers::create_tx(
         50000000.into(),
         3.into(),
@@ -512,7 +512,7 @@ async fn check_cut_through() {
 
 #[tokio::test]
 async fn check_duplicate_inputs_outputs() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let (tx, _, _outputs) = test_helpers::create_tx(
         50000000.into(),
         3.into(),
@@ -543,7 +543,7 @@ async fn check_duplicate_inputs_outputs() {
 
 #[tokio::test]
 async fn inputs_not_malleable() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
         1,
@@ -578,7 +578,7 @@ async fn inputs_not_malleable() {
 
 #[tokio::test]
 async fn test_output_recover_openings() {
-    let mut key_manager = create_memory_key_manager().await.unwrap();
+    let mut key_manager = create_new_random_key_manager().await.unwrap();
     let test_params = TestParams::new(&mut key_manager).await;
     let v = MicroMinotari::from(42);
 
@@ -655,7 +655,7 @@ mod validate_internal_consistency {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant))).unwrap();
         let features = OutputFeatures { ..Default::default() };
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         test_case(
             &UtxoTestParams {
                 features: features.clone(),

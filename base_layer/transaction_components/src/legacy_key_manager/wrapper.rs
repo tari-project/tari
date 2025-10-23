@@ -46,14 +46,13 @@ use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 
 use crate::{
     crypto_factories::CryptoFactories,
+    key_manager::{SecretTransactionKeyManagerInterface, TariKeyAndId,TxoStage},
     legacy_key_manager::{
         error::KeyManagerServiceError,
-        interface::{SecretTransactionKeyManagerInterface, TariKeyAndId, TransactionKeyManagerBackend, TxoStage},
         wallet_types::WalletType,
         AddResult,
-        TariKeyId,
         TransactionKeyManagerInner,
-        TransactionKeyManagerInterface,
+        TransactionKeyManagerBackend,
     },
     transaction_components::{
         EncryptedData,
@@ -67,6 +66,7 @@ use crate::{
     },
     MicroMinotari,
 };
+use crate::key_manager::{TariKeyId, TransactionKeyManagerInterface};
 
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
 /// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
@@ -134,61 +134,34 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 }
 
-#[async_trait::async_trait]
 impl<TBackend> TransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
-    async fn add_new_branch<T: Into<String> + Send>(&mut self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .add_key_manager_branch(&branch.into())
-            .await
+
+
+    fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
+        self.transaction_key_manager_inner.get_random_key()
     }
 
-    async fn get_next_key<T: Into<String> + Send>(
-        &mut self,
-        branch: T,
-    ) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.get_next_key(&branch.into()).await
-    }
 
-    async fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.get_random_key().await
-    }
-
-    async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.get_static_key(&branch.into()).await
-    }
-
-    async fn get_public_key_at_key_id(
+    fn get_public_key_at_key_id(
         &self,
         key_id: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .get_public_key_at_key_id(key_id)
-            .await
     }
 
-    async fn import_key(
+    fn import_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .import_key(private_key, encryption_key)
-            .await
     }
 
-    async fn create_encrypted_key_from_existing_key(
-        &self,
-        key_id: &TariKeyId,
-        encryption_key: Option<TariKeyId>,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .create_encrypted_key_from_existing_key(key_id, encryption_key)
-            .await
-    }
-
-    async fn get_commitment(
+    fn get_commitment(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
@@ -229,10 +202,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner
             .sign_message(message, sender_offset_pub_key)
             .await
-    }
-
-    async fn get_comms_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.get_comms_key().await
     }
 
     async fn get_next_commitment_mask_and_script_key(
@@ -421,16 +390,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<PrivateKey, TransactionError> {
         self.transaction_key_manager_inner
             .get_script_offset(script_key_ids, sender_offset_key_ids)
-            .await
-    }
-
-    async fn get_metadata_signature_ephemeral_commitment(
-        &self,
-        nonce_id: &TariKeyId,
-        range_proof_type: RangeProofType,
-    ) -> Result<CompressedCommitment, TransactionError> {
-        self.transaction_key_manager_inner
-            .get_metadata_signature_ephemeral_commitment(nonce_id, range_proof_type)
             .await
     }
 

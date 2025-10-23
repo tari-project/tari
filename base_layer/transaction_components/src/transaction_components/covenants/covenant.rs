@@ -194,7 +194,7 @@ mod test {
 
     use crate::{
         covenant,
-        legacy_key_manager::create_memory_key_manager,
+        legacy_key_manager::create_new_random_key_manager,
         test_helpers::UtxoTestParams,
         transaction_components::covenants::{
             test::{create_input, create_outputs},
@@ -204,7 +204,7 @@ mod test {
 
     #[tokio::test]
     async fn it_succeeds_when_empty() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let outputs = create_outputs(10, UtxoTestParams::default(), &mut key_manager).await;
         let input = create_input(&mut key_manager).await;
         let covenant = covenant!().unwrap();
@@ -214,7 +214,7 @@ mod test {
 
     #[tokio::test]
     async fn it_executes_the_covenant() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &mut key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
@@ -232,7 +232,7 @@ mod test {
 
     #[tokio::test]
     async fn test_borsh_de_serialization() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &mut key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;

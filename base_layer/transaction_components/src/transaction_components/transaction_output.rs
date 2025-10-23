@@ -587,7 +587,7 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         crypto_factories::CryptoFactories,
-        legacy_key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
+        legacy_key_manager::{create_new_random_key_manager, TransactionKeyManagerInterface},
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
         MicroMinotari,
@@ -596,7 +596,7 @@ mod test {
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let test_params = TestParams::new(&mut key_manager).await;
 
         let value = MicroMinotari(10);
@@ -628,7 +628,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let test_params = TestParams::new(&mut key_manager).await;
 
         let value = MicroMinotari(10);
@@ -648,7 +648,7 @@ mod test {
     #[tokio::test]
     async fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let test_params = TestParams::new(&mut key_manager).await;
 
         let outputs = [
@@ -686,7 +686,7 @@ mod test {
 
     #[tokio::test]
     async fn it_does_batch_verify_with_mixed_range_proof_types() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         let test_params = TestParams::new(&mut key_manager).await;
 
@@ -734,7 +734,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_revealed_value_proofs_are_blocked() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let test_params = TestParams::new(&mut key_manager).await;
         assert!(create_output(
             &test_params,
@@ -766,7 +766,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let test_params = TestParams::new(&mut key_manager).await;
 
         let outputs = [

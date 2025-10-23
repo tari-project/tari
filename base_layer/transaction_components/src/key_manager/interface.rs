@@ -51,9 +51,6 @@ use crate::{
     MicroMinotari,
 };
 
-pub const VIEW_KEY_DERIVATION_PATH: &str = "data encryption";
-pub const SPEND_KEY_DERIVATION_PATH: &str = "comms";
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum TxoStage {
     Input,
@@ -62,7 +59,11 @@ pub enum TxoStage {
 
 pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// Gets a randomly generated key, which the key manager will manage
-    fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerError>;
+    fn get_random_key(
+        &self,
+        encryption_key: Option<TariKeyId>,
+        ledger_key: bool,
+    ) -> Result<TariKeyAndId, KeyManagerError>;
 
     /// Gets the key id at the specified index
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError>;

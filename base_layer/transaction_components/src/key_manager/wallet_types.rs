@@ -241,7 +241,7 @@ impl LedgerWallet {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct SeedWordsWallet {
+pub struct SeedWordsWallet {
     cipher_seed: CipherSeed,
     spend_key: PrivateKey,
     view_key: PrivateKey,

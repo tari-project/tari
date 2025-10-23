@@ -527,7 +527,7 @@ mod test {
 
     use super::*;
     use crate::{
-        legacy_key_manager::create_memory_key_manager,
+        legacy_key_manager::create_new_random_key_manager,
         test_helpers,
         transaction_components::{covenants::Covenant, KernelFeatures, OutputFeatures, TransactionInputVersion},
     };
@@ -592,7 +592,7 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &mut key_manager,
@@ -654,7 +654,7 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let mut key_manager = create_memory_key_manager().await.unwrap();
+            let mut key_manager = create_new_random_key_manager().await.unwrap();
             let mut outputs = Vec::new();
             for _ in 0..10 {
                 let (o, _, _) = test_helpers::create_utxo(

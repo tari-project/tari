@@ -42,15 +42,15 @@ use crate::{
 };
 pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 
-pub async fn create_memory_key_manager_with_range_proof_size(
+pub async fn create_new_random_key_manager_with_range_proof_size(
     size: usize,
 ) -> Result<MemoryKeyManager, KeyManagerServiceError> {
     let cipher = CipherSeed::random();
 
-    create_memory_key_manager_from_seed(cipher, size).await
+    create_new_random_key_manager_from_seed(cipher, size).await
 }
 
-pub async fn create_memory_key_manager_from_seed(
+pub async fn create_new_random_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
 ) -> Result<MemoryKeyManager, KeyManagerServiceError> {
@@ -63,8 +63,8 @@ pub async fn create_memory_key_manager_from_seed(
     TransactionKeyManagerWrapper::new(Some(cipher), factory, Arc::new(WalletType::default())).await
 }
 
-pub async fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {
-    create_memory_key_manager_with_range_proof_size(64).await
+pub async fn create_new_random_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {
+    create_new_random_key_manager_with_range_proof_size(64).await
 }
 
 #[derive(Clone, Debug, Default)]

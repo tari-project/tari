@@ -36,7 +36,7 @@ use tari_core::{
 use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
     generate_coinbase,
-    legacy_key_manager::{create_memory_key_manager, MemoryKeyManager},
+    legacy_key_manager::{create_new_random_key_manager, MemoryKeyManager},
     tari_proof_of_work::Difficulty,
     transaction_components::{CoinBaseExtra, MemoField, TransactionKernel, TransactionOutput},
 };
@@ -69,7 +69,7 @@ impl<'a> BlockTemplateManager<'a> {
         consensus_manager: BaseNodeConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateManager<'a>, MmProxyError> {
-        let key_manager = create_memory_key_manager().await?;
+        let key_manager = create_new_random_key_manager().await?;
         Ok(Self {
             config,
             base_node_client,

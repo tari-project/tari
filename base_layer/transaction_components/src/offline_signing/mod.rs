@@ -55,7 +55,7 @@ mod test {
         fee::Fee,
         helpers::borsh::SerializedSize,
         legacy_key_manager::{
-            create_memory_key_manager,
+            create_new_random_key_manager,
             error::KeyManagerServiceError,
             MemoryKeyManager,
             SerializedKeyString,
@@ -90,7 +90,7 @@ mod test {
     #[tokio::test]
     async fn offline_sign_is_valid() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let alice_key_manager = create_new_random_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
             public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -99,7 +99,7 @@ mod test {
             birthday: None,
         };
         let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
 
         let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
         let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;
@@ -205,9 +205,9 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn offline_deposit_multisign_is_valid() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
-        let charlie_key_manager = create_memory_key_manager().await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let alice_key_manager = create_new_random_key_manager().await.unwrap();
+        let charlie_key_manager = create_new_random_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
 
         let alice_keys = ProvidedKeysWallet {
             public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
@@ -342,9 +342,9 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn offline_withdraw_multisign_is_valid() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
-        let charlie_key_manager = create_memory_key_manager().await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let alice_key_manager = create_new_random_key_manager().await.unwrap();
+        let charlie_key_manager = create_new_random_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
         let alice_spend_key = alice_key_manager.get_spend_key().await.unwrap();
         let alice_keys = ProvidedKeysWallet {
             public_spend_key: alice_spend_key.pub_key.clone(),
@@ -563,7 +563,7 @@ mod test {
     #[tokio::test]
     async fn offline_sign_can_be_claimed() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let alice_key_manager = create_new_random_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
             public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -572,7 +572,7 @@ mod test {
             birthday: None,
         };
         let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
 
         let input = create_test_input(MicroMinotari(100000), 0, &mut alice_view_key_manager, vec![], None).await;
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
@@ -673,7 +673,7 @@ mod test {
     #[tokio::test]
     async fn view_only_cannot_sign_offline() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_memory_key_manager().await.unwrap();
+        let alice_key_manager = create_new_random_key_manager().await.unwrap();
         let keys = ProvidedKeysWallet {
             public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -682,7 +682,7 @@ mod test {
             birthday: None,
         };
         let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
 
         let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
         let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;

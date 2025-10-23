@@ -6,7 +6,6 @@ use std::{fmt, fmt::Debug};
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     types::{
         CompressedCommitment,
@@ -24,7 +23,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     transaction_builder::{
         error::TransactionBuilderError,
         models::{FinalizedTransaction, OutputPair, RecipientDetails},
@@ -71,13 +70,13 @@ pub struct TransactionBuilder<KM> {
 impl<KM> TransactionBuilder<KM>
 where KM: TransactionKeyManagerInterface
 {
-    pub async fn new(
+    pub fn new(
         consensus_constants: ConsensusConstants,
         key_manager: KM,
         network: Network,
     ) -> Result<Self, TransactionBuilderError> {
-        let view_key = key_manager.get_view_key().await?;
-        let spend_key = key_manager.get_spend_key().await?;
+        let view_key = key_manager.get_view_key()?;
+        let spend_key = key_manager.get_spend_key()?;
         let own_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
             spend_key.pub_key.clone(),
@@ -142,17 +141,14 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// Add a recipient to the transaction.
-    pub async fn add_recipient(
+    pub fn add_recipient(
         &mut self,
         recipient_address: TariAddress,
         recipient_output: WalletOutput,
         sender_offset_key_id: Option<TariKeyId>,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
-        let kernel_nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+        let kernel_nonce = self.key_manager.get_random_key(None, false)?;
         let recipient_output = OutputPair::new(
             recipient_output,
             kernel_nonce.key_id,
@@ -167,17 +163,16 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
-    pub async fn add_stealth_recipient(
+    pub fn add_stealth_recipient(
         &mut self,
         destination: TariAddress,
         amount: MicroMinotari,
         output_features: OutputFeatures,
         memo_field: MemoField,
     ) -> Result<WalletOutput, TransactionBuilderError> {
-        let sender_offset_private_key = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-            .await?;
+        // if this is a ledger wallet, this needs to come from the ledger as it needs to sign with this key for the
+        // metadata signatures
+        let sender_offset_private_key = self.key_manager.get_random_key(None, true)?;
 
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_private_key.key_id.clone().into(),
@@ -196,21 +191,18 @@ where KM: TransactionKeyManagerInterface
         };
         let script_spending_key = self
             .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, destination.public_spend_key())
-            .await?;
+            .stealth_address_script_spending_key(&commitment_mask_key_id, destination.public_spend_key())?;
         let script = push_pubkey_script(&script_spending_key);
 
         let sender_offset_public_key = self
             .key_manager
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)
-            .await?;
+            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
 
         let minimum_value_promise = MicroMinotari::zero();
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(output_features)
             .with_script(script)
-            .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key), memo_field)
-            .await?
+            .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key), memo_field)?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
@@ -219,93 +211,20 @@ where KM: TransactionKeyManagerInterface
                 &mut self.key_manager,
                 &sender_offset_private_key.key_id,
                 &destination,
-            )
-            .await?
-            .try_build(&self.key_manager)
-            .await?;
+            )?
+            .try_build(&self.key_manager)?;
 
         self.add_recipient(
             destination,
             output.clone(),
             Some(sender_offset_private_key.key_id),
             Some(encryption_key),
-        )
-        .await?;
+        )?;
         Ok(output)
     }
 
-    pub async fn add_depricated_one_sided_recipient(
-        &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
-        output_features: OutputFeatures,
-        memo_field: MemoField,
-    ) -> Result<WalletOutput, TransactionBuilderError> {
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used. We have to wait until the sender transaction protocol creates a
-        // sender_offset_private_key for us, so we can use it to create the shared secret
-        let sender_offset_private_key = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-            .await?;
-
-        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-            private_key: sender_offset_private_key.key_id.clone().into(),
-            public_key: destination
-                .public_view_key()
-                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                .clone(),
-        };
-
-        let encryption_key = TariKeyId::DHEncryptedData {
-            private_key: sender_offset_private_key.key_id.clone().into(),
-            public_key: destination
-                .public_view_key()
-                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                .clone(),
-        };
-
-        let script = push_pubkey_script(destination.public_spend_key());
-
-        let sender_offset_public_key = self
-            .key_manager
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)
-            .await?;
-
-        let minimum_value_promise = MicroMinotari::zero();
-        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
-            .with_features(output_features)
-            .with_script(script)
-            .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key), memo_field)
-            .await?
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(
-                &mut self.key_manager,
-                &sender_offset_private_key.key_id,
-                &destination,
-            )
-            .await?
-            .try_build(&self.key_manager)
-            .await?;
-
-        self.add_recipient(
-            destination,
-            output.clone(),
-            Some(sender_offset_private_key.key_id),
-            Some(encryption_key),
-        )
-        .await?;
-        Ok(output)
-    }
-
-    pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
-        let nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+    pub fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
+        let nonce = self.key_manager.get_random_key(None, false)?;
         let pair = OutputPair::new(input, nonce.key_id, None, None);
         self.inputs.push(pair);
         Ok(self)
@@ -317,16 +236,13 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    pub async fn with_output(
+    pub fn with_output(
         &mut self,
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
-        let nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+        let nonce = self.key_manager.get_random_key(None, false)?;
         let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id), custom_recovery_key_id);
         self.custom_outputs.push(pair);
         Ok(self)
@@ -360,10 +276,10 @@ where KM: TransactionKeyManagerInterface
         Ok(size)
     }
 
-    pub async fn get_pre_build_change_output(
+    pub fn get_pre_build_change_output(
         &mut self,
     ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
-        self.add_change_if_required().await
+        self.add_change_if_required()
     }
 
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -427,7 +343,7 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
-    async fn add_change_if_required(&mut self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+    fn add_change_if_required(&mut self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
         let total_being_spent =
             self.inputs
                 .iter()
@@ -490,7 +406,7 @@ where KM: TransactionKeyManagerInterface
                     // output and go without a change output
                     None => (fee_without_change + remainder_without_change, None),
                     Some(MicroMinotari(0)) => (fee_without_change + remainder_without_change, None),
-                    Some(v) => (fee_without_change + change_fee, self.build_change(v).await?),
+                    Some(v) => (fee_without_change + change_fee, self.build_change(v)?),
                 }
             },
         };
@@ -508,7 +424,7 @@ where KM: TransactionKeyManagerInterface
         Ok((fee, change))
     }
 
-    async fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
+    fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
         let mut memo = MemoField::new_transaction_info(
             TariAddress::default(),
             MicroMinotari::default(),
@@ -558,21 +474,20 @@ where KM: TransactionKeyManagerInterface
         Ok(memo)
     }
 
-    async fn build_change(&mut self, amount: MicroMinotari) -> Result<Option<OutputPair>, TransactionBuilderError> {
+    fn build_change(&mut self, amount: MicroMinotari) -> Result<Option<OutputPair>, TransactionBuilderError> {
         let (change_commitment_mask_key, change_script_key) =
-            self.key_manager.get_next_commitment_mask_and_script_key().await?;
-        let memo = self.create_change_memo(amount).await?;
-        let sender_offset_public = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
+            self.key_manager.get_next_commitment_mask_and_script_key()?;
+        let memo = self.create_change_memo(amount)?;
+        let sender_offset_public = self.key_manager.get_random_key(None, false)?;
         let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
         let input_data = ExecutionStack::default();
 
-        let encrypted_data = self
-            .key_manager
-            .encrypt_data_for_recovery(&change_commitment_mask_key.key_id, None, amount.as_u64(), memo.clone())
-            .await?;
+        let encrypted_data = self.key_manager.encrypt_data_for_recovery(
+            &change_commitment_mask_key.key_id,
+            None,
+            amount.as_u64(),
+            memo.clone(),
+        )?;
 
         let minimum_value_promise = MicroMinotari::zero();
 
@@ -589,17 +504,14 @@ where KM: TransactionKeyManagerInterface
             &minimum_value_promise,
         );
 
-        let metadata_sig = self
-            .key_manager
-            .get_metadata_signature(
-                &change_commitment_mask_key.key_id,
-                &amount.into(),
-                &sender_offset_public.key_id,
-                &output_version,
-                &metadata_message,
-                features.range_proof_type,
-            )
-            .await?;
+        let metadata_sig = self.key_manager.get_metadata_signature(
+            &change_commitment_mask_key.key_id,
+            &amount.into(),
+            &sender_offset_public.key_id,
+            &output_version,
+            &metadata_message,
+            features.range_proof_type,
+        )?;
 
         let change_wallet_output = WalletOutput::new_current_version(
             amount,
@@ -616,12 +528,8 @@ where KM: TransactionKeyManagerInterface
             minimum_value_promise,
             memo,
             &self.key_manager,
-        )
-        .await?;
-        let nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+        )?;
+        let nonce = self.key_manager.get_random_key(None, false)?;
         Ok(Some(OutputPair::new(
             change_wallet_output,
             nonce.key_id,
@@ -630,7 +538,7 @@ where KM: TransactionKeyManagerInterface
         )))
     }
 
-    async fn calculate_total_nonce_and_total_public_excess(
+    fn calculate_total_nonce_and_total_public_excess(
         &self,
         change: &Option<OutputPair>,
     ) -> Result<(CompressedPublicKey, CompressedPublicKey), TransactionBuilderError> {
@@ -641,63 +549,55 @@ where KM: TransactionKeyManagerInterface
         for input in &self.inputs {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&input.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&input.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess -
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         input.output.commitment_mask_key_id(),
                         &input.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
         for output in &self.custom_outputs {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&output.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&output.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         output.output.commitment_mask_key_id(),
                         &output.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
 
         for output in &self.recipient_outputs {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&output.output.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&output.output.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         output.output.output.commitment_mask_key_id(),
                         &output.output.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
 
         if let Some(change) = change {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&change.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&change.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         change.output.commitment_mask_key_id(),
                         &change.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
         Ok((
@@ -707,7 +607,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     // Helper function to change the memo field and encrypted data if the fee has changed due to a change output
-    async fn change_encrypted_data_if_fee_changed(
+    fn change_encrypted_data_if_fee_changed(
         key_manager: &mut KM,
         output_pair: &mut OutputPair,
         final_fee: MicroMinotari,
@@ -730,27 +630,22 @@ where KM: TransactionKeyManagerInterface
             }
 
             memo_field.set_fee(final_fee);
-            let encrypted_data = key_manager
-                .encrypt_data_for_recovery(
-                    output_pair.output.commitment_mask_key_id(),
-                    output_pair.custom_recovery_key_id.as_ref(),
-                    output_pair.output.value().as_u64(),
-                    memo_field.clone(),
-                )
-                .await?;
+            let encrypted_data = key_manager.encrypt_data_for_recovery(
+                output_pair.output.commitment_mask_key_id(),
+                output_pair.custom_recovery_key_id.as_ref(),
+                output_pair.output.value().as_u64(),
+                memo_field.clone(),
+            )?;
             // This will change all the necessary fields in the wallet output
-            output_pair
-                .output
-                .change_encrypted_data(
-                    encrypted_data,
-                    output_pair
-                        .sender_offset_key_id
-                        .as_ref()
-                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
-                    memo_field,
-                    key_manager,
-                )
-                .await?;
+            output_pair.output.change_encrypted_data(
+                encrypted_data,
+                output_pair
+                    .sender_offset_key_id
+                    .as_ref()
+                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                memo_field,
+                key_manager,
+            )?;
         }
 
         Ok(())
@@ -758,15 +653,14 @@ where KM: TransactionKeyManagerInterface
 
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
-    pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
+    pub fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
-        let (total_fee, mut change_output) = self.add_change_if_required().await?;
+        let (total_fee, mut change_output) = self.add_change_if_required()?;
         let mut core_tx_builder = CoreTransactionBuilder::new();
 
-        let (total_public_nonce, total_public_excess) = self
-            .calculate_total_nonce_and_total_public_excess(&change_output)
-            .await?;
+        let (total_public_nonce, total_public_excess) =
+            self.calculate_total_nonce_and_total_public_excess(&change_output)?;
 
         let mut script_keys = Vec::new();
         let mut sender_offset_keys = Vec::new();
@@ -775,14 +669,14 @@ where KM: TransactionKeyManagerInterface
 
         let kernel_version = TransactionKernelVersion::get_current_version();
         for input in &self.inputs {
-            core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager).await?.clone());
+            core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager)?.clone());
         }
         for output in &self.custom_outputs {
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
         for recipient in &mut self.recipient_outputs {
-            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, &mut recipient.output, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, &mut recipient.output, total_fee)?;
 
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
@@ -824,18 +718,16 @@ where KM: TransactionKeyManagerInterface
                         &kernel_message,
                         &self.kernel_features,
                         TxoStage::Input,
-                    )
-                    .await?
+                    )?
                     .to_schnorr_signature()?);
             offset = offset -
                 self.key_manager
-                    .get_txo_private_kernel_offset(input.output.commitment_mask_key_id(), &input.kernel_nonce)
-                    .await?;
+                    .get_txo_private_kernel_offset(input.output.commitment_mask_key_id(), &input.kernel_nonce)?;
             script_keys.push(input.output.script_key_id().clone());
         }
 
         for output in &mut self.custom_outputs {
-            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, output, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, output, total_fee)?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -847,14 +739,12 @@ where KM: TransactionKeyManagerInterface
                         &kernel_message,
                         &self.kernel_features,
                         TxoStage::Output,
-                    )
-                    .await?
+                    )?
                     .to_schnorr_signature()?;
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(output.output.commitment_mask_key_id(), &output.kernel_nonce)
-                    .await?;
+                    .get_txo_private_kernel_offset(output.output.commitment_mask_key_id(), &output.kernel_nonce)?;
             let sender_offset_key_id = output
                 .sender_offset_key_id
                 .clone()
@@ -874,17 +764,13 @@ where KM: TransactionKeyManagerInterface
                         &kernel_message,
                         &self.kernel_features,
                         TxoStage::Output,
-                    )
-                    .await?
+                    )?
                     .to_schnorr_signature()?;
             offset = offset +
-                &self
-                    .key_manager
-                    .get_txo_private_kernel_offset(
-                        output.output.output.commitment_mask_key_id(),
-                        &output.output.kernel_nonce,
-                    )
-                    .await?;
+                &self.key_manager.get_txo_private_kernel_offset(
+                    output.output.output.commitment_mask_key_id(),
+                    &output.output.kernel_nonce,
+                )?;
             let sender_offset_key_id = output
                 .output
                 .sender_offset_key_id
@@ -894,7 +780,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &mut change_output {
-            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, change, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(&mut self.key_manager, change, total_fee)?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
@@ -908,14 +794,12 @@ where KM: TransactionKeyManagerInterface
                         &kernel_message,
                         &self.kernel_features,
                         TxoStage::Output,
-                    )
-                    .await?
+                    )?
                     .to_schnorr_signature()?;
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)
-                    .await?;
+                    .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)?;
             let sender_offset_key_id = change
                 .sender_offset_key_id
                 .clone()
@@ -923,10 +807,7 @@ where KM: TransactionKeyManagerInterface
             sender_offset_keys.push(sender_offset_key_id);
         }
 
-        let script_offset = self
-            .key_manager
-            .get_script_offset(&script_keys, &sender_offset_keys)
-            .await?;
+        let script_offset = self.key_manager.get_script_offset(&script_keys, &sender_offset_keys)?;
 
         core_tx_builder.add_offset(offset);
         core_tx_builder.add_script_offset(script_offset);
@@ -1111,7 +992,7 @@ mod test {
     use crate::{
         crypto_factories::CryptoFactories,
         legacy_key_manager::{
-            create_memory_key_manager,
+            create_new_random_key_manager,
             error::KeyManagerServiceError,
             MemoryKeyManager,
             SecretTransactionKeyManagerInterface,
@@ -1136,7 +1017,7 @@ mod test {
     #[allow(clippy::identity_op)]
     async fn change_edge_case() {
         // Create some inputs
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let p = TestParams::new(&mut key_manager).await;
         let constants = create_consensus_constants(0);
         let weighting = constants.transaction_weight_params();
@@ -1198,7 +1079,7 @@ mod test {
     #[tokio::test]
     async fn too_many_inputs() {
         // Create some inputs
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let p = TestParams::new(&mut key_manager).await;
 
         let output = create_wallet_output_with_data(
@@ -1233,7 +1114,7 @@ mod test {
     #[tokio::test]
     async fn not_enough_funds() {
         // Create some inputs
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let p = TestParams::new(&mut key_manager).await;
         let input = create_test_input(MicroMinotari(400), 0, &mut key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
@@ -1271,7 +1152,7 @@ mod test {
 
     #[tokio::test]
     async fn zero_recipient_outputs() {
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let p1 = TestParams::new(&mut key_manager).await;
         let p2 = TestParams::new(&mut key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &mut key_manager, vec![], None).await;
@@ -1323,7 +1204,7 @@ mod test {
     async fn single_recipient_no_change() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let bob_key = TestParams::new(&mut key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &mut key_manager, vec![], None).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
@@ -1386,7 +1267,7 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn single_recipient_with_change() {
         let rules = create_consensus_manager();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice_key = TestParams::new(&mut key_manager).await;
@@ -1453,7 +1334,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient_multiple_inputs_with_change() {
         let rules = create_consensus_manager();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         // Bob's parameters
         let bob_key = TestParams::new(&mut key_manager).await;
@@ -1515,7 +1396,7 @@ mod test {
     #[tokio::test]
     async fn add_stealth_recipient() {
         let rules = create_consensus_manager();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         let input = create_test_input(MicroMinotari(10000), 0, &mut key_manager, vec![], None).await;
         let input2 = create_test_input(MicroMinotari(2000), 0, &mut key_manager, vec![], None).await;
@@ -1602,7 +1483,7 @@ mod test {
     #[tokio::test]
     async fn add_depricated_one_sided_recipient() {
         let rules = create_consensus_manager();
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         let input = create_test_input(MicroMinotari(10000), 0, &mut key_manager, vec![], None).await;
         let input2 = create_test_input(MicroMinotari(2000), 0, &mut key_manager, vec![], None).await;
@@ -1685,7 +1566,7 @@ mod test {
     #[tokio::test]
     async fn disallow_fee_larger_than_amount() {
         // Alice's parameters
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &mut key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
@@ -1736,7 +1617,7 @@ mod test {
     #[tokio::test]
     async fn allow_fee_larger_than_amount() {
         // Alice's parameters
-        let mut key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_new_random_key_manager().await.unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &mut key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
@@ -1790,9 +1671,9 @@ mod test {
     async fn create_multi_recipients_transaction() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let mut alice_key_manager = create_memory_key_manager().await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
-        let carol_key_manager = create_memory_key_manager().await.unwrap();
+        let mut alice_key_manager = create_new_random_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
+        let carol_key_manager = create_new_random_key_manager().await.unwrap();
 
         let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
         let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
@@ -1860,7 +1741,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn recover_multi_recipients_transaction() {
-        let mut alice_key_manager = create_memory_key_manager().await.unwrap();
+        let mut alice_key_manager = create_new_random_key_manager().await.unwrap();
         let alice_keys = ProvidedKeysWallet {
             public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -1869,7 +1750,7 @@ mod test {
             birthday: None,
         };
         let alice_view_key_manager = create_view_key_manager(alice_keys).await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
         let bob_keys = ProvidedKeysWallet {
             public_spend_key: bob_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -1878,7 +1759,7 @@ mod test {
             birthday: None,
         };
         let bob_view_key_manager = create_view_key_manager(bob_keys).await.unwrap();
-        let carol_key_manager = create_memory_key_manager().await.unwrap();
+        let carol_key_manager = create_new_random_key_manager().await.unwrap();
         let carol_keys = ProvidedKeysWallet {
             public_spend_key: carol_key_manager.get_spend_key().await.unwrap().pub_key,
             private_spend_key: None,
@@ -2145,8 +2026,8 @@ mod test {
     async fn create_very_large_multi_recipients_transaction() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let mut alice_key_manager = create_memory_key_manager().await.unwrap();
-        let bob_key_manager = create_memory_key_manager().await.unwrap();
+        let mut alice_key_manager = create_new_random_key_manager().await.unwrap();
+        let bob_key_manager = create_new_random_key_manager().await.unwrap();
 
         let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
         let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;

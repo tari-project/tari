@@ -24,9 +24,10 @@ use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_script::{Opcode, TariScript};
 
 use crate::{
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{one_sided::diffie_hellman_stealth_domain_hasher_dhke, TransactionError},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    transaction_components::{TransactionError},
 };
+use crate::transaction_components::one_sided::diffie_hellman_stealth_domain_hasher;
 
 pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {
     tari_script
@@ -45,16 +46,15 @@ pub fn get_multi_sig_script_components(script: &TariScript) -> Option<(Vec<Compr
     None
 }
 
-pub async fn derive_multisig_ephemeral_pubkey<KM: TransactionKeyManagerInterface>(
+pub fn derive_multisig_ephemeral_pubkey<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     public_key: &CompressedPublicKey,
     sender_offset_key: &TariKeyId,
 ) -> Result<CompressedPublicKey, TransactionError> {
     let dh_shared_secret = key_manager
-        .get_diffie_hellman_shared_secret(sender_offset_key, public_key)
-        .await?;
+        .get_diffie_hellman_shared_secret(sender_offset_key, public_key)?;
 
-    let stealth_hash = diffie_hellman_stealth_domain_hasher_dhke(dh_shared_secret);
+    let stealth_hash = diffie_hellman_stealth_domain_hasher(&dh_shared_secret);
     let private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
 
     let shared_secret = UncompressedPublicKey::from_secret_key(&private_key);
@@ -63,14 +63,14 @@ pub async fn derive_multisig_ephemeral_pubkey<KM: TransactionKeyManagerInterface
     ))
 }
 
-pub async fn derive_multisig_ephemeral_pubkeys<KM: TransactionKeyManagerInterface>(
+pub fn derive_multisig_ephemeral_pubkeys<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     public_keys: &[CompressedPublicKey],
     sender_offset_key: &TariKeyId,
 ) -> Result<Vec<CompressedPublicKey>, TransactionError> {
     let mut ephemeral_pubkeys = Vec::new();
     for pub_key in public_keys {
-        ephemeral_pubkeys.push(derive_multisig_ephemeral_pubkey(key_manager, pub_key, sender_offset_key).await?);
+        ephemeral_pubkeys.push(derive_multisig_ephemeral_pubkey(key_manager, pub_key, sender_offset_key)?);
     }
     Ok(ephemeral_pubkeys)
 }

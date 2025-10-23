@@ -73,7 +73,7 @@ use zeroize::Zeroize;
 
 use crate::legacy_key_manager::{
     error::KeyManagerServiceError,
-    interface::TariKeyAndId,
+    interface::LegacyTariKeyAndId,
     tari_key_manager::TariKeyManager,
     wallet_types::WalletType,
     AddResult,
@@ -84,11 +84,12 @@ const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 use crate::legacy_key_manager::interface::KeyManagerState;
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 use crate::{
+    key_manager::TxoStage,
     crypto_factories::CryptoFactories,
     legacy_key_manager::{
-        interface::{TransactionKeyManagerBackend, TxoStage},
+        interface::{TransactionKeyManagerBackend},
         ConfidentialOutputHasher,
-        TariKeyId,
+        LegacyTariKeyId,
     },
     transaction_components::{
         one_sided::{
@@ -110,6 +111,8 @@ use crate::{
     },
     MicroMinotari,
 };
+
+const PRE_MINE: &str = "pre-mine";
 
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {

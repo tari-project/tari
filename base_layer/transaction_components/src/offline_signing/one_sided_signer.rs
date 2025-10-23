@@ -37,7 +37,7 @@ use tari_common_types::{
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
 
 use crate::{
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     multisig::script::derive_multisig_ephemeral_pubkeys,
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,

@@ -28,14 +28,12 @@ mod interface;
 pub use interface::{
     KeyManagerBranch,
     KeyManagerState,
-    SecretTransactionKeyManagerInterface,
-    SerializedKeyString,
-    TariKeyAndId,
-    TariKeyId,
+    LegacySerializedKeyString,
+    LegacyTariKeyAndId,
+    LegacyTariKeyId,
     TransactionKeyManagerBackend,
-    TransactionKeyManagerInterface,
-    TxoStage,
 };
+
 
 mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;
@@ -51,7 +49,7 @@ pub use error::CoreKeyManagerError;
 use crate::consensus::DomainSeparatedConsensusHasher;
 
 pub mod memory_key_manager;
-pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};
+pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
 
 pub mod tari_key_manager;
 

@@ -6,16 +6,12 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::{
-    legacy_key_manager::error::KeyManagerServiceError,
-    transaction_components::TransactionError,
-    MicroMinotari,
-};
+use crate::{key_manager::error::KeyManagerError, transaction_components::TransactionError, MicroMinotari};
 
 #[derive(Debug, Error)]
 pub enum TransactionBuilderError {
     #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerServiceError),
+    KeyManagerError(#[from] KeyManagerError),
     #[error("Tari Address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
     #[error("No fee set for transaction")]
