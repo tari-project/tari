@@ -567,31 +567,31 @@ impl DhtActor {
         trace!(target: LOG_TARGET, "Select peers broadcast strategy: {broadcast_strategy}" );
         #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
-        let peers = match broadcast_strategy {
+        let (peers, only_connected_nodes) = match broadcast_strategy {
             DirectNodeId(node_id) => {
                 // Send to a particular peer matching the given node ID
-                peer_manager
+                (peer_manager
                     .direct_identity_node_id(&node_id)
                     .await
                     .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
-                    .map_err(Into::<DhtActorError>::into)?
+                    .map_err(Into::<DhtActorError>::into)?, false)
             },
             DirectPublicKey(public_key) => {
                 // Send to a particular peer matching the given node ID
-                peer_manager
+                (peer_manager
                     .direct_identity_public_key(&public_key)
                     .await
                     .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
-                    .map_err(Into::<DhtActorError>::into)?
+                    .map_err(Into::<DhtActorError>::into)?, false)
             },
             Flood(exclude) => {
                 let peers = connectivity
                     .select_connections(ConnectivitySelection::all_nodes(exclude))
                     .await?;
-                peers.into_iter().map(|p| p.peer_node_id().clone()).collect()
+                (peers.into_iter().map(|p| p.peer_node_id().clone()).collect(), true)
             },
             ClosestNodes(closest_request) => {
-                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone()).await?
+                (Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone()).await?, true)
             },
             DirectOrClosestNodes(closest_request) => {
                 // First check if a direct connection exists
@@ -600,22 +600,21 @@ impl DhtActor {
                     .await?
                     .is_some()
                 {
-                    vec![closest_request.node_id.clone()]
+                    (vec![closest_request.node_id.clone()], true)
                 } else {
-                    Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone())
-                        .await?
+                    (Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone()).await?, true)
                 }
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                peer_manager
+                (peer_manager
                     .random_peers(n, &excluded, None)
                     .await?
                     .into_iter()
                     .map(|p| p.node_id)
-                    .collect()
+                    .collect(), false)
             },
-            SelectedPeers(peers) => peers,
+            SelectedPeers(peers) => (peers, false),
             Broadcast(exclude) => {
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(
@@ -642,7 +641,7 @@ impl DhtActor {
                     candidates.len()
                 );
 
-                candidates
+                (candidates, true)
             },
             Propagate(destination, exclude) => {
                 let dest_node_id = destination.to_derived_node_id();
@@ -732,10 +731,10 @@ impl DhtActor {
                     candidates.iter().map(|n| n.short_str()).collect::<Vec<_>>().join(", ")
                 );
 
-                candidates
+                (candidates, true)
             },
         };
-        if config.excluded_dial_addresses.is_empty() {
+        if config.excluded_dial_addresses.is_empty() || only_connected_nodes {
             return Ok(peers);
         };
 
