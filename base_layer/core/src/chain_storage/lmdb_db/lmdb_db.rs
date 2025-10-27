@@ -3341,6 +3341,31 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
+    fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let mut headers = Vec::new();
+        let orphans: Vec<(Vec<u8>, HashOutput)> = lmdb_all(&txn, &self.orphan_parent_map_index)?;
+        for (_parent, hash) in orphans {
+            if let Some(orphan) = lmdb_get_typed(&txn, &self.orphans_typed, hash.deref())? {
+                let orphan_accum = self
+                    .fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.deref())?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "orphan header accumulated data",
+                        field: "hash",
+                        value: hash.to_hex(),
+                    })?;
+                let chain_header = ChainHeader::try_construct(orphan.header, orphan_accum).ok_or_else(|| {
+                    ChainStorageError::DataInconsistencyDetected {
+                        function: "fetch_chain_header_in_all_chains",
+                        details: format!("accumulated data mismatch for orphan header {}", hash.to_hex()),
+                    }
+                })?;
+                headers.push(chain_header);
+            }
+        }
+        Ok(headers)
+    }
+
     fn fetch_all_active_validator_nodes(
         &self,
         height: u64,

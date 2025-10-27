@@ -28,6 +28,7 @@ mod check_for_updates;
 mod create_tls_certs;
 mod dial_peer;
 mod discover_peer;
+mod fetch_all_orphan_headers;
 mod get_block;
 mod get_chain_metadata;
 mod get_db_stats;
@@ -133,6 +134,7 @@ pub enum Command {
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
+    FetchAllOrphanHeaders(fetch_all_orphan_headers::Args),
     ListBadBlocks(list_bad_blocks::Args),
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
@@ -231,6 +233,7 @@ impl CommandContext {
                 Command::GetDbStats(_) |
                 Command::GetStateInfo(_) |
                 Command::ListReorgs(_) |
+                Command::FetchAllOrphanHeaders(_) |
                 Command::ListBadBlocks(_) |
                 Command::GetBlock(_) |
                 Command::ListHeaders(_) |
@@ -300,6 +303,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
+            Command::FetchAllOrphanHeaders(args) => self.handle_command(args).await,
             Command::ListBadBlocks(args) => self.handle_command(args).await,
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,

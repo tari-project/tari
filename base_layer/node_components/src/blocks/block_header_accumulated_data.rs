@@ -100,6 +100,11 @@ impl Display for BlockHeaderAccumulatedData {
             self.accumulated_tari_randomx_difficulty
         )?;
         writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
+        writeln!(
+            f,
+            "Accumulated cuckaroo difficulty: {}",
+            self.accumulated_cuckaroo_difficulty
+        )?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }
