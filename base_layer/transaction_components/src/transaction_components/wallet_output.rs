@@ -346,7 +346,7 @@ impl WalletOutput {
         // this is push public key script, so lets see if we know the public key
         if let [Opcode::PushPubKey(public_key)] = script.as_slice() {
             // first check non stealth direct to spend key outputs
-            let spend_key = key_manager.get_spend_key()?;
+            let spend_key = key_manager.get_spend_key();
             if spend_key.pub_key == **public_key {
                 return Ok(Some((ExecutionStack::default(), spend_key.key_id)));
             }

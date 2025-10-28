@@ -46,7 +46,6 @@ mod benches {
         transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
         tx,
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
     use tokio::runtime::Runtime;
 
     async fn generate_transactions(

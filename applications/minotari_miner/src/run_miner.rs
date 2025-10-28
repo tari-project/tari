@@ -65,8 +65,8 @@ use tari_transaction_components::{
         CoinBaseExtra,
     },
     MicroMinotari,
+    key_manager::create_new_random_key_manager,
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
@@ -96,7 +96,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     config.set_base_path(cli.common.get_base_path());
 
     debug!(target: LOG_TARGET_FILE, "{config:?}");
-    let mut key_manager = create_memory_db_key_manager().await.map_err(|err| {
+    let mut key_manager = create_new_random_key_manager().await.map_err(|err| {
         ExitError::new(
             ExitCode::KeyManagerServiceError,
             "'wallet_payment_address' ".to_owned() + &err.to_string(),

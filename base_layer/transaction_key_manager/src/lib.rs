@@ -28,6 +28,8 @@ pub use memory_db_key_manager::{
     MemoryDbKeyManager,
 };
 
+pub mod legacy_key_manager;
+
 pub mod storage;
 
 pub mod schema;

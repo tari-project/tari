@@ -25,7 +25,7 @@ mod backend;
 use std::sync::Arc;
 
 use tari_common_types::types::{CompressedPublicKey, PrivateKey};
-use tari_transaction_components::legacy_key_manager::{
+use crate::legacy_key_manager::{
     error::KeyManagerStorageError,
     KeyManagerState,
     TransactionKeyManagerBackend,

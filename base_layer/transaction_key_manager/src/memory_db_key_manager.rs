@@ -28,8 +28,9 @@ use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::seeds::cipher_seed::CipherSeed;
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
-    legacy_key_manager::{error::KeyManagerServiceError, wallet_types::WalletType, TransactionKeyManagerWrapper},
+
 };
+use crate::legacy_key_manager::{error::KeyManagerServiceError, wallet_types::WalletType, TransactionKeyManagerWrapper};
 use zeroize::Zeroizing;
 
 use crate::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;

@@ -83,14 +83,10 @@ use crate::legacy_key_manager::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 use crate::legacy_key_manager::interface::KeyManagerState;
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
-use crate::{
+use tari_transaction_components::{
     key_manager::TxoStage,
     crypto_factories::CryptoFactories,
-    legacy_key_manager::{
-        interface::{TransactionKeyManagerBackend},
-        ConfidentialOutputHasher,
-        LegacyTariKeyId,
-    },
+
     transaction_components::{
         one_sided::{
             diffie_hellman_stealth_domain_hasher_dhke,
@@ -111,7 +107,11 @@ use crate::{
     },
     MicroMinotari,
 };
-
+use crate::legacy_key_manager::{
+    interface::{TransactionKeyManagerBackend},
+    ConfidentialOutputHasher,
+    LegacyTariKeyId,
+};
 const PRE_MINE: &str = "pre-mine";
 
 #[derive(Clone)]
@@ -183,7 +183,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(result)
     }
 
-    pub async fn get_next_key(&mut self, branch: &str) -> Result<TariKeyAndId, KeyManagerServiceError> {
+    pub async fn get_next_key(&mut self, branch: &str) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
         let index = {
             match branch {
                 PRE_MINE => {
@@ -196,15 +196,15 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 _ => OsRng.next_u64(),
             }
         };
-        let key_id = TariKeyId::Managed {
+        let key_id = LegacyTariKeyId::Managed {
             branch: branch.to_string(),
             index,
         };
         let key = self.get_public_key_at_key_id(&key_id).await?;
-        Ok(TariKeyAndId { key_id, pub_key: key })
+        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
     }
 
-    pub async fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
+    pub async fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
@@ -223,8 +223,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         ledger_get_public_key(ledger.account, random_index, &branch)
                             .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?,
                     );
-                    Ok(TariKeyAndId {
-                        key_id: TariKeyId::Managed {
+                    Ok(LegacyTariKeyAndId {
+                        key_id: LegacyTariKeyId::Managed {
                             branch: TransactionKeyManagerBranch::RandomKey.get_branch_key(),
                             index: random_index,
                         },
@@ -236,7 +236,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 let random_private_key = PrivateKey::random(&mut OsRng);
                 let key_id = self.import_key(random_private_key, None).await?;
                 let public_key = self.get_public_key_at_key_id(&key_id).await?;
-                Ok(TariKeyAndId {
+                Ok(LegacyTariKeyAndId {
                     key_id,
                     pub_key: public_key,
                 })
@@ -244,10 +244,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         }
     }
 
-    pub async fn get_static_key(&self, branch: &str) -> Result<TariKeyId, KeyManagerServiceError> {
+    pub async fn get_static_key(&self, branch: &str) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
             None => Err(self.unknown_key_branch_error("get_static_key", branch)),
-            Some(_) => Ok(TariKeyId::Managed {
+            Some(_) => Ok(LegacyTariKeyId::Managed {
                 branch: branch.to_string(),
                 index: 0,
             }),
@@ -256,12 +256,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_public_key_at_key_id(
         &self,
-        key_id: &TariKeyId,
+        key_id: &LegacyTariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
         match key_id {
-            TariKeyId::Managed { .. } => self.get_managed_public_key_at_key_id(key_id).await,
-            TariKeyId::Derived { key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
+            LegacyTariKeyId::Managed { .. } => self.get_managed_public_key_at_key_id(key_id).await,
+            LegacyTariKeyId::Derived { key } => {
+                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let public_alpha = self.get_spend_key().await?.pub_key;
                 let branch_key = self.get_private_key(&key).await?;
@@ -278,44 +278,44 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 let public_key = public_alpha.to_public_key()? + &public_key.to_public_key()?;
                 Ok(CompressedPublicKey::new_from_pk(public_key))
             },
-            TariKeyId::Imported { key } => Ok(key.clone()),
-            TariKeyId::DHCommitmentMask {
+            LegacyTariKeyId::Imported { key } => Ok(key.clone()),
+            LegacyTariKeyId::DHCommitmentMask {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
 
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key).await?;
                 let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
                 Ok(CompressedPublicKey::from_secret_key(&commitment_mask_private_key))
             },
-            TariKeyId::DHEncryptedData {
+            LegacyTariKeyId::DHEncryptedData {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
 
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key).await?;
                 let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                 Ok(CompressedPublicKey::from_secret_key(&encryption_private_key))
             },
-            TariKeyId::Encrypted { encrypted, key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
+            LegacyTariKeyId::Encrypted { encrypted, key } => {
+                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let private_key = self.decrypt_encrypted_key(encrypted, key).await?;
                 Ok(CompressedPublicKey::from_secret_key(&private_key))
             },
-            TariKeyId::Zero => Ok(CompressedPublicKey::default()),
+            LegacyTariKeyId::Zero => Ok(CompressedPublicKey::default()),
         }
     }
 
     async fn get_managed_public_key_at_key_id(
         &self,
-        key_id: &TariKeyId,
+        key_id: &LegacyTariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
-        if let TariKeyId::Managed { branch, index } = key_id {
+        if let LegacyTariKeyId::Managed { branch, index } = key_id {
             // handle special cases
             match &*self.wallet_type {
                 WalletType::DerivedKeys => {},
@@ -394,7 +394,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         ))
     }
 
-    fn key_id_not_supported_error(&self, caller: &str, expected: &str, key_id: &TariKeyId) -> TransactionError {
+    fn key_id_not_supported_error(&self, caller: &str, expected: &str, key_id: &LegacyTariKeyId) -> TransactionError {
         TransactionError::UnsupportedTariKeyId(format!(
             "{}: Expected '{}', got {}, wallet_type: {}",
             caller, expected, key_id, self.wallet_type
@@ -403,9 +403,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn add_offset_to_spend_key(
         &self,
-        spend_key_id: &TariKeyId,
+        spend_key_id: &LegacyTariKeyId,
         sender_offset_pub_key: &CompressedPublicKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
+    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
         let mut secret = self.get_private_key(spend_key_id).await?;
         // 1. Get the shared secret (Ad)
         let shared_secret = self
@@ -426,17 +426,17 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub(crate) async fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
-            TariKeyId::Zero => Ok(PrivateKey::default()),
-            TariKeyId::Imported { key } => {
+            LegacyTariKeyId::Zero => Ok(PrivateKey::default()),
+            LegacyTariKeyId::Imported { key } => {
                 if let Some(db) = &self.db {
                     let pvt_key = db.write().await.get_imported_key(key).await?;
                     return Ok(pvt_key);
                 }
                 Err(KeyManagerServiceError::NoStorage)
             },
-            TariKeyId::Managed { branch, index } => {
+            LegacyTariKeyId::Managed { branch, index } => {
                 match &*self.wallet_type {
                     WalletType::DerivedKeys => {},
                     WalletType::Ledger(wallet) => {
@@ -477,8 +477,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 let key = km.get_private_key(*index)?;
                 Ok(key)
             },
-            TariKeyId::Derived { key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
+            LegacyTariKeyId::Derived { key } => {
+                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
 
                 let commitment_mask = Box::pin(self.get_private_key(&key)).await?;
@@ -527,28 +527,28 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     },
                 }
             },
-            TariKeyId::DHCommitmentMask {
+            LegacyTariKeyId::DHCommitmentMask {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
                 let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
                 Ok(commitment_mask_private_key)
             },
-            TariKeyId::DHEncryptedData {
+            LegacyTariKeyId::DHEncryptedData {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
+                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
                 let commitment_mask_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                 Ok(commitment_mask_private_key)
             },
-            TariKeyId::Encrypted { encrypted, key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
+            LegacyTariKeyId::Encrypted { encrypted, key } => {
+                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let private_key = Box::pin(self.decrypt_encrypted_key(encrypted, key)).await?;
                 Ok(private_key)
@@ -559,8 +559,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     async fn created_encrypted_key(
         &self,
         private_key: PrivateKey,
-        encryption_key: TariKeyId,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        encryption_key: LegacyTariKeyId,
+    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
         let pvt_bytes = private_key.to_vec();
         let private_encryption_key = self.get_private_key(&encryption_key).await?.to_vec();
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
@@ -568,7 +568,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(pvt_bytes))
             .map_err(|e| KeyManagerServiceError::EncryptionFailed(e.to_string()))?;
         let encrypted = encrypted_vec.as_slice().to_vec();
-        Ok(TariKeyId::Encrypted {
+        Ok(LegacyTariKeyId::Encrypted {
             encrypted,
             key: encryption_key.into(),
         })
@@ -577,7 +577,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     async fn decrypt_encrypted_key(
         &self,
         bytes: &[u8],
-        decryption_key: TariKeyId,
+        decryption_key: LegacyTariKeyId,
     ) -> Result<PrivateKey, KeyManagerServiceError> {
         let private_decryption_key = self.get_private_key(&decryption_key).await?.to_vec();
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
@@ -592,17 +592,17 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.wallet_type.clone()
     }
 
-    pub async fn get_view_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        let key_id = TariKeyId::Managed {
+    pub async fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
+        let key_id = LegacyTariKeyId::Managed {
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
         };
         let key = CompressedPublicKey::from_secret_key(&self.get_private_view_key().await?);
-        Ok(TariKeyAndId { key_id, pub_key: key })
+        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
     }
 
-    pub async fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        let key_id = TariKeyId::Managed {
+    pub async fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
+        let key_id = LegacyTariKeyId::Managed {
             branch: TransactionKeyManagerBranch::Spend.get_branch_key(),
             index: 0,
         };
@@ -617,30 +617,30 @@ where TBackend: TransactionKeyManagerBackend + 'static
             ))?,
             WalletType::ProvidedKeys(wallet) => wallet.public_spend_key.clone(),
         };
-        Ok(TariKeyAndId { key_id, pub_key: key })
+        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
     }
 
-    pub async fn get_comms_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        let key_id = TariKeyId::Managed {
+    pub async fn get_comms_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
+        let key_id = LegacyTariKeyId::Managed {
             branch: TransactionKeyManagerBranch::Spend.get_branch_key(),
             index: 0,
         };
         let private_key = self.get_private_comms_key().await?;
         let key = CompressedPublicKey::from_secret_key(&private_key);
-        Ok(TariKeyAndId { key_id, pub_key: key })
+        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
     }
 
     pub async fn get_next_commitment_mask_and_script_key(
         &mut self,
-    ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerServiceError> {
+    ) -> Result<(LegacyTariKeyAndId, LegacyTariKeyAndId), KeyManagerServiceError> {
         let commitment_mask = self
             .get_next_key(&TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await?;
-        let script_key_id = TariKeyId::Derived {
+        let script_key_id = LegacyTariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
-        Ok((commitment_mask, TariKeyAndId {
+        Ok((commitment_mask, LegacyTariKeyAndId {
             key_id: script_key_id,
             pub_key: script_public_key,
         }))
@@ -649,8 +649,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn import_key(
         &self,
         private_key: PrivateKey,
-        encryption_key: Option<TariKeyId>,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        encryption_key: Option<LegacyTariKeyId>,
+    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
         let encryption_key = match encryption_key {
             Some(key) => key,
             None => self.get_view_key().await?.key_id,
@@ -661,9 +661,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn create_encrypted_key_from_existing_key(
         &self,
-        key_id: &TariKeyId,
-        encryption_key: Option<TariKeyId>,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        key_id: &LegacyTariKeyId,
+        encryption_key: Option<LegacyTariKeyId>,
+    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
         let private_key = self.get_private_key(key_id).await?;
         let encryption_key = match encryption_key {
             Some(key) => key,
@@ -676,7 +676,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         match &*self.wallet_type {
             WalletType::DerivedKeys => {
-                self.get_private_key(&TariKeyId::Managed {
+                self.get_private_key(&LegacyTariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
                     index: 0,
                 })
@@ -696,7 +696,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
         match &*self.wallet_type {
             WalletType::DerivedKeys => {
-                self.get_private_key(&TariKeyId::Managed {
+                self.get_private_key(&LegacyTariKeyId::Managed {
                     branch: branch.clone(),
                     index,
                 })
@@ -729,10 +729,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
     /// the public keys match
     pub async fn find_script_key_id_from_commitment_mask_key_id(
         &self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         public_script_key: Option<&CompressedPublicKey>,
-    ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
-        let script_key_id = TariKeyId::Derived {
+    ) -> Result<Option<LegacyTariKeyId>, KeyManagerServiceError> {
+        let script_key_id = LegacyTariKeyId::Derived {
             key: commitment_mask_key_id.into(),
         };
 
@@ -752,7 +752,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_commitment(
         &self,
-        private_key: &TariKeyId,
+        private_key: &LegacyTariKeyId,
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerServiceError> {
         let key = self.get_private_key(private_key).await?;
@@ -765,7 +765,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
         let commitment_mask_key = self.get_private_key(commitment_mask_key_id).await?;
@@ -777,11 +777,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_diffie_hellman_shared_secret(
         &self,
-        secret_key_id: &TariKeyId,
+        secret_key_id: &LegacyTariKeyId,
         public_key: &CompressedPublicKey,
     ) -> Result<CommsDHKE, KeyManagerServiceError> {
         if let WalletType::Ledger(ledger) = &*self.wallet_type {
-            if let TariKeyId::Managed { branch, index } = secret_key_id {
+            if let LegacyTariKeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                         #[cfg(not(feature = "ledger"))]
@@ -815,12 +815,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_diffie_hellman_stealth_domain_hasher(
         &self,
-        secret_key_id: &TariKeyId,
+        secret_key_id: &LegacyTariKeyId,
         public_key: &CompressedPublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => match secret_key_id {
-                TariKeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
+                LegacyTariKeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
                         #[cfg(not(feature = "ledger"))]
                         {
@@ -863,7 +863,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn generate_burn_claim_proof_signature(
         &self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, TransactionError> {
@@ -887,8 +887,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_script_signature(
         &self,
-        script_key_id: &TariKeyId,
-        commitment_mask_key_id: &TariKeyId,
+        script_key_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
@@ -909,12 +909,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 #[cfg(feature = "ledger")]
                 {
                     let signature_key = match script_key_id {
-                        TariKeyId::Managed { branch, index } => ScriptSignatureKey::Managed {
+                        LegacyTariKeyId::Managed { branch, index } => ScriptSignatureKey::Managed {
                             branch: TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
                             index: *index,
                         },
-                        TariKeyId::Derived { key: key_str } => {
-                            let key = TariKeyId::from_str(key_str.to_string().as_str())
+                        LegacyTariKeyId::Derived { key: key_str } => {
+                            let key = LegacyTariKeyId::from_str(key_str.to_string().as_str())
                                 .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                             ScriptSignatureKey::Derived {
                                 branch_key: self.get_private_key(&key).await?,
@@ -977,7 +977,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_partial_script_signature(
         &self,
-        commitment_mask_id: &TariKeyId,
+        commitment_mask_id: &LegacyTariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         ephemeral_pubkey: &CompressedPublicKey,
@@ -1017,7 +1017,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn construct_range_proof(
         &self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
@@ -1060,8 +1060,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     #[allow(clippy::too_many_lines)]
     pub async fn get_script_offset(
         &self,
-        script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
+        script_key_ids: &[LegacyTariKeyId],
+        sender_offset_key_ids: &[LegacyTariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
         match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
@@ -1093,7 +1093,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     let mut script_key_indexes = vec![];
                     for script_key_id in script_key_ids {
                         match script_key_id {
-                            TariKeyId::Managed { branch, index } => {
+                            LegacyTariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
                                     TransactionKeyManagerBranch::Spend |
                                     TransactionKeyManagerBranch::PreMine |
@@ -1110,22 +1110,22 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     },
                                 }
                             },
-                            TariKeyId::Derived { key } => {
-                                let key_id = TariKeyId::from_str(key.to_string().as_str())
+                            LegacyTariKeyId::Derived { key } => {
+                                let key_id = LegacyTariKeyId::from_str(key.to_string().as_str())
                                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                                 // Note: If the derived key is a TariKeyId::Managed, but not allowed in
                                 //       'self.get_private_key(...)' this will error.
                                 let k = self.get_private_key(&key_id).await?;
                                 derived_script_keys.push(k);
                             },
-                            TariKeyId::Imported { .. } |
-                            TariKeyId::Encrypted { .. } |
-                            TariKeyId::DHCommitmentMask { .. } |
-                            TariKeyId::DHEncryptedData { .. } => {
+                            LegacyTariKeyId::Imported { .. } |
+                            LegacyTariKeyId::Encrypted { .. } |
+                            LegacyTariKeyId::DHCommitmentMask { .. } |
+                            LegacyTariKeyId::DHEncryptedData { .. } => {
                                 partial_script_offset =
                                     &partial_script_offset + self.get_private_key(script_key_id).await?
                             },
-                            TariKeyId::Zero => {},
+                            LegacyTariKeyId::Zero => {},
                         }
                     }
 
@@ -1133,7 +1133,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     let mut sender_offset_indexes = vec![];
                     for sender_offset_key_id in sender_offset_key_ids {
                         match sender_offset_key_id {
-                            TariKeyId::Managed { branch, index } => {
+                            LegacyTariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
                                     TransactionKeyManagerBranch::Spend |
                                     TransactionKeyManagerBranch::PreMine |
@@ -1150,22 +1150,22 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                     },
                                 }
                             },
-                            TariKeyId::Derived { key } => {
-                                let key_id = TariKeyId::from_str(key.to_string().as_str())
+                            LegacyTariKeyId::Derived { key } => {
+                                let key_id = LegacyTariKeyId::from_str(key.to_string().as_str())
                                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                                 // Note: If the derived key is a TariKeyId::Managed, but not allowed in
                                 //       'self.get_private_key(...)' this will error.
                                 let k = self.get_private_key(&key_id).await?;
                                 derived_offset_keys.push(k);
                             },
-                            TariKeyId::Imported { .. } |
-                            TariKeyId::Encrypted { .. } |
-                            TariKeyId::DHCommitmentMask { .. } |
-                            TariKeyId::DHEncryptedData { .. } => {
+                            LegacyTariKeyId::Imported { .. } |
+                            LegacyTariKeyId::Encrypted { .. } |
+                            LegacyTariKeyId::DHCommitmentMask { .. } |
+                            LegacyTariKeyId::DHEncryptedData { .. } => {
                                 partial_script_offset =
                                     partial_script_offset - self.get_private_key(sender_offset_key_id).await?;
                             },
-                            TariKeyId::Zero => {},
+                            LegacyTariKeyId::Zero => {},
                         }
                     }
 
@@ -1186,7 +1186,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn get_metadata_signature_ephemeral_private_key_pair(
         &self,
-        nonce_id: &TariKeyId,
+        nonce_id: &LegacyTariKeyId,
         range_proof_type: RangeProofType,
     ) -> Result<(PrivateKey, PrivateKey), TransactionError> {
         let nonce_private_key = self.get_private_key(nonce_id).await?;
@@ -1215,22 +1215,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok((nonce_a, nonce_b))
     }
 
-    pub async fn get_metadata_signature_ephemeral_commitment(
-        &self,
-        nonce_id: &TariKeyId,
-        range_proof_type: RangeProofType,
-    ) -> Result<CompressedCommitment, TransactionError> {
-        let (nonce_a, nonce_b) = self
-            .get_metadata_signature_ephemeral_private_key_pair(nonce_id, range_proof_type)
-            .await?;
-        Ok(CompressedCommitment::from_commitment(
-            self.crypto_factories.commitment.commit(&nonce_b, &nonce_a),
-        ))
-    }
 
     pub async fn sign_script_message(
         &self,
-        private_key_id: &TariKeyId,
+        private_key_id: &LegacyTariKeyId,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError> {
         match &*self.wallet_type {
@@ -1246,7 +1234,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 #[cfg(feature = "ledger")]
                 {
                     match private_key_id {
-                        TariKeyId::Managed { branch, index } => {
+                        LegacyTariKeyId::Managed { branch, index } => {
                             let signature = ledger_get_script_schnorr_signature(
                                 ledger.account,
                                 *index,
@@ -1332,8 +1320,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn sign_with_nonce_and_challenge(
         &self,
-        private_key_id: &TariKeyId,
-        nonce_key_id: &TariKeyId,
+        private_key_id: &LegacyTariKeyId,
+        nonce_key_id: &LegacyTariKeyId,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, TransactionError> {
         match &*self.wallet_type {
@@ -1349,11 +1337,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 #[cfg(feature = "ledger")]
                 {
                     match private_key_id {
-                        TariKeyId::Managed {
+                        LegacyTariKeyId::Managed {
                             branch: private_key_branch,
                             index: private_key_index,
                         } => match nonce_key_id {
-                            TariKeyId::Managed {
+                            LegacyTariKeyId::Managed {
                                 branch: nonce_branch,
                                 index: nonce_index,
                             } => {
@@ -1412,9 +1400,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_metadata_signature(
         &mut self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value_as_private_key: &PrivateKey,
-        sender_offset_key_id: &TariKeyId,
+        sender_offset_key_id: &LegacyTariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
@@ -1459,9 +1447,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
     #[allow(unused_variables)]
     pub async fn get_one_sided_metadata_signature(
         &mut self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value: MicroMinotari,
-        sender_offset_key_id: &TariKeyId,
+        sender_offset_key_id: &LegacyTariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
@@ -1522,7 +1510,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_receiver_partial_metadata_signature(
         &mut self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
         ephemeral_pubkey: &CompressedPublicKey,
@@ -1566,8 +1554,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // signers, this can be left as none
     pub async fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
+        ephemeral_private_nonce_id: &LegacyTariKeyId,
+        sender_offset_key_id: &LegacyTariKeyId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
@@ -1608,8 +1596,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_txo_private_kernel_offset(
         &self,
-        commitment_mask_key_id: &TariKeyId,
-        nonce_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
+        nonce_id: &LegacyTariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
         let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             "kernel_excess_offset",
@@ -1627,8 +1615,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_partial_txo_kernel_signature(
         &self,
-        commitment_mask_key_id: &TariKeyId,
-        nonce_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
+        nonce_id: &LegacyTariKeyId,
         total_nonce: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
         kernel_version: &TransactionKernelVersion,
@@ -1671,12 +1659,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_txo_kernel_signature_excess_with_offset(
         &self,
-        commitment_mask_key_id: &TariKeyId,
-        nonce_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
+        nonce: &LegacyTariKeyId,
     ) -> Result<CompressedPublicKey, TransactionError> {
         let private_key = self.get_private_key(commitment_mask_key_id).await?;
         let offset = self
-            .get_txo_private_kernel_offset(commitment_mask_key_id, nonce_id)
+            .get_txo_private_kernel_offset(commitment_mask_key_id, nonce)
             .await?;
         let excess = private_key - &offset;
         Ok(CompressedPublicKey::from_secret_key(&excess))
@@ -1688,8 +1676,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn encrypt_data_for_recovery(
         &self,
-        commitment_mask_key_id: &TariKeyId,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        commitment_mask_key_id: &LegacyTariKeyId,
+        custom_recovery_key_id: Option<&LegacyTariKeyId>,
         value: u64,
         payment_id: MemoField,
     ) -> Result<EncryptedData, TransactionError> {
@@ -1715,7 +1703,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key_id: Option<&LegacyTariKeyId>,
     ) -> Result<MemoField, TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
@@ -1731,7 +1719,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, TransactionError> {
+    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, TransactionError> {
         let (value, private_key, payment_id, key_id) =
             match EncryptedData::decrypt_data(&self.get_private_view_key().await?, commitment, encrypted_data) {
                 Ok((value, private_key, payment_id)) => {
@@ -1748,7 +1736,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                     match EncryptedData::decrypt_data(&encryption_key, commitment, encrypted_data) {
                         Ok((value, private_key, payment_id)) => {
-                            let key = TariKeyId::DHCommitmentMask {
+                            let key = LegacyTariKeyId::DHCommitmentMask {
                                 public_key: sender_offset_public_key.clone(),
                                 private_key: view_key.into(),
                             };
@@ -1794,7 +1782,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn stealth_address_script_spending_key(
         &self,
-        commitment_mask_key_id: &TariKeyId,
+        commitment_mask_key_id: &LegacyTariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, TransactionError> {
         let private_key = self.get_private_key(commitment_mask_key_id).await?;
@@ -1810,7 +1798,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn prepare_cipher(
         &self,
-        encryption_key_id: Option<&TariKeyId>,
+        encryption_key_id: Option<&LegacyTariKeyId>,
     ) -> Result<XChaCha20Poly1305, KeyManagerServiceError> {
         let encryption_key = match encryption_key_id {
             Some(key_id) => self.get_private_key(key_id).await?,
@@ -1826,7 +1814,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     async fn encrypt_key(
         &self,
         key: PrivateKey,
-        encryption_key_id: Option<&TariKeyId>,
+        encryption_key_id: Option<&LegacyTariKeyId>,
     ) -> Result<Vec<u8>, KeyManagerServiceError> {
         let cipher = self.prepare_cipher(encryption_key_id).await?;
         let domain = b"key".to_vec();
@@ -1839,8 +1827,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn encrypted_key(
         &self,
-        key_id: &TariKeyId,
-        encryption_key_id: Option<&TariKeyId>,
+        key_id: &LegacyTariKeyId,
+        encryption_key_id: Option<&LegacyTariKeyId>,
     ) -> Result<Vec<u8>, KeyManagerServiceError> {
         let key = self.get_private_key(key_id).await?;
         self.encrypt_key(key, encryption_key_id).await
@@ -1849,8 +1837,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn import_encrypted_key(
         &self,
         encrypted: Vec<u8>,
-        encryption_key_id: Option<&TariKeyId>,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        encryption_key_id: Option<&LegacyTariKeyId>,
+    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
         let cipher = self.prepare_cipher(encryption_key_id).await?;
         let domain = b"key".to_vec();
 

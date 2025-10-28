@@ -56,7 +56,6 @@ use tari_transaction_components::{
         WalletOutputBuilder,
     },
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
 /// The average amount of blocks per day based on the target block time
 pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;

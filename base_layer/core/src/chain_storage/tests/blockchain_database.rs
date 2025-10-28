@@ -34,7 +34,6 @@ use tari_transaction_components::{
     transaction_components::{Transaction, WalletOutput},
     txn_schema,
 };
-use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::{
     chain_storage::{BlockchainDatabase, ChainStorageError},
@@ -119,7 +118,6 @@ async fn add_many_chained_blocks(
 }
 
 mod fetch_blocks {
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
 

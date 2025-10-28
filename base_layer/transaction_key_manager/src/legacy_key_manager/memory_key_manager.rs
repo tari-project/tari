@@ -29,9 +29,8 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use zeroize::Zeroizing;
-
+use tari_transaction_components::crypto_factories::CryptoFactories;
 use crate::{
-    crypto_factories::CryptoFactories,
     legacy_key_manager::{
         error::{KeyManagerServiceError, KeyManagerStorageError},
         wallet_types::WalletType,

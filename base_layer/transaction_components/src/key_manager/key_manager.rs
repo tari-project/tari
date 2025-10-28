@@ -960,7 +960,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id)?;
-        let ephemeral_pubkey = self.get_random_key(none, false)?;
+        let ephemeral_pubkey = self.get_random_key(None, false)?;
         let receiver_partial_metadata_signature = self.get_receiver_partial_metadata_signature(
             commitment_mask_key_id,
             value_as_private_key,
@@ -1137,7 +1137,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let ephemeral_commitment_nonce = self.get_random_internal_key()?;
+        let ephemeral_commitment_nonce = self.get_random_key(None, false)?;
         let (nonce_a, nonce_b) = self
             .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)?;
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);

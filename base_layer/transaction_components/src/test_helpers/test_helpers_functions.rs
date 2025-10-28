@@ -716,7 +716,7 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
             commitment_mask_key_id,
             &public_nonce.key_id,
             &public_nonce.pub_key,
-            &public_commitment_mask,
+            &public_commitment_mask.pub_key,
             &kernel_version,
             &kernel_message,
             &kernel_features,
@@ -726,7 +726,7 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
 
     KernelBuilder::new()
         .with_features(kernel_features)
-        .with_excess(&CompressedCommitment::from_compressed_key(public_commitment_mask))
+        .with_excess(&CompressedCommitment::from_compressed_key(public_commitment_mask.pub_key))
         .with_signature(kernel_signature)
         .build()
         .unwrap()

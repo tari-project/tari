@@ -15,7 +15,6 @@ pub use coinbase_builder::{
 pub mod consensus;
 pub mod fee;
 pub mod key_manager;
-// pub mod legacy_key_manager;
 pub mod tari_amount;
 pub use tari_amount::MicroMinotari;
 pub mod tari_proof_of_work;
@@ -25,7 +24,7 @@ pub mod transaction_components;
 pub mod validation;
 pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
 pub mod multisig;
-// pub mod offline_signing;
+//pub mod offline_signing;
 
 pub mod rpc;
 

@@ -32,9 +32,8 @@ use std::sync::Arc;
 
 use tari_common_types::seeds::cipher_seed::CipherSeed;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-
+use tari_transaction_components::crypto_factories::CryptoFactories;
 use crate::{
-    crypto_factories::CryptoFactories,
     legacy_key_manager::{
         interface::TransactionKeyManagerBackend,
         wallet_types::WalletType,

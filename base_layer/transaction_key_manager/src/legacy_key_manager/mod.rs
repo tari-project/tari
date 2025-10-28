@@ -32,6 +32,8 @@ pub use interface::{
     LegacyTariKeyAndId,
     LegacyTariKeyId,
     TransactionKeyManagerBackend,
+    LegacyTransactionKeyManagerInterface,
+    LegacySecretTransactionKeyManagerInterface,
 };
 
 
@@ -46,8 +48,6 @@ pub use inner::LEDGER_NOT_SUPPORTED;
 pub mod error;
 pub use error::CoreKeyManagerError;
 
-use crate::consensus::DomainSeparatedConsensusHasher;
-
 pub mod memory_key_manager;
 pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
 
@@ -57,6 +57,8 @@ pub mod wallet_types;
 
 pub const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
 use tari_hashing::ConfidentialOutputHashDomain;
+use tari_transaction_components::consensus::DomainSeparatedConsensusHasher;
+
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 

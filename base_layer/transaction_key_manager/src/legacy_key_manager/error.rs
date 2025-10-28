@@ -28,7 +28,7 @@ use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySig
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
-use crate::transaction_components::TransactionError;
+use tari_transaction_components::transaction_components::TransactionError;
 #[derive(Debug, Error, PartialEq)]
 pub enum CoreKeyManagerError {
     // #[error("KeyManagerError: `{0}`")]

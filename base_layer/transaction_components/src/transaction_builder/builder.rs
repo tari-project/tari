@@ -75,8 +75,8 @@ where KM: TransactionKeyManagerInterface
         key_manager: KM,
         network: Network,
     ) -> Result<Self, TransactionBuilderError> {
-        let view_key = key_manager.get_view_key()?;
-        let spend_key = key_manager.get_spend_key()?;
+        let view_key = key_manager.get_view_key();
+        let spend_key = key_manager.get_spend_key();
         let own_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
             spend_key.pub_key.clone(),
