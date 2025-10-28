@@ -29,6 +29,9 @@
 # couple of nodes that you always want to have in sync. If set this node will only sync to the nodes in this set.
 # force_sync_peers = ["public_key1::address1", "public_key2::address2",... ]
 
+# This allowlist provides a method to keep a connection open to the spesified nodes in this list.
+#monitored_peers= ["public_key1::address1", "public_key2::address2",... ]
+
 # The maximum amount of seconds wait for remote base node responses for messaging-based requests.
 #messaging_request_timeout = 60
 
