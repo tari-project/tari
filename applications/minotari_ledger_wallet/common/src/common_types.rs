@@ -164,6 +164,16 @@ impl LedgerKeyBranch {
             _ => None,
         }
     }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            LedgerKeyBranch::OneSidedSenderOffset => "OneSidedSenderOffset",
+            LedgerKeyBranch::Random => "Random",
+            LedgerKeyBranch::PreMine => "PreMine",
+            LedgerKeyBranch::Spend => "Spend",
+            LedgerKeyBranch::MetadataEphemeralNonce => "MetadataEphemeralNonce",
+        }
+    }
 }
 
 impl FromStr for LedgerKeyBranch {
@@ -174,6 +184,8 @@ impl FromStr for LedgerKeyBranch {
             "OneSidedSenderOffset" => Ok(LedgerKeyBranch::OneSidedSenderOffset),
             "Random" => Ok(LedgerKeyBranch::Random),
             "PreMine" => Ok(LedgerKeyBranch::PreMine),
+            "Spend" => Ok(LedgerKeyBranch::Spend),
+            "MetadataEphemeralNonce" => Ok(LedgerKeyBranch::MetadataEphemeralNonce),
             _ => Err("Invalid ledger key branch".to_string()),
         }
     }

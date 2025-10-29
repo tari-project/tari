@@ -24,8 +24,12 @@ use std::{convert::TryFrom, sync::Arc};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::{
-    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, UncompressedSignature},
+use tari_common_types::types::{
+    CompressedCommitment,
+    CompressedPublicKey,
+    CompressedSignature,
+    PrivateKey,
+    UncompressedSignature,
 };
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -645,12 +649,8 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
         tx_builder.with_input(tx_input.clone()).unwrap();
     }
     for val in schema.to {
-        let commitment_mask = key_manager
-            .get_random_key(None, false)
-            .unwrap();
-        let sender_offset = key_manager
-            .get_random_key(None, false)
-            .unwrap();
+        let commitment_mask = key_manager.get_random_key(None, false).unwrap();
+        let sender_offset = key_manager.get_random_key(None, false).unwrap();
         let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
         };
@@ -726,7 +726,9 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
 
     KernelBuilder::new()
         .with_features(kernel_features)
-        .with_excess(&CompressedCommitment::from_compressed_key(public_commitment_mask.pub_key))
+        .with_excess(&CompressedCommitment::from_compressed_key(
+            public_commitment_mask.pub_key,
+        ))
         .with_signature(kernel_signature)
         .build()
         .unwrap()

@@ -33,14 +33,14 @@ pub mod error;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
-mod key_manager;
+pub mod key_manager;
+pub use key_manager::KeyManager;
 pub mod wallet_types;
 
 use tari_hashing::ConfidentialOutputHashDomain;
 
 use crate::key_manager::{
     error::KeyManagerError,
-    key_manager::KeyManager,
     wallet_types::{SeedWordsWallet, WalletType},
 };
 

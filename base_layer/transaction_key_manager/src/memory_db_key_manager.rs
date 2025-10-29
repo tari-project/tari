@@ -26,14 +26,13 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::seeds::cipher_seed::CipherSeed;
-use tari_transaction_components::{
-    crypto_factories::CryptoFactories,
-
-};
-use crate::legacy_key_manager::{error::KeyManagerServiceError, wallet_types::WalletType, TransactionKeyManagerWrapper};
+use tari_transaction_components::crypto_factories::CryptoFactories;
 use zeroize::Zeroizing;
 
-use crate::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
+use crate::{
+    legacy_key_manager::{ wallet_types::WalletType, TransactionKeyManagerWrapper},
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+};
 pub type MemoryDbKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {

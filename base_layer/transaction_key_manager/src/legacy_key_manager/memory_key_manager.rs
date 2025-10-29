@@ -28,16 +28,15 @@ use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
 };
-use zeroize::Zeroizing;
 use tari_transaction_components::crypto_factories::CryptoFactories;
-use crate::{
-    legacy_key_manager::{
-        error::{KeyManagerServiceError, KeyManagerStorageError},
-        wallet_types::WalletType,
-        KeyManagerState,
-        TransactionKeyManagerBackend,
-        TransactionKeyManagerWrapper,
-    },
+use zeroize::Zeroizing;
+
+use crate::legacy_key_manager::{
+    error::{KeyManagerStorageError},
+    wallet_types::WalletType,
+    KeyManagerState,
+    TransactionKeyManagerBackend,
+    TransactionKeyManagerWrapper,
 };
 pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 

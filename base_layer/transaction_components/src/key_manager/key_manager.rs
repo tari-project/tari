@@ -448,6 +448,10 @@ impl KeyManager {
         let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_ref())?;
         Ok((nonce_a, nonce_b))
     }
+
+    pub fn get_wallet_type(&self) -> &WalletType {
+        &self.wallet_type
+    }
 }
 
 impl TransactionKeyManagerInterface for KeyManager {

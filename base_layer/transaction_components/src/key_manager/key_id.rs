@@ -191,6 +191,12 @@ pub struct SerializedKeyString {
     inner: String,
 }
 
+impl SerializedKeyString {
+    pub fn as_str(&self) -> &str {
+        &self.inner
+    }
+}
+
 impl From<String> for SerializedKeyString {
     fn from(inner: String) -> Self {
         Self { inner }

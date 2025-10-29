@@ -27,17 +27,21 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+use tari_common_types::{
+    seeds::cipher_seed::CipherSeed,
+    types::{CompressedPublicKey, PrivateKey},
+};
+use tari_transaction_components::key_manager::wallet_types::{SeedWordsWallet, SpendWallet, ViewWallet, WalletType};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
-pub enum WalletType {
+pub enum LegacyWalletType {
     #[default]
     DerivedKeys,
     Ledger(LedgerWallet),
     ProvidedKeys(ProvidedKeysWallet),
 }
 
-impl WalletType {
+impl LegacyWalletType {
     pub fn is_derived_keys(&self) -> bool {
         matches!(self, WalletType::DerivedKeys)
     }
@@ -49,14 +53,35 @@ impl WalletType {
     pub fn is_provided_keys(&self) -> bool {
         matches!(self, WalletType::ProvidedKeys(_))
     }
+
+    pub fn to_new_wallet_type(&self, master_seed: CipherSeed) -> Result<WalletType, String> {
+        match self {
+            LegacyWalletType::DerivedKeys => Ok(WalletType::SeedWords(
+                SeedWordsWallet::construct_new(master_seed).map_err(|e| format!("{}", e))?,
+            )),
+            LegacyWalletType::Ledger(ledger_wallet) => Ok(WalletType::Ledger(ledger_wallet.clone())),
+            LegacyWalletType::ProvidedKeys(provided_keys) => match provided_keys.private_spend_key {
+                Some(key) => Ok(WalletType::SpendWallet(SpendWallet::new(
+                    key,
+                    provided_keys.view_key,
+                    provided_keys.birthday,
+                ))),
+                None => Ok(WalletType::ViewWallet(ViewWallet::new(
+                    provided_keys.public_spend_key,
+                    provided_keys.view_key,
+                    provided_keys.birthday,
+                ))),
+            },
+        }
+    }
 }
 
-impl Display for WalletType {
+impl Display for LegacyWalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::DerivedKeys => write!(f, "Derived wallet"),
-            WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
-            WalletType::ProvidedKeys(provided_keys_wallet) => write!(f, "Provided Keys ({provided_keys_wallet})"),
+            LegacyWalletType::DerivedKeys => write!(f, "Derived wallet"),
+            LegacyWalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
+            LegacyWalletType::ProvidedKeys(provided_keys_wallet) => write!(f, "Provided Keys ({provided_keys_wallet})"),
         }
     }
 }
@@ -74,39 +99,5 @@ impl Display for ProvidedKeysWallet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "public spend key {}", self.public_spend_key)?;
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct LedgerWallet {
-    pub account: u64,
-    pub public_alpha: Option<CompressedPublicKey>,
-    pub network: Network,
-    pub view_key: Option<PrivateKey>,
-}
-
-impl Display for LedgerWallet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "account '{}', ", self.account)?;
-        write!(f, "network '{}', ", self.network)?;
-        write!(f, "public_alpha '{}', ", self.public_alpha.is_some())?;
-        write!(f, "view_key '{}'", self.view_key.is_some())?;
-        Ok(())
-    }
-}
-
-impl LedgerWallet {
-    pub fn new(
-        account: u64,
-        network: Network,
-        public_alpha: Option<CompressedPublicKey>,
-        view_key: Option<PrivateKey>,
-    ) -> Self {
-        Self {
-            account,
-            public_alpha,
-            network,
-            view_key,
-        }
     }
 }

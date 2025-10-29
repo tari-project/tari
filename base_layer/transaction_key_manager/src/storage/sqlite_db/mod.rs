@@ -34,17 +34,15 @@ use tari_common_types::{
     encryption::Encryptable,
     types::{CompressedPublicKey, PrivateKey},
 };
-use crate::legacy_key_manager::{
-    error::KeyManagerStorageError,
-    KeyManagerState,
-    TransactionKeyManagerBackend,
-};
 use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;
 
-use crate::storage::{
-    database::ImportedKey,
-    sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
+use crate::{
+    legacy_key_manager::{error::KeyManagerStorageError, KeyManagerState, TransactionKeyManagerBackend},
+    storage::{
+        database::ImportedKey,
+        sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
+    },
 };
 mod imported_keys;
 mod key_manager_state;

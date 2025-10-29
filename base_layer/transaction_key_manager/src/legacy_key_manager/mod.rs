@@ -28,14 +28,13 @@ mod interface;
 pub use interface::{
     KeyManagerBranch,
     KeyManagerState,
+    LegacySecretTransactionKeyManagerInterface,
     LegacySerializedKeyString,
     LegacyTariKeyAndId,
     LegacyTariKeyId,
-    TransactionKeyManagerBackend,
     LegacyTransactionKeyManagerInterface,
-    LegacySecretTransactionKeyManagerInterface,
+    TransactionKeyManagerBackend,
 };
-
 
 mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;
@@ -46,10 +45,9 @@ pub use inner::TransactionKeyManagerInner;
 pub use inner::LEDGER_NOT_SUPPORTED;
 
 pub mod error;
-pub use error::CoreKeyManagerError;
 
-pub mod memory_key_manager;
-pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
+// pub mod memory_key_manager;
+// pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
 
 pub mod tari_key_manager;
 

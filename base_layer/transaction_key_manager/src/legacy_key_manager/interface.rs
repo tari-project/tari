@@ -27,6 +27,7 @@ use digest::consts::U64;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use tari_common_types::{
+    seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     types::{
         ComAndPubSignature,
@@ -40,9 +41,12 @@ use tari_common_types::{
     },
     WALLET_COMMS_AND_SPEND_KEY_BRANCH,
 };
-use tari_crypto::hashing::DomainSeparatedHash;
+use tari_crypto::hashing::{DomainSeparatedHash, DomainSeparatedHasher};
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArrayError,
+};
 
 pub const MANAGED_KEY_BRANCH: &str = "managed";
 pub const DERIVED_KEY_BRANCH: &str = "derived";
@@ -51,21 +55,21 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 pub const DH_COMMITMENT_MASK_BRANCH: &str = "dh_commitment_mask";
 pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
 pub const ENCRYPTED_BRANCH: &str = "encrypted";
-use crate::legacy_key_manager::error::{KeyManagerServiceError, KeyManagerStorageError};
 use tari_transaction_components::{
+    key_manager::{error::KeyManagerError, wallet_types::HASHER_LABEL_DERIVE_KEY, TariKeyId, TxoStage},
     transaction_components::{
         EncryptedData,
         KernelFeatures,
         MemoField,
         RangeProofType,
-        TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
     MicroMinotari,
 };
-use tari_transaction_components::key_manager::TxoStage;
+
+use crate::legacy_key_manager::error::KeyManagerStorageError;
 
 #[repr(u8)]
 #[derive(Clone, Copy, EnumIter)]
@@ -301,6 +305,12 @@ pub struct LegacySerializedKeyString {
     inner: String,
 }
 
+impl LegacySerializedKeyString {
+    pub fn as_str(&self) -> &str {
+        &self.inner
+    }
+}
+
 impl From<String> for LegacySerializedKeyString {
     fn from(inner: String) -> Self {
         Self { inner }
@@ -319,85 +329,76 @@ impl fmt::Display for LegacySerializedKeyString {
     }
 }
 
-impl From<LegacyTariKeyId> for LegacySerializedKeyString {
-    fn from(key_id: LegacyTariKeyId) -> Self {
-        Self::from(key_id.to_string())
-    }
-}
+// impl From<LegacyTariKeyId> for LegacySerializedKeyString {
+//     fn from(key_id: LegacyTariKeyId) -> Self {
+//         Self::from(key_id.to_string())
+//     }
+// }
+//
+// impl From<&LegacyTariKeyId> for LegacySerializedKeyString {
+//     fn from(key_id: &LegacyTariKeyId) -> Self {
+//         Self::from(key_id.to_string())
+//     }
+// }
 
-impl From<&LegacyTariKeyId> for LegacySerializedKeyString {
-    fn from(key_id: &LegacyTariKeyId) -> Self {
-        Self::from(key_id.to_string())
-    }
-}
-
-
-#[async_trait::async_trait]
+// #[async_trait::async_trait]
 pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
-
     /// Gets a randomly generated key, which the key manager will manage
-    async fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError>;
-
+    async fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError>;
 
     /// Gets the key id at the specified index
-    async fn get_public_key_at_key_id(&self, key_id: &LegacyTariKeyId)
-        -> Result<CompressedPublicKey, KeyManagerServiceError>;
+    async fn get_public_key_at_key_id(&self, key_id: &LegacyTariKeyId) -> Result<CompressedPublicKey, KeyManagerError>;
 
     /// Add a new key to be tracked
     async fn import_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<LegacyTariKeyId>,
-    ) -> Result<LegacyTariKeyId, KeyManagerServiceError>;
+    ) -> Result<LegacyTariKeyId, KeyManagerError>;
 
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: &PrivateKey,
-    ) -> Result<CompressedCommitment, KeyManagerServiceError>;
+    ) -> Result<CompressedCommitment, KeyManagerError>;
 
     async fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerServiceError>;
+    ) -> Result<bool, KeyManagerError>;
 
-    async fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError>;
+    async fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError>;
 
-    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError>;
+    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerError>;
 
-    async fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError>;
+    async fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError>;
 
     async fn get_next_commitment_mask_and_script_key(
         &mut self,
-    ) -> Result<(LegacyTariKeyAndId, LegacyTariKeyAndId), KeyManagerServiceError>;
+    ) -> Result<(LegacyTariKeyAndId, LegacyTariKeyAndId), KeyManagerError>;
 
     async fn find_script_key_id_from_commitment_mask_key_id(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         public_script_key: Option<&CompressedPublicKey>,
-    ) -> Result<Option<LegacyTariKeyId>, KeyManagerServiceError>;
+    ) -> Result<Option<LegacyTariKeyId>, KeyManagerError>;
 
     async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &LegacyTariKeyId,
         public_key: &CompressedPublicKey,
-    ) -> Result<CommsDHKE, KeyManagerServiceError>;
+    ) -> Result<CommsDHKE, KeyManagerError>;
 
-    async fn get_diffie_hellman_stealth_domain_hasher(
-        &self,
-        secret_key_id: &LegacyTariKeyId,
-        public_key: &CompressedPublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError>;
 
     async fn construct_range_proof(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
         min_value: u64,
-    ) -> Result<RangeProof, TransactionError>;
+    ) -> Result<RangeProof, KeyManagerError>;
 
     async fn get_script_signature(
         &self,
@@ -406,7 +407,7 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     async fn get_partial_script_signature(
         &self,
@@ -416,7 +417,7 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     async fn get_partial_txo_kernel_signature(
         &self,
@@ -428,19 +429,19 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
-    ) -> Result<CompressedSignature, TransactionError>;
+    ) -> Result<CompressedSignature, KeyManagerError>;
 
     async fn get_txo_kernel_signature_excess_with_offset(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         nonce: &LegacyTariKeyId,
-    ) -> Result<CompressedPublicKey, TransactionError>;
+    ) -> Result<CompressedPublicKey, KeyManagerError>;
 
     async fn get_txo_private_kernel_offset(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         nonce_id: &LegacyTariKeyId,
-    ) -> Result<PrivateKey, TransactionError>;
+    ) -> Result<PrivateKey, KeyManagerError>;
 
     async fn encrypt_data_for_recovery(
         &self,
@@ -448,35 +449,34 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         custom_recovery_key_id: Option<&LegacyTariKeyId>,
         value: u64,
         payment_id: MemoField,
-    ) -> Result<EncryptedData, TransactionError>;
+    ) -> Result<EncryptedData, KeyManagerError>;
 
     async fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
         custom_recovery_key_id: Option<&LegacyTariKeyId>,
-    ) -> Result<MemoField, TransactionError>;
+    ) -> Result<MemoField, KeyManagerError>;
 
     async fn try_output_key_recovery(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, TransactionError>;
+    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, KeyManagerError>;
 
     async fn is_this_output_ours(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<PrivateKey>,
-    ) -> Result<bool, TransactionError>;
+    ) -> Result<bool, KeyManagerError>;
 
     async fn get_script_offset(
         &self,
         script_key_ids: &[LegacyTariKeyId],
         sender_offset_key_ids: &[LegacyTariKeyId],
-    ) -> Result<PrivateKey, TransactionError>;
-
+    ) -> Result<PrivateKey, KeyManagerError>;
 
     // Look into perhaps removing all nonce here, if the signer and receiver are the same it should not be required to
     // share or pre calc the nonces
@@ -488,7 +488,7 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     async fn get_one_sided_metadata_signature(
         &mut self,
@@ -500,32 +500,32 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     async fn sign_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_key: Option<&CompressedPublicKey>,
-    ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError>;
+    ) -> Result<WalletMessageSchnorrSignature, KeyManagerError>;
 
     async fn sign_script_message(
         &self,
         private_key_id: &LegacyTariKeyId,
         challenge: &[u8],
-    ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError>;
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
     async fn sign_script_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
-    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError>;
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
     async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &LegacyTariKeyId,
         nonce: &LegacyTariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<CompressedSignature, TransactionError>;
+    ) -> Result<CompressedSignature, KeyManagerError>;
 
     async fn get_receiver_partial_metadata_signature(
         &mut self,
@@ -536,7 +536,7 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
     // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
@@ -549,28 +549,26 @@ pub trait LegacyTransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError>;
+    ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     async fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         amount: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<CompressedSignature, TransactionError>;
+    ) -> Result<CompressedSignature, KeyManagerError>;
 
     async fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         spend_key: &CompressedPublicKey,
-    ) -> Result<CompressedPublicKey, TransactionError>;
-
-
+    ) -> Result<CompressedPublicKey, KeyManagerError>;
 }
 
 #[async_trait::async_trait]
 pub trait LegacySecretTransactionKeyManagerInterface: LegacyTransactionKeyManagerInterface {
     /// Gets the pedersen commitment for the specified index
-    async fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+    async fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerError>;
 }
 
 /// This trait defines the required behaviour that a storage backend must provide for the Key Manager service.
@@ -611,7 +609,7 @@ mod test {
     use tari_common_types::types::{CompressedPublicKey, PrivateKey};
     use tari_crypto::keys::SecretKey as SK;
 
-    use crate::legacy_key_manager::{LegacyTariKeyId, LegacyTariKeyId};
+    use crate::legacy_key_manager::LegacyTariKeyId;
 
     fn random_string(len: usize) -> String {
         iter::repeat(())
@@ -660,10 +658,16 @@ mod test {
         let dh_encrypted_data_key_id_str = dh_encrypted_data_key_id.to_string();
 
         assert_eq!(managed_key_id, LegacyTariKeyId::from_str(&managed_key_id_str).unwrap());
-        assert_eq!(imported_key_id, LegacyTariKeyId::from_str(&imported_key_id_str).unwrap());
+        assert_eq!(
+            imported_key_id,
+            LegacyTariKeyId::from_str(&imported_key_id_str).unwrap()
+        );
         assert_eq!(zero_key_id, LegacyTariKeyId::from_str(&zero_key_id_str).unwrap());
         assert_eq!(derived_key_id, LegacyTariKeyId::from_str(&derived_key_id_str).unwrap());
-        assert_eq!(derived_key_id2, LegacyTariKeyId::from_str(&derived_key_id_str2).unwrap());
+        assert_eq!(
+            derived_key_id2,
+            LegacyTariKeyId::from_str(&derived_key_id_str2).unwrap()
+        );
         assert_eq!(
             dh_commitment_mask_key_id,
             LegacyTariKeyId::from_str(&dh_commitment_mask_key_id_str).unwrap()

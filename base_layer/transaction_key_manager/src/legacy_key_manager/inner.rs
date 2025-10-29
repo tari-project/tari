@@ -67,26 +67,33 @@ use tari_crypto::{
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::{ByteArray, Hidden};
+use tari_utilities::{ByteArray, ByteArrayError, Hidden};
 use tokio::sync::RwLock;
 use zeroize::Zeroize;
 
 use crate::legacy_key_manager::{
-    error::KeyManagerServiceError,
     interface::LegacyTariKeyAndId,
     tari_key_manager::TariKeyManager,
     wallet_types::WalletType,
     AddResult,
     KeyDigest,
+    KeyManagerBranch,
 };
 
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 use crate::legacy_key_manager::interface::KeyManagerState;
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 use tari_transaction_components::{
-    key_manager::TxoStage,
     crypto_factories::CryptoFactories,
-
+    key_manager::{
+        error::KeyManagerError,
+        key,
+        wallet_types::{HASHER_LABEL_DERIVE_KEY, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH},
+        KeyManager,
+        TariKeyId,
+        TransactionKeyManagerInterface,
+        TxoStage,
+    },
     transaction_components::{
         one_sided::{
             diffie_hellman_stealth_domain_hasher_dhke,
@@ -107,875 +114,299 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_components::key_manager::SecretTransactionKeyManagerInterface;
 use crate::legacy_key_manager::{
-    interface::{TransactionKeyManagerBackend},
+    interface::TransactionKeyManagerBackend,
+    wallet_types::LegacyWalletType,
     ConfidentialOutputHasher,
     LegacyTariKeyId,
 };
+
 const PRE_MINE: &str = "pre-mine";
 
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
-    key_managers: HashMap<String, TariKeyManager<KeyDigest>>,
+    master_seed: CipherSeed,
     db: Option<Arc<RwLock<TBackend>>>,
-    master_seed: Option<CipherSeed>,
-    crypto_factories: CryptoFactories,
-    wallet_type: Arc<WalletType>,
+    key_manager: KeyManager,
 }
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
     pub async fn new(
-        master_seed: Option<CipherSeed>,
+        master_seed: CipherSeed,
         db: Option<TBackend>,
         crypto_factories: CryptoFactories,
-        wallet_type: Arc<WalletType>,
-    ) -> Result<Self, KeyManagerServiceError> {
-        if master_seed.is_none() && !wallet_type.is_provided_keys() {
-            return Err(KeyManagerServiceError::InitializationError(
-                "A master seed must be provided unless wallet type is provided keys.".to_string(),
-            ));
-        }
-        let create_standard_branches = master_seed.is_some();
-        let mut km = TransactionKeyManagerInner {
-            key_managers: HashMap::new(),
+        wallet_type: Arc<LegacyWalletType>,
+    ) -> Result<Self, KeyManagerError> {
+        let wallet_type = wallet_type
+            .to_new_wallet_type(master_seed.clone())
+            .map_err(|e| KeyManagerError::UnexpectedError(format!("Failed to convert legacy wallet type: {}", e)))?;
+        let key_manager = KeyManager::new_with_crypto_factories(crypto_factories, wallet_type)?;
+        Ok(TransactionKeyManagerInner {
             db: db.map(|db| Arc::new(RwLock::new(db))),
             master_seed,
-            crypto_factories,
-            wallet_type,
-        };
-        if create_standard_branches {
-            km.add_standard_core_branches().await?;
-        }
-        Ok(km)
+            key_manager,
+        })
     }
 
-    pub fn master_seed(&self) -> Option<&CipherSeed> {
-        self.master_seed.as_ref()
+    fn derive_private_key(seed: &CipherSeed, branch_seed: String, account: u64) -> Result<PrivateKey, ByteArrayError> {
+        // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
+        // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
+        // input
+        let derive_key = DomainSeparatedHasher::<KeyDigest, KeyManagerDomain>::new_with_label(HASHER_LABEL_DERIVE_KEY)
+            .chain(seed.entropy())
+            .chain(branch_seed.as_bytes())
+            .chain(account.to_le_bytes())
+            .finalize();
+
+        let derive_key = derive_key.as_ref();
+        let s = PrivateKey::from_uniform_bytes(derive_key)?;
+        Ok(s)
     }
 
-    async fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
-        for branch in TransactionKeyManagerBranch::iter() {
-            self.add_key_manager_branch(&branch.get_branch_key()).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
-        if self.master_seed.is_none() {
-            return Err(self.branch_not_supported_error("add_key_manager_branch", branch));
-        }
-        let seed = self.master_seed.as_ref().unwrap().clone();
-        let result = if self.key_managers.contains_key(branch) {
-            AddResult::AlreadyExists
-        } else {
-            AddResult::NewEntry
-        };
-        let state = KeyManagerState {
-            branch_seed: branch.to_string(),
-            primary_key_index: 0,
-        };
-        self.key_managers.insert(
-            branch.to_string(),
-            TariKeyManager::<KeyDigest>::from(seed, state.branch_seed, state.primary_key_index),
-        );
-        Ok(result)
-    }
-
-    pub async fn get_next_key(&mut self, branch: &str) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
-        let index = {
-            match branch {
-                PRE_MINE => {
-                    if let Some(km) = self.key_managers.get_mut(branch) {
-                        km.increment_key_index(1)
-                    } else {
-                        return Err(self.unknown_key_branch_error("get_next_key", branch));
-                    }
+    pub fn convert_legacy_tari_key_id(&self, key_id: &LegacyTariKeyId) -> Result<TariKeyId, KeyManagerError> {
+        match key_id {
+            LegacyTariKeyId::Managed { branch, index } => match branch.as_str() {
+                SPEND_KEY_BRANCH => Ok(TariKeyId::SpendKey),
+                VIEW_KEY_BRANCH => Ok(TariKeyId::ViewKey),
+                _ => {
+                    let private_key = Self::derive_private_key(&self.master_seed, branch.clone(), *index)?;
+                    self.key_manager.import_key(private_key, None)
                 },
-                _ => OsRng.next_u64(),
-            }
-        };
-        let key_id = LegacyTariKeyId::Managed {
-            branch: branch.to_string(),
-            index,
-        };
-        let key = self.get_public_key_at_key_id(&key_id).await?;
-        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
-    }
-
-    pub async fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
-        match &*self.wallet_type {
-            WalletType::Ledger(ledger) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(KeyManagerServiceError::LedgerError(format!(
-                        "{} 'get_random_key' was called. ({})",
-                        LEDGER_NOT_SUPPORTED, ledger
-                    )))
-                }
-                #[cfg(feature = "ledger")]
-                {
-                    let random_index = OsRng.next_u64();
-
-                    let branch = LedgerKeyBranch::Random;
-                    let public_key = CompressedPublicKey::new_from_pk(
-                        ledger_get_public_key(ledger.account, random_index, &branch)
-                            .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?,
-                    );
-                    Ok(LegacyTariKeyAndId {
-                        key_id: LegacyTariKeyId::Managed {
-                            branch: TransactionKeyManagerBranch::RandomKey.get_branch_key(),
-                            index: random_index,
-                        },
-                        pub_key: public_key,
-                    })
-                }
             },
-            _ => {
-                let random_private_key = PrivateKey::random(&mut OsRng);
-                let key_id = self.import_key(random_private_key, None).await?;
-                let public_key = self.get_public_key_at_key_id(&key_id).await?;
-                Ok(LegacyTariKeyAndId {
-                    key_id,
-                    pub_key: public_key,
-                })
+            LegacyTariKeyId::Derived { key } => Ok(TariKeyId::Derived {
+                key: key.as_str().into(),
+            }),
+            LegacyTariKeyId::Imported { .. } => {
+                let private_key = self.get_private_key(&key_id)?;
+                self.key_manager.import_key(private_key, None)
             },
-        }
-    }
-
-    pub async fn get_static_key(&self, branch: &str) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
-        match self.key_managers.get(branch) {
-            None => Err(self.unknown_key_branch_error("get_static_key", branch)),
-            Some(_) => Ok(LegacyTariKeyId::Managed {
-                branch: branch.to_string(),
-                index: 0,
+            LegacyTariKeyId::Zero => Ok(TariKeyId::Zero),
+            LegacyTariKeyId::DHCommitmentMask {
+                public_key,
+                private_key,
+            } => Ok(TariKeyId::DHCommitmentMask {
+                public_key: public_key.clone(),
+                private_key: private_key.as_str().into(),
+            }),
+            LegacyTariKeyId::DHEncryptedData {
+                public_key,
+                private_key,
+            } => Ok(TariKeyId::DHEncryptedData {
+                public_key: public_key.clone(),
+                private_key: private_key.as_str().into(),
+            }),
+            LegacyTariKeyId::Encrypted { encrypted, key } => Ok(TariKeyId::Encrypted {
+                encrypted: encrypted.clone(),
+                key: key.as_str().into(),
             }),
         }
     }
 
-    pub async fn get_public_key_at_key_id(
-        &self,
-        key_id: &LegacyTariKeyId,
-    ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
+    pub fn convert_key_id_to_legacy(&self, key_id: &TariKeyId) -> LegacyTariKeyId {
         match key_id {
-            LegacyTariKeyId::Managed { .. } => self.get_managed_public_key_at_key_id(key_id).await,
-            LegacyTariKeyId::Derived { key } => {
-                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let public_alpha = self.get_spend_key().await?.pub_key;
-                let branch_key = self.get_private_key(&key).await?;
-                let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-                    HASHER_LABEL_STEALTH_KEY,
-                );
-                let hasher = hasher.chain(branch_key.as_bytes()).finalize();
-                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                    KeyManagerServiceError::UnknownError(
-                        "Invalid private key for sender offset private key".to_string(),
-                    )
-                })?;
-                let public_key = CompressedPublicKey::from_secret_key(&private_key);
-                let public_key = public_alpha.to_public_key()? + &public_key.to_public_key()?;
-                Ok(CompressedPublicKey::new_from_pk(public_key))
+            TariKeyId::SpendKey => LegacyTariKeyId::Managed {
+                branch: SPEND_KEY_BRANCH.to_string(),
+                index: 0,
             },
-            LegacyTariKeyId::Imported { key } => Ok(key.clone()),
-            LegacyTariKeyId::DHCommitmentMask {
+            TariKeyId::ViewKey => LegacyTariKeyId::Managed {
+                branch: VIEW_KEY_BRANCH.to_string(),
+                index: 0,
+            },
+            TariKeyId::Derived { key } => LegacyTariKeyId::Derived {
+                key: key.as_str().into(),
+            },
+            TariKeyId::Zero => LegacyTariKeyId::Zero,
+            TariKeyId::DHCommitmentMask {
                 public_key,
                 private_key,
-            } => {
-                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-
-                let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key).await?;
-                let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-                Ok(CompressedPublicKey::from_secret_key(&commitment_mask_private_key))
+            } => LegacyTariKeyId::DHCommitmentMask {
+                public_key: public_key.clone(),
+                private_key: private_key.as_str().into(),
             },
-            LegacyTariKeyId::DHEncryptedData {
+            TariKeyId::DHEncryptedData {
                 public_key,
                 private_key,
-            } => {
-                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-
-                let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key).await?;
-                let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                Ok(CompressedPublicKey::from_secret_key(&encryption_private_key))
+            } => LegacyTariKeyId::DHEncryptedData {
+                public_key: public_key.clone(),
+                private_key: private_key.as_str().into(),
             },
-            LegacyTariKeyId::Encrypted { encrypted, key } => {
-                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let private_key = self.decrypt_encrypted_key(encrypted, key).await?;
-                Ok(CompressedPublicKey::from_secret_key(&private_key))
+            TariKeyId::Encrypted { encrypted, key } => LegacyTariKeyId::Encrypted {
+                encrypted: (*encrypted).clone(),
+                key: key.as_str().into(),
             },
-            LegacyTariKeyId::Zero => Ok(CompressedPublicKey::default()),
-        }
-    }
-
-    async fn get_managed_public_key_at_key_id(
-        &self,
-        key_id: &LegacyTariKeyId,
-    ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
-        if let LegacyTariKeyId::Managed { branch, index } = key_id {
-            // handle special cases
-            match &*self.wallet_type {
-                WalletType::DerivedKeys => {},
-                WalletType::Ledger(ledger) => {
-                    match TransactionKeyManagerBranch::from_key(branch) {
-                        TransactionKeyManagerBranch::OneSidedSenderOffset |
-                        TransactionKeyManagerBranch::RandomKey |
-                        TransactionKeyManagerBranch::PreMine => {
-                            #[cfg(not(feature = "ledger"))]
-                            {
-                                return Err(KeyManagerServiceError::LedgerError(format!(
-                                    "{} 'get_public_key_at_key_id' was called.",
-                                    LEDGER_NOT_SUPPORTED
-                                )));
-                            }
-
-                            #[cfg(feature = "ledger")]
-                            {
-                                let public_key = ledger_get_public_key(
-                                    ledger.account,
-                                    *index,
-                                    &TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                                )
-                                .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                                return Ok(CompressedPublicKey::new_from_pk(public_key));
-                            }
-                        },
-                        TransactionKeyManagerBranch::Spend => {
-                            return ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
-                                "Key manager set to use ledger, ledger alpha public key missing".to_string(),
-                            ))
-                        },
-                        TransactionKeyManagerBranch::DataEncryption => {
-                            let view_key = ledger
-                                .view_key
-                                .clone()
-                                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(key_id.to_string()))?;
-                            return Ok(CompressedPublicKey::from_secret_key(&view_key));
-                        },
-                        _ => {},
-                    };
-                },
-                WalletType::ProvidedKeys(wallet) => match TransactionKeyManagerBranch::from_key(branch) {
-                    TransactionKeyManagerBranch::Spend => {
-                        return Ok(wallet.public_spend_key.clone());
-                    },
-                    TransactionKeyManagerBranch::DataEncryption => {
-                        return Ok(CompressedPublicKey::from_secret_key(&wallet.view_key));
-                    },
-                    _ => {},
-                },
-            };
-            let km = self
-                .key_managers
-                .get(branch)
-                .ok_or_else(|| self.unknown_key_branch_error("get_public_key_at_key_id", branch))?;
-            Ok(km.derive_public_key(*index)?.key)
-        } else {
-            Err(KeyManagerServiceError::UnknownError(
-                "should only handle managed key types".to_string(),
-            ))
-        }
-    }
-
-    fn unknown_key_branch_error(&self, caller: &str, branch: &str) -> KeyManagerServiceError {
-        KeyManagerServiceError::UnknownKeyBranch(format!(
-            "{}: branch: {}, wallet_type: {}",
-            caller, branch, self.wallet_type
-        ))
-    }
-
-    fn branch_not_supported_error(&self, caller: &str, branch: &str) -> KeyManagerServiceError {
-        KeyManagerServiceError::BranchNotSupported(format!(
-            "{}: branch: {}, wallet_type: {}",
-            caller, branch, self.wallet_type
-        ))
-    }
-
-    fn key_id_not_supported_error(&self, caller: &str, expected: &str, key_id: &LegacyTariKeyId) -> TransactionError {
-        TransactionError::UnsupportedTariKeyId(format!(
-            "{}: Expected '{}', got {}, wallet_type: {}",
-            caller, expected, key_id, self.wallet_type
-        ))
-    }
-
-    pub async fn add_offset_to_spend_key(
-        &self,
-        spend_key_id: &LegacyTariKeyId,
-        sender_offset_pub_key: &CompressedPublicKey,
-    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
-        let mut secret = self.get_private_key(spend_key_id).await?;
-        // 1. Get the shared secret (Ad)
-        let shared_secret = self
-            .get_diffie_hellman_shared_secret(spend_key_id, sender_offset_pub_key)
-            .await
-            .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()))?;
-
-        // 2. Hash the shared secret for stealth domain separation
-        let stealth_hash = diffie_hellman_stealth_domain_hasher_dhke(shared_secret);
-
-        // 3. Convert hash to a private key
-        let shared_secret_private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
-
-        secret = secret + shared_secret_private_key;
-        let shared_secret_key = self.import_key(secret, None).await?;
-
-        Ok(shared_secret_key)
-    }
-
-    #[allow(clippy::too_many_lines)]
-    pub(crate) async fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
-        match key_id {
-            LegacyTariKeyId::Zero => Ok(PrivateKey::default()),
-            LegacyTariKeyId::Imported { key } => {
-                if let Some(db) = &self.db {
-                    let pvt_key = db.write().await.get_imported_key(key).await?;
-                    return Ok(pvt_key);
-                }
-                Err(KeyManagerServiceError::NoStorage)
-            },
-            LegacyTariKeyId::Managed { branch, index } => {
-                match &*self.wallet_type {
-                    WalletType::DerivedKeys => {},
-                    WalletType::Ledger(wallet) => {
-                        if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
-                            return wallet
-                                .view_key
-                                .clone()
-                                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(key_id.to_string()));
-                        }
-
-                        // If we're trying to access any of the private keys, just say no bueno
-                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::PreMine.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::RandomKey.get_branch_key() == branch
-                        {
-                            return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()));
-                        }
-                    },
-                    WalletType::ProvidedKeys(wallet) => {
-                        if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
-                            return Ok(wallet.view_key.clone());
-                        }
-
-                        // If we're trying to access any of the private keys, just say no bueno
-                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
-                            return wallet.private_spend_key.clone().ok_or(
-                                KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
-                            );
-                        }
-                    },
-                }
-
-                let km = self
-                    .key_managers
-                    .get(branch)
-                    .ok_or_else(|| self.unknown_key_branch_error("get_private_key", branch))?;
-                let key = km.get_private_key(*index)?;
-                Ok(key)
-            },
-            LegacyTariKeyId::Derived { key } => {
-                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-
-                let commitment_mask = Box::pin(self.get_private_key(&key)).await?;
-
-                match &*self.wallet_type {
-                    WalletType::Ledger(_) => {
-                        Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()))
-                    },
-                    WalletType::DerivedKeys => {
-                        let km = self
-                            .key_managers
-                            .get(&TransactionKeyManagerBranch::Spend.get_branch_key())
-                            .ok_or_else(|| {
-                                self.unknown_key_branch_error(
-                                    "get_private_key",
-                                    &TransactionKeyManagerBranch::Spend.get_branch_key(),
-                                )
-                            })?;
-                        let private_alpha = km.get_private_key(0)?;
-                        let hasher =
-                            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-                                HASHER_LABEL_STEALTH_KEY,
-                            );
-                        let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
-                        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                            KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
-                        })?;
-                        let private_key = private_key + private_alpha;
-                        Ok(private_key)
-                    },
-                    WalletType::ProvidedKeys(wallet) => {
-                        let private_alpha = wallet.private_spend_key.clone().ok_or(
-                            KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
-                        )?;
-
-                        let hasher =
-                            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-                                HASHER_LABEL_STEALTH_KEY,
-                            );
-                        let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
-                        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                            KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
-                        })?;
-                        let private_key = private_key + private_alpha;
-                        Ok(private_key)
-                    },
-                }
-            },
-            LegacyTariKeyId::DHCommitmentMask {
-                public_key,
-                private_key,
-            } => {
-                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
-                let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
-                Ok(commitment_mask_private_key)
-            },
-            LegacyTariKeyId::DHEncryptedData {
-                public_key,
-                private_key,
-            } => {
-                let key = LegacyTariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let shared_secret = Box::pin(self.get_diffie_hellman_shared_secret(&key, public_key)).await?;
-                let commitment_mask_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                Ok(commitment_mask_private_key)
-            },
-            LegacyTariKeyId::Encrypted { encrypted, key } => {
-                let key = LegacyTariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let private_key = Box::pin(self.decrypt_encrypted_key(encrypted, key)).await?;
-                Ok(private_key)
+            TariKeyId::LedgerKey { branch, index } => LegacyTariKeyId::Managed {
+                branch: branch.as_str().to_string(),
+                index: *index,
             },
         }
     }
 
-    async fn created_encrypted_key(
-        &self,
-        private_key: PrivateKey,
-        encryption_key: LegacyTariKeyId,
-    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
-        let pvt_bytes = private_key.to_vec();
-        let private_encryption_key = self.get_private_key(&encryption_key).await?.to_vec();
-        let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_encryption_key));
-        let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(pvt_bytes))
-            .map_err(|e| KeyManagerServiceError::EncryptionFailed(e.to_string()))?;
-        let encrypted = encrypted_vec.as_slice().to_vec();
-        Ok(LegacyTariKeyId::Encrypted {
-            encrypted,
-            key: encryption_key.into(),
+    pub fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
+        let key = self.key_manager.get_random_key(None, true)?;
+        let legacy_key_id = self.convert_key_id_to_legacy(&key.key_id);
+        Ok(LegacyTariKeyAndId {
+            key_id: legacy_key_id,
+            pub_key: key.pub_key.clone(),
         })
     }
 
-    async fn decrypt_encrypted_key(
+    pub fn get_public_key_at_key_id(
         &self,
-        bytes: &[u8],
-        decryption_key: LegacyTariKeyId,
-    ) -> Result<PrivateKey, KeyManagerServiceError> {
-        let private_decryption_key = self.get_private_key(&decryption_key).await?.to_vec();
-        let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_decryption_key));
-        let decrypted_bytes = decrypt_bytes_integral_nonce(&cipher, domain, bytes)
-            .map_err(|e| KeyManagerServiceError::EncryptionFailed(e.to_string()))?;
-        let pvt_key = PrivateKey::from_vec(&decrypted_bytes)?;
-        Ok(pvt_key)
+        key_id: &LegacyTariKeyId,
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(key_id)?;
+        self.key_manager.get_public_key_at_key_id(&key)
     }
 
-    pub fn get_wallet_type(&self) -> Arc<WalletType> {
-        self.wallet_type.clone()
+    pub(crate) fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(key_id)?;
+        self.key_manager.get_private_key(&key)
     }
 
-    pub async fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
-        let key_id = LegacyTariKeyId::Managed {
-            branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
-            index: 0,
-        };
-        let key = CompressedPublicKey::from_secret_key(&self.get_private_view_key().await?);
-        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
+    pub fn get_wallet_type(&self) -> &WalletType {
+        self.key_manager.get_wallet_type()
     }
 
-    pub async fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
-        let key_id = LegacyTariKeyId::Managed {
-            branch: TransactionKeyManagerBranch::Spend.get_branch_key(),
-            index: 0,
-        };
-
-        let key = match &*self.wallet_type {
-            WalletType::DerivedKeys => {
-                let private_key = self.get_private_key(&key_id).await?;
-                CompressedPublicKey::from_secret_key(&private_key)
-            },
-            WalletType::Ledger(ledger) => ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
-                "Key manager set to use ledger, ledger alpha public key missing".to_string(),
-            ))?,
-            WalletType::ProvidedKeys(wallet) => wallet.public_spend_key.clone(),
-        };
-        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
+    pub fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
+        let key = self.key_manager.get_view_key()?;
+        let key_id = self.convert_key_id_to_legacy(&key.key_id);
+        Ok(LegacyTariKeyAndId {
+            key_id,
+            pub_key: key.pub_key.clone(),
+        })
     }
 
-    pub async fn get_comms_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerServiceError> {
-        let key_id = LegacyTariKeyId::Managed {
-            branch: TransactionKeyManagerBranch::Spend.get_branch_key(),
-            index: 0,
-        };
-        let private_key = self.get_private_comms_key().await?;
-        let key = CompressedPublicKey::from_secret_key(&private_key);
-        Ok(LegacyTariKeyAndId { key_id, pub_key: key })
+    pub fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
+        let key = self.key_manager.get_spend_key()?;
+        let key_id = self.convert_key_id_to_legacy(&key.key_id);
+        Ok(LegacyTariKeyAndId {
+            key_id,
+            pub_key: key.pub_key.clone(),
+        })
     }
 
-    pub async fn get_next_commitment_mask_and_script_key(
+    pub fn get_comms_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
+        let key = self.key_manager.get_spend_key()?;
+        let key_id = self.convert_key_id_to_legacy(&key.key_id);
+        Ok(LegacyTariKeyAndId {
+            key_id,
+            pub_key: key.pub_key.clone(),
+        })
+    }
+
+    pub fn get_next_commitment_mask_and_script_key(
         &mut self,
-    ) -> Result<(LegacyTariKeyAndId, LegacyTariKeyAndId), KeyManagerServiceError> {
-        let commitment_mask = self
-            .get_next_key(&TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-            .await?;
-        let script_key_id = LegacyTariKeyId::Derived {
-            key: (&commitment_mask.key_id).into(),
+    ) -> Result<(LegacyTariKeyAndId, LegacyTariKeyAndId), KeyManagerError> {
+        let (key_1, key_2) = self.key_manager.get_next_commitment_mask_and_script_key()?;
+        let commitment_mask_key_id = self.convert_key_id_to_legacy(&key_1.key_id);
+        let script_key_id = self.convert_key_id_to_legacy(&key_2.key_id);
+        let commitment_mask = LegacyTariKeyAndId {
+            key_id: commitment_mask_key_id,
+            pub_key: key_1.pub_key.clone(),
         };
-        let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
         Ok((commitment_mask, LegacyTariKeyAndId {
             key_id: script_key_id,
-            pub_key: script_public_key,
+            pub_key: key_2.pub_key,
         }))
     }
 
-    pub async fn import_key(
+    pub fn import_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<LegacyTariKeyId>,
-    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
-        let encryption_key = match encryption_key {
-            Some(key) => key,
-            None => self.get_view_key().await?.key_id,
-        };
-        let key = self.created_encrypted_key(private_key, encryption_key).await?;
-        Ok(key)
+    ) -> Result<LegacyTariKeyId, KeyManagerError> {
+        let encryption_key = encryption_key.map(|key| self.convert_legacy_tari_key_id(&key)?);
+        let key = self.key_manager.import_key(private_key, encryption_key)?;
+        Ok(self.convert_key_id_to_legacy(&key))
     }
 
-    pub async fn create_encrypted_key_from_existing_key(
-        &self,
-        key_id: &LegacyTariKeyId,
-        encryption_key: Option<LegacyTariKeyId>,
-    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
-        let private_key = self.get_private_key(key_id).await?;
-        let encryption_key = match encryption_key {
-            Some(key) => key,
-            None => self.get_view_key().await?.key_id,
-        };
-        let key = self.created_encrypted_key(private_key, encryption_key).await?;
-        Ok(key)
-    }
 
-    pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        match &*self.wallet_type {
-            WalletType::DerivedKeys => {
-                self.get_private_key(&LegacyTariKeyId::Managed {
-                    branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
-                    index: 0,
-                })
-                .await
-            },
-            WalletType::Ledger(ledger) => ledger
-                .view_key
-                .clone()
-                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(format!("{ledger}"))),
-            WalletType::ProvidedKeys(wallet) => Ok(wallet.view_key.clone()),
-        }
-    }
-
-    async fn get_private_comms_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        let branch = TransactionKeyManagerBranch::Spend.get_branch_key();
-        let index = 0;
-
-        match &*self.wallet_type {
-            WalletType::DerivedKeys => {
-                self.get_private_key(&LegacyTariKeyId::Managed {
-                    branch: branch.clone(),
-                    index,
-                })
-                .await
-            },
-            WalletType::ProvidedKeys(wallet) => {
-                if let Some(pvt_comms_key) = &wallet.private_comms_key {
-                    Ok(pvt_comms_key.clone())
-                } else {
-                    let km = self
-                        .key_managers
-                        .get(&branch)
-                        .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?;
-                    let key = km.get_private_key(index)?;
-                    Ok(key)
-                }
-            },
-            WalletType::Ledger(_) => {
-                let km = self
-                    .key_managers
-                    .get(&branch)
-                    .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?;
-                let key = km.get_private_key(index)?;
-                Ok(key)
-            },
-        }
+    pub fn get_private_view_key(&self) -> PrivateKey {
+        self.key_manager.get_private_view_key()
     }
 
     /// Calculates a script key id from the spend key id, if a public key is provided, it will only return a result of
     /// the public keys match
-    pub async fn find_script_key_id_from_commitment_mask_key_id(
+    pub fn find_script_key_id_from_commitment_mask_key_id(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         public_script_key: Option<&CompressedPublicKey>,
-    ) -> Result<Option<LegacyTariKeyId>, KeyManagerServiceError> {
-        let script_key_id = LegacyTariKeyId::Derived {
-            key: commitment_mask_key_id.into(),
-        };
-
-        if let Some(key) = public_script_key {
-            let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
-            if *key == script_public_key {
-                return Ok(Some(script_key_id));
-            }
-            return Ok(None);
-        }
-        Ok(Some(script_key_id))
+    ) -> Result<Option<LegacyTariKeyId>, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let result = self.key_manager.find_script_key_id_from_commitment_mask_key_id(&key, public_script_key)?;
+        Ok(result.map(|key_id| self.convert_key_id_to_legacy(&key_id)))
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // General crypto section
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_commitment(
+    pub fn get_commitment(
         &self,
         private_key: &LegacyTariKeyId,
         value: &PrivateKey,
-    ) -> Result<CompressedCommitment, KeyManagerServiceError> {
-        let key = self.get_private_key(private_key).await?;
-        Ok(CompressedCommitment::from_commitment(
-            self.crypto_factories.commitment.commit(&key, value),
-        ))
+    ) -> Result<CompressedCommitment, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(private_key)?;
+        self.key_manager.get_commitment(&key, value)
     }
 
     /// Verify that the commitment matches the value and the spending key/mask
-    pub async fn verify_mask(
+    pub fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerServiceError> {
-        let commitment_mask_key = self.get_private_key(commitment_mask_key_id).await?;
-        self.crypto_factories
-            .range_proof
-            .verify_mask(&commitment.to_commitment()?, &commitment_mask_key, value)
-            .map_err(|e| e.into())
+    ) -> Result<bool, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        self.key_manager.verify_mask(commitment, &key, value)
     }
 
-    pub async fn get_diffie_hellman_shared_secret(
+    pub fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &LegacyTariKeyId,
         public_key: &CompressedPublicKey,
-    ) -> Result<CommsDHKE, KeyManagerServiceError> {
-        if let WalletType::Ledger(ledger) = &*self.wallet_type {
-            if let LegacyTariKeyId::Managed { branch, index } = secret_key_id {
-                match TransactionKeyManagerBranch::from_key(branch) {
-                    TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
-                        #[cfg(not(feature = "ledger"))]
-                        {
-                            return Err(KeyManagerServiceError::LedgerError(format!(
-                                "{} 'get_diffie_hellman_shared_secret' was called. ({} (has index {}))",
-                                LEDGER_NOT_SUPPORTED, ledger, index
-                            )));
-                        }
-
-                        #[cfg(feature = "ledger")]
-                        {
-                            return ledger_get_dh_shared_secret_dhke(
-                                ledger.account,
-                                *index,
-                                TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                                public_key,
-                            )
-                            .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()));
-                        }
-                    },
-                    _ => {},
-                }
-            }
-        }
-
-        let secret_key = self.get_private_key(secret_key_id).await?;
-        let shared_secret = CommsDHKE::new(&secret_key, &public_key.to_public_key()?);
-        Ok(shared_secret)
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(secret_key_id)?;
+        self.key_manager.get_diffie_hellman_shared_secret(&key, public_key)
     }
 
-    pub async fn get_diffie_hellman_stealth_domain_hasher(
-        &self,
-        secret_key_id: &LegacyTariKeyId,
-        public_key: &CompressedPublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::Ledger(ledger) => match secret_key_id {
-                LegacyTariKeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
-                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                        #[cfg(not(feature = "ledger"))]
-                        {
-                            Err(TransactionError::LedgerNotSupported(format!(
-                                "{} 'get_diffie_hellman_stealth_domain_hasher' was called. ({} (has index {}))",
-                                LEDGER_NOT_SUPPORTED, ledger, index
-                            )))
-                        }
-
-                        #[cfg(feature = "ledger")]
-                        {
-                            ledger_get_dh_shared_secret_dhke(
-                                ledger.account,
-                                *index,
-                                TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                                public_key,
-                            )
-                            .map_err(TransactionError::LedgerDeviceError)
-                            .map(diffie_hellman_stealth_domain_hasher_dhke)
-                        }
-                    },
-                    _ => Err(TransactionError::from(self.branch_not_supported_error(
-                        "get_diffie_hellman_stealth_domain_hasher",
-                        branch,
-                    ))),
-                },
-                _ => Err(self.key_id_not_supported_error(
-                    "get_diffie_hellman_stealth_domain_hasher",
-                    "KeyId::Managed",
-                    secret_key_id,
-                )),
-            },
-            _ => {
-                let secret_key = self.get_private_key(secret_key_id).await?;
-                let dh = CommsDHKE::new(&secret_key, &public_key.to_public_key()?);
-                Ok(diffie_hellman_stealth_domain_hasher_dhke(dh))
-            },
-        }
-    }
-
-    pub async fn generate_burn_claim_proof_signature(
+    pub fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
         claim_public_key: &CompressedPublicKey,
-    ) -> Result<CompressedSignature, TransactionError> {
-        let mask = self.get_private_key(commitment_mask_key_id).await?;
-        let commitment =
-            CompressedCommitment::from_commitment(self.crypto_factories.commitment.commit(&mask, &value.into()));
-
-        let message = ConfidentialOutputHasher::new("commitment_signature")
-            .chain(&commitment)
-            .chain(claim_public_key)
-            .finalize();
-
-        let s = UncompressedSignature::sign(&mask, message, &mut OsRng)
-            .map_err(|e| TransactionError::InvalidSignatureError(format!("Failed to sign burn claim proof: {}", e)))?;
-        Ok(CompressedSignature::new_from_schnorr(s))
+    ) -> Result<CompressedSignature, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        self.key_manager.generate_burn_claim_signature(&key, value, claim_public_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_script_signature(
+    pub fn get_script_signature(
         &self,
         script_key_id: &LegacyTariKeyId,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let commitment = self.get_commitment(commitment_mask_key_id, value).await?;
-        let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
-
-        match &*self.wallet_type {
-            WalletType::Ledger(ledger) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(TransactionError::LedgerNotSupported(format!(
-                        "{} 'get_script_signature' was called. ({})",
-                        LEDGER_NOT_SUPPORTED, ledger
-                    )))
-                }
-
-                #[cfg(feature = "ledger")]
-                {
-                    let signature_key = match script_key_id {
-                        LegacyTariKeyId::Managed { branch, index } => ScriptSignatureKey::Managed {
-                            branch: TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                            index: *index,
-                        },
-                        LegacyTariKeyId::Derived { key: key_str } => {
-                            let key = LegacyTariKeyId::from_str(key_str.to_string().as_str())
-                                .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                            ScriptSignatureKey::Derived {
-                                branch_key: self.get_private_key(&key).await?,
-                            }
-                        },
-                        _ => {
-                            return Err(self.key_id_not_supported_error(
-                                "get_script_signature",
-                                "KeyId::Managed or KeyId::Derived",
-                                script_key_id,
-                            ));
-                        },
-                    };
-
-                    let signature = ledger_get_script_signature(
-                        ledger.account,
-                        ledger.network,
-                        txi_version.as_u8(),
-                        &signature_key,
-                        value,
-                        &commitment_private_key,
-                        &commitment,
-                        *script_message,
-                    )
-                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?;
-                    Ok(signature)
-                }
-            },
-            _ => {
-                let r_a = PrivateKey::random(&mut OsRng);
-                let r_x = PrivateKey::random(&mut OsRng);
-                let r_y = PrivateKey::random(&mut OsRng);
-                let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
-                let ephemeral_pubkey = CompressedPublicKey::from_secret_key(&r_y);
-                let script_private_key = self.get_private_key(script_key_id).await?;
-
-                let challenge = TransactionInput::finalize_script_signature_challenge(
-                    txi_version,
-                    &(CompressedCommitment::from_commitment(ephemeral_commitment)),
-                    &ephemeral_pubkey,
-                    &self.get_public_key_at_key_id(script_key_id).await?,
-                    &commitment,
-                    script_message,
-                );
-
-                let script_signature = UncompressedComAndPubSignature::sign(
-                    value,
-                    &commitment_private_key,
-                    &script_private_key,
-                    &r_a,
-                    &r_x,
-                    &r_y,
-                    &challenge,
-                    &*self.crypto_factories.commitment,
-                )?;
-                Ok(ComAndPubSignature::new_from_capk_signature(script_signature))
-            },
-        }
+    ) -> Result<ComAndPubSignature, KeyManagerError> {
+        let script_key = self.convert_legacy_tari_key_id(script_key_id)?;
+        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        self.key_manager.get_script_signature(
+            &script_key,
+            &commitment_key,
+            value,
+            txi_version,
+            script_message,
+        )
     }
 
-    pub async fn get_partial_script_signature(
+    pub fn get_partial_script_signature(
         &self,
         commitment_mask_id: &LegacyTariKeyId,
         value: &PrivateKey,
@@ -983,422 +414,78 @@ where TBackend: TransactionKeyManagerBackend + 'static
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let private_commitment_mask = self.get_private_key(commitment_mask_id).await?;
-        let commitment = self.get_commitment(commitment_mask_id, value).await?;
-        let r_a = PrivateKey::random(&mut OsRng);
-        let r_x = PrivateKey::random(&mut OsRng);
-        let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
-        let challenge = TransactionInput::finalize_script_signature_challenge(
+    ) -> Result<ComAndPubSignature, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_id)?;
+        self.key_manager.get_partial_script_signature(
+            &key,
+            value,
             txi_version,
-            &CompressedCommitment::from_commitment(ephemeral_commitment),
             ephemeral_pubkey,
             script_public_key,
-            &commitment,
             script_message,
-        );
-
-        let script_signature = UncompressedComAndPubSignature::sign(
-            value,
-            &private_commitment_mask,
-            &PrivateKey::default(),
-            &r_a,
-            &r_x,
-            &PrivateKey::default(),
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
-        Ok(ComAndPubSignature::new_from_capk_signature(script_signature))
+        )
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // Transaction output section (transactions > transaction_components > transaction_output)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn construct_range_proof(
+    pub fn construct_range_proof(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: u64,
         min_value: u64,
-    ) -> Result<RangeProof, TransactionError> {
-        if self.crypto_factories.range_proof.range() < 64 &&
-            value >= 1u64.shl(&self.crypto_factories.range_proof.range())
-        {
-            return Err(TransactionError::BuilderError(
-                "Value provided is outside the range allowed by the range proof".into(),
-            ));
-        }
-
-        let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let proof_bytes_result = if min_value == 0 {
-            self.crypto_factories
-                .range_proof
-                .construct_proof(&commitment_private_key, value)
-        } else {
-            let extended_mask =
-                RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![commitment_private_key])?;
-
-            let extended_witness = RistrettoExtendedWitness {
-                mask: extended_mask,
-                value,
-                minimum_value_promise: min_value,
-            };
-
-            self.crypto_factories
-                .range_proof
-                .construct_extended_proof(vec![extended_witness], None)
-        };
-
-        let proof_bytes = proof_bytes_result
-            .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {err}")))?;
-
-        RangeProof::from_canonical_bytes(&proof_bytes).map_err(|_| {
-            TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())
-        })
+    ) -> Result<RangeProof, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        self.key_manager.construct_range_proof(&key, value, min_value)
     }
 
     #[allow(clippy::too_many_lines)]
-    pub async fn get_script_offset(
+    pub fn get_script_offset(
         &self,
         script_key_ids: &[LegacyTariKeyId],
         sender_offset_key_ids: &[LegacyTariKeyId],
-    ) -> Result<PrivateKey, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                let mut total_script_private_key = PrivateKey::default();
-                for script_key_id in script_key_ids {
-                    total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id).await?
-                }
-                let mut total_sender_offset_private_key = PrivateKey::default();
-                for sender_offset_key_id in sender_offset_key_ids {
-                    total_sender_offset_private_key =
-                        total_sender_offset_private_key + self.get_private_key(sender_offset_key_id).await?;
-                }
-                let script_offset = total_script_private_key - total_sender_offset_private_key;
-                Ok(script_offset)
-            },
-            WalletType::Ledger(ledger) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(TransactionError::LedgerNotSupported(format!(
-                        "{} 'get_script_offset' was called. ({})",
-                        LEDGER_NOT_SUPPORTED, ledger
-                    )))
-                }
-
-                #[cfg(feature = "ledger")]
-                {
-                    let mut partial_script_offset = PrivateKey::default();
-                    let mut derived_script_keys = vec![];
-                    let mut script_key_indexes = vec![];
-                    for script_key_id in script_key_ids {
-                        match script_key_id {
-                            LegacyTariKeyId::Managed { branch, index } => {
-                                match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend |
-                                    TransactionKeyManagerBranch::PreMine |
-                                    TransactionKeyManagerBranch::RandomKey |
-                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                                        script_key_indexes.push((
-                                            TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                                            *index,
-                                        ));
-                                    },
-                                    _ => {
-                                        partial_script_offset =
-                                            &partial_script_offset + self.get_private_key(script_key_id).await?
-                                    },
-                                }
-                            },
-                            LegacyTariKeyId::Derived { key } => {
-                                let key_id = LegacyTariKeyId::from_str(key.to_string().as_str())
-                                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                                // Note: If the derived key is a TariKeyId::Managed, but not allowed in
-                                //       'self.get_private_key(...)' this will error.
-                                let k = self.get_private_key(&key_id).await?;
-                                derived_script_keys.push(k);
-                            },
-                            LegacyTariKeyId::Imported { .. } |
-                            LegacyTariKeyId::Encrypted { .. } |
-                            LegacyTariKeyId::DHCommitmentMask { .. } |
-                            LegacyTariKeyId::DHEncryptedData { .. } => {
-                                partial_script_offset =
-                                    &partial_script_offset + self.get_private_key(script_key_id).await?
-                            },
-                            LegacyTariKeyId::Zero => {},
-                        }
-                    }
-
-                    let mut derived_offset_keys = vec![];
-                    let mut sender_offset_indexes = vec![];
-                    for sender_offset_key_id in sender_offset_key_ids {
-                        match sender_offset_key_id {
-                            LegacyTariKeyId::Managed { branch, index } => {
-                                match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend |
-                                    TransactionKeyManagerBranch::PreMine |
-                                    TransactionKeyManagerBranch::RandomKey |
-                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                                        sender_offset_indexes.push((
-                                            TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                                            *index,
-                                        ));
-                                    },
-                                    _ => {
-                                        partial_script_offset =
-                                            partial_script_offset - self.get_private_key(sender_offset_key_id).await?;
-                                    },
-                                }
-                            },
-                            LegacyTariKeyId::Derived { key } => {
-                                let key_id = LegacyTariKeyId::from_str(key.to_string().as_str())
-                                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                                // Note: If the derived key is a TariKeyId::Managed, but not allowed in
-                                //       'self.get_private_key(...)' this will error.
-                                let k = self.get_private_key(&key_id).await?;
-                                derived_offset_keys.push(k);
-                            },
-                            LegacyTariKeyId::Imported { .. } |
-                            LegacyTariKeyId::Encrypted { .. } |
-                            LegacyTariKeyId::DHCommitmentMask { .. } |
-                            LegacyTariKeyId::DHEncryptedData { .. } => {
-                                partial_script_offset =
-                                    partial_script_offset - self.get_private_key(sender_offset_key_id).await?;
-                            },
-                            LegacyTariKeyId::Zero => {},
-                        }
-                    }
-
-                    let script_offset = ledger_get_script_offset(
-                        ledger.account,
-                        &partial_script_offset,
-                        &derived_script_keys,
-                        &script_key_indexes,
-                        &derived_offset_keys,
-                        &sender_offset_indexes,
-                    )
-                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?;
-                    Ok(script_offset)
-                }
-            },
+    ) -> Result<PrivateKey, KeyManagerError> {
+        let mut script_keys = Vec::new();
+        for key in script_key_ids {
+            script_keys.push(self.convert_legacy_tari_key_id(key)?);
         }
+        let mut sender_offset_keys = Vec::new();
+        for key in sender_offset_key_ids {
+            sender_offset_keys.push(self.convert_legacy_tari_key_id(key)?);
+        }
+        self.key_manager.get_script_offset(&script_keys, &sender_offset_keys)
     }
 
-    async fn get_metadata_signature_ephemeral_private_key_pair(
-        &self,
-        nonce_id: &LegacyTariKeyId,
-        range_proof_type: RangeProofType,
-    ) -> Result<(PrivateKey, PrivateKey), TransactionError> {
-        let nonce_private_key = self.get_private_key(nonce_id).await?;
-        // With BulletProofPlus type range proofs, the nonce is a secure random value
-        // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
-        let nonce_a = match range_proof_type {
-            RangeProofType::BulletProofPlus => {
-                let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-                    "metadata_signature_ephemeral_nonce_a",
-                );
-                let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
-                PrivateKey::from_uniform_bytes(a_hash.as_ref()).map_err(|_| {
-                    TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
-                })
-            },
-            RangeProofType::RevealedValue => Ok(PrivateKey::default()),
-        }?;
-
-        let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-            "metadata_signature_ephemeral_nonce_b",
-        );
-        let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
-        let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_ref()).map_err(|_| {
-            TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
-        })?;
-        Ok((nonce_a, nonce_b))
-    }
-
-
-    pub async fn sign_script_message(
+    pub fn sign_script_message(
         &self,
         private_key_id: &LegacyTariKeyId,
         challenge: &[u8],
-    ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::Ledger(ledger) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(TransactionError::LedgerNotSupported(format!(
-                        "{} 'sign_script_message' was called. ({})",
-                        LEDGER_NOT_SUPPORTED, ledger
-                    )))
-                }
-
-                #[cfg(feature = "ledger")]
-                {
-                    match private_key_id {
-                        LegacyTariKeyId::Managed { branch, index } => {
-                            let signature = ledger_get_script_schnorr_signature(
-                                ledger.account,
-                                *index,
-                                &TransactionKeyManagerBranch::from_key(branch).into_ledger().unwrap(),
-                                challenge,
-                            )?;
-                            Ok(signature)
-                        },
-                        _ => Err(self.key_id_not_supported_error(
-                            "sign_script_message",
-                            "KeyId::Managed",
-                            private_key_id,
-                        )),
-                    }
-                }
-            },
-            _ => {
-                let private_key = self.get_private_key(private_key_id).await?;
-                let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut OsRng)?;
-
-                Ok(CompressedCheckSigSchnorrSignature::new_from_schnorr(signature))
-            },
-        }
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(private_key_id)?;
+        self.key_manager.sign_script_message(&key, challenge)
     }
 
-    pub async fn sign_script_message_with_spend_key(
+    pub fn sign_script_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
-    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError> {
-        let spend_key = self.get_spend_key().await?;
-
-        if let Some(sender_offset_pub_key) = sender_offset_pub_key {
-            return self
-                .sign_script_message(
-                    &self
-                        .add_offset_to_spend_key(&spend_key.key_id, sender_offset_pub_key)
-                        .await?,
-                    message,
-                )
-                .await
-                .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
-        } else {
-            return self
-                .sign_script_message(&spend_key.key_id, message)
-                .await
-                .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
-        }
+    ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
+        self.key_manager.sign_script_message_with_spend_key(message, sender_offset_pub_key)
     }
 
-    pub async fn sign_message(
-        &self,
-        message: &[u8],
-        sender_offset_pub_key: Option<&CompressedPublicKey>,
-    ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError> {
-        if matches!(*self.wallet_type, WalletType::Ledger(_)) {
-            return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(
-                "sign_message requires software keys".to_string(),
-            ));
-        }
-
-        let spend_key = self.get_spend_key().await?;
-
-        if let Some(sender_offset_pub_key) = sender_offset_pub_key {
-            let spend_key_id = &self
-                .add_offset_to_spend_key(&spend_key.key_id, sender_offset_pub_key)
-                .await?;
-            return SignatureWithDomain::<WalletMessageSigningDomain>::sign(
-                &self.get_private_key(spend_key_id).await?,
-                message,
-                &mut OsRng,
-            )
-            .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
-        } else {
-            return SignatureWithDomain::<WalletMessageSigningDomain>::sign(
-                &self.get_private_key(&spend_key.key_id).await?,
-                message,
-                &mut OsRng,
-            )
-            .map_err(|e| KeyManagerServiceError::UnknownError(e.to_string()));
-        }
-    }
-
-    pub async fn sign_with_nonce_and_challenge(
+    pub fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &LegacyTariKeyId,
         nonce_key_id: &LegacyTariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<CompressedSignature, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::Ledger(ledger) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(TransactionError::LedgerNotSupported(format!(
-                        "{} 'sign_with_nonce_and_challenge' was called. ({})",
-                        LEDGER_NOT_SUPPORTED, ledger
-                    )))
-                }
-
-                #[cfg(feature = "ledger")]
-                {
-                    match private_key_id {
-                        LegacyTariKeyId::Managed {
-                            branch: private_key_branch,
-                            index: private_key_index,
-                        } => match nonce_key_id {
-                            LegacyTariKeyId::Managed {
-                                branch: nonce_branch,
-                                index: nonce_index,
-                            } => {
-                                if TransactionKeyManagerBranch::is_ledger_branch(private_key_branch) &&
-                                    TransactionKeyManagerBranch::is_ledger_branch(nonce_branch)
-                                {
-                                    let signature = ledger_get_raw_schnorr_signature(
-                                        ledger.account,
-                                        *private_key_index,
-                                        &TransactionKeyManagerBranch::from_key(private_key_branch)
-                                            .into_ledger()
-                                            .unwrap(),
-                                        *nonce_index,
-                                        &TransactionKeyManagerBranch::from_key(nonce_branch)
-                                            .into_ledger()
-                                            .unwrap(),
-                                        challenge,
-                                    )
-                                    .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                                    Ok(signature)
-                                } else {
-                                    let private_key = self.get_private_key(private_key_id).await?;
-                                    let private_nonce = self.get_private_key(nonce_key_id).await?;
-                                    let signature = UncompressedSignature::sign_raw_uniform(
-                                        &private_key,
-                                        private_nonce,
-                                        challenge,
-                                    )?;
-
-                                    Ok(CompressedSignature::new_from_schnorr(signature))
-                                }
-                            },
-                            _ => Err(self.key_id_not_supported_error(
-                                "sign_with_nonce_and_challenge",
-                                "KeyId::Managed",
-                                nonce_key_id,
-                            )),
-                        },
-                        _ => Err(self.key_id_not_supported_error(
-                            "sign_with_nonce_and_challenge",
-                            "KeyId::Managed",
-                            private_key_id,
-                        )),
-                    }
-                }
-            },
-            _ => {
-                let private_key = self.get_private_key(private_key_id).await?;
-                let private_nonce = self.get_private_key(nonce_key_id).await?;
-                let signature = UncompressedSignature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
-
-                Ok(CompressedSignature::new_from_schnorr(signature))
-            },
-        }
+    ) -> Result<CompressedSignature, KeyManagerError> {
+        let private_key = self.convert_legacy_tari_key_id(private_key_id)?;
+        let nonce_key = self.convert_legacy_tari_key_id(nonce_key_id)?;
+        self.key_manager.sign_with_nonce_and_challenge(&private_key, &nonce_key, challenge)
     }
 
-    pub async fn get_metadata_signature(
+    pub fn get_metadata_signature(
         &mut self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value_as_private_key: &PrivateKey,
@@ -1406,46 +493,20 @@ where TBackend: TransactionKeyManagerBackend + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
-        // Use the pubkey, but generate the nonce on ledger
-        let ephemeral_pubkey = self
-            .get_next_key(&TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
-            .await?;
-        let receiver_partial_metadata_signature = self
-            .get_receiver_partial_metadata_signature(
-                commitment_mask_key_id,
-                value_as_private_key,
-                &sender_offset_public_key,
-                &ephemeral_pubkey.pub_key,
-                txo_version,
-                metadata_signature_message,
-                range_proof_type,
-            )
-            .await?;
-        let commitment = self
-            .get_commitment(commitment_mask_key_id, value_as_private_key)
-            .await?;
-        let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
-        let sender_partial_metadata_signature = self
-            .get_sender_partial_metadata_signature(
-                &ephemeral_pubkey.key_id,
-                sender_offset_key_id,
-                &commitment,
-                ephemeral_commitment,
-                txo_version,
-                metadata_signature_message,
-            )
-            .await?;
-        let metadata_signature = ComAndPubSignature::new_from_capk_signature(
-            &receiver_partial_metadata_signature.to_capk_signature()? +
-                &sender_partial_metadata_signature.to_capk_signature()?,
-        );
-        Ok(metadata_signature)
+    ) -> Result<ComAndPubSignature, KeyManagerError> {
+        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let sender_key = self.convert_legacy_tari_key_id(sender_offset_key_id)?;
+        self.key_manager.get_metadata_signature(
+            &commitment_key,
+            value_as_private_key,
+            &sender_key,
+            txo_version,
+            metadata_signature_message,
+            range_proof_type,
+        )
     }
 
-    #[allow(unused_variables)]
-    pub async fn get_one_sided_metadata_signature(
+    pub fn get_one_sided_metadata_signature(
         &mut self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: MicroMinotari,
@@ -1455,60 +516,22 @@ where TBackend: TransactionKeyManagerBackend + 'static
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
-                    script,
-                    metadata_signature_message_common,
-                );
-                let value = value.into();
-                self.get_metadata_signature(
-                    commitment_mask_key_id,
-                    &value,
-                    sender_offset_key_id,
-                    txo_version,
-                    &metadata_signature_message,
-                    range_proof_type,
-                )
-                .await
-            },
-            WalletType::Ledger(ledger) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(TransactionError::LedgerNotSupported(format!(
-                        "{} 'get_one_sided_metadata_signature' was called. ({})",
-                        LEDGER_NOT_SUPPORTED, ledger
-                    )))
-                }
-
-                #[cfg(feature = "ledger")]
-                {
-                    let sender_offset_key_index = sender_offset_key_id.managed_index().ok_or_else(|| {
-                        TransactionError::KeyManagerError("Invalid index for sender offset".to_string())
-                    })?;
-
-                    let commitment_mask = self.get_private_key(commitment_mask_key_id).await?;
-
-                    let comm_and_pub_sig = ledger_get_one_sided_metadata_signature(
-                        ledger.account,
-                        ledger.network,
-                        txo_version.as_u8(),
-                        value.into(),
-                        sender_offset_key_index,
-                        &commitment_mask,
-                        receiver_address,
-                        metadata_signature_message_common,
-                    )
-                    .map_err(TransactionError::LedgerDeviceError)?;
-
-                    Ok(comm_and_pub_sig)
-                }
-            },
-        }
+    ) -> Result<ComAndPubSignature, KeyManagerError> {
+        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let sender_key = self.convert_legacy_tari_key_id(sender_offset_key_id)?;
+        self.key_manager.get_one_sided_metadata_signature(
+            &commitment_key,
+            value,
+            &sender_key,
+            txo_version,
+            metadata_signature_message_common,
+            range_proof_type,
+            script,
+            receiver_address,
+        )
     }
 
-    pub async fn get_receiver_partial_metadata_signature(
+    pub fn get_receiver_partial_metadata_signature(
         &mut self,
         commitment_mask_key_id: &LegacyTariKeyId,
         value: &PrivateKey,
@@ -1517,42 +540,23 @@ where TBackend: TransactionKeyManagerBackend + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_commitment_nonce = self
-            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
-            .await?;
-        let (nonce_a, nonce_b) = self
-            .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)
-            .await?;
-        let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);
-        let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let commitment = self.crypto_factories.commitment.commit(&commitment_private_key, value);
-        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
-            txo_version,
-            sender_offset_public_key,
-            &(CompressedCommitment::from_commitment(ephemeral_commitment)),
-            ephemeral_pubkey,
-            &(CompressedCommitment::from_commitment(commitment)),
-            metadata_signature_message,
-        );
-
-        let metadata_signature = UncompressedComAndPubSignature::sign(
+    ) -> Result<ComAndPubSignature, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        self.key_manager.get_receiver_partial_metadata_signature(
+            &key,
             value,
-            &commitment_private_key,
-            &PrivateKey::default(),
-            &nonce_a,
-            &nonce_b,
-            &PrivateKey::default(),
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
-        Ok(ComAndPubSignature::new_from_capk_signature(metadata_signature))
+            sender_offset_public_key,
+            ephemeral_pubkey,
+            txo_version,
+            metadata_signature_message,
+            range_proof_type,
+        )
     }
 
     // In the case where the sender is an aggregated signer, we need to parse in the total public key shares, this is
     // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
     // signers, this can be left as none
-    pub async fn get_sender_partial_metadata_signature(
+    pub fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &LegacyTariKeyId,
         sender_offset_key_id: &LegacyTariKeyId,
@@ -1560,60 +564,34 @@ where TBackend: TransactionKeyManagerBackend + 'static
         ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id).await?;
-        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
-
-        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
-            txo_version,
-            &sender_offset_public_key,
-            ephemeral_commitment,
-            &ephemeral_pubkey,
+    ) -> Result<ComAndPubSignature, KeyManagerError> {
+        let nonce = self.convert_legacy_tari_key_id(ephemeral_private_nonce_id)?;
+        let sender_key = self.convert_legacy_tari_key_id(sender_offset_key_id)?;
+        self.key_manager.get_sender_partial_metadata_signature(
+            &nonce,
+            &sender_key,
             commitment,
+            ephemeral_commitment,
+            txo_version,
             metadata_signature_message,
-        );
-
-        let sender_partial_metadata_signature_self = self
-            .sign_with_nonce_and_challenge(sender_offset_key_id, ephemeral_private_nonce_id, &challenge)
-            .await?;
-
-        let metadata_signature = ComAndPubSignature::new(
-            Default::default(),
-            sender_partial_metadata_signature_self
-                .get_compressed_public_nonce()
-                .clone(),
-            Default::default(),
-            Default::default(),
-            sender_partial_metadata_signature_self.get_signature().clone(),
-        );
-
-        Ok(metadata_signature)
+        )
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // Transaction kernel section (transactions > transaction_components > transaction_kernel)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_txo_private_kernel_offset(
+    pub fn get_txo_private_kernel_offset(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         nonce_id: &LegacyTariKeyId,
-    ) -> Result<PrivateKey, TransactionError> {
-        let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-            "kernel_excess_offset",
-        );
-        let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let nonce_private_key = self.get_private_key(nonce_id).await?;
-        let key_hash = hasher
-            .chain(commitment_private_key.as_bytes())
-            .chain(nonce_private_key.as_bytes())
-            .finalize();
-        PrivateKey::from_uniform_bytes(key_hash.as_ref()).map_err(|_| {
-            TransactionError::KeyManagerError("Invalid private key for kernel signature nonce".to_string())
-        })
+    ) -> Result<PrivateKey, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let nonce = self.convert_legacy_tari_key_id(nonce_id)?;
+        self.key_manager.get_txo_private_kernel_offset(&key, &nonce)
     }
 
-    pub async fn get_partial_txo_kernel_signature(
+    pub fn get_partial_txo_kernel_signature(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         nonce_id: &LegacyTariKeyId,
@@ -1623,233 +601,108 @@ where TBackend: TransactionKeyManagerBackend + 'static
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
-    ) -> Result<CompressedSignature, TransactionError> {
-        let private_key = self.get_private_key(commitment_mask_key_id).await?;
-        // We cannot use an offset with a coinbase tx as this will not allow us to check the coinbase commitment and
-        // because the offset function does not know if its a coinbase or not, we need to know if we need to bypass it
-        // or not
-        let private_signing_key = if kernel_features.is_coinbase() {
-            private_key
-        } else {
-            private_key -
-                &self
-                    .get_txo_private_kernel_offset(commitment_mask_key_id, nonce_id)
-                    .await?
-        };
-
-        // We need to check if its input or output for which we are singing. Signing with an input, we need to sign
-        // with `-k` while outputs are `k`
-        let final_signing_key = if txo_type == TxoStage::Output {
-            private_signing_key
-        } else {
-            PrivateKey::default() - &private_signing_key
-        };
-
-        let private_nonce = self.get_private_key(nonce_id).await?;
-        let challenge = TransactionKernel::finalize_kernel_signature_challenge(
-            kernel_version,
+    ) -> Result<CompressedSignature, KeyManagerError> {
+        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let nonce_key = self.convert_legacy_tari_key_id(nonce_id)?;
+        self.key_manager.get_partial_txo_kernel_signature(
+            &commitment_key,
+            &nonce_key,
             total_nonce,
             total_excess,
+            kernel_version,
             kernel_message,
-        );
-
-        let signature = UncompressedSignature::sign_raw_uniform(&final_signing_key, private_nonce, &challenge)?;
-        Ok(CompressedSignature::new_from_schnorr(signature))
+            kernel_features,
+            txo_type,
+        )
     }
 
-    pub async fn get_txo_kernel_signature_excess_with_offset(
+    pub fn get_txo_kernel_signature_excess_with_offset(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         nonce: &LegacyTariKeyId,
-    ) -> Result<CompressedPublicKey, TransactionError> {
-        let private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let offset = self
-            .get_txo_private_kernel_offset(commitment_mask_key_id, nonce)
-            .await?;
-        let excess = private_key - &offset;
-        Ok(CompressedPublicKey::from_secret_key(&excess))
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let nonce_key = self.convert_legacy_tari_key_id(nonce)?;
+        self.key_manager.get_txo_kernel_signature_excess_with_offset(&commitment_key, &nonce_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // Encrypted data section (transactions > transaction_components > encrypted_data)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn encrypt_data_for_recovery(
+    pub fn encrypt_data_for_recovery(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         custom_recovery_key_id: Option<&LegacyTariKeyId>,
         value: u64,
         payment_id: MemoField,
-    ) -> Result<EncryptedData, TransactionError> {
-        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            self.get_private_key(key_id).await?
+    ) -> Result<EncryptedData, KeyManagerError> {
+        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        let custom_recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            Some(self.convert_legacy_tari_key_id(key_id)?)
         } else {
-            self.get_private_view_key().await?
+            None
         };
-        let value_key = value.into();
-        let commitment = self.get_commitment(commitment_mask_key_id, &value_key).await?;
-        let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let data = EncryptedData::encrypt_data(
-            &recovery_key,
-            &commitment,
-            value.into(),
-            &commitment_private_key,
+        self.key_manager.encrypt_data_for_recovery(
+            &commitment_key,
+            custom_recovery_key.as_ref(),
+            value,
             payment_id,
-        )?;
-        Ok(data)
+        )
     }
 
-    pub async fn extract_payment_id_from_encrypted_data(
+    pub fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
         custom_recovery_key_id: Option<&LegacyTariKeyId>,
-    ) -> Result<MemoField, TransactionError> {
-        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            self.get_private_key(key_id).await?
+    ) -> Result<MemoField, KeyManagerError> {
+        let custom_recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            Some(self.convert_legacy_tari_key_id(key_id)?)
         } else {
-            self.get_private_view_key().await?
+            None
+        };
+        let recovery_key = if let Some(key_id) = custom_recovery_key {
+            self.key_manager.get_private_key(&key_id)?
+        } else {
+            self.get_private_view_key()?
         };
         let (_, _, payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
         Ok(payment_id)
     }
 
-    pub async fn try_output_key_recovery(
+    pub fn try_output_key_recovery(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, TransactionError> {
-        let (value, private_key, payment_id, key_id) =
-            match EncryptedData::decrypt_data(&self.get_private_view_key().await?, commitment, encrypted_data) {
-                Ok((value, private_key, payment_id)) => {
-                    let key = self.import_key(private_key.clone(), None).await?;
-                    (value, private_key, payment_id, key)
-                },
-                Err(_) => {
-                    // so this is not change, lets try with the offset key
-                    let view_key = self.get_view_key().await?.key_id;
-                    let shared_secret = self
-                        .get_diffie_hellman_shared_secret(&view_key, sender_offset_public_key)
-                        .await?;
-
-                    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-                    match EncryptedData::decrypt_data(&encryption_key, commitment, encrypted_data) {
-                        Ok((value, private_key, payment_id)) => {
-                            let key = LegacyTariKeyId::DHCommitmentMask {
-                                public_key: sender_offset_public_key.clone(),
-                                private_key: view_key.into(),
-                            };
-                            if self.get_private_key(&key).await? == private_key {
-                                (value, private_key, payment_id, key)
-                            } else {
-                                let key = self.import_key(private_key.clone(), None).await?;
-                                (value, private_key, payment_id, key)
-                            }
-                        },
-                        Err(_) => return Ok(None),
-                    }
-                },
-            };
-        self.crypto_factories
-            .range_proof
-            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
-
-        Ok(Some((key_id, value, payment_id)))
+    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, KeyManagerError> {
+        let res = self.key_manager.try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)?;
+        Ok(res.map(|(key_id, value, payment_id)| {
+            (
+                self.convert_key_id_to_legacy(&key_id),
+                value,
+                payment_id,
+            )
+        }))
     }
 
-    pub async fn is_this_output_ours(
+    pub fn is_this_output_ours(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<PrivateKey>,
-    ) -> Result<bool, TransactionError> {
-        let recovery_key = if let Some(key) = custom_recovery_key_id {
-            key
-        } else {
-            self.get_private_view_key().await?
-        };
-        let (value, private_key, _payment_id) =
-            match EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data) {
-                Ok(res) => res,
-                Err(_) => return Ok(false),
-            };
-        self.crypto_factories
-            .range_proof
-            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
-        Ok(true)
+    ) -> Result<bool, KeyManagerError> {
+       self.key_manager.is_this_output_ours(commitment, encrypted_data, custom_recovery_key_id)
     }
 
-    pub async fn stealth_address_script_spending_key(
+    pub fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &LegacyTariKeyId,
         spend_key: &CompressedPublicKey,
-    ) -> Result<CompressedPublicKey, TransactionError> {
-        let private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let hasher =
-            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-        let hasher = hasher.chain(private_key.as_bytes()).finalize();
-        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
-            .map_err(|_| KeyManagerServiceError::UnknownError("Invalid commitment mask private key".to_string()))?;
-        let public_key = CompressedPublicKey::from_secret_key(&private_key);
-        let public_key = spend_key.to_public_key()? + &public_key.to_public_key()?;
-        Ok(CompressedPublicKey::new_from_pk(public_key))
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
+        self.key_manager.stealth_address_script_spending_key(&key, spend_key)
     }
 
-    async fn prepare_cipher(
-        &self,
-        encryption_key_id: Option<&LegacyTariKeyId>,
-    ) -> Result<XChaCha20Poly1305, KeyManagerServiceError> {
-        let encryption_key = match encryption_key_id {
-            Some(key_id) => self.get_private_key(key_id).await?,
-            None => self.get_private_view_key().await?,
-        };
-        let hasher =
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerTransactionsHashDomain>::new_with_label("key_encryption");
-        let hash = hasher.chain(encryption_key.as_bytes()).finalize();
-        let key_ga = Key::from_slice(hash.as_ref());
-        Ok(XChaCha20Poly1305::new(key_ga))
-    }
-
-    async fn encrypt_key(
-        &self,
-        key: PrivateKey,
-        encryption_key_id: Option<&LegacyTariKeyId>,
-    ) -> Result<Vec<u8>, KeyManagerServiceError> {
-        let cipher = self.prepare_cipher(encryption_key_id).await?;
-        let domain = b"key".to_vec();
-
-        let encrypted = encrypt_bytes_integral_nonce(&cipher, domain.clone(), Hidden::hide(key.to_vec()))
-            .map_err(KeyManagerServiceError::EncryptionFailed)?;
-
-        Ok(encrypted)
-    }
-
-    pub async fn encrypted_key(
-        &self,
-        key_id: &LegacyTariKeyId,
-        encryption_key_id: Option<&LegacyTariKeyId>,
-    ) -> Result<Vec<u8>, KeyManagerServiceError> {
-        let key = self.get_private_key(key_id).await?;
-        self.encrypt_key(key, encryption_key_id).await
-    }
-
-    pub async fn import_encrypted_key(
-        &self,
-        encrypted: Vec<u8>,
-        encryption_key_id: Option<&LegacyTariKeyId>,
-    ) -> Result<LegacyTariKeyId, KeyManagerServiceError> {
-        let cipher = self.prepare_cipher(encryption_key_id).await?;
-        let domain = b"key".to_vec();
-
-        let mut decrypted_data = decrypt_bytes_integral_nonce(&cipher, domain.clone(), &encrypted)
-            .map_err(KeyManagerServiceError::DecryptionFailed)?;
-
-        let key = PrivateKey::from_vec(&decrypted_data)
-            .map_err(|err| KeyManagerServiceError::DecryptionFailed(err.to_string()))?;
-
-        decrypted_data.zeroize();
-        let imported_key = self.import_key(key, None).await?;
-        Ok(imported_key)
-    }
 }

@@ -59,13 +59,13 @@ use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_fact
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     generate_coinbase,
+    key_manager::create_new_random_key_manager,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
     },
     MicroMinotari,
-    key_manager::create_new_random_key_manager,
 };
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};

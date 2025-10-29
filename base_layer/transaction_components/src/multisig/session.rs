@@ -104,8 +104,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
-        let sender_offset_key = self
-            .key_manager.get_random_key(None, true)?;
+        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
 
         let recipient_spend_key = recipient.public_spend_key();
 
@@ -155,13 +154,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .sign_as_sender_and_receiver_verified(&mut self.key_manager, &sender_offset_key.key_id, &recipient)?
             .try_build(&self.key_manager)?;
 
-        tx_builder
-            .add_recipient(
-                recipient,
-                output.clone(),
-                Some(sender_offset_key.key_id),
-                Some(encryption_key_id),
-            )?;
+        tx_builder.add_recipient(
+            recipient,
+            output.clone(),
+            Some(sender_offset_key.key_id),
+            Some(encryption_key_id),
+        )?;
 
         let finalized_builder = tx_builder.build()?;
 
@@ -258,8 +256,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         tx_builder.with_fee_per_gram(fee_per_gram);
         tx_builder.with_lock_height(0);
 
-        tx_builder
-            .add_stealth_recipient(recipient, total_amount, OutputFeatures::default(), payment_id.clone())?;
+        tx_builder.add_stealth_recipient(recipient, total_amount, OutputFeatures::default(), payment_id.clone())?;
 
         let tx = match tx_builder.build() {
             Ok(tx) => tx,
