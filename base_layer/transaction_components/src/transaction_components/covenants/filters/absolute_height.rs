@@ -77,10 +77,10 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_out_if_height_not_reached() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
-        let input = create_input(&key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 42, |_| {}, &key_manager).await;
+        let input = create_input(&mut key_manager).await;
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 42, |_| {}, &mut key_manager).await;
 
         let mut output_set = OutputSet::new(&outputs);
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
@@ -90,10 +90,10 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_reached() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
-        let input = create_input(&key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;
+        let input = create_input(&mut key_manager).await;
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &mut key_manager).await;
 
         let mut output_set = OutputSet::new(&outputs);
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
@@ -103,10 +103,10 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_exceeded() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let covenant = covenant!(absolute_height(@uint(42))).unwrap();
-        let input = create_input(&key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;
+        let input = create_input(&mut key_manager).await;
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &mut key_manager).await;
 
         let mut output_set = OutputSet::new(&outputs);
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();

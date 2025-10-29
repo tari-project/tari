@@ -606,7 +606,7 @@ pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: Str
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output(utxos, &mut world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -625,7 +625,7 @@ async fn create_tx_custom_fee_per_gram(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &mut world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -644,7 +644,7 @@ async fn create_tx_custom_lock(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &mut world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }

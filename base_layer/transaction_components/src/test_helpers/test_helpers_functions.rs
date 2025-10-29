@@ -63,7 +63,7 @@ use crate::{
 pub async fn create_test_input<KM: TransactionKeyManagerInterface>(
     amount: MicroMinotari,
     maturity: u64,
-    key_manager: &KM,
+    key_manager: &mut KM,
     coinbase_extra: Vec<u8>,
     payment_id: Option<MemoField>,
 ) -> WalletOutput {
@@ -102,7 +102,7 @@ pub struct TestParams {
 }
 
 impl TestParams {
-    pub async fn new<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TestParams {
+    pub async fn new<KM: TransactionKeyManagerInterface>(key_manager: &mut KM) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -144,7 +144,7 @@ impl TestParams {
     pub async fn create_output<KM: TransactionKeyManagerInterface>(
         &self,
         params: UtxoTestParams,
-        key_manager: &KM,
+        key_manager: &mut KM,
     ) -> Result<WalletOutput, String> {
         let version = params.output_version.unwrap_or_default();
         let input_data = params.input_data.unwrap_or_else(|| inputs!(self.script_key_pk.clone()));
@@ -176,7 +176,7 @@ impl TestParams {
     pub async fn create_input<KM: TransactionKeyManagerInterface>(
         &self,
         params: UtxoTestParams,
-        key_manager: &KM,
+        key_manager: &mut KM,
     ) -> WalletOutput {
         self.create_output(params, key_manager).await.unwrap()
     }
@@ -260,7 +260,7 @@ pub fn create_signature(
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
 pub async fn create_random_signature_from_secret_key<KM: TransactionKeyManagerInterface>(
-    key_manager: &KM,
+    key_manager: &mut KM,
     secret_key_id: TariKeyId,
     fee: MicroMinotari,
     lock_height: u64,
@@ -308,7 +308,7 @@ pub async fn create_coinbase_wallet_output<KM: TransactionKeyManagerInterface>(
     height: u64,
     extra: Option<CoinBaseExtra>,
     range_proof_type: RangeProofType,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> WalletOutput {
     let rules = create_consensus_manager();
     let constants = rules.consensus_constants(height);
@@ -339,7 +339,7 @@ pub async fn create_wallet_output_with_data<KM: TransactionKeyManagerInterface>(
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroMinotari,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> Result<WalletOutput, String> {
     test_params
         .create_output(
@@ -506,7 +506,7 @@ pub async fn create_tx<KM: TransactionKeyManagerInterface>(
     input_maturity: u64,
     output_count: usize,
     output_features: OutputFeatures,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> std::io::Result<(Transaction, Vec<WalletOutput>, Vec<WalletOutput>)> {
     let (inputs, outputs) = create_wallet_outputs(
         amount,
@@ -533,7 +533,7 @@ pub async fn create_wallet_outputs<KM: TransactionKeyManagerInterface>(
     output_features: &OutputFeatures,
     output_script: &TariScript,
     output_covenant: &Covenant,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> std::io::Result<(Vec<WalletOutput>, Vec<(WalletOutput, TariKeyId)>)> {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
@@ -639,7 +639,7 @@ pub async fn create_transaction_with<KM: TransactionKeyManagerInterface>(
 /// The output features will be applied to every output
 pub async fn spend_utxos<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> (Transaction, Vec<WalletOutput>) {
     let (finalized_tx, mut outputs) = create_test_transaction(schema, key_manager).await;
     let txn = finalized_tx.transaction.clone();
@@ -652,7 +652,7 @@ pub async fn spend_utxos<KM: TransactionKeyManagerInterface>(
 #[allow(clippy::too_many_lines)]
 pub async fn create_test_transaction<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> (FinalizedTransaction, Vec<WalletOutput>) {
     let mut outputs = Vec::with_capacity(schema.to.len());
     let builder = create_test_transaction_internal(schema, key_manager, &mut outputs).await;
@@ -664,7 +664,7 @@ pub async fn create_test_transaction<KM: TransactionKeyManagerInterface>(
 #[allow(clippy::too_many_lines)]
 async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,
-    key_manager: &KM,
+    key_manager: &mut KM,
     outputs: &mut Vec<WalletOutput>,
 ) -> TransactionBuilder<KM> {
     let constants = ConsensusManager::builder(Network::LocalNet)
@@ -751,7 +751,7 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
 
 pub async fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
     commitment_mask_key_id: &TariKeyId,
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> TransactionKernel {
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_features = KernelFeatures::COINBASE_KERNEL;
@@ -804,7 +804,7 @@ pub fn create_test_kernel(fee: MicroMinotari, lock_height: u64, features: Kernel
 /// Create a new UTXO for the specified value and return the output and spending key
 pub async fn create_utxo<KM: TransactionKeyManagerInterface>(
     value: MicroMinotari,
-    key_manager: &KM,
+    key_manager: &mut KM,
     features: &OutputFeatures,
     script: &TariScript,
     covenant: &Covenant,
@@ -874,7 +874,7 @@ pub async fn create_utxo<KM: TransactionKeyManagerInterface>(
 
 pub async fn schema_to_transaction<KM: TransactionKeyManagerInterface>(
     txns: &[TransactionSchema],
-    key_manager: &KM,
+    key_manager: &mut KM,
 ) -> (Vec<Arc<Transaction>>, Vec<WalletOutput>) {
     let mut txs = Vec::new();
     let mut utxos = Vec::new();

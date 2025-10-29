@@ -109,6 +109,8 @@ blockchain_sync_config.max_latency_increase = 10
 # The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
 # [default = 240]
 blockchain_sync_config.rpc_deadline = 240
+# The maximum allowed reorg depth which a node will accept
+# blockchain_sync_config.max_reorg_depth_allowed = 1000
 
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0

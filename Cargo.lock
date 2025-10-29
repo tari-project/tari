@@ -1806,7 +1806,16 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
 dependencies = [
- "derive_more-impl",
+ "derive_more-impl 1.0.0",
+]
+
+[[package]]
+name = "derive_more"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "093242cf7570c207c83073cf82f79706fe7b8317e98620a47d5be7c3d8497678"
+dependencies = [
+ "derive_more-impl 2.0.1",
 ]
 
 [[package]]
@@ -1814,6 +1823,18 @@ name = "derive_more-impl"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.90",
+ "unicode-xid",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bda628edc44c4bb645fbe0f758797143e4e07926f7ebf4e9bdfbd3d2ce621df3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2882,7 +2903,7 @@ dependencies = [
  "ring",
  "rustls",
  "rustls-platform-verifier",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
  "tinyvec",
  "tokio",
  "tokio-rustls",
@@ -2907,7 +2928,7 @@ dependencies = [
  "resolv-conf",
  "rustls",
  "smallvec",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-rustls",
  "tracing",
@@ -3078,7 +3099,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3182,7 +3203,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2",
+ "socket2 0.5.10",
  "system-configuration 0.6.1",
  "tokio",
  "tower-service",
@@ -3516,12 +3537,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-uring"
+version = "0.7.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "046fa2d4d00aea763528b4950358d0ead425372445dc8ff86312b3c69ff7727b"
+dependencies = [
+ "bitflags 2.6.0",
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "ipconfig"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b58db92f96b720de98181bbbe63c831e87005ab460c1bf306eb2622b4707997f"
 dependencies = [
- "socket2",
+ "socket2 0.5.10",
  "widestring",
  "windows-sys 0.48.0",
  "winreg",
@@ -3775,24 +3807,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "ledger-transport"
-version = "0.11.0"
-source = "git+https://github.com/Zondax/ledger-rs?rev=4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c#4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c"
-dependencies = [
- "async-trait",
- "ledger-apdu",
-]
-
-[[package]]
 name = "ledger-transport-hid"
 version = "0.11.0"
-source = "git+https://github.com/Zondax/ledger-rs?rev=4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c#4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4e34341e2708fbf805a9ada44ef6182170c6464c4fc068ab801abb7562fd5e8"
 dependencies = [
  "byteorder",
  "cfg-if",
  "hex",
  "hidapi",
- "ledger-transport 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ledger-transport",
  "libc",
  "log",
  "thiserror 1.0.69",
@@ -3963,7 +3987,7 @@ checksum = "656b3b27f8893f7bbf9485148ff9a65f019e3f33bd5cdc87c83cab16b3fd9ec8"
 dependencies = [
  "libc",
  "neli",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
  "windows-sys 0.59.0",
 ]
 
@@ -3994,29 +4018,30 @@ checksum = "a94d21414c1f4a51209ad204c1776a3d0765002c76c6abcb602a6f09f1e881c7"
 
 [[package]]
 name = "log4rs"
-version = "1.3.0"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0816135ae15bd0391cf284eab37e6e3ee0a6ee63d2ceeb659862bd8d0a984ca6"
+checksum = "3e947bb896e702c711fccc2bf02ab2abb6072910693818d1d6b07ee2b9dfd86c"
 dependencies = [
  "anyhow",
  "arc-swap",
  "chrono",
- "derivative",
+ "derive_more 2.0.1",
  "fnv",
  "humantime 2.1.0",
  "libc",
  "log",
  "log-mdc",
- "once_cell",
+ "mock_instant",
  "parking_lot 0.12.3",
- "rand 0.8.5",
+ "rand 0.9.1",
  "serde",
  "serde-value",
  "serde_json",
  "serde_yaml",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "thread-id",
  "typemap-ors",
+ "unicode-segmentation",
  "winapi",
 ]
 
@@ -4171,7 +4196,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "argon2 0.4.1",
  "base64 0.13.1",
@@ -4192,7 +4217,7 @@ dependencies = [
  "tari_sidechain",
  "tari_transaction_components",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tonic 0.13.1",
  "tonic-build",
@@ -4201,7 +4226,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "clap 3.2.25",
  "dialoguer 0.10.4",
@@ -4217,14 +4242,14 @@ dependencies = [
  "tari_features",
  "tari_p2p",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tonic 0.13.1",
 ]
 
 [[package]]
 name = "minotari_console_wallet"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "blake2",
  "chrono",
@@ -4267,7 +4292,7 @@ dependencies = [
  "tari_shutdown",
  "tari_transaction_components",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tonic 0.13.1",
  "tui",
@@ -4278,18 +4303,18 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "bs58 0.5.1",
 ]
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "borsh",
  "dialoguer 0.11.0",
- "ledger-transport 0.11.0 (git+https://github.com/Zondax/ledger-rs?rev=4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c)",
+ "ledger-transport",
  "ledger-transport-hid",
  "log",
  "minotari_ledger_wallet_common",
@@ -4301,12 +4326,12 @@ dependencies = [
  "tari_crypto",
  "tari_script",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4343,7 +4368,7 @@ dependencies = [
  "tari_node_components",
  "tari_transaction_components",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tonic 0.13.1",
  "tracing",
@@ -4352,7 +4377,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -4383,14 +4408,14 @@ dependencies = [
  "tari_transaction_components",
  "tari_transaction_key_manager",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tonic 0.13.1",
 ]
 
 [[package]]
 name = "minotari_node"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4433,7 +4458,8 @@ dependencies = [
  "tari_storage",
  "tari_transaction_components",
  "tari_utilities",
- "thiserror 1.0.69",
+ "tempfile",
+ "thiserror 2.0.17",
  "tokio",
  "toml 0.5.11",
  "tonic 0.13.1",
@@ -4445,7 +4471,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_grpc_client"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "minotari_app_grpc",
  "tokio",
@@ -4453,7 +4479,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4470,7 +4496,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_utils"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "bytesize",
@@ -4488,7 +4514,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "argon2 0.4.1",
@@ -4536,7 +4562,7 @@ dependencies = [
  "tari_transaction_key_manager",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tower 0.4.13",
  "url",
@@ -4546,7 +4572,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -4579,7 +4605,7 @@ dependencies = [
  "tari_transaction_key_manager",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "zeroize",
 ]
@@ -4591,7 +4617,7 @@ dependencies = [
  "minotari_app_grpc",
  "tari_common",
  "tari_common_types",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tonic 0.13.1",
 ]
@@ -4631,6 +4657,12 @@ name = "mirai-annotations"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9be0862c1b3f26a88803c4a49de6889c10e608b3ee9344e6ef5b45fb37ad3d1"
+
+[[package]]
+name = "mock_instant"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce6dd36094cac388f119d2e9dc82dc730ef91c32a6222170d630e5414b956e6"
 
 [[package]]
 name = "moka"
@@ -5324,7 +5356,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b7cafe60d6cf8e62e1b9b2ea516a089c008945bb5a275416789e7db0bc199dc"
 dependencies = [
  "memchr",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
  "ucd-trie",
 ]
 
@@ -5822,7 +5854,7 @@ dependencies = [
  "memchr",
  "parking_lot 0.12.3",
  "protobuf",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7164,6 +7196,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "socket2"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7511,7 +7553,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7531,13 +7573,13 @@ dependencies = [
  "tari_features",
  "tari_test_utils",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "toml 0.5.11",
 ]
 
 [[package]]
 name = "tari_common_sqlite"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -7548,13 +7590,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
 ]
 
 [[package]]
 name = "tari_common_types"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "argon2 0.4.1",
  "base64 0.21.7",
@@ -7584,7 +7626,7 @@ dependencies = [
  "tari_hashing",
  "tari_max_size",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "utoipa",
  "wasm-bindgen",
  "zeroize",
@@ -7592,7 +7634,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7631,7 +7673,7 @@ dependencies = [
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
  "tokio-util 0.6.10",
@@ -7644,7 +7686,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "bitflags 2.6.0",
@@ -7677,7 +7719,7 @@ dependencies = [
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
  "tower 0.4.13",
@@ -7686,7 +7728,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "futures 0.3.31",
  "proc-macro2",
@@ -7701,7 +7743,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7762,7 +7804,7 @@ dependencies = [
  "tari_transaction_key_manager",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tracing",
  "url",
@@ -7793,11 +7835,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 
 [[package]]
 name = "tari_hashing"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -7807,7 +7849,7 @@ dependencies = [
 
 [[package]]
 name = "tari_integration_tests"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7846,7 +7888,7 @@ dependencies = [
  "tari_transaction_key_manager",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "time",
  "tokio",
  "tonic 0.13.1",
@@ -7854,7 +7896,7 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "borsh",
  "digest",
@@ -7862,12 +7904,12 @@ dependencies = [
  "serde",
  "tari_crypto",
  "tari_hashing",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "tari_libtor"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "derivative",
  "libtor",
@@ -7880,17 +7922,17 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "borsh",
  "serde",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "tari_metrics"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "futures 0.3.31",
@@ -7898,14 +7940,14 @@ dependencies = [
  "once_cell",
  "prometheus",
  "reqwest 0.11.27",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "warp",
 ]
 
 [[package]]
 name = "tari_mmr"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -7918,12 +7960,12 @@ dependencies = [
  "serde_json",
  "tari_crypto",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "tari_node_components"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -7937,13 +7979,13 @@ dependencies = [
  "tari_hashing",
  "tari_transaction_components",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "tari_p2p"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
@@ -7967,7 +8009,7 @@ dependencies = [
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
  "toml 0.5.11",
@@ -7976,7 +8018,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -7989,12 +8031,12 @@ dependencies = [
  "tari_crypto",
  "tari_max_size",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "tari_service_framework"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8003,7 +8045,7 @@ dependencies = [
  "log",
  "tari_shutdown",
  "tari_test_utils",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tower 0.4.13",
  "tower-service",
@@ -8011,7 +8053,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "futures 0.3.31",
  "tokio",
@@ -8019,7 +8061,7 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "borsh",
  "hex",
@@ -8031,12 +8073,12 @@ dependencies = [
  "tari_hashing",
  "tari_jellyfish",
  "tari_utilities",
- "thiserror 2.0.6",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "tari_storage"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -8044,12 +8086,12 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "tari_test_utils"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "futures 0.3.31",
  "futures-test",
@@ -8062,7 +8104,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_components"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "anyhow",
  "argon2 0.4.1",
@@ -8104,7 +8146,7 @@ dependencies = [
  "tari_sidechain",
  "tari_test_utils",
  "tari_utilities",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "toml 0.5.11",
  "utoipa",
@@ -8115,7 +8157,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_key_manager"
-version = "5.1.0-rc.0"
+version = "5.2.0-pre.0"
 dependencies = [
  "async-trait",
  "chacha20poly1305",
@@ -8226,11 +8268,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.6"
+version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec2a1820ebd077e2b90c4df007bebf344cd394098a13c563957d0afc83ea47"
+checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
 dependencies = [
- "thiserror-impl 2.0.6",
+ "thiserror-impl 2.0.17",
 ]
 
 [[package]]
@@ -8246,9 +8288,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.6"
+version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d65750cab40f4ff1929fb1ba509e9914eb756131cef4210da8d5d700d26f6312"
+checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8283,12 +8325,12 @@ checksum = "3bf63baf9f5039dadc247375c29eb13706706cfde997d0330d05aa63a77d8820"
 
 [[package]]
 name = "thread-id"
-version = "4.2.2"
+version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfe8f25bbdd100db7e1d34acf7fd2dc59c4bf8f7483f505eaa7d4f12f76cc0ea"
+checksum = "99043e46c5a15af379c06add30d9c93a6c0e8849de00d244c4a2c417da128d80"
 dependencies = [
  "libc",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8378,20 +8420,22 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.45.1"
+version = "1.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75ef51a33ef1da925cea3e4eb122833cb377c61439ca401b770f54902b806779"
+checksum = "89e49afdadebb872d3145a5638b59eb0691ea23e46ca484037cfab3b76b95038"
 dependencies = [
  "backtrace",
  "bytes 1.9.0",
+ "io-uring",
  "libc",
  "mio 1.0.3",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2",
+ "slab",
+ "socket2 0.6.0",
  "tokio-macros",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8529,7 +8573,7 @@ dependencies = [
  "percent-encoding",
  "pin-project 1.1.7",
  "prost 0.13.4",
- "socket2",
+ "socket2 0.5.10",
  "tokio",
  "tokio-stream",
  "tower 0.4.13",
@@ -8559,7 +8603,7 @@ dependencies = [
  "pin-project 1.1.7",
  "prost 0.13.4",
  "rustls-native-certs",
- "socket2",
+ "socket2 0.5.10",
  "tokio",
  "tokio-rustls",
  "tokio-stream",

@@ -418,21 +418,22 @@ async fn large_coin_split_transaction() {
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity.clone(),
-        consensus_manager,
-        factories.clone(),
-        db_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            consensus_manager,
+            factories.clone(),
+            db_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let initial_wallet_value = 20 * T;
     let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
+        &mut key_manager_handle,
     )
     .await;
 
@@ -515,20 +516,21 @@ async fn single_transaction_burn_tari() {
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity.clone(),
-        consensus_manager,
-        factories.clone(),
-        db_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            consensus_manager,
+            factories.clone(),
+            db_connection,
+            shutdown.to_signal(),
+        )
+        .await;
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
+        &mut key_manager_handle,
     )
     .await;
 
@@ -655,14 +657,15 @@ async fn send_one_sided_transaction_to_other() {
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity,
-        consensus_manager,
-        factories.clone(),
-        db_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            consensus_manager,
+            factories.clone(),
+            db_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let mut alice_event_stream = alice_ts.get_event_stream();
 
@@ -671,7 +674,7 @@ async fn send_one_sided_transaction_to_other() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
+        &mut key_manager_handle,
     )
     .await;
     let mut alice_oms_clone = alice_oms.clone();
@@ -792,14 +795,15 @@ async fn recover_one_sided_transaction() {
 
     let alice_connection = make_wallet_database_memory_connection();
     let shutdown = Shutdown::new();
-    let (mut alice_ts, alice_oms, _alice_connectivity, alice_key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity,
-        consensus_manager.clone(),
-        factories.clone(),
-        alice_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, alice_oms, _alice_connectivity, mut alice_key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts, mut bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -829,7 +833,7 @@ async fn recover_one_sided_transaction() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &alice_key_manager_handle,
+        &mut alice_key_manager_handle,
     )
     .await;
     let mut alice_oms_clone = alice_oms;
@@ -940,14 +944,15 @@ async fn recover_stealth_one_sided_transaction() {
 
     let alice_connection = make_wallet_database_memory_connection();
     let shutdown = Shutdown::new();
-    let (mut alice_ts, alice_oms, _alice_connectivity, alice_key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity,
-        consensus_manager.clone(),
-        factories.clone(),
-        alice_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, alice_oms, _alice_connectivity, mut alice_key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts, mut bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -966,7 +971,7 @@ async fn recover_stealth_one_sided_transaction() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &alice_key_manager_handle,
+        &mut alice_key_manager_handle,
     )
     .await;
     let mut alice_oms_clone = alice_oms;
@@ -1067,14 +1072,15 @@ async fn test_htlc_send_and_claim() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity,
-        consensus_manager,
-        factories.clone(),
-        alice_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            consensus_manager,
+            factories.clone(),
+            alice_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let bob_temp_dir = tempdir().unwrap();
     let bob_db_path_string = bob_temp_dir.path().to_str().unwrap().to_string();
@@ -1095,7 +1101,7 @@ async fn test_htlc_send_and_claim() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
+        &mut key_manager_handle,
     )
     .await;
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
@@ -1197,14 +1203,15 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
-        alice_node_identity,
-        consensus_manager.clone(),
-        factories.clone(),
-        alice_connection,
-        shutdown.to_signal(),
-    )
-    .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            shutdown.to_signal(),
+        )
+        .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts_interface, _bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -1226,7 +1233,7 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
+        &mut key_manager_handle,
     )
     .await;
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
@@ -1882,21 +1889,21 @@ async fn test_update_faux_tx_on_oms_validation() {
         &mut OsRng.clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
-        &alice_ts_interface.key_manager_handle,
+        &mut alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_2 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(20000),
         &OutputFeatures::default(),
-        &alice_ts_interface.key_manager_handle,
+        &mut alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_3 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(30000),
         &OutputFeatures::default(),
-        &alice_ts_interface.key_manager_handle,
+        &mut alice_ts_interface.key_manager_handle,
     )
     .await;
 
@@ -2062,21 +2069,21 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         &mut OsRng.clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
-        &alice_ts_interface.key_manager_handle,
+        &mut alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_2 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(20000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
-        &alice_ts_interface.key_manager_handle,
+        &mut alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_3 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(30000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
-        &alice_ts_interface.key_manager_handle,
+        &mut alice_ts_interface.key_manager_handle,
     )
     .await;
 

@@ -31,6 +31,7 @@ mod builder;
 pub mod cli;
 mod commands;
 pub mod config;
+mod consensus_constants_tracker;
 mod grpc;
 mod grpc_method;
 #[cfg(feature = "metrics")]

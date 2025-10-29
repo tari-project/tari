@@ -28,18 +28,18 @@ base64 = "0.21.0"
 blake2 = "0.10"
 bitflags = { version = "2.4", features = ["serde"] }
 bs58 = "0.5.1"
-borsh = "1.5.7"
+borsh = { workspace = true }
 chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 crc32fast = "1.2.1"
 digest = "0.10"
 newtype-ops = "0.1"
 once_cell = "1.8.0"
-rand = "0.8"
-serde = { version = "1.0.106", features = ["derive"] }
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 strum = "0.22"
 strum_macros = "0.22"
-thiserror = "1.0.29"
+thiserror = { workspace = true }
 primitive-types = { version = "0.12", features = ["serde"] }
 utoipa = "5.3.1"
 wasm-bindgen = { version = "0.2.100", optional = true }

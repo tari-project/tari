@@ -1015,7 +1015,7 @@ where
                 .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await?;
             wallet_output = wallet_output
-                .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)
+                .sign_as_sender_and_receiver(&mut self.resources.key_manager, &sender_offset_key.key_id)
                 .await?;
             let ub = wallet_output.try_build(&self.resources.key_manager).await?;
 
@@ -1325,7 +1325,7 @@ where
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
-                &self.resources.key_manager,
+                &mut self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
@@ -1595,7 +1595,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
-                &self.resources.key_manager,
+                &mut self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &recipient_address,
             )

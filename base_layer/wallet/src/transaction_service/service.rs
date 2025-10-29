@@ -668,12 +668,12 @@ where
                 ))
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
-                let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+                let mut offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
                 let res = offline_signing.sign_locked_transaction(request).await?;
                 Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
             },
             TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request } => {
-                let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+                let mut offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
                 let res = offline_signing
                     .sign_locked_deposit_multisig_transaction(request)
                     .await?;
@@ -683,7 +683,7 @@ where
             },
             TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request } => {
                 let key_manager = self.resources.transaction_key_manager_service.clone();
-                let offline_signing = OfflineSigner::new(key_manager.clone());
+                let mut offline_signing = OfflineSigner::new(key_manager.clone());
                 let mut request = request;
 
                 for pair_output in &mut request.info.inputs.iter_mut() {
@@ -1255,7 +1255,7 @@ where
                         Covenant::default(),
                     )
                     .await?;
-                let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                let mut multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
                 let uuid = Uuid::new_v4();
                 let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
                     .create_deposit_multisig_transaction(
@@ -1957,7 +1957,7 @@ where
             )
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver(
-                &self.resources.transaction_key_manager_service,
+                &mut self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )
             .await
@@ -2256,7 +2256,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
-                &self.resources.transaction_key_manager_service,
+                &mut self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
                 &dest_address,
             )
@@ -2618,7 +2618,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero())
             .sign_as_sender_and_receiver(
-                &self.resources.transaction_key_manager_service,
+                &mut self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )
             .await?

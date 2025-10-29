@@ -34,7 +34,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
     val: MicroMinotari,
     features: &OutputFeatures,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
     create_wallet_output_with_data(TariScript::default(), features.clone(), &test_params, val, key_manager)
@@ -44,7 +44,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
 
 pub async fn make_fake_input_from_copy(
     wallet_output: &mut WalletOutput,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> WalletOutput {
     let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
     wallet_output
@@ -59,7 +59,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     _rng: &mut R,
     value: MicroMinotari,
     features: OutputFeatures,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
     create_wallet_output_with_data(script!(Nop).unwrap(), features, &test_params, value, key_manager)

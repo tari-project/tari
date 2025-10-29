@@ -22,9 +22,11 @@
 
 use std::{convert::TryFrom, num::NonZeroU64};
 
+use serde::{Deserialize, Serialize};
+
 use crate::aggregated_body::AggregateBody;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct WeightParams {
     /// Weight in grams per kernel
     pub kernel_weight: u64,
@@ -48,7 +50,7 @@ impl WeightParams {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TransactionWeight(WeightParams);
 
 impl TransactionWeight {

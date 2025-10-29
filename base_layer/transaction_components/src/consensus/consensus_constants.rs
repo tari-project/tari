@@ -26,6 +26,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_common_types::epoch::VnEpoch;
 use tari_script::OpcodeVersion;
@@ -48,7 +49,7 @@ use crate::{
 
 const ANNUAL_BLOCKS: u64 = 30 /* blocks/hr */ * 24 /* hr /d */ * 366 /* days / yr */;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockVersion {
     V0 = 0,
     V1 = 1,
@@ -90,7 +91,7 @@ impl From<BlockVersion> for u16 {
 }
 
 /// This is the inner struct used to control all consensus values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConsensusConstants {
     /// The height at which these constants become effective
     effective_from_height: u64,
@@ -117,7 +118,7 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_initial: MicroMinotari,
     /// This is the emission curve decay factor as a sum of fraction powers of two. e.g. [1,2] would be 1/2 + 1/4. [2]
     /// would be 1/4
-    pub(in crate::consensus) emission_decay: &'static [u64],
+    pub(in crate::consensus) emission_decay: Vec<u64>,
     /// The tail emission inflation rate in basis points (bips). 100 bips = 1 percentage_point
     pub(in crate::consensus) inflation_bips: u64,
     /// The length, in blocks of each tail emission epoch (where the reward is held constant)
@@ -145,9 +146,9 @@ pub struct ConsensusConstants {
     /// Range of valid transaction kernel versions
     kernel_version_range: RangeInclusive<TransactionKernelVersion>,
     /// An allowlist of output types
-    permitted_output_types: &'static [OutputType],
+    permitted_output_types: Vec<OutputType>,
     /// The allowlist of range proof types
-    permitted_range_proof_types: &'static [(OutputType, &'static [RangeProofType])],
+    permitted_range_proof_types: Vec<(OutputType, Vec<RangeProofType>)>,
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
     /// Maximum number of token elements permitted in covenants
@@ -175,7 +176,7 @@ pub struct ConsensusConstants {
     include_c29_accumulated_difficulty_into_total: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OutputVersionRange {
     pub outputs: RangeInclusive<TransactionOutputVersion>,
     pub features: RangeInclusive<OutputFeaturesVersion>,
@@ -200,7 +201,7 @@ fn version_zero() -> (
 }
 
 /// This is a convenience struct to put all the info into a hashmap for each algorithm
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PowAlgorithmConstants {
     pub min_difficulty: Difficulty,
     pub max_difficulty: Difficulty,
@@ -223,10 +224,10 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, inflation_bips, epoch_length)
-    pub fn emission_amounts(&self) -> (MicroMinotari, &'static [u64], u64, u64) {
+    pub fn emission_amounts(&self) -> (MicroMinotari, &[u64], u64, u64) {
         (
             self.emission_initial,
-            self.emission_decay,
+            &self.emission_decay,
             self.inflation_bips,
             self.tail_epoch_length,
         )
@@ -375,12 +376,12 @@ impl ConsensusConstants {
 
     /// Returns the permitted OutputTypes
     pub fn permitted_output_types(&self) -> &[OutputType] {
-        self.permitted_output_types
+        &self.permitted_output_types
     }
 
     /// Returns the permitted range proof types
-    pub fn permitted_range_proof_types(&self) -> &'static [(OutputType, &'static [RangeProofType])] {
-        self.permitted_range_proof_types
+    pub fn permitted_range_proof_types(&self) -> &[(OutputType, Vec<RangeProofType>)] {
+        &self.permitted_range_proof_types
     }
 
     /// The maximum permitted token length of all covenants. A value of 0 is equivalent to disabling covenants.
@@ -477,7 +478,7 @@ impl ConsensusConstants {
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: 18_462_816_327 * uT,
-            emission_decay: &ESMERALDA_DECAY_PARAMS,
+            emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 1000,
             tail_epoch_length: 100,
             max_randomx_seed_height: u64::MAX,
@@ -546,7 +547,7 @@ impl ConsensusConstants {
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
+            emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: u64::MAX,
@@ -610,7 +611,7 @@ impl ConsensusConstants {
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: ESMERALDA_INITIAL_EMISSION,
-            emission_decay: &ESMERALDA_DECAY_PARAMS,
+            emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
@@ -723,7 +724,7 @@ impl ConsensusConstants {
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
-            emission_decay: &EMISSION_DECAY,
+            emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
@@ -779,7 +780,7 @@ impl ConsensusConstants {
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
-            emission_decay: &EMISSION_DECAY,
+            emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
@@ -892,7 +893,7 @@ impl ConsensusConstants {
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
-            emission_decay: &EMISSION_DECAY,
+            emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
@@ -979,36 +980,38 @@ impl ConsensusConstants {
 
         let mut con_6 = con_5.clone();
         con_6.include_c29_accumulated_difficulty_into_total = true;
-        con_6.effective_from_height = 121_000;
+        con_6.effective_from_height = 126_000;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
         consensus_constants
     }
 
-    const fn current_permitted_output_types() -> &'static [OutputType] {
-        &[OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
+    fn current_permitted_output_types() -> Vec<OutputType> {
+        vec![OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
     }
 
-    const fn current_permitted_range_proof_types() -> &'static [(OutputType, &'static [RangeProofType])] {
-        &[
-            (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
-            (OutputType::Coinbase, &[
+    fn current_permitted_range_proof_types() -> Vec<(OutputType, Vec<RangeProofType>)> {
+        vec![
+            (OutputType::Standard, vec![RangeProofType::BulletProofPlus]),
+            (OutputType::Coinbase, vec![
                 RangeProofType::BulletProofPlus,
                 RangeProofType::RevealedValue,
             ]),
-            (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
-            (OutputType::ValidatorNodeRegistration, &[
+            (OutputType::Burn, vec![RangeProofType::BulletProofPlus]),
+            (OutputType::ValidatorNodeRegistration, vec![
                 RangeProofType::BulletProofPlus,
             ]),
-            (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
-            (OutputType::SidechainCheckpoint, &[RangeProofType::BulletProofPlus]),
-            (OutputType::SidechainProof, &[RangeProofType::BulletProofPlus]),
-            (OutputType::ValidatorNodeExit, &[RangeProofType::BulletProofPlus]),
+            (OutputType::CodeTemplateRegistration, vec![
+                RangeProofType::BulletProofPlus,
+            ]),
+            (OutputType::SidechainCheckpoint, vec![RangeProofType::BulletProofPlus]),
+            (OutputType::SidechainProof, vec![RangeProofType::BulletProofPlus]),
+            (OutputType::ValidatorNodeExit, vec![RangeProofType::BulletProofPlus]),
         ]
     }
 
-    const fn all_range_proof_types() -> &'static [(OutputType, &'static [RangeProofType])] {
-        const RP_TYPES: &[(OutputType, &[RangeProofType])] = &[
+    fn all_range_proof_types() -> Vec<(OutputType, Vec<RangeProofType>)> {
+        vec![
             (OutputType::Standard, RangeProofType::all()),
             (OutputType::Coinbase, RangeProofType::all()),
             (OutputType::Burn, RangeProofType::all()),
@@ -1017,13 +1020,11 @@ impl ConsensusConstants {
             (OutputType::SidechainCheckpoint, RangeProofType::all()),
             (OutputType::SidechainProof, RangeProofType::all()),
             (OutputType::ValidatorNodeExit, RangeProofType::all()),
-        ];
-        RP_TYPES
+        ]
     }
 }
 
 const EMISSION_DECAY: [u64; 6] = [21u64, 22, 23, 25, 26, 37];
-const ESMERALDA_DECAY_PARAMS: [u64; 6] = EMISSION_DECAY; // less significant values don't matter
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
@@ -1083,7 +1084,7 @@ impl ConsensusConstantsBuilder {
     pub fn with_emission_amounts(
         mut self,
         intial_amount: MicroMinotari,
-        decay: &'static [u64],
+        decay: Vec<u64>,
         inflation_bips: u64,
         epoch_length: u64,
     ) -> Self {
@@ -1094,14 +1095,14 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_permitted_output_types(mut self, permitted_output_types: &'static [OutputType]) -> Self {
+    pub fn with_permitted_output_types(mut self, permitted_output_types: Vec<OutputType>) -> Self {
         self.consensus.permitted_output_types = permitted_output_types;
         self
     }
 
     pub fn with_permitted_range_proof_types(
         mut self,
-        permitted_range_proof_types: &'static [(OutputType, &'static [RangeProofType])],
+        permitted_range_proof_types: Vec<(OutputType, Vec<RangeProofType>)>,
     ) -> Self {
         self.consensus.permitted_range_proof_types = permitted_range_proof_types;
         self
@@ -1151,7 +1152,7 @@ mod test {
         let esmeralda = ConsensusConstants::esmeralda();
         let schedule = EmissionSchedule::new(
             esmeralda[0].emission_initial,
-            esmeralda[0].emission_decay,
+            esmeralda[0].emission_decay.clone(),
             esmeralda[0].inflation_bips,
             esmeralda[0].tail_epoch_length,
             esmeralda[0].pre_mine_value(),
@@ -1196,7 +1197,7 @@ mod test {
         let nextnet = ConsensusConstants::nextnet();
         let schedule = EmissionSchedule::new(
             nextnet[0].emission_initial,
-            nextnet[0].emission_decay,
+            nextnet[0].emission_decay.clone(),
             nextnet[0].inflation_bips,
             nextnet[0].tail_epoch_length,
             nextnet[0].pre_mine_value(),
@@ -1231,7 +1232,7 @@ mod test {
         let stagenet = ConsensusConstants::stagenet();
         let schedule = EmissionSchedule::new(
             stagenet[0].emission_initial,
-            stagenet[0].emission_decay,
+            stagenet[0].emission_decay.clone(),
             stagenet[0].inflation_bips,
             stagenet[0].tail_epoch_length,
             stagenet[0].pre_mine_value(),
@@ -1266,7 +1267,7 @@ mod test {
         let igor = ConsensusConstants::igor();
         let schedule = EmissionSchedule::new(
             igor[0].emission_initial,
-            igor[0].emission_decay,
+            igor[0].emission_decay.clone(),
             igor[0].inflation_bips,
             igor[0].tail_epoch_length,
             igor[0].pre_mine_value(),
@@ -1298,10 +1299,10 @@ mod test {
         let range_proof_type_variants = RangeProofType::all();
 
         let permitted_range_proof_types = ConsensusConstants::current_permitted_range_proof_types().to_vec();
-        for item in output_type_variants {
+        for item in &output_type_variants {
             let entries = permitted_range_proof_types
                 .iter()
-                .filter(|&&x| x.0 == *item)
+                .filter(|&x| x.0 == *item)
                 .collect::<Vec<_>>();
             assert_eq!(entries.len(), 1);
             assert!(!entries[0].1.is_empty());
@@ -1311,10 +1312,10 @@ mod test {
         for output_type in output_type_variants {
             let entries = permitted_range_proof_types
                 .iter()
-                .filter(|&&x| x.0 == *output_type)
+                .filter(|&x| x.0 == output_type)
                 .collect::<Vec<_>>();
             assert_eq!(entries.len(), 1);
-            for range_proof_type in range_proof_type_variants {
+            for range_proof_type in &range_proof_type_variants {
                 assert!(entries[0].1.contains(range_proof_type));
             }
         }

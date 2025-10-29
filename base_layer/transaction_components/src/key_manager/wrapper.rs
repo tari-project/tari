@@ -44,7 +44,6 @@ use tari_common_types::{
 };
 use tari_crypto::hashing::DomainSeparatedHash;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tokio::sync::RwLock;
 
 use crate::{
     crypto_factories::CryptoFactories,
@@ -76,7 +75,7 @@ use crate::{
 /// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
 pub struct TransactionKeyManagerWrapper<TBackend> {
-    transaction_key_manager_inner: Arc<RwLock<TransactionKeyManagerInner<TBackend>>>,
+    transaction_key_manager_inner: TransactionKeyManagerInner<TBackend>,
 }
 
 impl<TBackend> TransactionKeyManagerWrapper<TBackend>
@@ -92,9 +91,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
-            transaction_key_manager_inner: Arc::new(RwLock::new(
-                TransactionKeyManagerInner::new(master_seed, Some(db), crypto_factories, wallet_type).await?,
-            )),
+            transaction_key_manager_inner: TransactionKeyManagerInner::new(
+                master_seed,
+                Some(db),
+                crypto_factories,
+                wallet_type,
+            )
+            .await?,
         })
     }
 
@@ -104,20 +107,24 @@ where TBackend: TransactionKeyManagerBackend + 'static
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
-            transaction_key_manager_inner: Arc::new(RwLock::new(
-                TransactionKeyManagerInner::new(master_seed, None, crypto_factories, wallet_type).await?,
-            )),
+            transaction_key_manager_inner: TransactionKeyManagerInner::new(
+                master_seed,
+                None,
+                crypto_factories,
+                wallet_type,
+            )
+            .await?,
         })
     }
 
     /// Get the wallet type
     pub async fn get_wallet_type(&self) -> Arc<WalletType> {
-        self.transaction_key_manager_inner.read().await.get_wallet_type()
+        self.transaction_key_manager_inner.get_wallet_type()
     }
 
     /// Get the birthday of the wallet seed
     pub async fn get_birthday(&self) -> u16 {
-        self.transaction_key_manager_inner.read().await.master_seed().birthday()
+        self.transaction_key_manager_inner.master_seed().birthday()
     }
 }
 
@@ -125,32 +132,25 @@ where TBackend: TransactionKeyManagerBackend + 'static
 impl<TBackend> TransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
-    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
+    async fn add_new_branch<T: Into<String> + Send>(&mut self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .write()
-            .await
             .add_key_manager_branch(&branch.into())
             .await
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_next_key(&branch.into())
-            .await
+    async fn get_next_key<T: Into<String> + Send>(
+        &mut self,
+        branch: T,
+    ) -> Result<TariKeyAndId, KeyManagerServiceError> {
+        self.transaction_key_manager_inner.get_next_key(&branch.into()).await
     }
 
     async fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.read().await.get_random_key().await
+        self.transaction_key_manager_inner.get_random_key().await
     }
 
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_static_key(&branch.into())
-            .await
+        self.transaction_key_manager_inner.get_static_key(&branch.into()).await
     }
 
     async fn get_public_key_at_key_id(
@@ -158,8 +158,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         key_id: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_public_key_at_key_id(key_id)
             .await
     }
@@ -170,8 +168,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encryption_key: Option<TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .import_key(private_key, encryption_key)
             .await
     }
@@ -182,8 +178,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encryption_key: Option<TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .create_encrypted_key_from_existing_key(key_id, encryption_key)
             .await
     }
@@ -194,8 +188,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_commitment(commitment_mask_key_id, value)
             .await
     }
@@ -207,26 +199,20 @@ where TBackend: TransactionKeyManagerBackend + 'static
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .verify_mask(commitment, commitment_mask_key_id, value)
             .await
     }
 
     async fn get_view_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.read().await.get_view_key().await
+        self.transaction_key_manager_inner.get_view_key().await
     }
 
     async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_private_view_key()
-            .await
+        self.transaction_key_manager_inner.get_private_view_key().await
     }
 
     async fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.read().await.get_spend_key().await
+        self.transaction_key_manager_inner.get_spend_key().await
     }
 
     async fn sign_message_with_spend_key(
@@ -235,22 +221,18 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<WalletMessageSchnorrSignature, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .sign_message(message, sender_offset_pub_key)
             .await
     }
 
     async fn get_comms_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.read().await.get_comms_key().await
+        self.transaction_key_manager_inner.get_comms_key().await
     }
 
     async fn get_next_commitment_mask_and_script_key(
-        &self,
+        &mut self,
     ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_next_commitment_mask_and_script_key()
             .await
     }
@@ -261,8 +243,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         public_script_key: Option<&CompressedPublicKey>,
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .find_script_key_id_from_commitment_mask_key_id(commitment_mask_key_id, public_script_key)
             .await
     }
@@ -273,8 +253,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         public_key: &CompressedPublicKey,
     ) -> Result<CommsDHKE, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_diffie_hellman_shared_secret(secret_key_id, public_key)
             .await
     }
@@ -285,8 +263,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         public_key: &CompressedPublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_diffie_hellman_stealth_domain_hasher(secret_key_id, public_key)
             .await
     }
@@ -298,8 +274,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .construct_range_proof(commitment_mask_key_id, value, min_value)
             .await
     }
@@ -313,8 +287,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_script_signature(
                 script_key_id,
                 commitment_mask_key_id,
@@ -335,8 +307,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_partial_script_signature(
                 commitment_mask_id,
                 value,
@@ -360,8 +330,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         txo_type: TxoStage,
     ) -> Result<CompressedSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_partial_txo_kernel_signature(
                 commitment_mask_key_id,
                 nonce_id,
@@ -381,8 +349,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         nonce_id: &TariKeyId,
     ) -> Result<CompressedPublicKey, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_txo_kernel_signature_excess_with_offset(commitment_mask_key_id, nonce_id)
             .await
     }
@@ -393,8 +359,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_txo_private_kernel_offset(commitment_mask_key_id, nonce_id)
             .await
     }
@@ -407,8 +371,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         payment_id: MemoField,
     ) -> Result<EncryptedData, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .encrypt_data_for_recovery(commitment_mask_key_id, custom_recovery_key_id, value, payment_id)
             .await
     }
@@ -420,8 +382,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<MemoField, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .extract_payment_id_from_encrypted_data(encrypted_data, commitment, custom_recovery_key_id)
             .await
     }
@@ -433,8 +393,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_public_key: &CompressedPublicKey,
     ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)
             .await
     }
@@ -446,8 +404,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         custom_recovery_key_id: Option<PrivateKey>,
     ) -> Result<bool, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .is_this_output_ours(commitment, encrypted_data, custom_recovery_key_id)
             .await
     }
@@ -458,8 +414,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_script_offset(script_key_ids, sender_offset_key_ids)
             .await
     }
@@ -470,14 +424,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         range_proof_type: RangeProofType,
     ) -> Result<CompressedCommitment, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_metadata_signature_ephemeral_commitment(nonce_id, range_proof_type)
             .await
     }
 
     async fn get_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
@@ -486,8 +438,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_metadata_signature(
                 commitment_mask_key_id,
                 value_as_private_key,
@@ -500,7 +450,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     async fn get_one_sided_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
@@ -511,8 +461,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_one_sided_metadata_signature(
                 commitment_mask_key_id,
                 value,
@@ -532,8 +480,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .sign_script_message(private_key_id, challenge)
             .await
     }
@@ -544,8 +490,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .sign_script_message_with_spend_key(message, sender_offset_pub_key)
             .await
     }
@@ -557,14 +501,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .sign_with_nonce_and_challenge(private_key_id, nonce, challenge)
             .await
     }
 
     async fn get_receiver_partial_metadata_signature(
-        &self,
+        &mut self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
@@ -574,8 +516,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_receiver_partial_metadata_signature(
                 commitment_mask_key_id,
                 value,
@@ -601,8 +541,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .get_sender_partial_metadata_signature(
                 ephemeral_private_nonce_id,
                 sender_offset_key_id,
@@ -621,8 +559,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .generate_burn_claim_proof_signature(commitment_mask_key_id, value, claim_public_key)
             .await
     }
@@ -633,8 +569,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, TransactionError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
             .await
     }
@@ -645,8 +579,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_pub_key: &CompressedPublicKey,
     ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .write()
-            .await
             .add_offset_to_spend_key(spend_key_id, sender_offset_pub_key)
             .await
     }
@@ -657,8 +589,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encryption_key_id: Option<&TariKeyId>,
     ) -> Result<Vec<u8>, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .encrypted_key(key_id, encryption_key_id)
             .await
     }
@@ -669,8 +599,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encryption_key_id: Option<&TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
-            .read()
-            .await
             .import_encrypted_key(encrypted, encryption_key_id)
             .await
     }
@@ -681,11 +609,7 @@ impl<TBackend> SecretTransactionKeyManagerInterface for TransactionKeyManagerWra
 where TBackend: TransactionKeyManagerBackend + 'static
 {
     async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_private_key(key_id)
-            .await
+        self.transaction_key_manager_inner.get_private_key(key_id).await
     }
 }
 

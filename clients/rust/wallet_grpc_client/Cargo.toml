@@ -11,12 +11,12 @@ readme = "README.md"
 license.workspace = true
 
 [dependencies]
-minotari_app_grpc = { path = "../../../applications/minotari_app_grpc" }
-tari_common_types = { path = "../../../base_layer/common_types" }
-tari_common = { path = "../../../common" }
+minotari_app_grpc = { workspace = true }
+tari_common_types = { workspace = true }
+tari_common = { workspace = true }
 
-thiserror = "1.0.35"
+thiserror = { workspace = true }
 tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros"] }
+tokio = { workspace = true, features = ["macros"] }

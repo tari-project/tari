@@ -143,7 +143,7 @@ mod tests {
     use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 
     use super::*;
-    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &MemoryDbKeyManager) -> Transaction {
+    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &mut MemoryDbKeyManager) -> Transaction {
         let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
             .await
             .expect("Failed to get tx");
@@ -152,13 +152,13 @@ mod tests {
 
     #[tokio::test]
     async fn fee_increases_priority() {
-        let key_manager = create_memory_db_key_manager().await.unwrap();
+        let mut key_manager = create_memory_db_key_manager().await.unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
-        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(2 * uT, &mut key_manager).await;
         let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx")).unwrap();
 
-        let tx = create_tx_with_fee(3 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(3 * uT, &mut key_manager).await;
         let p2 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx")).unwrap();
 
         assert!(p2 > p1);
@@ -166,13 +166,13 @@ mod tests {
 
     #[tokio::test]
     async fn age_increases_priority() {
-        let key_manager = create_memory_db_key_manager().await.unwrap();
+        let mut key_manager = create_memory_db_key_manager().await.unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
-        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(2 * uT, &mut key_manager).await;
         let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx")).unwrap();
 
-        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(2 * uT, &mut key_manager).await;
         let p2 = FeePriority::new(
             &tx,
             epoch - 1,

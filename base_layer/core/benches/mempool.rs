@@ -55,11 +55,10 @@ mod benches {
         num_outputs: usize,
         features: OutputFeatures,
     ) -> std::io::Result<Vec<Arc<Transaction>>> {
-        let key_manager = create_memory_db_key_manager().await.unwrap();
+        let mut key_manager = create_memory_db_key_manager().await.unwrap();
         let mut txs = Vec::new();
         for _ in 0..num_txs {
-            let (tx, _, _) =
-                tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &key_manager)?;
+            let (tx, _, _) = tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &mut key_manager)?;
             txs.push(Arc::new(tx));
         }
         Ok(txs)

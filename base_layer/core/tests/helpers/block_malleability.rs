@@ -69,7 +69,7 @@ async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block
             input_version: TransactionInputVersion::V0,
             output_version: TransactionOutputVersion::V0
         )],
-        &blockchain.key_manager,
+        &mut blockchain.key_manager,
     )
     .await;
     blockchain

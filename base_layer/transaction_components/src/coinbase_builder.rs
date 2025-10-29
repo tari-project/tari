@@ -244,7 +244,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub async fn build_with_reward(
-        self,
+        mut self,
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,
         payment_id: MemoField,
@@ -387,7 +387,7 @@ pub async fn generate_coinbase<KM: TransactionKeyManagerInterface>(
     reward: MicroMinotari,
     height: u64,
     extra: &CoinBaseExtra,
-    key_manager: &KM,
+    key_manager: &mut KM,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
@@ -420,7 +420,7 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
     reward: MicroMinotari,
     height: u64,
     extra: &CoinBaseExtra,
-    key_manager: &KM,
+    key_manager: &mut KM,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -597,8 +597,8 @@ mod test {
 
     #[tokio::test]
     async fn valid_coinbase() {
-        let (builder, rules, factories, key_manager) = get_builder().await;
-        let p = TestParams::new(&key_manager).await;
+        let (builder, rules, factories, mut key_manager) = get_builder().await;
+        let p = TestParams::new(&mut key_manager).await;
         let wallet_payment_address = TariAddress::default();
         let builder = builder
             .with_block_height(42)
@@ -652,8 +652,8 @@ mod test {
 
     #[tokio::test]
     async fn invalid_coinbase_maturity() {
-        let (builder, rules, factories, key_manager) = get_builder().await;
-        let p = TestParams::new(&key_manager).await;
+        let (builder, rules, factories, mut key_manager) = get_builder().await;
+        let p = TestParams::new(&mut key_manager).await;
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
         let wallet_payment_address = TariAddress::default();
         let builder = builder
@@ -691,8 +691,8 @@ mod test {
     #[tokio::test]
     #[allow(clippy::identity_op)]
     async fn invalid_coinbase_value() {
-        let (builder, rules, factories, key_manager) = get_builder().await;
-        let p = TestParams::new(&key_manager).await;
+        let (builder, rules, factories, mut key_manager) = get_builder().await;
+        let p = TestParams::new(&mut key_manager).await;
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -787,8 +787,8 @@ mod test {
     async fn invalid_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and
         // a duplicate coinbase kernel to the other one.
-        let (builder, rules, factories, key_manager) = get_builder().await;
-        let p = TestParams::new(&key_manager).await;
+        let (builder, rules, factories, mut key_manager) = get_builder().await;
+        let p = TestParams::new(&mut key_manager).await;
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -931,8 +931,8 @@ mod test {
     async fn multi_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and
         // a duplicate coinbase kernel to the other one.
-        let (builder, rules, factories, key_manager) = get_builder().await;
-        let p = TestParams::new(&key_manager).await;
+        let (builder, rules, factories, mut key_manager) = get_builder().await;
+        let p = TestParams::new(&mut key_manager).await;
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -1077,8 +1077,8 @@ mod test {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::identity_op)]
     async fn too_may_coinbases() {
-        let (builder, rules, factories, key_manager) = get_builder().await;
-        let p = TestParams::new(&key_manager).await;
+        let (builder, rules, factories, mut key_manager) = get_builder().await;
+        let p = TestParams::new(&mut key_manager).await;
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -1201,7 +1201,7 @@ mod test {
 
     #[tokio::test]
     async fn test_generate_coinbase_with_payment_id_from_address() {
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
 
@@ -1233,7 +1233,7 @@ mod test {
             reward,
             header_height,
             &CoinBaseExtra::default(),
-            &key_manager,
+            &mut key_manager,
             &script_key_id,
             &wallet_payment_address,
             false,
