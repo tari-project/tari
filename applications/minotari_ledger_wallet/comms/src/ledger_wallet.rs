@@ -33,7 +33,7 @@ use tari_utilities::ByteArray;
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-pub const MIN_LEDGER_APP_VERSION: &str = "1.4.0";
+pub const MIN_LEDGER_APP_VERSION: &str = "5.0.5";
 const WALLET_CLA: u8 = 0x80;
 
 struct HidManager {

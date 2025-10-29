@@ -53,14 +53,14 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         let mut kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -113,7 +113,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &key_manager,
+                &mut key_manager,
             )
             .await;
             let kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
@@ -126,7 +126,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &key_manager,
+                &mut key_manager,
             )
             .await;
             let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -288,7 +288,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         &mut OsRng,
         MicroMinotari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     let output_to_be_received = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -375,7 +375,7 @@ pub async fn test_must_include_filter() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);
     let db = OutputManagerDatabase::new(backend);
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
 
     // Create test outputs with specific values
     let mut outputs = Vec::new();
@@ -387,7 +387,7 @@ pub async fn test_must_include_filter() {
             &mut OsRng,
             MicroMinotari::from(value),
             &OutputFeatures::default(),
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -455,14 +455,14 @@ pub async fn test_raw_custom_queries_regression() {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         let mut kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -500,7 +500,7 @@ pub async fn test_raw_custom_queries_regression() {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &key_manager,
+                &mut key_manager,
             )
             .await;
             let kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
@@ -513,7 +513,7 @@ pub async fn test_raw_custom_queries_regression() {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &key_manager,
+                &mut key_manager,
             )
             .await;
             let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -553,7 +553,7 @@ pub async fn test_raw_custom_queries_regression() {
         &mut OsRng,
         MicroMinotari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     let unknown = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -634,13 +634,13 @@ pub async fn test_short_term_encumberance() {
     let db = OutputManagerDatabase::new(backend);
 
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     for i in 0..5 {
         let kmo = make_input(
             &mut OsRng,
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         let mut kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
@@ -695,12 +695,12 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
         &OutputFeatures::default(),
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -741,12 +741,12 @@ pub async fn test_mark_as_unmined() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
         &OutputFeatures::default(),
-        &key_manager,
+        &mut key_manager,
     )
     .await;
     let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -781,7 +781,7 @@ pub async fn test_mark_as_unmined() {
             &mut OsRng,
             MicroMinotari::from(1000),
             &OutputFeatures::default(),
-            &key_manager,
+            &mut key_manager,
         )
         .await;
         let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);

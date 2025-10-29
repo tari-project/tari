@@ -76,7 +76,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
         &mut client,
         blocks,
         0,
-        &world.key_manager,
+        &mut world.key_manager,
         script_key_id,
         &world.default_payment_address.clone(),
         false,
@@ -116,7 +116,7 @@ async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks
         &mut client,
         num_blocks,
         weight,
-        &world.key_manager,
+        &mut world.key_manager,
         script_key_id,
         &world.default_payment_address.clone(),
         false,
@@ -231,7 +231,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             println!("Mine a block for tx_id {tx_id} to have status Mined_or_OneSidedConfirmed");
             mine_block(
                 &mut node_client,
-                &world.key_manager,
+                &mut world.key_manager,
                 script_key_id,
                 &world.default_payment_address.clone(),
                 false,
@@ -364,7 +364,7 @@ async fn mine_without_submit(world: &mut TariWorld, block: String, node: String)
     let unmined_block: Block = Block::try_from(
         mine_block_before_submit(
             &mut client,
-            &world.key_manager,
+            &mut world.key_manager,
             script_key_id,
             &world.default_payment_address.clone(),
             false,

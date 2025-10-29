@@ -813,7 +813,7 @@ pub async fn create_pre_mine_genesis_block_info(
         for key in public_keys {
             total_script_key = total_script_key + key.to_public_key().map_err(|e| e.to_string())?;
         }
-        let key_manager = create_memory_db_key_manager().await.map_err(|e| e.to_string())?;
+        let mut key_manager = create_memory_db_key_manager().await.map_err(|e| e.to_string())?;
         let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
             .map_err(|e| e.to_string())?;
         let view_key_id = key_manager
@@ -870,7 +870,7 @@ pub async fn create_pre_mine_genesis_block_info(
             .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key.key_id)
             .with_minimum_value_promise(item.value)
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_as_sender_and_receiver(&mut key_manager, &sender_offset.key_id)
             .await
             .map_err(|e| e.to_string())?
             .try_build(&key_manager)

@@ -295,7 +295,7 @@ impl WalletGrpcServer {
                 .get_wallet_one_sided_address()
                 .await
                 .map_err(|e| Status::internal(format!("{e:?}")))?;
-            let wallet_tx = timeout(Duration::from_millis(100), async {
+            let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                 loop {
                     let tx = self
                         .get_transaction_service()
@@ -1126,7 +1126,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{e:?}")))?;
-                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                    let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()
@@ -2558,7 +2558,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{e:?}")))?;
-                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                    let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()

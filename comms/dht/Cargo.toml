@@ -18,7 +18,7 @@ tari_crypto = { workspace = true }
 tari_utilities = { workspace = true }
 tari_shutdown = { workspace = true }
 
-anyhow = "1.0.53"
+anyhow = { workspace = true }
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
 chacha20 = "0.7.1"
@@ -34,19 +34,19 @@ diesel_migrations = "2.2.0"
 digest = "0.10"
 futures = "^0.3.1"
 futures-util = "^0.3.1"
-log = "0.4.8"
+log = { workspace = true }
 prost = "0.13.3"
-rand = "0.8"
-serde = "1.0.90"
-thiserror = "1.0.26"
+rand = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
 tower = { version = "0.4", features = ["full"] }
 zeroize = "1"
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.4"
-#tokio = { version = "1.36", features = ["rt", "macros", "tracing"] }
+#tokio = { workspace = true, features = ["rt", "macros", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
-tokio = { version = "1.44", features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 # tower-filter dependencies
 pin-project = "0.4"

@@ -592,10 +592,10 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let key_manager = create_memory_key_manager().await.unwrap();
+        let mut key_manager = create_memory_key_manager().await.unwrap();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
-            &key_manager,
+            &mut key_manager,
             &OutputFeatures::create_burn_output(),
             &script!(Nop).unwrap(),
             &Covenant::default(),
@@ -604,7 +604,7 @@ mod test {
         .await;
         let (output2, _, _) = test_helpers::create_utxo(
             101.into(),
-            &key_manager,
+            &mut key_manager,
             &OutputFeatures::create_burn_output(),
             &script!(Nop).unwrap(),
             &Covenant::default(),
@@ -613,7 +613,7 @@ mod test {
         .await;
         let (output3, _, _) = test_helpers::create_utxo(
             102.into(),
-            &key_manager,
+            &mut key_manager,
             &OutputFeatures::create_burn_output(),
             &script!(Nop).unwrap(),
             &Covenant::default(),
@@ -654,12 +654,12 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let key_manager = create_memory_key_manager().await.unwrap();
+            let mut key_manager = create_memory_key_manager().await.unwrap();
             let mut outputs = Vec::new();
             for _ in 0..10 {
                 let (o, _, _) = test_helpers::create_utxo(
                     100.into(),
-                    &key_manager,
+                    &mut key_manager,
                     &OutputFeatures::create_burn_output(),
                     &script!(Nop).unwrap(),
                     &Covenant::default(),

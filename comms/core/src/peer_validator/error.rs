@@ -35,8 +35,6 @@ pub enum PeerValidatorError {
     PeerHasNoAddresses { peer: NodeId },
     #[error("Invalid multiaddr: {0}")]
     InvalidMultiaddr(String),
-    #[error("No public addresses provided")]
-    PeerIdentityNoAddresses,
     #[error("Onion v2 is deprecated and not supported")]
     OnionV2NotSupported,
     #[error("Peer provided too many supported protocols: expected max {max} but got {length}")]

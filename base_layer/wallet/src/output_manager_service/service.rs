@@ -931,9 +931,10 @@ where
         }
         debug!(
             target: LOG_TARGET,
-            "Calculating fee for tx with: Fee per gram: {}. Num selected inputs: {}",
-            amount,
-            input_selection.num_selected()
+            "Calculated fee for tx: Fee per gram: {}. Fee {}. Num inputs: {}.",
+            fee_per_gram,
+            input_selection.as_final_fee(),
+            input_selection.num_selected(),
         );
 
         self.resources
@@ -1014,12 +1015,12 @@ where
                 .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await?;
             wallet_output = wallet_output
-                .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)
+                .sign_as_sender_and_receiver(&mut self.resources.key_manager, &sender_offset_key.key_id)
                 .await?;
             let ub = wallet_output.try_build(&self.resources.key_manager).await?;
 
             builder
-                .with_output(ub.clone(), sender_offset_key.key_id.clone())
+                .with_output(ub.clone(), sender_offset_key.key_id.clone(), None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
             db_outputs.push(DbWalletOutput::from_wallet_output(
@@ -1324,7 +1325,7 @@ where
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
-                &self.resources.key_manager,
+                &mut self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
@@ -1340,6 +1341,7 @@ where
                 recipient_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key_id_self.key_id),
+                Some(encryption_key_id),
             )
             .await?;
 
@@ -1518,6 +1520,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_memo(payment_id.clone())
             .with_input(input.clone())
             .await?;
         let sender_offset_private_key_id_self = self
@@ -1592,7 +1595,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
-                &self.resources.key_manager,
+                &mut self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &recipient_address,
             )
@@ -1607,6 +1610,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 output.clone(),
                 Some(sender_offset_private_key_id_self.key_id),
+                Some(encryption_key_id),
             )
             .await?;
 
@@ -1669,7 +1673,8 @@ where
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_kernel_features(KernelFeatures::empty());
+            .with_kernel_features(KernelFeatures::empty())
+            .with_memo(payment_id.clone());
 
         for kmo in input_selection.iter() {
             tx_builder.with_input(kmo.wallet_output.clone()).await?;
@@ -1687,7 +1692,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
+            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone(), None)
             .await
             .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -1838,7 +1843,7 @@ where
         for o in uo {
             utxos_total_value += o.wallet_output.value();
 
-            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value:?}");
+            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value}");
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = fee_calc.calculate(
@@ -1859,7 +1864,7 @@ where
                 total_output_features_and_scripts_byte_size + default_features_and_scripts_size,
             );
 
-            trace!(target: LOG_TARGET, "-- amt+fee = {amount:?} {fee_with_change}");
+            trace!(target: LOG_TARGET, "-- amt+fee = {amount} + {fee_with_change}");
             if utxos_total_value > amount + fee_with_change {
                 requires_change_output = true;
                 break;
@@ -2160,7 +2165,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2321,7 +2326,7 @@ where
                 .await?;
 
             tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id)
+                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
@@ -2539,7 +2544,7 @@ where
             .await?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id)
+            .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
             .await?;
 
         let finalized = tx_builder.build().await?;

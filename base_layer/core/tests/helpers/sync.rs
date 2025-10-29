@@ -152,9 +152,9 @@ pub async fn create_network_with_multiple_nodes(
     }
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let mut key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
-    let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
+    let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &mut key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(initial_block.clone())
@@ -315,7 +315,7 @@ pub async fn create_and_add_some_blocks(
     start_coinbase: &WalletOutput,
     number_of_blocks: usize,
     consensus_manager: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     difficulties: &[u64],
     transactions: &Option<Vec<Vec<Transaction>>>,
 ) -> (Vec<ChainBlock>, Vec<WalletOutput>) {
@@ -398,7 +398,7 @@ pub async fn create_block_chain_with_transactions(
     initial_block: &ChainBlock,
     initial_coinbase: &WalletOutput,
     consensus_manager: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
     intermediate_height: u64,
     number_of_blocks: usize,
     spend_genesis_coinbase_in_block: usize,

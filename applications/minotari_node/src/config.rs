@@ -132,6 +132,8 @@ pub struct BaseNodeConfig {
     pub p2p: P2pConfig,
     /// If set this node will only sync to the nodes in this set
     pub force_sync_peers: StringList,
+    /// If set this node will always try to keep connections open to these nodes
+    pub monitored_peers: StringList,
     /// The maximum amount of time to wait for remote base node responses for messaging-based requests.
     #[serde(with = "serializers::seconds")]
     pub messaging_request_timeout: Duration,
@@ -216,6 +218,7 @@ impl Default for BaseNodeConfig {
             max_randomx_vms: 5,
             bypass_range_proof_verification: false,
             force_sync_peers: StringList::default(),
+            monitored_peers: StringList::default(),
             messaging_request_timeout: Duration::from_secs(60),
             storage: Default::default(),
             mempool: Default::default(),

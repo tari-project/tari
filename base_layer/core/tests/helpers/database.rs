@@ -41,7 +41,7 @@ pub async fn create_orphan_block(
     block_height: u64,
     transactions: Vec<Transaction>,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &mut MemoryDbKeyManager,
 ) -> Block {
     let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);
     let lock_height = consensus.consensus_constants(block_height).coinbase_min_maturity();

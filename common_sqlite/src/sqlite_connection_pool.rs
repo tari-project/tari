@@ -125,7 +125,10 @@ impl SqliteConnectionPool {
                 warn!(target: LOG_TARGET, "Connection pool state {:?}: {}", pool.state(), e);
                 SqliteStorageError::DieselR2d2Error(e.to_string())
             });
-            trace!(target: LOG_TARGET, "Acquired 'get_pooled_connection' from pool in {:.2?}", start.elapsed());
+            let timing = start.elapsed();
+            if timing > Duration::from_millis(100) {
+                debug!(target: LOG_TARGET, "Acquired 'get_pooled_connection' from pool in {:.2?}", timing);
+            }
             connection
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
@@ -144,7 +147,10 @@ impl SqliteConnectionPool {
                 warn!(target: LOG_TARGET, "Connection pool state {:?}: {}", pool.state(), e);
                 SqliteStorageError::DieselR2d2Error(e.to_string())
             });
-            trace!(target: LOG_TARGET, "Acquired 'get_pooled_connection_timeout' from pool in {:.2?}", start.elapsed());
+            let timing = start.elapsed();
+            if timing > Duration::from_millis(100) {
+                debug!(target: LOG_TARGET, "Acquired 'get_pooled_connection_timeout' from pool in {:.2?}", timing);
+            }
             connection
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
@@ -162,7 +168,10 @@ impl SqliteConnectionPool {
             if connection.is_none() {
                 warn!(target: LOG_TARGET, "No connections available, pool state {:?}", pool.state());
             } else {
-                trace!(target: LOG_TARGET, "Acquired 'try_get_pooled_connection' from pool in {:.2?}", start.elapsed());
+                let timing = start.elapsed();
+                if timing > Duration::from_millis(100) {
+                    debug!(target: LOG_TARGET, "Acquired 'try_get_pooled_connection' from pool in {:.2?}", timing);
+                }
             }
             Ok(connection)
         } else {

@@ -82,16 +82,16 @@ struct SignedMessage {
 }
 
 pub struct OneSidedSigner<'a, KM: TransactionKeyManagerInterface> {
-    key_manager: &'a KM,
+    key_manager: &'a mut KM,
 }
 
 impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
-    pub fn new(key_manager: &'a KM) -> Self {
+    pub fn new(key_manager: &'a mut KM) -> Self {
         Self { key_manager }
     }
 
     pub async fn sign_transaction(
-        &self,
+        &mut self,
         tx_id: TxId,
         mut info: OneSidedTransactionInfo,
     ) -> Result<SignedTransaction, TransactionBuilderError> {
@@ -115,7 +115,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     pub async fn sign_multisig_transaction(
-        &self,
+        &mut self,
         tx_id: TxId,
         mut info: OneSidedMultisigTransactionInfo,
     ) -> Result<SignedTransaction, TransactionBuilderError> {
@@ -139,7 +139,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     pub async fn sign_multisig_withdraw_transaction(
-        &self,
+        &mut self,
         tx_id: TxId,
         mut info: OneSidedTransactionInfo,
     ) -> Result<SignedTransaction, TransactionBuilderError> {
@@ -235,7 +235,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
     #[allow(clippy::too_many_lines)]
     async fn sign_message(
-        &self,
+        &mut self,
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
@@ -364,7 +364,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
     #[allow(clippy::too_many_lines)]
     async fn sign_multisig_message(
-        &self,
+        &mut self,
         tx_id: TxId,
         info: &OneSidedMultisigTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
@@ -501,7 +501,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
     #[allow(clippy::too_many_lines)]
     async fn sign_multisig_withdraw_message(
-        &self,
+        &mut self,
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
@@ -633,7 +633,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
     #[allow(clippy::too_many_lines)]
     async fn build_transaction(
-        &self,
+        &mut self,
         info: OneSidedTransactionInfo,
         signed_message: RecipientSignedMessage,
         sender_offset_key_id: TariKeyId,
@@ -791,7 +791,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     async fn lock_sent_output_in_payment_id(
-        &self,
+        &mut self,
         change: &OutputPair,
         output_hash: FixedHash,
     ) -> Result<OutputPair, TransactionBuilderError> {
@@ -803,7 +803,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .key_manager
             .encrypt_data_for_recovery(
                 change.output.commitment_mask_key_id(),
-                None,
+                change.custom_recovery_key_id.as_ref(),
                 change.output.value().as_u64(),
                 payment_id.clone(),
             )
@@ -824,6 +824,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             change_output,
             change.kernel_nonce.clone(),
             change.sender_offset_key_id.clone(),
+            change.custom_recovery_key_id.clone(),
         ))
     }
 }
