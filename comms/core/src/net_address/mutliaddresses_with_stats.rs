@@ -37,11 +37,12 @@ impl MultiaddressesWithStats {
         let mut addresses = MultiaddressesWithStats {
             addresses: addresses_with_stats,
         };
-        addresses.sort_addresses();
+        addresses.sort_and_truncate_addresses();
         addresses
     }
 
-    /// Returns the newest `updated_at` among signed address sources in this set.
+    /// Returns the newest `updated_at` among signed address sources in this set - this can only be `None` if the source
+    /// is from config.
     pub fn newest_claim_updated_at(&self) -> Option<DateTime<Utc>> {
         self.addresses
             .iter()
@@ -115,7 +116,8 @@ impl MultiaddressesWithStats {
     /// - If the incoming set has a strictly newer signed claim, all non-config addresses are replaced by the incoming
     ///   set.
     /// - If the incoming set is older, only usage stats for known addresses are updated.
-    /// - If neither set has a signed claim or timestamps are equal, addresses are merged individually.
+    /// - If neither set has a signed claim (i.e. source from config) or timestamps are equal, addresses are merged
+    ///   individually.
     ///
     /// After merging, addresses are sorted by quality and truncated to the maximum allowed.
     pub fn merge(&mut self, incoming: &MultiaddressesWithStats) {
@@ -149,8 +151,7 @@ impl MultiaddressesWithStats {
                 }
 
                 self.addresses = by_addr.into_values().collect();
-                self.sort_addresses();
-                return;
+                self.sort_and_truncate_addresses();
             },
 
             // Incoming set is older -> only update stats for known addresses; don't append stale ones
@@ -160,21 +161,23 @@ impl MultiaddressesWithStats {
                         existing.merge(addr);
                     }
                 }
-                self.sort_addresses();
-                return;
+                self.sort_and_truncate_addresses();
             },
-            // No signed timestamps or equal -> fall back to address-by-address merge
-            _ => {},
-        }
 
-        for addr in &incoming.addresses {
-            if let Some(existing) = self.find_address_mut(addr.address()) {
-                existing.merge(addr);
-            } else {
-                self.addresses.push(addr.clone());
-            }
+            // Fall back to address-by-address merge:
+            //   `this_newest(DateTime)` == `other_newest(DateTime)`, or
+            //   `this_newest` and/or `other_newest` is config
+            _ => {
+                for addr in &incoming.addresses {
+                    if let Some(existing) = self.find_address_mut(addr.address()) {
+                        existing.merge(addr);
+                    } else {
+                        self.addresses.push(addr.clone());
+                    }
+                }
+                self.sort_and_truncate_addresses();
+            },
         }
-        self.sort_addresses();
     }
 
     /// Finds the specified address in the set and allow updating of its variables such as its usage stats
@@ -197,7 +200,7 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.update_latency(latency_measurement);
-                self.sort_addresses();
+                self.sort_and_truncate_addresses();
                 true
             },
             None => false,
@@ -208,7 +211,7 @@ impl MultiaddressesWithStats {
     where F: FnOnce(&mut MultiaddrWithStats) {
         if let Some(addr) = self.find_address_mut(address) {
             f(addr);
-            self.sort_addresses();
+            self.sort_and_truncate_addresses();
         }
     }
 
@@ -219,7 +222,7 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.mark_last_seen_now().mark_last_attempted_now();
-                self.sort_addresses();
+                self.sort_and_truncate_addresses();
                 true
             },
             None => false,
@@ -246,7 +249,7 @@ impl MultiaddressesWithStats {
                 },
             }
         }
-        self.sort_addresses();
+        self.sort_and_truncate_addresses();
         all_exist
     }
 
@@ -258,7 +261,7 @@ impl MultiaddressesWithStats {
             Some(addr) => {
                 addr.mark_failed_connection_attempt(failed_reason);
                 addr.mark_last_attempted_now();
-                self.sort_addresses();
+                self.sort_and_truncate_addresses();
                 true
             },
             None => {
@@ -275,7 +278,7 @@ impl MultiaddressesWithStats {
         for a in &mut self.addresses {
             a.reset_connection_attempts();
         }
-        self.sort_addresses();
+        self.sort_and_truncate_addresses();
     }
 
     /// Returns the number of addresses
@@ -297,8 +300,8 @@ impl MultiaddressesWithStats {
     }
 
     /// Sort the addresses with the greatest quality score first. In case of a tie, advertised
-    /// addresses are preferred.
-    fn sort_addresses(&mut self) {
+    /// addresses are preferred. Truncates the list to the maximum allowed number of addresses.
+    fn sort_and_truncate_addresses(&mut self) {
         self.addresses.sort_by(|a, b| {
             let qual_a = a.quality_score().unwrap_or_default();
             let qual_b = b.quality_score().unwrap_or_default();
@@ -720,7 +723,7 @@ mod test {
         assert_eq!(addresses.addresses()[0].address(), &addr_1);
         assert_eq!(addresses.addresses()[1].address(), &addr_2);
 
-        addresses.sort_addresses();
+        addresses.sort_and_truncate_addresses();
 
         // Advertised (addr2) should come before config (addr1)
         assert_eq!(addresses.addresses()[0].address(), &addr_2);
