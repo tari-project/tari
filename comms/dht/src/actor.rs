@@ -570,19 +570,25 @@ impl DhtActor {
         let (peers, only_connected_nodes) = match broadcast_strategy {
             DirectNodeId(node_id) => {
                 // Send to a particular peer matching the given node ID
-                (peer_manager
-                    .direct_identity_node_id(&node_id)
-                    .await
-                    .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
-                    .map_err(Into::<DhtActorError>::into)?, false)
+                (
+                    peer_manager
+                        .direct_identity_node_id(&node_id)
+                        .await
+                        .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
+                        .map_err(Into::<DhtActorError>::into)?,
+                    false,
+                )
             },
             DirectPublicKey(public_key) => {
                 // Send to a particular peer matching the given node ID
-                (peer_manager
-                    .direct_identity_public_key(&public_key)
-                    .await
-                    .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
-                    .map_err(Into::<DhtActorError>::into)?, false)
+                (
+                    peer_manager
+                        .direct_identity_public_key(&public_key)
+                        .await
+                        .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
+                        .map_err(Into::<DhtActorError>::into)?,
+                    false,
+                )
             },
             Flood(exclude) => {
                 let peers = connectivity
@@ -590,9 +596,11 @@ impl DhtActor {
                     .await?;
                 (peers.into_iter().map(|p| p.peer_node_id().clone()).collect(), true)
             },
-            ClosestNodes(closest_request) => {
-                (Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone()).await?, true)
-            },
+            ClosestNodes(closest_request) => (
+                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone())
+                    .await?,
+                true,
+            ),
             DirectOrClosestNodes(closest_request) => {
                 // First check if a direct connection exists
                 if connectivity
@@ -602,17 +610,29 @@ impl DhtActor {
                 {
                     (vec![closest_request.node_id.clone()], true)
                 } else {
-                    (Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone()).await?, true)
+                    (
+                        Self::select_closest_node_connected(
+                            closest_request,
+                            config,
+                            connectivity,
+                            peer_manager.clone(),
+                        )
+                        .await?,
+                        true,
+                    )
                 }
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                (peer_manager
-                    .random_peers(n, &excluded, None)
-                    .await?
-                    .into_iter()
-                    .map(|p| p.node_id)
-                    .collect(), false)
+                (
+                    peer_manager
+                        .random_peers(n, &excluded, None)
+                        .await?
+                        .into_iter()
+                        .map(|p| p.node_id)
+                        .collect(),
+                    false,
+                )
             },
             SelectedPeers(peers) => (peers, false),
             Broadcast(exclude) => {
