@@ -74,29 +74,24 @@ impl ProactiveDialer {
             return Ok(0);
         }
 
-        let eligible_connections = pool
-            .get_connected_node_ids()
-            .iter()
-            .filter(|p| !excluded_peers.contains(p))
-            .count();
+        let current_connections = pool.count_connected_nodes();
         let target = self.config.target_connection_count;
 
         // Update metrics
 
-        if eligible_connections >= target {
+        if current_connections >= target {
             debug!(
                 target: LOG_TARGET,
-                "({task_id}) Eligible connections ({eligible_connections}) meet or exceed target ({target}), no \
-                proactive dialing needed",
+                "({task_id}) Current connections ({current_connections}) meet or exceed target ({target}), no proactive dialing needed",
             );
 
             return Ok(0);
         }
 
-        let needed = target.saturating_sub(eligible_connections);
+        let needed = target.saturating_sub(current_connections);
         debug!(
             target: LOG_TARGET,
-            "({task_id}) Proactive dialing: need {needed} more connections ({eligible_connections}/{target})",
+            "({task_id}) Proactive dialing: need {needed} more connections ({current_connections}/{target})",
 
         );
 
@@ -110,20 +105,15 @@ impl ProactiveDialer {
 
         );
 
-        // Select healthy peers for dialing
-        let mut candidates = self
-            .select_healthy_dial_candidates(pool, connection_stats, excluded_peers, dial_count, task_id)
+        // Select peers for dialing
+        let candidates = self
+            .select_dial_candidates(pool, connection_stats, excluded_peers, dial_count, task_id)
             .await?;
-        if candidates.is_empty() {
-            candidates = self
-                .select_healthy_dial_candidates(pool, connection_stats, &[], dial_count, task_id)
-                .await?;
-        }
 
         if candidates.is_empty() {
             warn!(
                 target: LOG_TARGET,
-                "({task_id}) No healthy peer candidates available for proactive dialing"
+                "({task_id}) No peer candidates available for proactive dialing"
 
             );
 
@@ -178,8 +168,8 @@ impl ProactiveDialer {
         final_count.max(needed).min(MAX_CONCURRENT_DIALS)
     }
 
-    /// Select healthy peer candidates for dialing
-    async fn select_healthy_dial_candidates(
+    /// Select peer candidates for dialing, prioritizing the most healthy
+    async fn select_dial_candidates(
         &self,
         pool: &ConnectionPool,
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
@@ -200,13 +190,24 @@ impl ProactiveDialer {
             .map(|state| state.node_id().clone())
             .collect();
         // Add nominated excluded peers to the managed list so they will not be selected as candidates
-        managed.append(&mut excluded_peers.to_vec());
+        let mut managed_and_excluded = managed.clone();
+        managed_and_excluded.append(&mut excluded_peers.to_vec());
 
         // Get available dial candidates using SQL-based filtering
-        let candidates = self
+        let mut candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed, Some(count * 3)) // Get 3x more for health scoring
+            .get_available_dial_candidates(&managed_and_excluded, Some(count * 3)) // Get 3x more for health scoring
             .await?;
+        if candidates.len() < count * 3 {
+            // Only exclude managed and current selected nodes to get more candidates (thus include 'excluded_peers')
+            let mut to_be_excluded = candidates.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+            to_be_excluded.append(&mut managed);
+            let mut random = self
+                .peer_manager
+                .random_peers(count * 3 - candidates.len(), &to_be_excluded, None)
+                .await?;
+            candidates.append(&mut random);
+        }
 
         // Apply health-based filtering and ranking
         let mut final_candidates = Vec::new();
