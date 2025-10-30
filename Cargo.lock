@@ -8168,6 +8168,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "digest",
+ "futures 0.3.31",
  "log",
  "minotari_ledger_wallet_common",
  "minotari_ledger_wallet_comms",

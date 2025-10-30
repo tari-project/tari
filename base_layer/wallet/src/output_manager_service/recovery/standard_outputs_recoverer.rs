@@ -30,7 +30,6 @@ use tari_common_types::{
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_transaction_components::{
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
     MicroMinotari,
 };

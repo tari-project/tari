@@ -36,15 +36,16 @@ use tari_transaction_components::crypto_factories::CryptoFactories;
 
 use crate::legacy_key_manager::{
     interface::TransactionKeyManagerBackend,
-    wallet_types::WalletType,
+    wallet_types::LegacyWalletType,
     TransactionKeyManagerWrapper,
 };
+
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct TransactionKeyManagerInitializer<T> {
     backend: Option<T>,
-    master_seed: Option<CipherSeed>,
+    master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
-    wallet_type: Arc<WalletType>,
+    wallet_type: Arc<LegacyWalletType>,
 }
 
 impl<T> TransactionKeyManagerInitializer<T>
@@ -53,9 +54,9 @@ where T: TransactionKeyManagerBackend + 'static
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
     pub fn new_with_legacy_storage(
         backend: T,
-        master_seed: Option<CipherSeed>,
+        master_seed: CipherSeed,
         crypto_factories: CryptoFactories,
-        wallet_type: Arc<WalletType>,
+        wallet_type: Arc<LegacyWalletType>,
     ) -> Self {
         Self {
             backend: Some(backend),
@@ -68,11 +69,7 @@ where T: TransactionKeyManagerBackend + 'static
 
 impl<T> TransactionKeyManagerInitializer<T> {
     /// Creates a new [TransactionKeyManagerInitializer] from the [CipherSeed]
-    pub fn new(
-        master_seed: Option<CipherSeed>,
-        crypto_factories: CryptoFactories,
-        wallet_type: Arc<WalletType>,
-    ) -> Self {
+    pub fn new(master_seed: CipherSeed, crypto_factories: CryptoFactories, wallet_type: Arc<LegacyWalletType>) -> Self {
         Self {
             backend: None,
             master_seed,

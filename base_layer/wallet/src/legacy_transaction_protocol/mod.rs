@@ -13,7 +13,6 @@ pub mod sender;
 pub use recipient::ReceiverTransactionProtocol;
 pub use sender::SenderTransactionProtocol;
 use tari_transaction_components::{
-    legacy_key_manager::error::KeyManagerServiceError,
     transaction_components::KernelFeatures,
 };
 

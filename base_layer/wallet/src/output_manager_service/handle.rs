@@ -29,7 +29,6 @@ use tari_common_types::{
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
-    legacy_key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         covenants::Covenant,
         MemoField,

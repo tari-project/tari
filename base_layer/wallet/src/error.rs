@@ -33,7 +33,6 @@ use tari_comms::{
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use tari_transaction_components::{
-    legacy_key_manager::error::KeyManagerServiceError,
     transaction_components::TransactionError,
 };
 use tari_utilities::{hex::HexError, ByteArrayError};

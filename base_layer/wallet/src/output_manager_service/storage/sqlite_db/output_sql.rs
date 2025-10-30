@@ -46,7 +46,6 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
-    legacy_key_manager::TariKeyId,
     transaction_components::{
         EncryptedData,
         MemoField,

@@ -19,110 +19,53 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
+use std::sync::{Arc, RwLock};
 
-use blake2::Blake2b;
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use digest::consts::{U32, U64};
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
-#[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::accessor_methods::{
-    ledger_get_dh_shared_secret_dhke,
-    ledger_get_one_sided_metadata_signature,
-    ledger_get_public_key,
-    ledger_get_raw_schnorr_signature,
-    ledger_get_script_offset,
-    ledger_get_script_schnorr_signature,
-    ledger_get_script_signature,
-    ScriptSignatureKey,
-};
-use rand::{rngs::OsRng, RngCore};
-use strum::IntoEnumIterator;
 use tari_common_types::{
-    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
-    key_branches::TransactionKeyManagerBranch,
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     types::{
         ComAndPubSignature,
-        CommsDHKE,
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
         PrivateKey,
         RangeProof,
-        SignatureWithDomain,
-        UncompressedComAndPubSignature,
-        UncompressedSignature,
         WalletMessageSchnorrSignature,
     },
 };
-use tari_crypto::{
-    commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
-    extended_range_proof::ExtendedRangeProofService,
-    hashing::{DomainSeparatedHash, DomainSeparatedHasher},
-    keys::SecretKey,
-    range_proof::RangeProofService as RPService,
-    ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
-};
-use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
-use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::{ByteArray, ByteArrayError, Hidden};
-use tokio::sync::RwLock;
-use zeroize::Zeroize;
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
+use tari_hashing::KeyManagerDomain;
+use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
+use tari_utilities::ByteArrayError;
 
-use crate::legacy_key_manager::{
-    interface::LegacyTariKeyAndId,
-    tari_key_manager::TariKeyManager,
-    wallet_types::WalletType,
-    AddResult,
-    KeyDigest,
-    KeyManagerBranch,
-};
+use crate::legacy_key_manager::{interface::LegacyTariKeyAndId, wallet_types::LegacyWalletType, KeyDigest};
 
-const HASHER_LABEL_STEALTH_KEY: &str = "script key";
-use crate::legacy_key_manager::interface::KeyManagerState;
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
         error::KeyManagerError,
-        key,
-        wallet_types::{HASHER_LABEL_DERIVE_KEY, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH},
+        wallet_types::{WalletType, HASHER_LABEL_DERIVE_KEY, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH},
         KeyManager,
+        SecretTransactionKeyManagerInterface,
         TariKeyId,
         TransactionKeyManagerInterface,
         TxoStage,
     },
     transaction_components::{
-        one_sided::{
-            diffie_hellman_stealth_domain_hasher_dhke,
-            shared_secret_to_output_encryption_key,
-            shared_secret_to_output_spending_key,
-        },
         EncryptedData,
         KernelFeatures,
         MemoField,
         RangeProofType,
-        TransactionError,
-        TransactionInput,
         TransactionInputVersion,
-        TransactionKernel,
         TransactionKernelVersion,
-        TransactionOutput,
         TransactionOutputVersion,
     },
     MicroMinotari,
 };
-use tari_transaction_components::key_manager::SecretTransactionKeyManagerInterface;
-use crate::legacy_key_manager::{
-    interface::TransactionKeyManagerBackend,
-    wallet_types::LegacyWalletType,
-    ConfidentialOutputHasher,
-    LegacyTariKeyId,
-};
 
-const PRE_MINE: &str = "pre-mine";
+use crate::legacy_key_manager::{interface::TransactionKeyManagerBackend, LegacyTariKeyId};
 
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
@@ -253,15 +196,27 @@ where TBackend: TransactionKeyManagerBackend + 'static
         })
     }
 
-    pub fn get_public_key_at_key_id(
-        &self,
-        key_id: &LegacyTariKeyId,
-    ) -> Result<CompressedPublicKey, KeyManagerError> {
+    pub fn get_public_key_at_key_id(&self, key_id: &LegacyTariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
         let key = self.convert_legacy_tari_key_id(key_id)?;
         self.key_manager.get_public_key_at_key_id(&key)
     }
 
     pub(crate) fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerError> {
+        if let LegacyTariKeyId::Imported { key } = key_id {
+            if let Some(db) = &self.db {
+                let pvt_key = futures::executor::block_on(
+                    db.write()
+                        .map_err(|_| KeyManagerError::UnexpectedError("RwLock on db poisoned".to_string()))?
+                        .get_imported_key(key),
+                )
+                .map_err(|e| KeyManagerError::UnexpectedError(e.to_string()))?;
+                return Ok(pvt_key);
+            } else {
+                return Err(KeyManagerError::UnexpectedError(
+                    "This is an imported key, with no database attached".to_string(),
+                ));
+            }
+        }
         let key = self.convert_legacy_tari_key_id(key_id)?;
         self.key_manager.get_private_key(&key)
     }
@@ -271,7 +226,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_view_key()?;
+        let key = self.key_manager.get_view_key();
         let key_id = self.convert_key_id_to_legacy(&key.key_id);
         Ok(LegacyTariKeyAndId {
             key_id,
@@ -280,7 +235,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_spend_key()?;
+        let key = self.key_manager.get_spend_key();
         let key_id = self.convert_key_id_to_legacy(&key.key_id);
         Ok(LegacyTariKeyAndId {
             key_id,
@@ -289,7 +244,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub fn get_comms_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_spend_key()?;
+        let key = self.key_manager.get_spend_key();
         let key_id = self.convert_key_id_to_legacy(&key.key_id);
         Ok(LegacyTariKeyAndId {
             key_id,
@@ -318,11 +273,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
         private_key: PrivateKey,
         encryption_key: Option<LegacyTariKeyId>,
     ) -> Result<LegacyTariKeyId, KeyManagerError> {
-        let encryption_key = encryption_key.map(|key| self.convert_legacy_tari_key_id(&key)?);
+        let encryption_key = match encryption_key {
+            Some(key) => Some(self.convert_legacy_tari_key_id(&key)?),
+            None => None,
+        };
         let key = self.key_manager.import_key(private_key, encryption_key)?;
         Ok(self.convert_key_id_to_legacy(&key))
     }
-
 
     pub fn get_private_view_key(&self) -> PrivateKey {
         self.key_manager.get_private_view_key()
@@ -336,7 +293,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
         public_script_key: Option<&CompressedPublicKey>,
     ) -> Result<Option<LegacyTariKeyId>, KeyManagerError> {
         let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let result = self.key_manager.find_script_key_id_from_commitment_mask_key_id(&key, public_script_key)?;
+        let result = self
+            .key_manager
+            .find_script_key_id_from_commitment_mask_key_id(&key, public_script_key)?;
         Ok(result.map(|key_id| self.convert_key_id_to_legacy(&key_id)))
     }
 
@@ -380,7 +339,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, KeyManagerError> {
         let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        self.key_manager.generate_burn_claim_signature(&key, value, claim_public_key)
+        self.key_manager
+            .generate_burn_claim_signature(&key, value, claim_public_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -397,13 +357,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         let script_key = self.convert_legacy_tari_key_id(script_key_id)?;
         let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        self.key_manager.get_script_signature(
-            &script_key,
-            &commitment_key,
-            value,
-            txi_version,
-            script_message,
-        )
+        self.key_manager
+            .get_script_signature(&script_key, &commitment_key, value, txi_version, script_message)
     }
 
     pub fn get_partial_script_signature(
@@ -466,12 +421,22 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.key_manager.sign_script_message(&key, challenge)
     }
 
+    pub fn sign_message_with_spend_key(
+        &self,
+        message: &[u8],
+        sender_offset_pub_key: Option<&CompressedPublicKey>,
+    ) -> Result<WalletMessageSchnorrSignature, KeyManagerError> {
+        self.key_manager
+            .sign_message_with_spend_key(message, sender_offset_pub_key)
+    }
+
     pub fn sign_script_message_with_spend_key(
         &self,
         message: &[u8],
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
-        self.key_manager.sign_script_message_with_spend_key(message, sender_offset_pub_key)
+        self.key_manager
+            .sign_script_message_with_spend_key(message, sender_offset_pub_key)
     }
 
     pub fn sign_with_nonce_and_challenge(
@@ -482,7 +447,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<CompressedSignature, KeyManagerError> {
         let private_key = self.convert_legacy_tari_key_id(private_key_id)?;
         let nonce_key = self.convert_legacy_tari_key_id(nonce_key_id)?;
-        self.key_manager.sign_with_nonce_and_challenge(&private_key, &nonce_key, challenge)
+        self.key_manager
+            .sign_with_nonce_and_challenge(&private_key, &nonce_key, challenge)
     }
 
     pub fn get_metadata_signature(
@@ -623,7 +589,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
         let nonce_key = self.convert_legacy_tari_key_id(nonce)?;
-        self.key_manager.get_txo_kernel_signature_excess_with_offset(&commitment_key, &nonce_key)
+        self.key_manager
+            .get_txo_kernel_signature_excess_with_offset(&commitment_key, &nonce_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -643,12 +610,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         } else {
             None
         };
-        self.key_manager.encrypt_data_for_recovery(
-            &commitment_key,
-            custom_recovery_key.as_ref(),
-            value,
-            payment_id,
-        )
+        self.key_manager
+            .encrypt_data_for_recovery(&commitment_key, custom_recovery_key.as_ref(), value, payment_id)
     }
 
     pub fn extract_payment_id_from_encrypted_data(
@@ -665,7 +628,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let recovery_key = if let Some(key_id) = custom_recovery_key {
             self.key_manager.get_private_key(&key_id)?
         } else {
-            self.get_private_view_key()?
+            self.get_private_view_key()
         };
         let (_, _, payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
         Ok(payment_id)
@@ -677,14 +640,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
     ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, KeyManagerError> {
-        let res = self.key_manager.try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)?;
-        Ok(res.map(|(key_id, value, payment_id)| {
-            (
-                self.convert_key_id_to_legacy(&key_id),
-                value,
-                payment_id,
-            )
-        }))
+        let res = self
+            .key_manager
+            .try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)?;
+        Ok(res.map(|(key_id, value, payment_id)| (self.convert_key_id_to_legacy(&key_id), value, payment_id)))
     }
 
     pub fn is_this_output_ours(
@@ -693,7 +652,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<PrivateKey>,
     ) -> Result<bool, KeyManagerError> {
-       self.key_manager.is_this_output_ours(commitment, encrypted_data, custom_recovery_key_id)
+        self.key_manager
+            .is_this_output_ours(commitment, encrypted_data, custom_recovery_key_id)
     }
 
     pub fn stealth_address_script_spending_key(
@@ -704,5 +664,4 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
         self.key_manager.stealth_address_script_spending_key(&key, spend_key)
     }
-
 }

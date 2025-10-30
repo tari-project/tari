@@ -26,12 +26,17 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common::configuration::Network;
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_transaction_components::key_manager::wallet_types::{SeedWordsWallet, SpendWallet, ViewWallet, WalletType};
+use tari_transaction_components::key_manager::wallet_types::{
+    LedgerWallet,
+    SeedWordsWallet,
+    SpendWallet,
+    ViewWallet,
+    WalletType,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
 pub enum LegacyWalletType {
@@ -43,15 +48,15 @@ pub enum LegacyWalletType {
 
 impl LegacyWalletType {
     pub fn is_derived_keys(&self) -> bool {
-        matches!(self, WalletType::DerivedKeys)
+        matches!(self, LegacyWalletType::DerivedKeys)
     }
 
     pub fn is_ledger(&self) -> bool {
-        matches!(self, WalletType::Ledger(_))
+        matches!(self, LegacyWalletType::Ledger(_))
     }
 
     pub fn is_provided_keys(&self) -> bool {
-        matches!(self, WalletType::ProvidedKeys(_))
+        matches!(self, LegacyWalletType::ProvidedKeys(_))
     }
 
     pub fn to_new_wallet_type(&self, master_seed: CipherSeed) -> Result<WalletType, String> {
@@ -60,15 +65,15 @@ impl LegacyWalletType {
                 SeedWordsWallet::construct_new(master_seed).map_err(|e| format!("{}", e))?,
             )),
             LegacyWalletType::Ledger(ledger_wallet) => Ok(WalletType::Ledger(ledger_wallet.clone())),
-            LegacyWalletType::ProvidedKeys(provided_keys) => match provided_keys.private_spend_key {
+            LegacyWalletType::ProvidedKeys(provided_keys) => match &provided_keys.private_spend_key {
                 Some(key) => Ok(WalletType::SpendWallet(SpendWallet::new(
-                    key,
-                    provided_keys.view_key,
+                    key.clone(),
+                    provided_keys.view_key.clone(),
                     provided_keys.birthday,
                 ))),
                 None => Ok(WalletType::ViewWallet(ViewWallet::new(
-                    provided_keys.public_spend_key,
-                    provided_keys.view_key,
+                    provided_keys.public_spend_key.clone(),
+                    provided_keys.view_key.clone(),
                     provided_keys.birthday,
                 ))),
             },

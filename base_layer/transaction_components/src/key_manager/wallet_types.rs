@@ -95,6 +95,15 @@ impl WalletType {
         let view_key = self.get_view_key();
         CompressedPublicKey::from_secret_key(view_key)
     }
+
+    pub fn get_birthday(&self) -> Option<u16> {
+        match self {
+            WalletType::SeedWords(seed_wallet) => Some(seed_wallet.birthday()),
+            WalletType::Ledger(_) => None,
+            WalletType::ViewWallet(view_wallet) => view_wallet.birthday(),
+            WalletType::SpendWallet(spend_wallet) => spend_wallet.birthday(),
+        }
+    }
 }
 
 impl Display for WalletType {
@@ -272,6 +281,10 @@ impl SeedWordsWallet {
 
     pub fn view_key(&self) -> &PrivateKey {
         &self.view_key
+    }
+
+    pub fn birthday(&self) -> u16 {
+        self.cipher_seed.birthday()
     }
 }
 
