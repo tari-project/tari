@@ -226,6 +226,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_mut().unwrap().write(tx)
     }
 
+    fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_all_orphans()
+    }
+
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch(key)
     }
