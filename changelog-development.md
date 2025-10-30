@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.1](https://github.com/tari-project/tari/compare/v5.2.0-pre.0...v5.2.0-pre.1) (2025-10-30)
+
+
+### Features
+
+* add monitored peers ([#7557](https://github.com/tari-project/tari/issues/7557)) ([b5353b7](https://github.com/tari-project/tari/commit/b5353b7c0bc303f1109231e04df1b4c2efe144b8))
+* list all orphan headers ([#7554](https://github.com/tari-project/tari/issues/7554)) ([da158ce](https://github.com/tari-project/tari/commit/da158ce13b1c0a2e6b69a3bbbe050092193c4616))
+
+
+### Bug Fixes
+
+* broadcast and propagate ([#7553](https://github.com/tari-project/tari/issues/7553)) ([2d41f25](https://github.com/tari-project/tari/commit/2d41f258a9da15508403215d662a827c9760ea0b))
+* multi_address_with_stats merging to only retain the newest valid claims in the peer_db ([#7535](https://github.com/tari-project/tari/issues/7535)) ([efd8ae6](https://github.com/tari-project/tari/commit/efd8ae68f54c2c3fe1ba398d58f0372449551681))
+* windows test build target link ([#7559](https://github.com/tari-project/tari/issues/7559)) ([4829fdb](https://github.com/tari-project/tari/commit/4829fdbce45bad3c14964612def87d07c7d7130a))
+
 ## [5.2.0-pre.0](https://github.com/tari-project/tari/compare/v5.1.0-rc.1...v5.2.0-pre.0) (2025-10-22)
 
 
