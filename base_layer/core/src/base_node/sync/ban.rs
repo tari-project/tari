@@ -42,7 +42,7 @@ impl PeerBanManager {
     }
 
     pub async fn ban_peer_if_required(&mut self, node_id: &NodeId, ban_reason: String, ban_duration: Duration) {
-        if self.config.forced_sync_peers.contains(node_id) {
+        if self.config.forced_sync_peers.contains(node_id) || self.config.monitored_peers.contains(node_id) {
             debug!(
                 target: LOG_TARGET,
                 "Not banning peer that is on the allow list for sync. Ban reason = {ban_reason}"
