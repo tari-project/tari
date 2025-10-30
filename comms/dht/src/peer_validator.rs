@@ -149,20 +149,21 @@ mod tests {
         let mut peer = node_identity.to_peer();
         peer.addresses = MultiaddressesWithStats::new(vec![]);
         let addr = Multiaddr::from_str("/ip4/23.23.23.23/tcp/80").unwrap();
-        peer.addresses.add_address(&addr, &PeerAddressSource::FromDiscovery {
-            peer_identity_claim: PeerIdentityClaim {
-                addresses: vec![addr.clone()],
-                features: PeerFeatures::COMMUNICATION_NODE,
-                signature: IdentitySignature::new(
-                    0,
-                    CompressedSignature::new_from_schnorr(Signature::new(
-                        RistrettoPublicKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
-                        RistrettoSecretKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
-                    )),
-                    Default::default(),
-                ),
-            },
-        });
+        peer.addresses
+            .add_or_update_addresses(std::slice::from_ref(&addr), &PeerAddressSource::FromDiscovery {
+                peer_identity_claim: PeerIdentityClaim {
+                    addresses: vec![addr.clone()],
+                    features: PeerFeatures::COMMUNICATION_NODE,
+                    signature: IdentitySignature::new(
+                        0,
+                        CompressedSignature::new_from_schnorr(Signature::new(
+                            RistrettoPublicKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
+                            RistrettoSecretKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
+                        )),
+                        Default::default(),
+                    ),
+                },
+            });
         let validator = PeerValidator::new(&config);
         let err = validator
             .validate_peer(UnvalidatedPeerInfo::from_peer_limited_claims(peer.clone(), 5, 5), None)
