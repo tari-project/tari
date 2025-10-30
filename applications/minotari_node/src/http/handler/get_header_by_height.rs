@@ -48,13 +48,20 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received get_header_by_height request: {}", params.height);
-
+    let tip_info = query_service.get_tip_info().await.map_err(error_handler_with_message)?;
+    let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
     let response = query_service
         .get_header_by_height(params.height)
         .await
         .map_err(error_handler_with_message)?;
     let body = Json(response);
     let mut response = body.into_response();
-    apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetHeaderByHeight);
+    apply_cache_control(
+        response.headers_mut(),
+        &cache_cfg,
+        RouteKey::GetHeaderByHeight,
+        tip_height,
+        params.height,
+    );
     Ok(response)
 }

@@ -419,7 +419,7 @@ where
             tip_height
         );
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
-        const PROGRESS_REPORT_INTERVAL: u64 = 10;
+        const PROGRESS_REPORT_INTERVAL: u64 = 50;
 
         let mut total_scanned = 0;
         let mut total_num_recovered = 0;

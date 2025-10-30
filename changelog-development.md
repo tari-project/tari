@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.0](https://github.com/tari-project/tari/compare/v5.1.0-rc.1...v5.2.0-pre.0) (2025-10-22)
+
+
+### Features
+
+* custom db timeout for grpc ([#7544](https://github.com/tari-project/tari/issues/7544)) ([9f0438c](https://github.com/tari-project/tari/commit/9f0438cc0877d38549febde6aba1c82ccd5a54bb))
+* dynamic cache control ([#7549](https://github.com/tari-project/tari/issues/7549)) ([dfb337d](https://github.com/tari-project/tari/commit/dfb337d443f3678a8eca423a80be87f8aa53b916))
+* minor performance improvements for sync calls ([#7548](https://github.com/tari-project/tari/issues/7548)) ([a267a94](https://github.com/tari-project/tari/commit/a267a941a5ef765859dad0bbebdfc0e7677a7f4d))
+
+
+### Bug Fixes
+
+* bad peer selection when syncing ([#7552](https://github.com/tari-project/tari/issues/7552)) ([6440036](https://github.com/tari-project/tari/commit/6440036d914cc6ab8badf8e5ffe74a2804759d3e))
+* change how pagination works on utxo scanning ([#7546](https://github.com/tari-project/tari/issues/7546)) ([19d0cb3](https://github.com/tari-project/tari/commit/19d0cb308581a74e8c277e2bfae76b04dead1de3))
+* search utxo command ([#7547](https://github.com/tari-project/tari/issues/7547)) ([4ea8a1a](https://github.com/tari-project/tari/commit/4ea8a1a582424d278344f8e70a0ca3800dd2cf1c))
+
 ## [5.1.0-rc.1](https://github.com/tari-project/tari/compare/v5.1.0-rc.0...v5.1.0-rc.1) (2025-10-07)
 
 

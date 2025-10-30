@@ -20,11 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::{payment_reference::generate_payment_reference, types::CompressedCommitment};
-use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::parser::FromHex;
@@ -52,20 +51,50 @@ impl CommandContext {
             .node_service
             .fetch_blocks_with_utxos(vec![commitment.clone()])
             .await?
-            .pop()
-            .ok_or_else(|| anyhow!("Block not found for utxo commitment {}", commitment.to_hex()))?;
-
-        for output in v.block().body.outputs() {
-            if output.commitment() == &commitment {
-                let payref = generate_payment_reference(v.hash(), &output.hash());
-                println!("Payref for output: {payref}");
-                let mined_info = self.node_service.fetch_mined_info_by_payref(&payref).await?;
-                println!("---- Mined info ----");
-                println!("{mined_info}");
+            .pop();
+        if let Some(v) = v {
+            println!("UTXO found in block at height: {}", v.block().header.height);
+            for output in v.block().body.outputs() {
+                if output.commitment() == &commitment {
+                    let mined_info = self
+                        .node_service
+                        .fetch_mined_info_by_output_hash(&output.hash())
+                        .await?;
+                    println!("---- Mined info ----");
+                    println!("{mined_info}");
+                }
+            }
+            println!("{}", v.block());
+            return Ok(());
+        }
+        println!("Output may be spent, searching blocks now...");
+        let tip = self.node_service.get_metadata().await?.best_block_height();
+        for height in 0..=tip {
+            let v = self.node_service.get_block(height, true).await?;
+            if let Some(v) = v {
+                if v.block().header.height % 1000 == 0 {
+                    println!("Searched to height: {}", v.block().header.height);
+                }
+                for output in v.block().body.outputs() {
+                    if output.commitment() == &commitment {
+                        println!("UTXO found in block at height: {}", v.block().header.height);
+                        let mined_info = self
+                            .node_service
+                            .fetch_mined_info_by_output_hash(&output.hash())
+                            .await?;
+                        println!("---- Mined info ----");
+                        println!("{mined_info}");
+                        if let Some(spent_info) = mined_info.input {
+                            let payref = generate_payment_reference(&spent_info.header_hash, &output.hash());
+                            println!("Payref for output: {payref}");
+                        }
+                        return Ok(());
+                    }
+                }
             }
         }
 
-        println!("{}", v.block());
+        println!("Output not found");
         Ok(())
     }
 }

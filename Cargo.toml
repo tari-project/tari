@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.1.0-rc.1"
+version = "5.2.0-pre.0"
 edition = "2021"
 rust-version = "1.90.0"
 authors = ["The Tari Development Community"]
@@ -50,7 +50,6 @@ resolver = "2"
 
 
 [workspace.dependencies]
-anyhow = { version = "1.0" }
 tari_jellyfish = { path = "infrastructure/jellyfish" }
 tari_common = { path = "common" }
 tari_common_sqlite = { path = "common_sqlite" }
@@ -59,7 +58,6 @@ tari_comms = { path = "comms/core" }
 tari_comms_dht = { path = "comms/dht", default-features = false }
 tari_comms_rpc_macros = { path = "comms/rpc_macros" }
 tari_core = { path = "base_layer/core", default-features = false }
-tari_crypto = { version = "0.22.1" }
 tari_features = { path = "common/tari_features" }
 tari_hashing = { path = "hashing" }
 tari_libtor = { path = "infrastructure/libtor" }
@@ -76,7 +74,6 @@ tari_storage = { path = "infrastructure/storage" }
 tari_transaction_components = { path = "base_layer/transaction_components" }
 tari_transaction_key_manager = { path = "base_layer/transaction_key_manager" }
 tari_test_utils = { path = "infrastructure/test_utils" }
-tari_utilities = { version = "0.8" }
 minotari_app_grpc = { path = "applications/minotari_app_grpc" }
 minotari_app_utilities = { path = "applications/minotari_app_utilities" }
 minotari_wallet = { path = "base_layer/wallet" }
@@ -90,9 +87,20 @@ minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common" }
-serde_json = "1.0.39"
-serde = "1.0.119"
 minotari_mcp_common = { path = "applications/minotari_mcp_common" }
+
+tari_utilities = { version = "0.8" }
+tari_crypto = { version = "0.22.1" }
+
+anyhow = { version = "1.0" }
+serde_json = "1"
+serde = "1"
+rand = { version = "0.8" }
+thiserror = { version = "2" }
+borsh = { version = "1.5.7" }
+tokio = { version = "1.47" }
+log = { version = "0.4" }
+log4rs = { version = "1.4", default-features = false}
 
 [profile.release]
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error
