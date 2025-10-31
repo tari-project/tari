@@ -28,7 +28,6 @@ mod interface;
 pub use interface::{
     KeyManagerBranch,
     KeyManagerState,
-    LegacySecretTransactionKeyManagerInterface,
     LegacySerializedKeyString,
     LegacyTariKeyAndId,
     LegacyTariKeyId,

@@ -49,6 +49,12 @@ pub enum WalletType {
 }
 
 impl WalletType {
+    pub fn new_random() -> Result<WalletType, ByteArrayError> {
+        let cipher_seed = CipherSeed::random();
+        let seed_words_wallet = SeedWordsWallet::construct_new(cipher_seed)?;
+        Ok(WalletType::SeedWords(seed_words_wallet))
+    }
+
     pub fn is_ledger(&self) -> bool {
         matches!(self, WalletType::Ledger(_))
     }

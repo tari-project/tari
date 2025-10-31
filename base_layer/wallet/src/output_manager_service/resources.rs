@@ -45,7 +45,6 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
-    pub interactive_tari_address: TariAddress,
     pub one_sided_tari_address: TariAddress,
     pub utxo_scanner_handle: UtxoScannerHandle,
     pub transaction_service_handle: TransactionServiceHandle,

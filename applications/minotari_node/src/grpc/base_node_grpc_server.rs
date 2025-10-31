@@ -76,7 +76,7 @@ use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessH
 use tari_transaction_components::{
     consensus::NetworkConsensus,
     generate_coinbase_with_wallet_output,
-    legacy_key_manager::{create_new_random_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -1266,7 +1266,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             prev_coinbase_value += u128::from(coinbase.value);
         }
 
-        let mut key_manager = create_new_random_key_manager().await.map_err(|e| {
+        let mut key_manager = KeyManager::new_random().map_err(|e| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: '{e}'")))
         })?;
         let height = new_template.header.height;
@@ -1300,12 +1300,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 range_proof_type,
                 MemoField::new_open(vec![], TxType::Coinbase).expect("empty user-data should always be valid"),
             )
-            .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             new_template.body.add_output(coinbase_output);
             let new_nonce = key_manager
-                .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-                .await
+                .get_random_key(None, false)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce +
                 &new_nonce
@@ -1341,7 +1339,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         &last_kernel.features,
                         TxoStage::Output,
                     )
-                    .await
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
                     .to_schnorr_signature()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
@@ -1509,7 +1506,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument("Malformed coinbase amounts".to_string()),
             ));
         }
-        let mut key_manager = create_new_random_key_manager().await.map_err(|s| {
+        let mut key_manager = KeyManager::new_random().map_err(|s| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: {s}")))
         })?;
         let height = block_template.header.height;
@@ -1543,7 +1540,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 range_proof_type,
                 MemoField::new_open(vec![], TxType::Coinbase).expect("empty user-data should always be valid"),
             )
-            .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             block_template.body.add_output(coinbase_output);
             let new_nonce = key_manager

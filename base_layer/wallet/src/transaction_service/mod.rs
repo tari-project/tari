@@ -33,9 +33,12 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
+};
 use tokio::sync::broadcast;
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     client::http_client_factory::HttpClientFactory,

@@ -24,8 +24,9 @@ use std::fmt::Debug;
 
 use tari_common_types::tari_address::TariAddress;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tokio::sync::broadcast;
+
 use crate::{
     client::http_client_factory::HttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
@@ -105,7 +106,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
     ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletKeyManager, T>, anyhow::Error> {
-        let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
+        let one_sided_tari_address = wallet.get_wallet_one_sided_address()?;
         let client_factory = match &self.client_factory {
             Some(t) => t.clone(),
             None => {

@@ -28,9 +28,10 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TxId},
     types::{BlockHash, CompressedSignature, FixedHash},
 };
-use tari_transaction_components::{ rpc::models::TxLocation};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_transaction_components::rpc::models::TxLocation;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_utilities::{hex::Hex, ByteArray};
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerHandle,

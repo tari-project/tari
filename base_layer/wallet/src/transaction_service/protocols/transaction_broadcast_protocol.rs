@@ -35,9 +35,10 @@ use tari_transaction_components::{
     rpc::models::{TxLocation, TxSubmissionRejectionReason},
     transaction_components::Transaction,
 };
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     transaction_service::{

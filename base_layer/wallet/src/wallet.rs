@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{marker::PhantomData, sync::Arc};
-use tari_transaction_key_manager::legacy_key_manager::{KeyManagerBranch, LegacyTariKeyId, LegacyTransactionKeyManagerInitializer, LegacyTransactionKeyManagerInterface, TransactionKeyManagerBackend};
+
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
@@ -54,6 +54,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
+    key_manager::{error::KeyManagerError, wallet_types::KeyDigest, SecretTransactionKeyManagerInterface},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -63,12 +64,16 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    KeyManagerBranch,
+    LegacyTransactionKeyManagerInitializer,
+    LegacyTransactionKeyManagerInterface,
+    TransactionKeyManagerBackend,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use url::Url;
-use tari_transaction_components::key_manager::error::KeyManagerError;
-use tari_transaction_components::key_manager::wallet_types::KeyDigest;
-use tari_transaction_key_manager::legacy_key_manager::LegacySecretTransactionKeyManagerInterface;
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
+use tari_transaction_components::key_manager::TariKeyId;
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
@@ -127,7 +132,7 @@ where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
-    TKeyManagerInterface: LegacySecretTransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface + LegacyTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     #[allow(clippy::too_many_lines)]
@@ -143,7 +148,7 @@ where
         output_manager_backend: V,
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
-        master_seed: Option<CipherSeed>,
+        master_seed: CipherSeed,
         wallet_type: Option<LegacyWalletType>,
     ) -> Result<Self, WalletError> {
         let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
@@ -237,7 +242,7 @@ where
         } else {
             None
         };
-        let spend_key = key_manager_handle.get_spend_key().await?;
+        let spend_key = key_manager_handle.get_spend_key();
 
         persist_one_sided_payment_script_for_node_identity(
             &mut output_manager_handle,
@@ -315,12 +320,14 @@ where
         }
     }
 
-    pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerError> {
-        let view_key = self.key_manager_service.get_view_key().await?;
-        let comms_key = self.key_manager_service.get_comms_key().await?;
+    pub fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerError> {
+        let view_key = self.key_manager_service.get_view_key();
+        let comms_key = self.key_manager_service.get_spend_key();
         let features = match *self.wallet_type {
             LegacyWalletType::DerivedKeys => TariAddressFeatures::default(),
-            LegacyWalletType::Ledger(_) | LegacyWalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
+            LegacyWalletType::Ledger(_) | LegacyWalletType::ProvidedKeys(_) => {
+                TariAddressFeatures::create_interactive_only()
+            },
         };
         Ok(TariAddress::new_dual_address(
             view_key.pub_key,
@@ -331,9 +338,9 @@ where
         )?)
     }
 
-    pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerError> {
-        let view_key = self.key_manager_service.get_view_key().await?;
-        let spend_key = self.key_manager_service.get_spend_key().await?;
+    pub fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerError> {
+        let view_key = self.key_manager_service.get_view_key();
+        let spend_key = self.key_manager_service.get_spend_key();
         Ok(TariAddress::new_dual_address(
             view_key.pub_key,
             spend_key.pub_key,
@@ -343,9 +350,9 @@ where
         )?)
     }
 
-    pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
-        let address_interactive = self.get_wallet_interactive_address().await?;
-        let address_one_sided = self.get_wallet_one_sided_address().await?;
+    pub fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
+        let address_interactive = self.get_wallet_interactive_address()?;
+        let address_one_sided = self.get_wallet_one_sided_address()?;
         Ok(WalletIdentity::new(
             self.node_identity.clone(),
             address_interactive,
@@ -409,7 +416,7 @@ where
         let value = unblinded_output.value;
         let wallet_output = unblinded_output
             .to_wallet_output(&self.key_manager_service, MemoField::new_empty())
-            .await?;
+            ?;
 
         let tx_id = self
             .transaction_service
@@ -686,7 +693,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 async fn persist_one_sided_payment_script_for_node_identity<KM: LegacyTransactionKeyManagerInterface>(
     output_manager_service: &mut OutputManagerHandle<KM>,
     spend_key: &CompressedPublicKey,
-    spend_key_id: LegacyTariKeyId,
+    spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {
     let script = push_pubkey_script(spend_key);
     let known_script = KnownOneSidedPaymentScript {

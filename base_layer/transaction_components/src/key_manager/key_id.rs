@@ -42,6 +42,7 @@ pub const DH_COMMITMENT_MASK_BRANCH: &str = "dh_commitment_mask";
 pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
 pub const ENCRYPTED_BRANCH: &str = "encrypted";
 pub const LEDGER_KEY_BRANCH: &str = "ledger_key";
+pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum TariKeyId {
@@ -50,6 +51,7 @@ pub enum TariKeyId {
     Derived {
         key: SerializedKeyString,
     },
+    CodeTemplateAuthor,
     #[default]
     Zero,
     DHCommitmentMask {
@@ -137,6 +139,12 @@ impl FromStr for TariKeyId {
                     }
                     Ok(TariKeyId::ViewKey)
                 },
+                CODE_TEMPLATE_AUTHOR => {
+                    if parts.len() != 1 {
+                        return Err("Wrong code template format".to_string());
+                    }
+                    Ok(TariKeyId::CodeTemplateAuthor)
+                },
                 LEDGER_KEY_BRANCH => {
                     if parts.len() != 3 {
                         return Err("Wrong ledger key format".to_string());
@@ -179,6 +187,7 @@ impl fmt::Display for TariKeyId {
             },
             TariKeyId::SpendKey => write!(f, "{SPEND_KEY_BRANCH}"),
             TariKeyId::ViewKey => write!(f, "{VIEW_KEY_BRANCH}"),
+            TariKeyId::CodeTemplateAuthor => write!(f, "{CODE_TEMPLATE_AUTHOR}"),
             TariKeyId::LedgerKey { branch, index } => {
                 write!(f, "{LEDGER_KEY_BRANCH}.{}.{}", branch, index)
             },

@@ -31,7 +31,7 @@ use tari_common_types::{
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::key_manager::TariKeyId;
 use tari_transaction_components::transaction_components::{MemoField, WalletOutput};
-use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
+
 use crate::output_manager_service::storage::{OutputSource, OutputStatus};
 
 // ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ impl From<SpendingPriority> for i32 {
 #[derivative(Debug)]
 pub struct KnownOneSidedPaymentScript {
     pub script_hash: Vec<u8>,
-    pub script_key_id: LegacyTariKeyId,
+    pub script_key_id: TariKeyId,
     pub script: TariScript,
     pub input: ExecutionStack,
     pub script_lock_height: u64,

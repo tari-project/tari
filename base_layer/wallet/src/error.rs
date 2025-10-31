@@ -32,10 +32,10 @@ use tari_comms::{
 };
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
-use tari_transaction_components::transaction_components::TransactionError;
+use tari_transaction_components::{key_manager::error::KeyManagerError, transaction_components::TransactionError};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
-use tari_transaction_components::key_manager::error::KeyManagerError;
+
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     connectivity_service::WalletConnectivityError,

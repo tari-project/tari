@@ -41,8 +41,9 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
-use tokio::time::Instant;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
+use tokio::time::Instant;
+
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,

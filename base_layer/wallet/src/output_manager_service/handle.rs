@@ -41,10 +41,11 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
 };
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::{Balance, OutputInfoByTxId, UseOutput},

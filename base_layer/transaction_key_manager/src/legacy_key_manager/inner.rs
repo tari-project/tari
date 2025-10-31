@@ -39,16 +39,17 @@ use tari_hashing::KeyManagerDomain;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::ByteArrayError;
 
-use crate::legacy_key_manager::{interface::LegacyTariKeyAndId, wallet_types::LegacyWalletType};
+use crate::legacy_key_manager::wallet_types::LegacyWalletType;
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
         error::KeyManagerError,
-        wallet_types::{WalletType, HASHER_LABEL_DERIVE_KEY, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH},
+        wallet_types::{KeyDigest, WalletType, HASHER_LABEL_DERIVE_KEY, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH},
         KeyManager,
         SecretTransactionKeyManagerInterface,
+        TariKeyAndId,
         TariKeyId,
         TransactionKeyManagerInterface,
         TxoStage,
@@ -64,7 +65,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_components::key_manager::wallet_types::KeyDigest;
+
 use crate::legacy_key_manager::{interface::TransactionKeyManagerBackend, LegacyTariKeyId};
 
 #[derive(Clone)]
@@ -109,7 +110,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(s)
     }
 
-    pub fn convert_legacy_tari_key_id(&self, key_id: &LegacyTariKeyId) -> Result<TariKeyId, KeyManagerError> {
+    pub fn convert_legacy_tari_key_id_to_current(
+        &self,
+        key_id: &LegacyTariKeyId,
+    ) -> Result<TariKeyId, KeyManagerError> {
         match key_id {
             LegacyTariKeyId::Managed { branch, index } => match branch.as_str() {
                 SPEND_KEY_BRANCH => Ok(TariKeyId::SpendKey),
@@ -123,9 +127,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 key: key.as_str().into(),
             }),
             LegacyTariKeyId::Imported { .. } => {
-                let private_key = self.get_private_key(&key_id)?;
+                let private_key = self.get_legacy_private_key(&key_id)?;
                 self.key_manager.import_key(private_key, None)
             },
+            LegacyTariKeyId::CodeTemplateAuthor => Ok(TariKeyId::CodeTemplateAuthor),
             LegacyTariKeyId::Zero => Ok(TariKeyId::Zero),
             LegacyTariKeyId::DHCommitmentMask {
                 public_key,
@@ -148,7 +153,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         }
     }
 
-    pub fn convert_key_id_to_legacy(&self, key_id: &TariKeyId) -> LegacyTariKeyId {
+    pub fn convert_key_id_to_legacy_key_id(&self, key_id: &TariKeyId) -> LegacyTariKeyId {
         match key_id {
             TariKeyId::SpendKey => LegacyTariKeyId::Managed {
                 branch: SPEND_KEY_BRANCH.to_string(),
@@ -161,6 +166,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             TariKeyId::Derived { key } => LegacyTariKeyId::Derived {
                 key: key.as_str().into(),
             },
+            TariKeyId::CodeTemplateAuthor => LegacyTariKeyId::CodeTemplateAuthor,
             TariKeyId::Zero => LegacyTariKeyId::Zero,
             TariKeyId::DHCommitmentMask {
                 public_key,
@@ -187,21 +193,23 @@ where TBackend: TransactionKeyManagerBackend + 'static
         }
     }
 
-    pub fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_random_key(None, true)?;
-        let legacy_key_id = self.convert_key_id_to_legacy(&key.key_id);
-        Ok(LegacyTariKeyAndId {
-            key_id: legacy_key_id,
-            pub_key: key.pub_key.clone(),
-        })
+    pub fn get_random_key(
+        &self,
+        encryption_key: Option<TariKeyId>,
+        ledger_key: bool,
+    ) -> Result<TariKeyAndId, KeyManagerError> {
+        self.key_manager.get_random_key(encryption_key, ledger_key)
     }
 
-    pub fn get_public_key_at_key_id(&self, key_id: &LegacyTariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(key_id)?;
-        self.key_manager.get_public_key_at_key_id(&key)
+    pub fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
+        self.key_manager.get_public_key_at_key_id(&key_id)
     }
 
-    pub(crate) fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerError> {
+    pub(crate) fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerError> {
+        self.key_manager.get_private_key(key_id)
+    }
+
+    fn get_legacy_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerError> {
         if let LegacyTariKeyId::Imported { key } = key_id {
             if let Some(db) = &self.db {
                 let pvt_key = futures::executor::block_on(
@@ -217,68 +225,32 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 ));
             }
         }
-        let key = self.convert_legacy_tari_key_id(key_id)?;
-        self.key_manager.get_private_key(&key)
+        let key = self.convert_legacy_tari_key_id_to_current(key_id)?;
+        self.get_private_key(&key)
     }
 
     pub fn get_wallet_type(&self) -> &WalletType {
         self.key_manager.get_wallet_type()
     }
 
-    pub fn get_view_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_view_key();
-        let key_id = self.convert_key_id_to_legacy(&key.key_id);
-        Ok(LegacyTariKeyAndId {
-            key_id,
-            pub_key: key.pub_key.clone(),
-        })
+    pub fn get_view_key(&self) -> TariKeyAndId {
+        self.key_manager.get_view_key()
     }
 
-    pub fn get_spend_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_spend_key();
-        let key_id = self.convert_key_id_to_legacy(&key.key_id);
-        Ok(LegacyTariKeyAndId {
-            key_id,
-            pub_key: key.pub_key.clone(),
-        })
+    pub fn get_spend_key(&self) -> TariKeyAndId {
+        self.key_manager.get_spend_key()
     }
 
-    pub fn get_comms_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
-        let key = self.key_manager.get_spend_key();
-        let key_id = self.convert_key_id_to_legacy(&key.key_id);
-        Ok(LegacyTariKeyAndId {
-            key_id,
-            pub_key: key.pub_key.clone(),
-        })
-    }
-
-    pub fn get_next_commitment_mask_and_script_key(
-        &mut self,
-    ) -> Result<(LegacyTariKeyAndId, LegacyTariKeyAndId), KeyManagerError> {
-        let (key_1, key_2) = self.key_manager.get_next_commitment_mask_and_script_key()?;
-        let commitment_mask_key_id = self.convert_key_id_to_legacy(&key_1.key_id);
-        let script_key_id = self.convert_key_id_to_legacy(&key_2.key_id);
-        let commitment_mask = LegacyTariKeyAndId {
-            key_id: commitment_mask_key_id,
-            pub_key: key_1.pub_key.clone(),
-        };
-        Ok((commitment_mask, LegacyTariKeyAndId {
-            key_id: script_key_id,
-            pub_key: key_2.pub_key,
-        }))
+    pub fn get_next_commitment_mask_and_script_key(&self) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError> {
+        self.key_manager.get_next_commitment_mask_and_script_key()
     }
 
     pub fn import_key(
         &self,
         private_key: PrivateKey,
-        encryption_key: Option<LegacyTariKeyId>,
-    ) -> Result<LegacyTariKeyId, KeyManagerError> {
-        let encryption_key = match encryption_key {
-            Some(key) => Some(self.convert_legacy_tari_key_id(&key)?),
-            None => None,
-        };
-        let key = self.key_manager.import_key(private_key, encryption_key)?;
-        Ok(self.convert_key_id_to_legacy(&key))
+        encryption_key: Option<TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerError> {
+        self.key_manager.import_key(private_key, encryption_key)
     }
 
     pub fn get_private_view_key(&self) -> PrivateKey {
@@ -289,14 +261,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
     /// the public keys match
     pub fn find_script_key_id_from_commitment_mask_key_id(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         public_script_key: Option<&CompressedPublicKey>,
-    ) -> Result<Option<LegacyTariKeyId>, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let result = self
-            .key_manager
-            .find_script_key_id_from_commitment_mask_key_id(&key, public_script_key)?;
-        Ok(result.map(|key_id| self.convert_key_id_to_legacy(&key_id)))
+    ) -> Result<Option<TariKeyId>, KeyManagerError> {
+        self.key_manager
+            .find_script_key_id_from_commitment_mask_key_id(&commitment_mask_key_id, public_script_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -305,42 +274,39 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn get_commitment(
         &self,
-        private_key: &LegacyTariKeyId,
+        private_key: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(private_key)?;
-        self.key_manager.get_commitment(&key, value)
+        self.key_manager.get_commitment(&private_key, value)
     }
 
     /// Verify that the commitment matches the value and the spending key/mask
     pub fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        self.key_manager.verify_mask(commitment, &key, value)
+        self.key_manager.verify_mask(commitment, &commitment_mask_key_id, value)
     }
 
     pub fn get_diffie_hellman_shared_secret(
         &self,
-        secret_key_id: &LegacyTariKeyId,
+        secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(secret_key_id)?;
-        self.key_manager.get_diffie_hellman_shared_secret(&key, public_key)
+        self.key_manager
+            .get_diffie_hellman_shared_secret(&secret_key_id, public_key)
     }
 
     pub fn generate_burn_claim_signature(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
         self.key_manager
-            .generate_burn_claim_signature(&key, value, claim_public_key)
+            .generate_burn_claim_signature(&commitment_mask_key_id, value, claim_public_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -349,30 +315,32 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn get_script_signature(
         &self,
-        script_key_id: &LegacyTariKeyId,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        script_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let script_key = self.convert_legacy_tari_key_id(script_key_id)?;
-        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        self.key_manager
-            .get_script_signature(&script_key, &commitment_key, value, txi_version, script_message)
+        self.key_manager.get_script_signature(
+            &script_key_id,
+            &commitment_mask_key_id,
+            value,
+            txi_version,
+            script_message,
+        )
     }
 
     pub fn get_partial_script_signature(
         &self,
-        commitment_mask_id: &LegacyTariKeyId,
+        commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_id)?;
         self.key_manager.get_partial_script_signature(
-            &key,
+            &commitment_mask_id,
             value,
             txi_version,
             ephemeral_pubkey,
@@ -387,38 +355,30 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn construct_range_proof(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        self.key_manager.construct_range_proof(&key, value, min_value)
+        self.key_manager
+            .construct_range_proof(&commitment_mask_key_id, value, min_value)
     }
 
     #[allow(clippy::too_many_lines)]
     pub fn get_script_offset(
         &self,
-        script_key_ids: &[LegacyTariKeyId],
-        sender_offset_key_ids: &[LegacyTariKeyId],
+        script_key_ids: &[TariKeyId],
+        sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, KeyManagerError> {
-        let mut script_keys = Vec::new();
-        for key in script_key_ids {
-            script_keys.push(self.convert_legacy_tari_key_id(key)?);
-        }
-        let mut sender_offset_keys = Vec::new();
-        for key in sender_offset_key_ids {
-            sender_offset_keys.push(self.convert_legacy_tari_key_id(key)?);
-        }
-        self.key_manager.get_script_offset(&script_keys, &sender_offset_keys)
+        self.key_manager
+            .get_script_offset(&script_key_ids, &sender_offset_key_ids)
     }
 
     pub fn sign_script_message(
         &self,
-        private_key_id: &LegacyTariKeyId,
+        private_key_id: &TariKeyId,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(private_key_id)?;
-        self.key_manager.sign_script_message(&key, challenge)
+        self.key_manager.sign_script_message(&private_key_id, challenge)
     }
 
     pub fn sign_message_with_spend_key(
@@ -441,31 +401,27 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn sign_with_nonce_and_challenge(
         &self,
-        private_key_id: &LegacyTariKeyId,
-        nonce_key_id: &LegacyTariKeyId,
+        private_key_id: &TariKeyId,
+        nonce_key_id: &TariKeyId,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
-        let private_key = self.convert_legacy_tari_key_id(private_key_id)?;
-        let nonce_key = self.convert_legacy_tari_key_id(nonce_key_id)?;
         self.key_manager
-            .sign_with_nonce_and_challenge(&private_key, &nonce_key, challenge)
+            .sign_with_nonce_and_challenge(&private_key_id, &nonce_key_id, challenge)
     }
 
     pub fn get_metadata_signature(
-        &mut self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        &self,
+        commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
-        sender_offset_key_id: &LegacyTariKeyId,
+        sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let sender_key = self.convert_legacy_tari_key_id(sender_offset_key_id)?;
         self.key_manager.get_metadata_signature(
-            &commitment_key,
+            &commitment_mask_key_id,
             value_as_private_key,
-            &sender_key,
+            &sender_offset_key_id,
             txo_version,
             metadata_signature_message,
             range_proof_type,
@@ -473,22 +429,20 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub fn get_one_sided_metadata_signature(
-        &mut self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        &self,
+        commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
-        sender_offset_key_id: &LegacyTariKeyId,
+        sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let sender_key = self.convert_legacy_tari_key_id(sender_offset_key_id)?;
         self.key_manager.get_one_sided_metadata_signature(
-            &commitment_key,
+            &commitment_mask_key_id,
             value,
-            &sender_key,
+            &sender_offset_key_id,
             txo_version,
             metadata_signature_message_common,
             range_proof_type,
@@ -498,8 +452,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub fn get_receiver_partial_metadata_signature(
-        &mut self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        &self,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
         ephemeral_pubkey: &CompressedPublicKey,
@@ -507,9 +461,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
         self.key_manager.get_receiver_partial_metadata_signature(
-            &key,
+            &commitment_mask_key_id,
             value,
             sender_offset_public_key,
             ephemeral_pubkey,
@@ -524,18 +477,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // signers, this can be left as none
     pub fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &LegacyTariKeyId,
-        sender_offset_key_id: &LegacyTariKeyId,
+        ephemeral_private_nonce_id: &TariKeyId,
+        sender_offset_key_id: &TariKeyId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let nonce = self.convert_legacy_tari_key_id(ephemeral_private_nonce_id)?;
-        let sender_key = self.convert_legacy_tari_key_id(sender_offset_key_id)?;
         self.key_manager.get_sender_partial_metadata_signature(
-            &nonce,
-            &sender_key,
+            &ephemeral_private_nonce_id,
+            &sender_offset_key_id,
             commitment,
             ephemeral_commitment,
             txo_version,
@@ -549,18 +500,17 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn get_txo_private_kernel_offset(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
-        nonce_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
+        nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let nonce = self.convert_legacy_tari_key_id(nonce_id)?;
-        self.key_manager.get_txo_private_kernel_offset(&key, &nonce)
+        self.key_manager
+            .get_txo_private_kernel_offset(&commitment_mask_key_id, &nonce_id)
     }
 
     pub fn get_partial_txo_kernel_signature(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
-        nonce_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
+        nonce_id: &TariKeyId,
         total_nonce: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
         kernel_version: &TransactionKernelVersion,
@@ -568,11 +518,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
     ) -> Result<CompressedSignature, KeyManagerError> {
-        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let nonce_key = self.convert_legacy_tari_key_id(nonce_id)?;
         self.key_manager.get_partial_txo_kernel_signature(
-            &commitment_key,
-            &nonce_key,
+            &commitment_mask_key_id,
+            &nonce_id,
             total_nonce,
             total_excess,
             kernel_version,
@@ -584,13 +532,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn get_txo_kernel_signature_excess_with_offset(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
-        nonce: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
+        nonce: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
-        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let nonce_key = self.convert_legacy_tari_key_id(nonce)?;
         self.key_manager
-            .get_txo_kernel_signature_excess_with_offset(&commitment_key, &nonce_key)
+            .get_txo_kernel_signature_excess_with_offset(&commitment_mask_key_id, &nonce)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -599,33 +545,22 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn encrypt_data_for_recovery(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
-        custom_recovery_key_id: Option<&LegacyTariKeyId>,
+        commitment_mask_key_id: &TariKeyId,
+        custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
-        let commitment_key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        let custom_recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            Some(self.convert_legacy_tari_key_id(key_id)?)
-        } else {
-            None
-        };
         self.key_manager
-            .encrypt_data_for_recovery(&commitment_key, custom_recovery_key.as_ref(), value, payment_id)
+            .encrypt_data_for_recovery(&commitment_mask_key_id, custom_recovery_key_id, value, payment_id)
     }
 
     pub fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
-        custom_recovery_key_id: Option<&LegacyTariKeyId>,
+        custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<MemoField, KeyManagerError> {
-        let custom_recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            Some(self.convert_legacy_tari_key_id(key_id)?)
-        } else {
-            None
-        };
-        let recovery_key = if let Some(key_id) = custom_recovery_key {
+        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.key_manager.get_private_key(&key_id)?
         } else {
             self.get_private_view_key()
@@ -639,11 +574,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, KeyManagerError> {
-        let res = self
-            .key_manager
-            .try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)?;
-        Ok(res.map(|(key_id, value, payment_id)| (self.convert_key_id_to_legacy(&key_id), value, payment_id)))
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, KeyManagerError> {
+        self.key_manager
+            .try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)
     }
 
     pub fn is_this_output_ours(
@@ -658,10 +591,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub fn stealth_address_script_spending_key(
         &self,
-        commitment_mask_key_id: &LegacyTariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
-        let key = self.convert_legacy_tari_key_id(commitment_mask_key_id)?;
-        self.key_manager.stealth_address_script_spending_key(&key, spend_key)
+        self.key_manager
+            .stealth_address_script_spending_key(&commitment_mask_key_id, spend_key)
     }
 }

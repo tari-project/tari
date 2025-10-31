@@ -33,7 +33,10 @@ mod config;
 pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
-use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
+use tari_transaction_key_manager::{
+    legacy_key_manager::LegacyTransactionKeyManagerWrapper,
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+};
 pub use wallet::Wallet;
 
 use crate::{

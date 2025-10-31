@@ -31,8 +31,9 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
 };
-use tari_utilities::SafePassword;
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
+use tari_utilities::SafePassword;
+
 use crate::{
     error::WalletStorageError,
     storage::sqlite_db::models::DbBurnProof,

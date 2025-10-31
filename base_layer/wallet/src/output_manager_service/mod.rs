@@ -44,9 +44,14 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tari_transaction_components::{consensus::NetworkConsensus, crypto_factories::CryptoFactories};
+use tari_transaction_components::{
+    consensus::NetworkConsensus,
+    crypto_factories::CryptoFactories,
+    key_manager::SecretTransactionKeyManagerInterface,
+};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
-use tari_transaction_key_manager::legacy_key_manager::{LegacySecretTransactionKeyManagerInterface, LegacyTransactionKeyManagerInterface};
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     client::http_client_factory::HttpClientFactory,
@@ -105,7 +110,7 @@ impl<T, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
     for OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + LegacySecretTransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {

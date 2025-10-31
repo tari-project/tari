@@ -40,18 +40,16 @@ use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::C
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::MinimalUtxoSyncInfo,
-    transaction_components::{
-        one_sided::shared_secret_to_output_encryption_key,
-        EncryptedData,
-        TransactionOutput,
-        WalletOutput,
-    },
+    transaction_components::{EncryptedData, TransactionOutput, WalletOutput},
     MicroMinotari,
+};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
+
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
@@ -454,7 +452,7 @@ where
                     let outputs = response.outputs;
                     total_scanned += outputs.len();
 
-                    let found_outputs = self.search_for_owned_outputs(outputs).await?;
+                    let found_outputs = self.search_for_owned_outputs(outputs)?;
 
                     if found_outputs.is_empty() {
                         trace!(
@@ -557,13 +555,13 @@ where
         Ok(result)
     }
 
-    async fn search_for_owned_outputs(
+    fn search_for_owned_outputs(
         &mut self,
         outputs: Vec<MinimalUtxoSyncInfo>,
     ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
         let mut found_outputs: Vec<MinimalUtxoSyncInfo> = Vec::new();
         let start = Instant::now();
-        let view_key = self.key_manager.get_view_key().await?;
+        let view_key = self.key_manager.get_view_key();
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
                 .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
@@ -576,7 +574,7 @@ where
             let shared_secret = self
                 .key_manager
                 .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)
-                .await?;
+                ?;
             let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
                 .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
@@ -591,7 +589,7 @@ where
             if self
                 .key_manager
                 .is_this_output_ours(&commitment, &encrypted, None)
-                .await
+
                 .ok()
                 .is_some()
             {

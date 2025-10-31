@@ -43,6 +43,7 @@ use tari_transaction_components::{
     },
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
+
 use crate::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//

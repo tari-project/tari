@@ -24,8 +24,9 @@ use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task};
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tokio::{sync::broadcast, task};
+
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,

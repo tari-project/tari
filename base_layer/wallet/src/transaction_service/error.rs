@@ -38,13 +38,14 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
+    key_manager::error::KeyManagerError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
-use tari_transaction_components::key_manager::error::KeyManagerError;
+
 use crate::{
     error::WalletStorageError,
     output_manager_service::error::OutputManagerError,

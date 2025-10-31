@@ -97,6 +97,7 @@ use crate::{
     MicroMinotari,
 };
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
+const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 
 #[derive(Clone)]
 pub struct KeyManager {
@@ -131,6 +132,13 @@ impl KeyManager {
         Ok(Self {
             crypto_factories: CryptoFactories::default(),
             wallet_type,
+        })
+    }
+
+    pub fn new_random() -> Result<Self, KeyManagerError> {
+        Ok(Self {
+            crypto_factories: CryptoFactories::default(),
+            wallet_type: WalletType::new_random()?,
         })
     }
 
@@ -499,6 +507,19 @@ impl TransactionKeyManagerInterface for KeyManager {
                 })?;
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
                 let public_key = public_alpha.to_public_key()? + &public_key.to_public_key()?;
+                Ok(CompressedPublicKey::new_from_pk(public_key))
+            },
+            TariKeyId::CodeTemplateAuthor => {
+                let public_spend_key = self.get_spend_key().pub_key;
+                let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                    CODE_TEMPLATE_AUTHOR_LABEL,
+                );
+                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                    KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
+                })?;
+                let public_key = CompressedPublicKey::from_secret_key(&private_key);
+                let public_key = public_key.to_public_key()? + &public_spend_key.to_public_key()?;
                 Ok(CompressedPublicKey::new_from_pk(public_key))
             },
             TariKeyId::DHCommitmentMask {
@@ -1263,6 +1284,19 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
                     .map_err(|_| KeyManagerError::UnexpectedError("Invalid private key for Spend".to_string()))?;
                 let private_key = private_key + spend_key;
+                Ok(private_key)
+            },
+            TariKeyId::CodeTemplateAuthor => {
+                let public_spend_key = self.get_spend_key().pub_key;
+                let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                    CODE_TEMPLATE_AUTHOR_LABEL,
+                );
+                let hasher = hasher.chain(public_spend_key.as_bytes()).finalize();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                    KeyManagerError::UnexpectedError("Invalid private key for sender offset private key".to_string())
+                })?;
+                let spend_key = self.get_private_spend_key()?;
+                let private_key = private_key + &spend_key;
                 Ok(private_key)
             },
             TariKeyId::LedgerKey { .. } => Err(KeyManagerError::LedgerError(

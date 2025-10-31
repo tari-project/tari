@@ -1,11 +1,9 @@
-
 // Copyright 2025. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
-//    following
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
 // disclaimer.
 //
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
@@ -22,6 +20,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
     types::{
@@ -33,7 +32,6 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
-use rand::{rngs::OsRng, RngCore};
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
 
 use crate::{
@@ -261,8 +259,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let kernel_version = TransactionKernelVersion::get_current_version();
 
         let transaction_output = output.to_transaction_output()?;
-        let public_nonce = self
-            .key_manager.get_random_key(None, false)?;
+        let public_nonce = self.key_manager.get_random_key(None, false)?;
         let tx_meta = if output.is_burned() {
             let mut meta = info.metadata.clone();
             meta.burn_commitment = Some(transaction_output.commitment().clone());
@@ -322,8 +319,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         tx_id: TxId,
         info: &OneSidedMultisigTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
-        let sender_offset_key = self
-            .key_manager.get_random_key(None, true)?;
+        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
         let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
 
         let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
@@ -380,8 +376,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let kernel_version = TransactionKernelVersion::get_current_version();
 
         let transaction_output = output.to_transaction_output()?;
-        let public_nonce = self
-            .key_manager.get_random_key(None, false)?;
+        let public_nonce = self.key_manager.get_random_key(None, false)?;
         let tx_meta = if output.is_burned() {
             let mut meta = info.metadata.clone();
             meta.burn_commitment = Some(transaction_output.commitment().clone());
@@ -444,8 +439,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     ) -> Result<SignedMessage, TransactionBuilderError> {
         let (_commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
 
-        let sender_offset_key = self
-            .key_manager.get_random_key(None, true)?;
+        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
 
         let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
@@ -496,8 +490,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
 
         let transaction_output = output.to_transaction_output()?;
-        let public_nonce = self
-            .key_manager.get_random_key(None, false)?;
+        let public_nonce = self.key_manager.get_random_key(None, false)?;
         let tx_meta = if output.is_burned() {
             let mut meta = info.metadata.clone();
             meta.burn_commitment = Some(transaction_output.commitment().clone());

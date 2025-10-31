@@ -59,7 +59,7 @@ use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_fact
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     generate_coinbase,
-    key_manager::create_new_random_key_manager,
+    key_manager::KeyManager,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -96,7 +96,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     config.set_base_path(cli.common.get_base_path());
 
     debug!(target: LOG_TARGET_FILE, "{config:?}");
-    let mut key_manager = create_new_random_key_manager().await.map_err(|err| {
+    let mut key_manager = KeyManager::new_random().map_err(|err| {
         ExitError::new(
             ExitCode::KeyManagerServiceError,
             "'wallet_payment_address' ".to_owned() + &err.to_string(),
@@ -373,7 +373,7 @@ async fn get_new_block(
     sha_p2pool_client: Arc<Mutex<Option<ShaP2PoolGrpcClient>>>,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
@@ -398,7 +398,7 @@ async fn get_new_block_base_node(
     base_node_client: &mut BaseNodeGrpcClient,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
@@ -441,7 +441,6 @@ async fn get_new_block_base_node(
         config.range_proof_type,
         MemoField::open_unchecked(vec![], TxType::Coinbase),
     )
-    .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
     debug!(target: LOG_TARGET, "Coinbase kernel: {coinbase_kernel}");
     debug!(target: LOG_TARGET, "Coinbase output: {coinbase_output}");
@@ -530,7 +529,7 @@ async fn mining_cycle(
     sha_p2pool_client: Option<ShaP2PoolGrpcClient>,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<bool, MinerError> {

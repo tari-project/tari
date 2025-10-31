@@ -32,41 +32,11 @@ use tari_utilities::{byte_array::ByteArrayError, ByteArray};
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputEncryptionKeysDomain>;
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputSpendingKeysDomain>;
 
-/// Generate an output encryption key from a Diffie-Hellman shared secret
-pub fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_uniform_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a secret key
-pub fn secret_key_to_output_encryption_key(secret_key: &PrivateKey) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_uniform_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(secret_key.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
 /// Generate an output encryption key from a public key
 pub fn public_key_to_output_encryption_key(public_key: &CompressedPublicKey) -> Result<PrivateKey, ByteArrayError> {
     PrivateKey::from_uniform_bytes(
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(public_key.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output spending key from a Diffie-Hellman shared secret
-pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_uniform_bytes(
-        WalletOutputSpendingKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
             .finalize()
             .as_ref(),
     )

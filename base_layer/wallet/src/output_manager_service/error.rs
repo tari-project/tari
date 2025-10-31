@@ -30,12 +30,13 @@ use tari_crypto::errors::RangeProofError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
+    key_manager::error::KeyManagerError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
-use tari_transaction_components::key_manager::error::KeyManagerError;
+
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
