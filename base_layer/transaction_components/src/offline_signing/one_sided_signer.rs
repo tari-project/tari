@@ -1,5 +1,4 @@
-use rand::{rngs::OsRng, RngCore};
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
+
 // Copyright 2025. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -34,6 +33,7 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
+use rand::{rngs::OsRng, RngCore};
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
 
 use crate::{
@@ -90,22 +90,19 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         Self { key_manager }
     }
 
-    pub async fn sign_transaction(
+    pub fn sign_transaction(
         &mut self,
         tx_id: TxId,
-        mut info: OneSidedTransactionInfo,
+        info: OneSidedTransactionInfo,
     ) -> Result<SignedTransaction, TransactionBuilderError> {
-        self.marshal_output_pairs(&mut info).await?;
-        let signed_message = self.sign_message(tx_id, &info).await?;
-        let (transaction, change_output) = self
-            .build_transaction(
-                info,
-                signed_message.signed_data,
-                signed_message.sender_offset_key_id,
-                signed_message.sender_public_nonce,
-                signed_message.sender_public_excess,
-            )
-            .await?;
+        let signed_message = self.sign_message(tx_id, &info)?;
+        let (transaction, change_output) = self.build_transaction(
+            info,
+            signed_message.signed_data,
+            signed_message.sender_offset_key_id,
+            signed_message.sender_public_nonce,
+            signed_message.sender_public_excess,
+        )?;
         Ok(SignedTransaction {
             transaction,
             sent_hashes: signed_message.sent_hashes,
@@ -114,22 +111,19 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         })
     }
 
-    pub async fn sign_multisig_transaction(
+    pub fn sign_multisig_transaction(
         &mut self,
         tx_id: TxId,
-        mut info: OneSidedMultisigTransactionInfo,
+        info: OneSidedMultisigTransactionInfo,
     ) -> Result<SignedTransaction, TransactionBuilderError> {
-        self.marshal_output_pairs(&mut info).await?;
-        let signed_message = self.sign_multisig_message(tx_id, &info).await?;
-        let (transaction, change_output) = self
-            .build_transaction(
-                info.base,
-                signed_message.signed_data,
-                signed_message.sender_offset_key_id,
-                signed_message.sender_public_nonce,
-                signed_message.sender_public_excess,
-            )
-            .await?;
+        let signed_message = self.sign_multisig_message(tx_id, &info)?;
+        let (transaction, change_output) = self.build_transaction(
+            info.base,
+            signed_message.signed_data,
+            signed_message.sender_offset_key_id,
+            signed_message.sender_public_nonce,
+            signed_message.sender_public_excess,
+        )?;
         Ok(SignedTransaction {
             transaction,
             sent_hashes: signed_message.sent_hashes,
@@ -138,22 +132,19 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         })
     }
 
-    pub async fn sign_multisig_withdraw_transaction(
+    pub fn sign_multisig_withdraw_transaction(
         &mut self,
         tx_id: TxId,
-        mut info: OneSidedTransactionInfo,
+        info: OneSidedTransactionInfo,
     ) -> Result<SignedTransaction, TransactionBuilderError> {
-        self.marshal_output_pairs(&mut info).await?;
-        let signed_message = self.sign_multisig_withdraw_message(tx_id, &info).await?;
-        let (transaction, change_output) = self
-            .build_transaction(
-                info,
-                signed_message.signed_data,
-                signed_message.sender_offset_key_id,
-                signed_message.sender_public_nonce,
-                signed_message.sender_public_excess,
-            )
-            .await?;
+        let signed_message = self.sign_multisig_withdraw_message(tx_id, &info)?;
+        let (transaction, change_output) = self.build_transaction(
+            info,
+            signed_message.signed_data,
+            signed_message.sender_offset_key_id,
+            signed_message.sender_public_nonce,
+            signed_message.sender_public_excess,
+        )?;
         Ok(SignedTransaction {
             transaction,
             sent_hashes: signed_message.sent_hashes,
@@ -162,20 +153,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         })
     }
 
-    async fn marshal_output_pairs(&self, info: &mut OneSidedTransactionInfo) -> Result<(), TransactionBuilderError> {
-        if let Some(change_output) = &mut info.change_output {
-            change_output.unmarshal(self.key_manager).await?;
-        }
-        for input in &mut info.inputs {
-            input.unmarshal(self.key_manager).await?;
-        }
-        for output in &mut info.outputs {
-            output.unmarshal(self.key_manager).await?;
-        }
-        Ok(())
-    }
-
-    async fn calculate_total_nonce_and_total_public_excess(
+    fn calculate_total_nonce_and_total_public_excess(
         &self,
         info: &OneSidedTransactionInfo,
     ) -> Result<(CompressedPublicKey, CompressedPublicKey), TransactionError> {
@@ -184,47 +162,41 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         for input in &info.inputs {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&input.output_pair.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&input.output_pair.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess -
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         input.output_pair.output.commitment_mask_key_id(),
                         &input.output_pair.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
         for output in &info.outputs {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&output.output_pair.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&output.output_pair.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         output.output_pair.output.commitment_mask_key_id(),
                         &output.output_pair.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
 
         if let Some(change) = &info.change_output {
             public_nonce = public_nonce +
                 self.key_manager
-                    .get_public_key_at_key_id(&change.output_pair.kernel_nonce)
-                    .await?
+                    .get_public_key_at_key_id(&change.output_pair.kernel_nonce)?
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
                         change.output_pair.output.commitment_mask_key_id(),
                         &change.output_pair.kernel_nonce,
-                    )
-                    .await?
+                    )?
                     .to_public_key()?;
         }
         Ok((
@@ -234,15 +206,12 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn sign_message(
+    fn sign_message(
         &mut self,
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
-        let sender_offset_key = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-            .await?;
+        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_key.key_id.clone().into(),
             public_key: info
@@ -263,31 +232,24 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 .clone(),
         };
 
-        let sender_offset_public_key = self
-            .key_manager
-            .get_public_key_at_key_id(&sender_offset_key.key_id)
-            .await?;
+        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
         let minimum_value_promise = MicroMinotari::zero();
         let script_spending_key = self
             .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())
-            .await?;
+            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())?;
         let script = push_pubkey_script(&script_spending_key);
 
         let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key_id.clone())
             .with_features(info.recipient.output_features.clone())
             .with_script(script.clone())
-            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())
-            .await?
+            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(self.key_manager, &sender_offset_key.key_id, &info.recipient.address)
-            .await?
-            .try_build(self.key_manager)
-            .await?;
+            .sign_as_sender_and_receiver_verified(self.key_manager, &sender_offset_key.key_id, &info.recipient.address)?
+            .try_build(self.key_manager)?;
 
         let sent_hashes = vec![output.output_hash()];
         let change_hashes = match &info.change_output {
@@ -295,15 +257,12 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             None => vec![],
         };
 
-        let (sender_public_nonce, sender_public_excess) =
-            self.calculate_total_nonce_and_total_public_excess(info).await?;
+        let (sender_public_nonce, sender_public_excess) = self.calculate_total_nonce_and_total_public_excess(info)?;
         let kernel_version = TransactionKernelVersion::get_current_version();
 
         let transaction_output = output.to_transaction_output()?;
         let public_nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+            .key_manager.get_random_key(None, false)?;
         let tx_meta = if output.is_burned() {
             let mut meta = info.metadata.clone();
             meta.burn_commitment = Some(transaction_output.commitment().clone());
@@ -313,8 +272,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
-            .await?;
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &kernel_version,
@@ -325,23 +283,19 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         );
         let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
         let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
-        let signature = self
-            .key_manager
-            .get_partial_txo_kernel_signature(
-                output.commitment_mask_key_id(),
-                &public_nonce.key_id,
-                &CompressedPublicKey::new_from_pk(total_nonce),
-                &CompressedPublicKey::new_from_pk(total_excess),
-                &kernel_version,
-                &kernel_message,
-                &tx_meta.kernel_features,
-                TxoStage::Output,
-            )
-            .await?;
+        let signature = self.key_manager.get_partial_txo_kernel_signature(
+            output.commitment_mask_key_id(),
+            &public_nonce.key_id,
+            &CompressedPublicKey::new_from_pk(total_nonce),
+            &CompressedPublicKey::new_from_pk(total_excess),
+            &kernel_version,
+            &kernel_message,
+            &tx_meta.kernel_features,
+            TxoStage::Output,
+        )?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
-            .await?;
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let signed_data = RecipientSignedMessage {
             tx_id,
@@ -363,21 +317,16 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn sign_multisig_message(
+    fn sign_multisig_message(
         &mut self,
         tx_id: TxId,
         info: &OneSidedMultisigTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
         let sender_offset_key = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
-        let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
+            .key_manager.get_random_key(None, true)?;
+        let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
 
-        let sender_offset_public_key = self
-            .key_manager
-            .get_public_key_at_key_id(&sender_offset_key.key_id)
-            .await?;
+        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
         let recipient_view_key = info.recipient.address.public_spend_key();
         let recipient_spend_key = info.recipient.address.public_spend_key();
@@ -392,14 +341,13 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let script_pubkey = self
             .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)
-            .await?;
+            .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)?;
 
         let mut message = Box::new([0u8; 32]);
         OsRng.fill_bytes(message.as_mut());
 
         let ephemeral_pubkeys =
-            derive_multisig_ephemeral_pubkeys(self.key_manager, &info.public_keys, &sender_offset_key.key_id).await?;
+            derive_multisig_ephemeral_pubkeys(self.key_manager, &info.public_keys, &sender_offset_key.key_id)?;
 
         let mut script_opcodes = vec![Opcode::CheckMultiSigVerify(
             info.party_number,
@@ -416,14 +364,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .with_script(full_script.clone())
             .with_features(info.recipient.output_features.clone())
             .with_input_data(Default::default())
-            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())
-            .await?
+            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())?
             .with_script_key(script_key.key_id)
             .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver(self.key_manager, &sender_offset_key.key_id)
-            .await?
-            .try_build(self.key_manager)
-            .await?;
+            .sign_as_sender_and_receiver(self.key_manager, &sender_offset_key.key_id)?
+            .try_build(self.key_manager)?;
 
         let sent_hashes = vec![output.output_hash()];
         let change_hashes = match &info.change_output {
@@ -431,15 +376,12 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             None => vec![],
         };
 
-        let (sender_public_nonce, sender_public_excess) =
-            self.calculate_total_nonce_and_total_public_excess(info).await?;
+        let (sender_public_nonce, sender_public_excess) = self.calculate_total_nonce_and_total_public_excess(info)?;
         let kernel_version = TransactionKernelVersion::get_current_version();
 
         let transaction_output = output.to_transaction_output()?;
         let public_nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+            .key_manager.get_random_key(None, false)?;
         let tx_meta = if output.is_burned() {
             let mut meta = info.metadata.clone();
             meta.burn_commitment = Some(transaction_output.commitment().clone());
@@ -449,8 +391,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
-            .await?;
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &kernel_version,
@@ -462,23 +403,19 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
         let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
 
-        let signature = self
-            .key_manager
-            .get_partial_txo_kernel_signature(
-                output.commitment_mask_key_id(),
-                &public_nonce.key_id,
-                &CompressedPublicKey::new_from_pk(total_nonce),
-                &CompressedPublicKey::new_from_pk(total_excess),
-                &kernel_version,
-                &kernel_message,
-                &tx_meta.kernel_features,
-                TxoStage::Output,
-            )
-            .await?;
+        let signature = self.key_manager.get_partial_txo_kernel_signature(
+            output.commitment_mask_key_id(),
+            &public_nonce.key_id,
+            &CompressedPublicKey::new_from_pk(total_nonce),
+            &CompressedPublicKey::new_from_pk(total_excess),
+            &kernel_version,
+            &kernel_message,
+            &tx_meta.kernel_features,
+            TxoStage::Output,
+        )?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
-            .await?;
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let signed_data = RecipientSignedMessage {
             tx_id,
@@ -500,22 +437,17 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn sign_multisig_withdraw_message(
+    fn sign_multisig_withdraw_message(
         &mut self,
         tx_id: TxId,
         info: &OneSidedTransactionInfo,
     ) -> Result<SignedMessage, TransactionBuilderError> {
-        let (_commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key().await?;
+        let (_commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
 
         let sender_offset_key = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
+            .key_manager.get_random_key(None, true)?;
 
-        let sender_offset_public_key = self
-            .key_manager
-            .get_public_key_at_key_id(&sender_offset_key.key_id)
-            .await?;
+        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_key.key_id.clone().into(),
@@ -537,15 +469,13 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 .clone(),
         };
 
-        let (sender_public_nonce, sender_public_excess) =
-            self.calculate_total_nonce_and_total_public_excess(info).await?;
+        let (sender_public_nonce, sender_public_excess) = self.calculate_total_nonce_and_total_public_excess(info)?;
         let kernel_version = TransactionKernelVersion::get_current_version();
 
         let script_spending_key = self
             .key_manager
             .clone()
-            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())
-            .await?;
+            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())?;
 
         let script = push_pubkey_script(&script_spending_key);
 
@@ -553,14 +483,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .with_script(script.clone())
             .with_features(info.recipient.output_features.clone())
             .with_input_data(ExecutionStack::default())
-            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())
-            .await?
+            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())?
             .with_script_key(script_key.key_id)
             .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver(self.key_manager, &sender_offset_key.key_id)
-            .await?
-            .try_build(self.key_manager)
-            .await?;
+            .sign_as_sender_and_receiver(self.key_manager, &sender_offset_key.key_id)?
+            .try_build(self.key_manager)?;
 
         let sent_hashes = vec![output.output_hash()];
         let change_hashes = match &info.change_output {
@@ -570,9 +497,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
         let transaction_output = output.to_transaction_output()?;
         let public_nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+            .key_manager.get_random_key(None, false)?;
         let tx_meta = if output.is_burned() {
             let mut meta = info.metadata.clone();
             meta.burn_commitment = Some(transaction_output.commitment().clone());
@@ -582,8 +507,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
-            .await?;
+            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &kernel_version,
@@ -594,23 +518,19 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         );
         let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
         let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
-        let signature = self
-            .key_manager
-            .get_partial_txo_kernel_signature(
-                output.commitment_mask_key_id(),
-                &public_nonce.key_id,
-                &CompressedPublicKey::new_from_pk(total_nonce),
-                &CompressedPublicKey::new_from_pk(total_excess),
-                &kernel_version,
-                &kernel_message,
-                &tx_meta.kernel_features,
-                TxoStage::Output,
-            )
-            .await?;
+        let signature = self.key_manager.get_partial_txo_kernel_signature(
+            output.commitment_mask_key_id(),
+            &public_nonce.key_id,
+            &CompressedPublicKey::new_from_pk(total_nonce),
+            &CompressedPublicKey::new_from_pk(total_excess),
+            &kernel_version,
+            &kernel_message,
+            &tx_meta.kernel_features,
+            TxoStage::Output,
+        )?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)
-            .await?;
+            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let signed_data = RecipientSignedMessage {
             tx_id,
@@ -632,7 +552,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn build_transaction(
+    fn build_transaction(
         &mut self,
         info: OneSidedTransactionInfo,
         signed_message: RecipientSignedMessage,
@@ -671,7 +591,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             &burn_commitment.clone(),
         );
         for input in &info.inputs {
-            tx_builder.add_input(input.output_pair.output.to_transaction_input(self.key_manager).await?);
+            tx_builder.add_input(input.output_pair.output.to_transaction_input(self.key_manager)?);
             signature = &signature +
                 &self
                     .key_manager
@@ -684,17 +604,13 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Input,
-                    )
-                    .await?
+                    )?
                     .to_schnorr_signature()?;
             offset = offset -
-                &self
-                    .key_manager
-                    .get_txo_private_kernel_offset(
-                        input.output_pair.output.commitment_mask_key_id(),
-                        &input.output_pair.kernel_nonce,
-                    )
-                    .await?;
+                &self.key_manager.get_txo_private_kernel_offset(
+                    input.output_pair.output.commitment_mask_key_id(),
+                    &input.output_pair.kernel_nonce,
+                )?;
             script_keys.push(input.output_pair.output.script_key_id().clone());
         }
 
@@ -712,17 +628,13 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Output,
-                    )
-                    .await?
+                    )?
                     .to_schnorr_signature()?;
             offset = offset +
-                &self
-                    .key_manager
-                    .get_txo_private_kernel_offset(
-                        output.output_pair.output.commitment_mask_key_id(),
-                        &output.output_pair.kernel_nonce,
-                    )
-                    .await?;
+                &self.key_manager.get_txo_private_kernel_offset(
+                    output.output_pair.output.commitment_mask_key_id(),
+                    &output.output_pair.kernel_nonce,
+                )?;
             let output_sender_offset_key_id = output
                 .output_pair
                 .sender_offset_key_id
@@ -735,9 +647,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
         let change_output = match &info.change_output {
             Some(change) => {
-                let change = self
-                    .lock_sent_output_in_payment_id(&change.output_pair, signed_message.output.hash())
-                    .await?;
+                let change = self.lock_sent_output_in_payment_id(&change.output_pair, signed_message.output.hash())?;
                 tx_builder.add_output(change.output.to_transaction_output()?);
                 signature = &signature +
                     &self
@@ -751,14 +661,13 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                             &kernel_message,
                             &info.metadata.kernel_features,
                             TxoStage::Output,
-                        )
-                        .await?
+                        )?
                         .to_schnorr_signature()?;
                 offset = offset +
-                    &self
-                        .key_manager
-                        .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)
-                        .await?;
+                    &self.key_manager.get_txo_private_kernel_offset(
+                        change.output.commitment_mask_key_id(),
+                        &change.kernel_nonce,
+                    )?;
                 let sender_offset_key_id = change
                     .sender_offset_key_id
                     .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
@@ -768,10 +677,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             None => None,
         };
         tx_builder.add_output(signed_message.output.clone());
-        let script_offset = self
-            .key_manager
-            .get_script_offset(&script_keys, &sender_offset_keys)
-            .await?;
+        let script_offset = self.key_manager.get_script_offset(&script_keys, &sender_offset_keys)?;
 
         tx_builder.add_offset(offset);
         tx_builder.add_script_offset(script_offset);
@@ -790,7 +696,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         Ok((transaction, change_output))
     }
 
-    async fn lock_sent_output_in_payment_id(
+    fn lock_sent_output_in_payment_id(
         &mut self,
         change: &OutputPair,
         output_hash: FixedHash,
@@ -799,27 +705,22 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         payment_id
             .transaction_info_set_sent_output_hashes(vec![output_hash])
             .map_err(TransactionBuilderError::InvalidMemo)?;
-        let encrypted_data = self
-            .key_manager
-            .encrypt_data_for_recovery(
-                change.output.commitment_mask_key_id(),
-                change.custom_recovery_key_id.as_ref(),
-                change.output.value().as_u64(),
-                payment_id.clone(),
-            )
-            .await?;
+        let encrypted_data = self.key_manager.encrypt_data_for_recovery(
+            change.output.commitment_mask_key_id(),
+            change.custom_recovery_key_id.as_ref(),
+            change.output.value().as_u64(),
+            payment_id.clone(),
+        )?;
         let mut change_output = change.output.clone();
-        change_output
-            .change_encrypted_data(
-                encrypted_data,
-                change
-                    .sender_offset_key_id
-                    .as_ref()
-                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
-                payment_id,
-                self.key_manager,
-            )
-            .await?;
+        change_output.change_encrypted_data(
+            encrypted_data,
+            change
+                .sender_offset_key_id
+                .as_ref()
+                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+            payment_id,
+            self.key_manager,
+        )?;
         Ok(OutputPair::new(
             change_output,
             change.kernel_nonce.clone(),

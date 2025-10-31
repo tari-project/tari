@@ -70,11 +70,11 @@ use crate::legacy_key_manager::{
 ///
 /// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
-pub struct TransactionKeyManagerWrapper<TBackend> {
+pub struct LegacyTransactionKeyManagerWrapper<TBackend> {
     transaction_key_manager_inner: TransactionKeyManagerInner<TBackend>,
 }
 
-impl<TBackend> TransactionKeyManagerWrapper<TBackend>
+impl<TBackend> LegacyTransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
     /// Creates a new key manager.
@@ -86,7 +86,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         crypto_factories: CryptoFactories,
         wallet_type: Arc<LegacyWalletType>,
     ) -> Result<Self, KeyManagerError> {
-        Ok(TransactionKeyManagerWrapper {
+        Ok(LegacyTransactionKeyManagerWrapper {
             transaction_key_manager_inner: TransactionKeyManagerInner::new(
                 master_seed,
                 Some(db),
@@ -102,7 +102,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         crypto_factories: CryptoFactories,
         wallet_type: Arc<LegacyWalletType>,
     ) -> Result<Self, KeyManagerError> {
-        Ok(TransactionKeyManagerWrapper {
+        Ok(LegacyTransactionKeyManagerWrapper {
             transaction_key_manager_inner: TransactionKeyManagerInner::new(
                 master_seed,
                 None,
@@ -124,7 +124,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 }
 
-impl<TBackend> LegacyTransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
+impl<TBackend> LegacyTransactionKeyManagerInterface for LegacyTransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
     fn get_random_key(&self) -> Result<LegacyTariKeyAndId, KeyManagerError> {
@@ -489,7 +489,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 }
 
 #[async_trait::async_trait]
-impl<TBackend> LegacySecretTransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
+impl<TBackend> LegacySecretTransactionKeyManagerInterface for LegacyTransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
     fn get_private_key(&self, key_id: &LegacyTariKeyId) -> Result<PrivateKey, KeyManagerError> {
@@ -497,7 +497,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 }
 
-impl<KM> Debug for TransactionKeyManagerWrapper<KM> {
+impl<KM> Debug for LegacyTransactionKeyManagerWrapper<KM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Key Manager").finish()
     }

@@ -57,7 +57,7 @@ use tari_transaction_components::{
     MicroMinotari,
 };
 use tari_utilities::hex::Hex;
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -961,7 +961,7 @@ impl OutputSql {
         let wallet_output = WalletOutput::new_from_parts(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
-            TariKeyId::from_str(&self.spending_key).map_err(|e| {
+            LegacyTariKeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create spending key id from stored string ({e})"
@@ -973,7 +973,7 @@ impl OutputSql {
             features,
             TariScript::from_bytes(self.script.as_slice())?,
             ExecutionStack::from_bytes(self.input_data.as_slice())?,
-            TariKeyId::from_str(&self.script_private_key).map_err(|e| {
+            LegacyTariKeyId::from_str(&self.script_private_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create script private key id from stored string ({e})"

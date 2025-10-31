@@ -39,7 +39,7 @@ use tari_hashing::KeyManagerDomain;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::ByteArrayError;
 
-use crate::legacy_key_manager::{interface::LegacyTariKeyAndId, wallet_types::LegacyWalletType, KeyDigest};
+use crate::legacy_key_manager::{interface::LegacyTariKeyAndId, wallet_types::LegacyWalletType};
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 use tari_transaction_components::{
@@ -64,7 +64,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-
+use tari_transaction_components::key_manager::wallet_types::KeyDigest;
 use crate::legacy_key_manager::{interface::TransactionKeyManagerBackend, LegacyTariKeyId};
 
 #[derive(Clone)]

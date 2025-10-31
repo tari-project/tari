@@ -35,7 +35,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
-
+use tari_transaction_components::key_manager::error::KeyManagerError;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
@@ -132,7 +132,7 @@ pub enum OutputManagerError {
     #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
     #[error("Key manager service error: {0}")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptedDataError),
     #[error("No commitments were provided")]
@@ -216,7 +216,7 @@ pub enum OutputManagerStorageError {
     #[error("Binary not stored as valid hex:{0}")]
     HexError(String),
     #[error("Key Manager Service Error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
     #[error("Error: `{0}`")]

@@ -12,9 +12,8 @@ pub mod recipient;
 pub mod sender;
 pub use recipient::ReceiverTransactionProtocol;
 pub use sender::SenderTransactionProtocol;
-use tari_transaction_components::{
-    transaction_components::KernelFeatures,
-};
+use tari_transaction_components::key_manager::error::KeyManagerError;
+use tari_transaction_components::transaction_components::KernelFeatures;
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {
@@ -66,8 +65,8 @@ impl From<SchnorrSignatureError> for TransactionProtocolError {
     }
 }
 
-impl From<KeyManagerServiceError> for TransactionProtocolError {
-    fn from(err: KeyManagerServiceError) -> Self {
+impl From<KeyManagerError> for TransactionProtocolError {
+    fn from(err: KeyManagerError) -> Self {
         TransactionProtocolError::KeyManagerServiceError(err.to_string())
     }
 }

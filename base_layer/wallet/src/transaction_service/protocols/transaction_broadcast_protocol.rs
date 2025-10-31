@@ -32,13 +32,12 @@ use tari_common_types::{
     types::CompressedSignature,
 };
 use tari_transaction_components::{
-    legacy_key_manager::TransactionKeyManagerInterface,
     rpc::models::{TxLocation, TxSubmissionRejectionReason},
     transaction_components::Transaction,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     transaction_service::{
@@ -68,7 +67,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(
         tx_id: TxId,

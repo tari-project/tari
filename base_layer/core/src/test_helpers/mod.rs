@@ -52,7 +52,6 @@ use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedDat
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_proof_of_work::Difficulty,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -63,9 +62,8 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::epoch_time::EpochTime;
-
+use tari_transaction_components::key_manager::{KeyManager, TariKeyId};
 use crate::{
     blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -97,7 +95,7 @@ pub fn create_orphan_block(
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
+pub async fn default_coinbase_entities(key_manager: &KeyManager) -> (TariKeyId, TariAddress) {
     let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
     let wallet_private_view_key = PrivateKey::random(&mut OsRng);
     let _key = key_manager
@@ -122,7 +120,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
     rules: &BaseNodeConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
-    km: &mut MemoryDbKeyManager,
+    km: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     range_proof_type: Option<RangeProofType>,

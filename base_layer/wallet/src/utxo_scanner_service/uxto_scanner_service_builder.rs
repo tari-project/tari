@@ -24,9 +24,8 @@ use std::fmt::Debug;
 
 use tari_common_types::tari_address::TariAddress;
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::legacy_key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use crate::{
     client::http_client_factory::HttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
@@ -139,7 +138,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
 
     pub async fn build_with_resources<
         TBackend: WalletBackend + 'static,
-        TKeyManager: TransactionKeyManagerInterface + 'static,
+        TKeyManager: LegacyTransactionKeyManagerInterface + 'static,
     >(
         &mut self,
         db: WalletDatabase<TBackend>,

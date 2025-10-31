@@ -19,7 +19,6 @@ pub mod storage;
 pub mod test_utils;
 pub mod transaction_service;
 
-use tari_transaction_components::legacy_key_manager::TransactionKeyManagerWrapper;
 pub mod util;
 pub mod wallet;
 
@@ -57,4 +56,4 @@ pub type WalletSqlite = Wallet<
     DefaultHttpClientFactory,
 >;
 
-pub type WalletKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>;
+pub type WalletKeyManager = LegacyTransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>;

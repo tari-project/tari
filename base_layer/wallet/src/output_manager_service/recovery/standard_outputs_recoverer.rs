@@ -34,7 +34,7 @@ use tari_transaction_components::{
     MicroMinotari,
 };
 use tari_utilities::hex::Hex;
-
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use crate::{
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},
@@ -59,7 +59,7 @@ pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
@@ -224,14 +224,14 @@ where
     async fn find_script_key(
         &self,
         script: &TariScript,
-        spending_key: &TariKeyId,
+        spending_key: &LegacyTariKeyId,
         known_script_index: Option<usize>,
         known_scripts: &[KnownOneSidedPaymentScript],
-    ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
+    ) -> Result<Option<(ExecutionStack, LegacyTariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
-            let key = if let TariKeyId::Derived { key } = spending_key {
-                TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
+            let key = if let LegacyTariKeyId::Derived { key } = spending_key {
+                LegacyTariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());
                 self.master_key_manager.import_key(private_key, None).await?
@@ -271,7 +271,7 @@ where
     async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, OutputManagerError> {
+    ) -> Result<Option<(LegacyTariKeyId, MicroMinotari, MemoField)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self.db.fetch_by_commitment(output.commitment().clone()) {

@@ -40,12 +40,9 @@ use tari_common_types::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
-use tari_transaction_components::{
-    legacy_key_manager::TariKeyId,
-    transaction_components::{OutputType, TransactionOutput},
-};
+use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
 use tokio::time::Instant;
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -1472,7 +1469,7 @@ impl KnownOneSidedPaymentScriptSql {
     pub fn to_known_one_sided_payment_script(self) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
         let script_hash = self.script_hash.clone();
         let private_key =
-            TariKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
+            LegacyTariKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
                 reason: "Could not convert private key to TariKeyId".to_string(),
             })?;
 

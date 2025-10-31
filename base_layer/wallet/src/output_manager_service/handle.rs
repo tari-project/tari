@@ -44,7 +44,7 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::{Balance, OutputInfoByTxId, UseOutput},
@@ -382,7 +382,7 @@ pub struct OutputManagerHandle<KM> {
 }
 
 impl<KM> OutputManagerHandle<KM>
-where KM: TransactionKeyManagerInterface
+where KM: LegacyTransactionKeyManagerInterface
 {
     pub fn new(
         handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,

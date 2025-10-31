@@ -32,12 +32,10 @@ use tari_comms::{
 };
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
-use tari_transaction_components::{
-    transaction_components::TransactionError,
-};
+use tari_transaction_components::transaction_components::TransactionError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
-
+use tari_transaction_components::key_manager::error::KeyManagerError;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     connectivity_service::WalletConnectivityError,
@@ -91,7 +89,7 @@ pub enum WalletError {
     #[error("Cipher error: `{0}`")]
     CipherError(#[from] tari_common_types::seeds::error::CipherError),
     #[error("Key manager service error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
     #[error("Unexpected API Response while calling method `{method}` on `{api}`")]

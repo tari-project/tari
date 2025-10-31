@@ -23,7 +23,7 @@
 mod wrapper;
 use blake2::Blake2b;
 use digest::consts::U64;
-pub use wrapper::TransactionKeyManagerWrapper;
+pub use wrapper::LegacyTransactionKeyManagerWrapper;
 mod interface;
 pub use interface::{
     KeyManagerBranch,
@@ -37,7 +37,7 @@ pub use interface::{
 };
 
 mod initializer;
-pub use initializer::TransactionKeyManagerInitializer;
+pub use initializer::LegacyTransactionKeyManagerInitializer;
 
 mod inner;
 /// This is a memory database implementation of the `TransactionKeyManager` trait.
@@ -65,6 +65,3 @@ pub enum AddResult {
     NewEntry,
     AlreadyExists,
 }
-
-// key manager key digest used
-pub type KeyDigest = Blake2b<U64>;

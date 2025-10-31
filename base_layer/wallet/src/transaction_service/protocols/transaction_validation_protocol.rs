@@ -28,9 +28,9 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TxId},
     types::{BlockHash, CompressedSignature, FixedHash},
 };
-use tari_transaction_components::{legacy_key_manager::TransactionKeyManagerInterface, rpc::models::TxLocation};
+use tari_transaction_components::{ rpc::models::TxLocation};
 use tari_utilities::{hex::Hex, ByteArray};
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerHandle,
@@ -65,7 +65,7 @@ impl<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TTransactionBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(
         operation_id: OperationId,

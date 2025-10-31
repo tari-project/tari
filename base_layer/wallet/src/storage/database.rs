@@ -32,7 +32,7 @@ use tari_comms::{
     peer_manager::{IdentitySignature, PeerFeatures},
 };
 use tari_utilities::SafePassword;
-
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use crate::{
     error::WalletStorageError,
     storage::sqlite_db::models::DbBurnProof,
@@ -127,7 +127,7 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
-    WalletType(Box<WalletType>),
+    WalletType(Box<LegacyWalletType>),
 }
 
 #[derive(Clone)]
@@ -139,7 +139,7 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
-    WalletType(Box<WalletType>),
+    WalletType(Box<LegacyWalletType>),
 }
 
 pub enum WriteOperation {
@@ -351,7 +351,7 @@ where T: WalletBackend + 'static
         self.db.delete_burn_proof(id)
     }
 
-    pub fn get_wallet_type(&self) -> Result<Option<WalletType>, WalletStorageError> {
+    pub fn get_wallet_type(&self) -> Result<Option<LegacyWalletType>, WalletStorageError> {
         match self.db.fetch(&DbKey::WalletType) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::WalletType(k))) => Ok(Some(*k)),
@@ -360,7 +360,7 @@ where T: WalletBackend + 'static
         }
     }
 
-    pub fn set_wallet_type(&self, wallet_type: WalletType) -> Result<(), WalletStorageError> {
+    pub fn set_wallet_type(&self, wallet_type: LegacyWalletType) -> Result<(), WalletStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::WalletType(Box::new(
                 wallet_type,

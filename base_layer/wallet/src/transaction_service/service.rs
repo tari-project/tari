@@ -77,7 +77,6 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    legacy_key_manager::{wallet_types::WalletType, SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
     transaction_components::{
@@ -106,7 +105,8 @@ use tokio::{
     task::JoinHandle,
 };
 use uuid::Uuid;
-
+use tari_transaction_key_manager::legacy_key_manager::{LegacySerializedKeyString, LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
@@ -187,7 +187,7 @@ where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: TransactionServiceConfig,
@@ -207,7 +207,7 @@ where
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
-        wallet_type: Arc<WalletType>,
+        wallet_type: Arc<LegacyWalletType>,
         utxo_scanner_handle: UtxoScannerHandle,
     ) -> Result<Self, TransactionServiceError> {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
@@ -692,15 +692,15 @@ where
                     let view_key = key_manager.get_view_key().await?;
                     let spend_key = key_manager.get_spend_key().await?;
 
-                    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+                    let commitment_mask_key_id = LegacyTariKeyId::DHCommitmentMask {
                         private_key: view_key.key_id.clone().into(),
                         public_key: input_wallet_output.sender_offset_public_key().clone(),
                     };
                     let script_pubkey = key_manager
                         .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)
                         .await?;
-                    let script_key = TariKeyId::Derived {
-                        key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
+                    let script_key = LegacyTariKeyId::Derived {
+                        key: LegacySerializedKeyString::from(commitment_mask_key_id.to_string()),
                     };
 
                     let pushed_pk = input_wallet_output
@@ -724,7 +724,7 @@ where
                         )));
                     }
 
-                    if *input_wallet_output.commitment_mask_key_id() == TariKeyId::Zero {
+                    if *input_wallet_output.commitment_mask_key_id() == LegacyTariKeyId::Zero {
                         return Err(TransactionServiceError::ServiceError(
                             "Input commitment mask key id is zero".into(),
                         ));
@@ -2255,7 +2255,7 @@ where
             .await?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
+            .with_script_key(LegacyTariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &mut self.resources.transaction_key_manager_service,
@@ -2618,7 +2618,7 @@ where
             .await?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
-            .with_script_key(TariKeyId::Zero)
+            .with_script_key(LegacyTariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero())
             .sign_as_sender_and_receiver(
                 &mut self.resources.transaction_key_manager_service,
@@ -3868,7 +3868,7 @@ where
             )));
         }
         if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
-            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+            matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_))
         {
             return Err(TransactionServiceError::NotSupported(
                 "Interactive transactions are not supported on Ledger wallets".to_string(),
@@ -4043,7 +4043,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,
-    pub wallet_type: Arc<WalletType>,
+    pub wallet_type: Arc<LegacyWalletType>,
     pub utxo_scanner_handle: UtxoScannerHandle,
     pub network: Network,
 }

@@ -85,7 +85,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
-
+use tari_transaction_key_manager::legacy_key_manager::{LegacySerializedKeyString, LegacyTariKeyAndId, LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
@@ -137,7 +137,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -1053,15 +1053,15 @@ where
         &self,
         payment_id: MemoField,
         tx_id: TxId,
-    ) -> Result<TariKeyAndId, OutputManagerError> {
+    ) -> Result<LegacyTariKeyAndId, OutputManagerError> {
         let index = payment_id
             .get_u64_data()
             .map_err(|e| OutputManagerError::InvalidPaymentIdFormat(format!("TxId: {tx_id}, {e}")))?;
-        let script_key_id = TariKeyId::Managed {
+        let script_key_id = LegacyTariKeyId::Managed {
             branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
             index,
         };
-        Ok(TariKeyAndId {
+        Ok(LegacyTariKeyAndId {
             pub_key: self
                 .resources
                 .key_manager
@@ -1591,7 +1591,7 @@ where
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
+            .with_script_key(LegacyTariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &mut self.resources.key_manager,
@@ -2397,7 +2397,7 @@ where
         payment_id: MemoField,
         fee: MicroMinotari,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
+    ) -> Result<(DbWalletOutput, LegacyTariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
             .resources
             .key_manager
@@ -2869,8 +2869,8 @@ where
                                 continue;
                             }
 
-                            let script_key = TariKeyId::Derived {
-                                key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
+                            let script_key = LegacyTariKeyId::Derived {
+                                key: LegacySerializedKeyString::from(commitment_mask_key_id.to_string()),
                             };
 
                             let recovered_output = WalletOutput::new_from_transaction_output(
@@ -2937,8 +2937,8 @@ where
                         continue;
                     }
 
-                    let script_key = TariKeyId::Derived {
-                        key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
+                    let script_key = LegacyTariKeyId::Derived {
+                        key: LegacySerializedKeyString::from(commitment_mask_key_id.to_string()),
                     };
 
                     let recovered_output = WalletOutput::new_from_transaction_output(

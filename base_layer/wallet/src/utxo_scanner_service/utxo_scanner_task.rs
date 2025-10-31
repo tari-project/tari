@@ -39,7 +39,6 @@ use tari_common_types::{
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
-    legacy_key_manager::{wallet_types::WalletType, TransactionKeyManagerInterface},
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
         one_sided::shared_secret_to_output_encryption_key,
@@ -51,7 +50,8 @@ use tari_transaction_components::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
@@ -97,7 +97,7 @@ pub struct UtxoScannerTask<
 impl<TBackend, TKeyManager, TWalletClientFactory> UtxoScannerTask<TBackend, TKeyManager, TWalletClientFactory>
 where
     TBackend: WalletBackend + 'static,
-    TKeyManager: TransactionKeyManagerInterface,
+    TKeyManager: LegacyTransactionKeyManagerInterface,
     TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 {
     pub async fn run(mut self) -> Result<(), anyhow::Error> {
@@ -218,8 +218,8 @@ where
             // wallet birthday
             self.resources.db.clear_scanned_blocks()?;
             let wallet_birthday = match self.resources.db.get_wallet_type()? {
-                Some(WalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
-                Some(WalletType::Ledger(_)) => Some(0), // Ledger wallets have no birthday, so start from genesis
+                Some(LegacyWalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
+                Some(LegacyWalletType::Ledger(_)) => Some(0), // Ledger wallets have no birthday, so start from genesis
                 _ => None,
             };
             let scanning_start_height_hash = self

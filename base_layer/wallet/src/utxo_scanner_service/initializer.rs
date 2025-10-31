@@ -27,10 +27,9 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tari_transaction_components::legacy_key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 use url::Url;
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use crate::{
     client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     output_manager_service::handle::OutputManagerHandle,
@@ -83,7 +82,7 @@ where T: WalletBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where
     T: WalletBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(target: LOG_TARGET, "Utxo scanner initialization");

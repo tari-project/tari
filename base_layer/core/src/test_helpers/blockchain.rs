@@ -47,13 +47,11 @@ use tari_test_utils::paths::create_temporary_data_path;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
-    legacy_key_manager::TariKeyId,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::ByteArray;
-
+use tari_transaction_components::key_manager::{KeyManager, TariKeyId};
 use super::{create_block, create_consensus_constants, mine_to_difficulty};
 use crate::{
     blocks::{BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder},
@@ -731,7 +729,7 @@ pub struct TestBlockchain {
     db: BlockchainDatabase<TempDatabase>,
     chain: Vec<(&'static str, Arc<ChainBlock>)>,
     rules: BaseNodeConsensusManager,
-    pub km: MemoryDbKeyManager,
+    pub km: KeyManager,
     script_key_id: TariKeyId,
     wallet_payment_address: TariAddress,
     range_proof_type: RangeProofType,

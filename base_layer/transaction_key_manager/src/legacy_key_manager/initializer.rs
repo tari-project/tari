@@ -37,18 +37,18 @@ use tari_transaction_components::crypto_factories::CryptoFactories;
 use crate::legacy_key_manager::{
     interface::TransactionKeyManagerBackend,
     wallet_types::LegacyWalletType,
-    TransactionKeyManagerWrapper,
+    LegacyTransactionKeyManagerWrapper,
 };
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
-pub struct TransactionKeyManagerInitializer<T> {
+pub struct LegacyTransactionKeyManagerInitializer<T> {
     backend: Option<T>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
     wallet_type: Arc<LegacyWalletType>,
 }
 
-impl<T> TransactionKeyManagerInitializer<T>
+impl<T> LegacyTransactionKeyManagerInitializer<T>
 where T: TransactionKeyManagerBackend + 'static
 {
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
@@ -67,7 +67,7 @@ where T: TransactionKeyManagerBackend + 'static
     }
 }
 
-impl<T> TransactionKeyManagerInitializer<T> {
+impl<T> LegacyTransactionKeyManagerInitializer<T> {
     /// Creates a new [TransactionKeyManagerInitializer] from the [CipherSeed]
     pub fn new(master_seed: CipherSeed, crypto_factories: CryptoFactories, wallet_type: Arc<LegacyWalletType>) -> Self {
         Self {
@@ -79,14 +79,14 @@ impl<T> TransactionKeyManagerInitializer<T> {
     }
 }
 #[async_trait]
-impl<T> ServiceInitializer for TransactionKeyManagerInitializer<T>
+impl<T> ServiceInitializer for LegacyTransactionKeyManagerInitializer<T>
 where T: TransactionKeyManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let key_manager = match self.backend.take() {
             Some(backend) => {
-                let key_manager: TransactionKeyManagerWrapper<T> =
-                    TransactionKeyManagerWrapper::new_with_legacy_storage(
+                let key_manager: LegacyTransactionKeyManagerWrapper<T> =
+                    LegacyTransactionKeyManagerWrapper::new_with_legacy_storage(
                         self.master_seed.clone(),
                         backend,
                         self.crypto_factories.clone(),
@@ -96,7 +96,7 @@ where T: TransactionKeyManagerBackend + 'static
                 key_manager
             },
             None => {
-                let key_manager: TransactionKeyManagerWrapper<T> = TransactionKeyManagerWrapper::new(
+                let key_manager: LegacyTransactionKeyManagerWrapper<T> = LegacyTransactionKeyManagerWrapper::new(
                     self.master_seed.clone(),
                     self.crypto_factories.clone(),
                     self.wallet_type.clone(),
