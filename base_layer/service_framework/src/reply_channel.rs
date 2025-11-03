@@ -91,8 +91,8 @@ impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
 
 #[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub enum TransportChannelError {
-    #[error("Request was canceled")]
-    Canceled,
+    #[error("Request was canceled: {0}")]
+    Canceled(#[from] oneshot::error::RecvError),
     #[error("The response channel has closed")]
     ChannelClosed,
 }
@@ -120,7 +120,7 @@ impl<T> Future for TransportResponseFuture<T> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.rx {
-            Some(ref mut rx) => rx.poll_unpin(cx).map_err(|_| TransportChannelError::Canceled),
+            Some(ref mut rx) => rx.poll_unpin(cx).map_err(TransportChannelError::from),
             None => Poll::Ready(Err(TransportChannelError::ChannelClosed)),
         }
     }
@@ -278,7 +278,13 @@ mod test {
         block_on(future::join(
             async move {
                 let err = requestor.ready().await.unwrap().call("PING").await.unwrap_err();
-                assert_eq!(err, TransportChannelError::Canceled);
+                assert_eq!(&format!("{}", err), "Request was canceled: channel closed");
+                match err {
+                    TransportChannelError::Canceled(e) => {
+                        assert_eq!(&format!("{}", e), "channel closed");
+                    },
+                    _ => panic!("Expected Canceled error"),
+                }
             },
             async move {
                 let req = request_stream.next().await.unwrap();
