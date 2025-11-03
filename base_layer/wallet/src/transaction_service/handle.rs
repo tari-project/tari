@@ -1476,11 +1476,11 @@ impl TransactionServiceHandle {
             .handle
             .call(TransactionServiceRequest::GetCompletedTransaction(tx_id))
             .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::TransactionServiceRequest({e})"))??
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCompletedTransaction({e})"))??
         {
             TransactionServiceResponse::CompletedTransaction(t) => Ok(*t),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::TransactionServiceRequest".to_string(),
+                "TransactionServiceRequest::GetCompletedTransaction".to_string(),
             )),
         }
     }
