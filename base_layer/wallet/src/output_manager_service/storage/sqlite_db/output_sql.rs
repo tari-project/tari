@@ -46,6 +46,7 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
+    key_manager::TariKeyId,
     transaction_components::{
         EncryptedData,
         MemoField,
@@ -58,7 +59,7 @@ use tari_transaction_components::{
 };
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
-use tari_transaction_components::key_manager::TariKeyId;
+
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -928,7 +929,10 @@ impl OutputSql {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn to_db_wallet_output<KM: LegacyTransactionKeyManagerInterface>(self, key_manager: &KM) -> Result<DbWalletOutput, OutputManagerStorageError> {
+    pub fn to_db_wallet_output<KM: LegacyTransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{s}"),
@@ -959,32 +963,32 @@ impl OutputSql {
                 });
             },
         };
-        let commitment_mask_key_id = match TariKeyId::from_str(&self.spending_key){
+        let commitment_mask_key_id = match TariKeyId::from_str(&self.spending_key) {
             Ok(kid) => kid,
             Err(_) => {
                 let legacy = LegacyTariKeyId::from_str(&self.spending_key).map_err(|e| {
                     error!(
-                    target: LOG_TARGET,
-                    "Could not create spending key id from stored string ({e})"
-                );
+                        target: LOG_TARGET,
+                        "Could not create spending key id({}) from stored string ({e})",self.spending_key
+                    );
                     OutputManagerStorageError::ConversionError {
-                        reason: format!("Spending key id could not be converted from string ({e})"),
+                        reason: format!("Spending key id({}) could not be converted from string ({e})",self.spending_key),
                     }
                 })?;
                 key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
             },
         };
 
-        let script_key_id = match TariKeyId::from_str(&self.script_private_key){
+        let script_key_id = match TariKeyId::from_str(&self.script_private_key) {
             Ok(kid) => kid,
             Err(_) => {
                 let legacy = LegacyTariKeyId::from_str(&self.script_private_key).map_err(|e| {
                     error!(
-                    target: LOG_TARGET,
-                    "Could not create script private key id from stored string ({e})"
-                );
+                        target: LOG_TARGET,
+                        "Could not create script private key id({}) from stored string ({e})",self.script_private_key
+                    );
                     OutputManagerStorageError::ConversionError {
-                        reason: format!("Could not create script private key id from stored string ({e})"),
+                        reason: format!("Could not create script private key id({}) from stored string ({e})",self.script_private_key),
                     }
                 })?;
                 key_manager.convert_legacy_tari_key_id_to_current(&legacy)?

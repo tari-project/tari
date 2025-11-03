@@ -62,7 +62,13 @@ use tari_transaction_components::{
     MicroMinotari,
 };
 
-use crate::legacy_key_manager::{wallet_types::LegacyWalletType, LegacyTariKeyId, LegacyTransactionKeyManagerInterface, TransactionKeyManagerBackend, TransactionKeyManagerInner};
+use crate::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTariKeyId,
+    LegacyTransactionKeyManagerInterface,
+    TransactionKeyManagerBackend,
+    TransactionKeyManagerInner,
+};
 
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
 /// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
@@ -124,25 +130,27 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 }
 
-impl <TBackend> LegacyTransactionKeyManagerInterface for LegacyTransactionKeyManagerWrapper<TBackend>
+impl<TBackend> LegacyTransactionKeyManagerInterface for LegacyTransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
-
     fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<MemoField, KeyManagerError> {
-        self.transaction_key_manager_inner.extract_payment_id_from_encrypted_data(encrypted_data, commitment, custom_recovery_key_id)
+        self.transaction_key_manager_inner
+            .extract_payment_id_from_encrypted_data(encrypted_data, commitment, custom_recovery_key_id)
     }
 
     fn convert_legacy_tari_key_id_to_current(&self, key_id: &LegacyTariKeyId) -> Result<TariKeyId, KeyManagerError> {
-        self.transaction_key_manager_inner.convert_legacy_tari_key_id_to_current(key_id)
+        self.transaction_key_manager_inner
+            .convert_legacy_tari_key_id_to_current(key_id)
     }
 
     fn convert_key_id_to_legacy_key_id(&self, key_id: &TariKeyId) -> LegacyTariKeyId {
-        self.transaction_key_manager_inner.convert_key_id_to_legacy_key_id(key_id)
+        self.transaction_key_manager_inner
+            .convert_key_id_to_legacy_key_id(key_id)
     }
 }
 

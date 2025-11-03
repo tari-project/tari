@@ -25,11 +25,10 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use tari_common_types::{
-    types::{CompressedPublicKey, PrivateKey},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey},
     WALLET_COMMS_AND_SPEND_KEY_BRANCH,
 };
 use tari_utilities::hex::{from_hex, Hex};
-use tari_common_types::types::CompressedCommitment;
 
 pub const MANAGED_KEY_BRANCH: &str = "managed";
 pub const DERIVED_KEY_BRANCH: &str = "derived";
@@ -38,8 +37,11 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 pub const DH_COMMITMENT_MASK_BRANCH: &str = "dh_commitment_mask";
 pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
 pub const ENCRYPTED_BRANCH: &str = "encrypted";
-use tari_transaction_components::key_manager::{error::KeyManagerError, TariKeyId, TransactionKeyManagerInterface, CODE_TEMPLATE_AUTHOR};
-use tari_transaction_components::transaction_components::{EncryptedData, MemoField};
+use tari_transaction_components::{
+    key_manager::{error::KeyManagerError, TariKeyId, TransactionKeyManagerInterface, CODE_TEMPLATE_AUTHOR},
+    transaction_components::{EncryptedData, MemoField},
+};
+
 use crate::legacy_key_manager::error::KeyManagerStorageError;
 
 #[repr(u8)]
@@ -117,7 +119,6 @@ pub enum LegacyTariKeyId {
         key: LegacySerializedKeyString,
     },
 }
-
 
 impl FromStr for LegacyTariKeyId {
     type Err = String;

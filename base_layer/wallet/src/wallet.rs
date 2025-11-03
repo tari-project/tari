@@ -54,7 +54,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{error::KeyManagerError, wallet_types::KeyDigest, SecretTransactionKeyManagerInterface},
+    key_manager::{error::KeyManagerError, wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -73,7 +73,7 @@ use tari_transaction_key_manager::legacy_key_manager::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use url::Url;
-use tari_transaction_components::key_manager::TariKeyId;
+
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
@@ -414,9 +414,7 @@ where
         payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
-        let wallet_output = unblinded_output
-            .to_wallet_output(&self.key_manager_service, MemoField::new_empty())
-            ?;
+        let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service, MemoField::new_empty())?;
 
         let tx_id = self
             .transaction_service

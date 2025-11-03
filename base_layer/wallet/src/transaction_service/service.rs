@@ -2330,15 +2330,19 @@ where
         }
 
         // Prepare sender part of the transaction
-        let mut tx_builder = self.resources.output_manager_service.prepare_transaction_to_send(
-            tx_id,
-            total_send,
-            selection_criteria,
-            output_features.clone(),
-            fee_per_gram,
-            script,
-            covenant,
-        ).await?;
+        let mut tx_builder = self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                total_send,
+                selection_criteria,
+                output_features.clone(),
+                fee_per_gram,
+                script,
+                covenant,
+            )
+            .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
         for (address, amount, memo) in &mut destinations {
             // Let's override the payment_id if the address says we should
@@ -2517,18 +2521,14 @@ where
         let (commitment_mask_key, _) = self
             .resources
             .transaction_key_manager_service
-            .get_next_commitment_mask_and_script_key()
-            ?;
+            .get_next_commitment_mask_and_script_key()?;
 
-        let recovery_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .get_view_key()
-            .key_id;
+        let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
 
         let sender_offset_private_key = self
             .resources
-            .transaction_key_manager_service.get_random_key(None, true)?;
+            .transaction_key_manager_service
+            .get_random_key(None, true)?;
         let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
@@ -2536,8 +2536,7 @@ where
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
                 payment_id.clone(),
-            )
-            ?
+            )?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
             .with_script_key(TariKeyId::Zero)
@@ -2545,19 +2544,15 @@ where
             .sign_as_sender_and_receiver(
                 &mut self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
-            )
-            ?
-            .try_build(&self.resources.transaction_key_manager_service)
-            ?;
+            )?
+            .try_build(&self.resources.transaction_key_manager_service)?;
 
-        tx_builder
-            .add_recipient(
-                Default::default(),
-                output.clone(),
-                Some(sender_offset_private_key.key_id),
-                Some(recovery_key_id),
-            )
-            ?;
+        tx_builder.add_recipient(
+            Default::default(),
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(recovery_key_id),
+        )?;
 
         let finalized = tx_builder.build()?;
 
@@ -2627,8 +2622,7 @@ where
             let ownership_proof = self
                 .resources
                 .transaction_key_manager_service
-                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)
-                ?;
+                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
             let proof = BurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 reciprocal_claim_public_key: commitment_mask_key.pub_key,
@@ -2920,9 +2914,11 @@ where
         let author_key = self
             .resources
             .transaction_key_manager_service
-            .get_public_key_at_key_id(&author_key_id)
-            ?;
-        let nonce = self.resources.transaction_key_manager_service.get_random_key(None, false)?;
+            .get_public_key_at_key_id(&author_key_id)?;
+        let nonce = self
+            .resources
+            .transaction_key_manager_service
+            .get_random_key(None, false)?;
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),
             author_signature: CompressedSignature::default(),
@@ -2940,7 +2936,6 @@ where
             .resources
             .transaction_key_manager_service
             .sign_with_nonce_and_challenge(&author_key_id, &nonce.key_id, &signature_message)
-
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 
         template_registration.author_signature = author_sig;
@@ -3646,11 +3641,7 @@ where
             .collect::<Vec<_>>();
         let mut spendable_outputs = Vec::new();
         let mut total_amount = MicroMinotari::zero();
-        let view_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_private_view_key();
-
+        let view_key = self.resources.transaction_key_manager_service.get_private_view_key();
 
         // only those outputs that can be decrypted are spendable and can be used as inputs
         for output in all_outputs {

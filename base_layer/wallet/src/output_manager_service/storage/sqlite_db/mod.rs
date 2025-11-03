@@ -41,7 +41,7 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
-use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tokio::time::Instant;
 
 use crate::{
@@ -117,14 +117,14 @@ impl OutputManagerSqliteDatabase {
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
-    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
+    fn fetch<KM: LegacyTransactionKeyManagerInterface>(&self, key: &DbKey, key_manager: &KM) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(k, OutputStatus::Spent, &mut conn) {
-                Ok(o) => Some(DbValue::SpentOutput(Box::new(o.to_db_wallet_output()?))),
+                Ok(o) => Some(DbValue::SpentOutput(Box::new(o.to_db_wallet_output(key_manager)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -134,7 +134,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(k, OutputStatus::Unspent, &mut conn) {
-                Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_wallet_output()?))),
+                Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_wallet_output(key_manager)?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -145,7 +145,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::UnspentOutputHash(hash) => {
                 match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &mut conn) {
-                    Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_wallet_output()?))),
+                    Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_wallet_output(key_manager)?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),

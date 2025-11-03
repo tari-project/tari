@@ -79,10 +79,7 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
 };
-use tari_transaction_key_manager::legacy_key_manager::{
-    LegacyTariKeyId,
-    LegacyTransactionKeyManagerInterface,
-};
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
 

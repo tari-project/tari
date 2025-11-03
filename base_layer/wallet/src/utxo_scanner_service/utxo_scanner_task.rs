@@ -573,8 +573,7 @@ where
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
             let shared_secret = self
                 .key_manager
-                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)
-                ?;
+                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)?;
             let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
                 .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
@@ -589,7 +588,6 @@ where
             if self
                 .key_manager
                 .is_this_output_ours(&commitment, &encrypted, None)
-
                 .ok()
                 .is_some()
             {

@@ -29,8 +29,10 @@ use tari_common_types::{
     types::{BlockHash, CompressedCommitment, HashOutput},
 };
 use tari_script::{ExecutionStack, TariScript};
-use tari_transaction_components::key_manager::TariKeyId;
-use tari_transaction_components::transaction_components::{MemoField, WalletOutput};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    transaction_components::{MemoField, WalletOutput},
+};
 
 use crate::output_manager_service::storage::{OutputSource, OutputStatus};
 
