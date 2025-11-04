@@ -28,6 +28,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use log::warn;
 use tari_common_types::{
     burn_proof::BurnClaimProof,
     epoch::VnEpoch,
@@ -80,6 +81,8 @@ use crate::{
     },
     OperationId,
 };
+
+const LOG_TARGET: &str = "wallet::transaction_service::handle";
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
@@ -807,10 +810,13 @@ impl TransactionServiceHandle {
                 destination,
                 fee_per_gram,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ScrapeWallet({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ScrapeWallet".to_string(),
+            )),
         }
     }
 
@@ -839,10 +845,13 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::RegisterValidatorNode({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::RegisterValidatorNode".to_string(),
+            )),
         }
     }
 
@@ -869,10 +878,13 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SubmitValidatorNodeExit({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SubmitValidatorNodeExit".to_string(),
+            )),
         }
     }
 
@@ -899,13 +911,16 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 sidechain_deployment_key,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::RegisterCodeTemplate({e})"))??
         {
             TransactionServiceResponse::CodeRegistrationTransactionSent {
                 tx_id,
                 template_address,
             } => Ok((tx_id, template_address)),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::RegisterCodeTemplate".to_string(),
+            )),
         }
     }
 
@@ -926,10 +941,14 @@ impl TransactionServiceHandle {
                 payment_id,
                 sidechain_deployment_key,
             })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SubmitValidatorEvictionProof({e})"),
+            )?? {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SubmitValidatorEvictionProof".to_string(),
+            )),
         }
     }
 
@@ -952,10 +971,14 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
             })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::PrepareOneSidedTransactionForSigning({e})"),
+            )?? {
             TransactionServiceResponse::OneSidedTransactionPreparedForSigning(result) => Ok(*result),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::PrepareOneSidedTransactionForSigning".to_string(),
+            )),
         }
     }
 
@@ -966,10 +989,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SignOneSidedTransaction { request })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SignOneSidedTransaction({e})"))??
         {
             TransactionServiceResponse::SignedOneSidedTransaction(result) => Ok(*result),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SignOneSidedTransaction".to_string(),
+            )),
         }
     }
 
@@ -980,10 +1006,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SignOneSidedDepositMultisigTransaction({e})"),
+            )?? {
             TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(result) => Ok(*result),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SignOneSidedDepositMultisigTransaction".to_string(),
+            )),
         }
     }
 
@@ -994,10 +1024,11 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction({e})"))??
         {
             TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(result) => Ok(*result),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse("TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction".to_string())),
         }
     }
 
@@ -1008,10 +1039,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::BroadcastSignedOneSidedTransaction({e})"),
+            )?? {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::BroadcastSignedOneSidedTransaction".to_string(),
+            )),
         }
     }
 
@@ -1030,10 +1065,14 @@ impl TransactionServiceHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
             })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SendManyOneSidedTransactions({e})"),
+            )?? {
             TransactionServiceResponse::TransactionsSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SendManyOneSidedTransactions".to_string(),
+            )),
         }
     }
 
@@ -1056,10 +1095,13 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SendOneSidedTransaction({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SendOneSidedTransaction".to_string(),
+            )),
         }
     }
 
@@ -1085,10 +1127,13 @@ impl TransactionServiceHandle {
                 claim_public_key,
                 sidechain_deployment_key,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::BurnTari({e})"))??
         {
             TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, proof.map(|p| *p))),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::BurnTari".to_string(),
+            )),
         }
     }
 
@@ -1132,7 +1177,8 @@ impl TransactionServiceHandle {
                 use_output,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::EncumberAggregateUtxo({e})"))??
         {
             TransactionServiceResponse::EncumberAggregateUtxo(
                 tx_id,
@@ -1149,7 +1195,9 @@ impl TransactionServiceHandle {
                 *total_script_nonce,
                 *shared_secret,
             )),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::EncumberAggregateUtxo".to_string(),
+            )),
         }
     }
 
@@ -1170,10 +1218,13 @@ impl TransactionServiceHandle {
                 recipient_address,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SpendBackupPreMineUtxo({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SpendBackupPreMineUtxo".to_string(),
+            )),
         }
     }
 
@@ -1184,10 +1235,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::FetchUnspentOutputs { output_hashes })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::FetchUnspentOutputs({e})"))??
         {
             TransactionServiceResponse::UnspentOutputs(outputs) => Ok(outputs),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::FetchUnspentOutputs".to_string(),
+            )),
         }
     }
 
@@ -1206,10 +1260,14 @@ impl TransactionServiceHandle {
                 total_script_data_signature,
                 script_offset,
             })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::FinalizeSentAggregateTransaction({e})"),
+            )?? {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::FinalizeSentAggregateTransaction".to_string(),
+            )),
         }
     }
 
@@ -1232,10 +1290,11 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest:SendOneSidedToStealthAddressTransaction:({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse("TransactionServiceRequest::SendOneSidedToStealthAddressTransaction".to_string())),
         }
     }
 
@@ -1243,10 +1302,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::CancelTransaction(tx_id))
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::CancelTransaction({e})"))??
         {
             TransactionServiceResponse::TransactionCancelled => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::CancelTransaction".to_string(),
+            )),
         }
     }
 
@@ -1256,10 +1318,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingInboundTransactions)
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetPendingInboundTransactions({e})"),
+            )?? {
             TransactionServiceResponse::PendingInboundTransactions(p) => Ok(p),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetPendingInboundTransactions".to_string(),
+            )),
         }
     }
 
@@ -1269,10 +1335,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingInboundTransactions)
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCancelledPendingInboundTransactions({e})"),
+            )?? {
             TransactionServiceResponse::PendingInboundTransactions(p) => Ok(p),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetCancelledPendingInboundTransactions".to_string(),
+            )),
         }
     }
 
@@ -1282,10 +1352,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingOutboundTransactions)
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetPendingOutboundTransactions({e})"),
+            )?? {
             TransactionServiceResponse::PendingOutboundTransactions(p) => Ok(p),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetPendingOutboundTransactions".to_string(),
+            )),
         }
     }
 
@@ -1295,10 +1369,11 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingOutboundTransactions)
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCancelledPendingOutboundTransactions({e})"))??
         {
             TransactionServiceResponse::PendingOutboundTransactions(p) => Ok(p),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse("TransactionServiceRequest::GetCancelledPendingOutboundTransactions".to_string())),
         }
     }
 
@@ -1317,10 +1392,13 @@ impl TransactionServiceHandle {
                 block_height,
                 max_limit,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCompletedTransactions({e})"))??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetCompletedTransactions".to_string(),
+            )),
         }
     }
 
@@ -1337,10 +1415,14 @@ impl TransactionServiceHandle {
                 limit,
                 status_filter,
             })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCompletedTransactionsPaginated({e})"),
+            )?? {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetCompletedTransactionsPaginated".to_string(),
+            )),
         }
     }
 
@@ -1355,10 +1437,14 @@ impl TransactionServiceHandle {
                 source_address,
                 destination_address,
             })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCompletedTransactionsByAddresses({e})"),
+            )?? {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetCompletedTransactionsByAddresses".to_string(),
+            )),
         }
     }
 
@@ -1369,10 +1455,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledCompletedTransactions(max_limit))
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCancelledCompletedTransactions({e})"),
+            )?? {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetCancelledCompletedTransactions".to_string(),
+            )),
         }
     }
 
@@ -1383,10 +1473,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransaction(tx_id))
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetCompletedTransaction({e})"))??
         {
             TransactionServiceResponse::CompletedTransaction(t) => Ok(*t),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetCompletedTransaction".to_string(),
+            )),
         }
     }
 
@@ -1397,10 +1490,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetAnyTransaction(tx_id))
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetAnyTransaction({e})"))??
         {
             TransactionServiceResponse::AnyTransaction(t) => Ok(*t),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetAnyTransaction".to_string(),
+            )),
         }
     }
 
@@ -1408,10 +1504,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::ImportTransaction(tx))
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ImportTransaction({e})"))??
         {
             TransactionServiceResponse::TransactionImported(t) => Ok(t),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ImportTransaction".to_string(),
+            )),
         }
     }
 
@@ -1436,10 +1535,13 @@ impl TransactionServiceHandle {
                 scanned_output,
                 payment_id,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ImportUtxoWithStatus({e})"))??
         {
             TransactionServiceResponse::UtxoImported(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ImportUtxoWithStatus".to_string(),
+            )),
         }
     }
 
@@ -1456,17 +1558,27 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SubmitTransactionToSelf(
                 tx_id, tx, fee, amount, payment_id,
             ))
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SubmitTransactionToSelf({e})"))??
         {
             TransactionServiceResponse::TransactionSubmitted => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SubmitTransactionToSelf".to_string(),
+            )),
         }
     }
 
     pub async fn set_low_power_mode(&mut self) -> Result<(), TransactionServiceError> {
-        match self.handle.call(TransactionServiceRequest::SetLowPowerMode).await?? {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetLowPowerMode)
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetLowPowerMode({e})"))??
+        {
             TransactionServiceResponse::LowPowerModeSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SetLowPowerMode".to_string(),
+            )),
         }
     }
 
@@ -1474,10 +1586,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::ReValidateRejectedTransactions)
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ReValidateRejectedTransactions({e})"),
+            )?? {
             TransactionServiceResponse::ValidationStarted(_) => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ReValidateRejectedTransactions".to_string(),
+            )),
         }
     }
 
@@ -1485,10 +1601,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SetNormalPowerMode)
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetNormalPowerMode({e})"))??
         {
             TransactionServiceResponse::NormalPowerModeSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SetNormalPowerMode".to_string(),
+            )),
         }
     }
 
@@ -1496,10 +1615,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetNumConfirmationsRequired)
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetNumConfirmationsRequired({e})"),
+            )?? {
             TransactionServiceResponse::NumConfirmationsRequired(confirmations) => Ok(confirmations),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetNumConfirmationsRequired".to_string(),
+            )),
         }
     }
 
@@ -1507,10 +1630,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SetNumConfirmationsRequired(number))
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetNumConfirmationsRequired({e})"),
+            )?? {
             TransactionServiceResponse::NumConfirmationsSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SetNumConfirmationsRequired".to_string(),
+            )),
         }
     }
 
@@ -1518,10 +1645,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::RestartBroadcastProtocols)
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::RestartBroadcastProtocols({e})"))??
         {
             TransactionServiceResponse::ProtocolsRestarted => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::RestartBroadcastProtocols".to_string(),
+            )),
         }
     }
 
@@ -1529,10 +1659,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::ValidateTransactions)
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ValidateTransactions({e})"))??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ValidateTransactions".to_string(),
+            )),
         }
     }
 
@@ -1552,10 +1685,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::PrepareDepositMultisigTransaction { request })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::PrepareDepositMultisigTransaction({e})"),
+            )?? {
             TransactionServiceResponse::PrepareDepositMultisigTransaction(result) => Ok(*result),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::PrepareDepositMultisigTransaction".to_string(),
+            )),
         }
     }
 
@@ -1573,10 +1710,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::PrepareWithdrawMultisigTransaction({e})"),
+            )?? {
             TransactionServiceResponse::PrepareWithdrawMultisigTransaction(result) => Ok(*result),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::PrepareWithdrawMultisigTransaction".to_string(),
+            )),
         }
     }
 
@@ -1596,10 +1737,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::CreateMultisigUtxo { request })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::CreateMultisigUtxo({e})"))??
         {
             TransactionServiceResponse::CreateMultisigUtxo(id) => Ok(id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::CreateMultisigUtxo".to_string(),
+            )),
         }
     }
 
@@ -1610,10 +1754,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetMultisigUtxoData { utxo_commitment })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetMultisigUtxoData({e})"))??
         {
             TransactionServiceResponse::GetMultisigUtxoData(output) => Ok(*output),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetMultisigUtxoData".to_string(),
+            )),
         }
     }
 
@@ -1630,10 +1777,13 @@ impl TransactionServiceHandle {
                 recipient_address,
                 signatures,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SendMultisigUtxo({e})"))??
         {
             TransactionServiceResponse::SendMultisigUtxo(output) => Ok(output),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SendMultisigUtxo".to_string(),
+            )),
         }
     }
 
@@ -1654,13 +1804,17 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
             ))
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SendShaAtomicSwapTransaction({e})"),
+            )?? {
             TransactionServiceResponse::ShaAtomicSwapTransactionSent(boxed) => {
                 let (tx_id, pre_image, output) = *boxed;
                 Ok((tx_id, pre_image, output))
             },
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SendShaAtomicSwapTransaction".to_string(),
+            )),
         }
     }
 
@@ -1672,10 +1826,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetFeePerGramStatsPerBlock { count })
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetFeePerGramStatsPerBlock({e})"),
+            )?? {
             TransactionServiceResponse::FeePerGramStatsPerBlock(resp) => Ok(resp),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetFeePerGramStatsPerBlock".to_string(),
+            )),
         }
     }
 
@@ -1687,10 +1845,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetPaymentByReference { payref })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetPaymentByReference({e})"))??
         {
             TransactionServiceResponse::PaymentDetails(details) => Ok(details),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetPaymentByReference".to_string(),
+            )),
         }
     }
 
@@ -1702,10 +1863,14 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GetTransactionByPaymentReference(payref))
-            .await??
-        {
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetTransactionByPaymentReference({e})"),
+            )?? {
             TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetTransactionByPaymentReference".to_string(),
+            )),
         }
     }
 
@@ -1725,10 +1890,13 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ReplaceByFee({e})"))??
         {
             TransactionServiceResponse::TransactionReplaced(new_tx_id) => Ok(new_tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ReplaceByFee".to_string(),
+            )),
         }
     }
 
@@ -1754,10 +1922,13 @@ impl TransactionServiceHandle {
                 destination,
                 fee,
             })
-            .await??
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::UserPayForFee({e})"))??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::UserPayForFee".to_string(),
+            )),
         }
     }
 }
