@@ -41,7 +41,7 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::legacy_key_manager::TransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::Mutex;
 use tonic::Status;
 
@@ -76,7 +76,7 @@ pub struct WalletDebouncer<KeyManagerInterface> {
 }
 
 impl<KeyManagerInterface> WalletDebouncer<KeyManagerInterface>
-where KeyManagerInterface: TransactionKeyManagerInterface
+where KeyManagerInterface: LegacyTransactionKeyManagerInterface
 {
     /// Create a new WalletDebouncer instance.
     pub fn new(

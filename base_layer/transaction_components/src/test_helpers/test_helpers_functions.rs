@@ -39,7 +39,7 @@ use crate::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,
@@ -63,10 +63,10 @@ use crate::{
     TransactionBuilder,
 };
 
-pub fn create_test_input<KM: TransactionKeyManagerInterface>(
+pub fn create_test_input(
     amount: MicroMinotari,
     maturity: u64,
-    key_manager: &mut KM,
+    key_manager: &KeyManager,
     coinbase_extra: Vec<u8>,
     payment_id: Option<MemoField>,
 ) -> WalletOutput {
@@ -103,7 +103,7 @@ pub struct TestParams {
 }
 
 impl TestParams {
-    pub fn new<KM: TransactionKeyManagerInterface>(key_manager: &mut KM) -> TestParams {
+    pub fn new<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
         let sender_offset = key_manager.get_random_key(None, false).unwrap();
         let kernel_nonce = key_manager.get_random_key(None, false).unwrap();
@@ -133,7 +133,7 @@ impl TestParams {
     pub fn create_output<KM: TransactionKeyManagerInterface>(
         &self,
         params: UtxoTestParams,
-        key_manager: &mut KM,
+        key_manager: &KM,
     ) -> Result<WalletOutput, String> {
         let version = params.output_version.unwrap_or_default();
         let input_data = params.input_data.unwrap_or_else(|| inputs!(self.script_key_pk.clone()));
@@ -162,7 +162,7 @@ impl TestParams {
     pub fn create_input<KM: TransactionKeyManagerInterface>(
         &self,
         params: UtxoTestParams,
-        key_manager: &mut KM,
+        key_manager: &KM,
     ) -> WalletOutput {
         self.create_output(params, key_manager).unwrap()
     }

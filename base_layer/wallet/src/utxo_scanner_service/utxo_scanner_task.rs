@@ -40,7 +40,12 @@ use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::C
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::MinimalUtxoSyncInfo,
-    transaction_components::{EncryptedData, TransactionOutput, WalletOutput},
+    transaction_components::{
+        one_sided::public_key_to_output_encryption_key,
+        EncryptedData,
+        TransactionOutput,
+        WalletOutput,
+    },
     MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
@@ -49,7 +54,7 @@ use tari_transaction_key_manager::legacy_key_manager::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-use tari_transaction_components::transaction_components::one_sided::public_key_to_output_encryption_key;
+
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,

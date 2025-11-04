@@ -40,10 +40,9 @@ use tari_core::consensus::BaseNodeConsensusManager;
 use tari_crypto::keys::SecretKey;
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{Transaction, WalletOutput},
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use thiserror::Error;
 
 use crate::{
@@ -99,7 +98,7 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
-    pub key_manager: MemoryDbKeyManager,
+    pub key_manager: KeyManager,
     // This will be used for all one-sided coinbase payments
     pub wallet_private_key: PrivateKey,
     // This receiver wallet address will be used for default one-sided coinbase payments
@@ -170,7 +169,7 @@ impl TariWorld {
             errors: Default::default(),
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
-            key_manager: create_memory_db_key_manager().await.unwrap(),
+            key_manager: KeyManager::new_random().unwrap(),
             wallet_private_key,
             default_payment_address,
             consensus_manager: BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
@@ -306,11 +305,8 @@ impl TariWorld {
     }
 
     pub async fn script_key_id(&mut self) -> TariKeyId {
-        match self.key_manager.import_key(self.wallet_private_key.clone(), None).await {
-            Ok(key_id) => key_id,
-            Err(_) => TariKeyId::Imported {
-                key: CompressedPublicKey::from_secret_key(&self.wallet_private_key),
-            },
-        }
+        self.key_manager
+            .import_key(self.wallet_private_key.clone(), None)
+            .unwrap()
     }
 }

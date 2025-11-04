@@ -35,7 +35,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_core::consensus::BaseNodeConsensusManager;
 use tari_transaction_components::{
     generate_coinbase_with_wallet_output,
-    legacy_key_manager::TariKeyId,
+    key_manager::{KeyManager, TariKeyId},
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -45,7 +45,6 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::MemoryDbKeyManager;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -174,7 +173,7 @@ pub async fn mine_blocks_without_wallet(
     base_client: &mut BaseNodeClient,
     num_blocks: u64,
     weight: u64,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -200,7 +199,7 @@ pub async fn mine_blocks_without_wallet(
 
 pub async fn mine_block(
     base_client: &mut BaseNodeClient,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -236,7 +235,7 @@ pub async fn mine_block(
 async fn mine_block_without_wallet(
     base_client: &mut BaseNodeClient,
     weight: u64,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -275,7 +274,7 @@ async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClien
 async fn create_block_template_with_coinbase(
     base_client: &mut BaseNodeClient,
     weight: u64,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -317,7 +316,6 @@ async fn create_block_template_with_coinbase(
         RangeProofType::BulletProofPlus,
         MemoField::new_open(vec![], TxType::Coinbase).unwrap(),
     )
-    .await
     .unwrap();
     let body = block_template.body.as_mut().unwrap();
 
@@ -353,7 +351,7 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
 
 pub async fn mine_block_before_submit(
     client: &mut BaseNodeClient,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,

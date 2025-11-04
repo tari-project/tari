@@ -142,7 +142,7 @@ where
             OutputManagerRequest,
             Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError>,
         >,
-        db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
+        db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
         consensus_constants: ConsensusConstants,
@@ -519,7 +519,10 @@ where
     }
 
     fn get_output_info_by_tx_id(&self, tx_id: TxId) -> Result<OutputInfoByTxId, OutputManagerError> {
-        let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id)?;
+        let outputs = self
+            .resources
+            .db
+            .fetch_outputs_by_tx_id(tx_id, &self.resources.key_manager)?;
         let statuses = outputs.clone().into_iter().map(|uo| uo.status).collect();
         // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
         // mined heights)
@@ -594,6 +597,7 @@ where
             self.resources.connectivity.clone(),
             self.resources.event_publisher.clone(),
             self.resources.config.clone(),
+            self.resources.key_manager.clone(),
         );
 
         let mut shutdown = self.resources.shutdown_signal.clone();
@@ -700,8 +704,14 @@ where
             output.hash.to_hex()
         );
         match tx_id {
-            None => self.resources.db.add_unspent_output(output)?,
-            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output)?,
+            None => self
+                .resources
+                .db
+                .add_unspent_output(output, &self.resources.key_manager)?,
+            Some(t) => self
+                .resources
+                .db
+                .add_unspent_output_with_tx_id(t, output, &self.resources.key_manager)?,
         }
         Ok(())
     }
@@ -1704,10 +1714,12 @@ where
             "select_utxos selection criteria: {selection_criteria}"
         );
         let start_new = Instant::now();
-        let uo: Vec<DbWalletOutput> =
-            self.resources
-                .db
-                .fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height)?;
+        let uo: Vec<DbWalletOutput> = self.resources.db.fetch_unspent_outputs_for_spending(
+            &selection_criteria,
+            amount,
+            tip_height,
+            &self.resources.key_manager,
+        )?;
 
         // OutputSource
 
@@ -1816,23 +1828,32 @@ where
     }
 
     pub fn fetch_spent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_spent_outputs()?)
+        Ok(self.resources.db.fetch_spent_outputs(&self.resources.key_manager)?)
     }
 
     pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_all_unspent_outputs()?)
+        Ok(self
+            .resources
+            .db
+            .fetch_all_unspent_outputs(&self.resources.key_manager)?)
     }
 
     pub fn fetch_outputs_by_query(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_outputs_by_query(q)?)
+        Ok(self
+            .resources
+            .db
+            .fetch_outputs_by_query(q, &self.resources.key_manager)?)
     }
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.get_invalid_outputs()?)
+        Ok(self.resources.db.get_invalid_outputs(&self.resources.key_manager)?)
     }
 
     pub fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_many_outputs(outputs)?)
+        Ok(self
+            .resources
+            .db
+            .fetch_many_outputs(outputs, &self.resources.key_manager)?)
     }
 
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
@@ -1859,6 +1880,7 @@ where
             &UtxoSelectionCriteria::specific(commitments),
             MicroMinotari::zero(),
             None,
+            &self.resources.key_manager,
         )?;
 
         let accumulated_amount = src_outputs
@@ -1897,6 +1919,7 @@ where
             &UtxoSelectionCriteria::specific(commitments),
             MicroMinotari::zero(),
             None,
+            &self.resources.key_manager,
         )?;
 
         let fee = self.get_fee_calc().calculate(
@@ -1944,6 +1967,7 @@ where
             &UtxoSelectionCriteria::specific(commitments),
             MicroMinotari::zero(),
             None,
+            &self.resources.key_manager,
         )?;
 
         match amount_per_split {
@@ -2368,6 +2392,7 @@ where
             &UtxoSelectionCriteria::specific(commitments),
             MicroMinotari::zero(),
             None,
+            &self.resources.key_manager,
         )?;
 
         let accumulated_amount_with_fee = src_outputs
@@ -2458,7 +2483,10 @@ where
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
     ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
-        let src_outputs = self.resources.db.fetch_all_unspent_outputs()?;
+        let src_outputs = self
+            .resources
+            .db
+            .fetch_all_unspent_outputs(&self.resources.key_manager)?;
 
         let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
@@ -2581,7 +2609,11 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
-        let output = self.resources.db.get_unspent_output(output_hash)?.wallet_output;
+        let output = self
+            .resources
+            .db
+            .get_unspent_output(output_hash, &self.resources.key_manager)?
+            .wallet_output;
 
         let amount = output.value();
 
@@ -2627,7 +2659,11 @@ where
     fn add_known_script(&mut self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
         debug!(target: LOG_TARGET, "Adding new script to output manager service");
         // It is not a problem if the script has already been persisted
-        match self.resources.db.add_known_script(known_script) {
+        match self
+            .resources
+            .db
+            .add_known_script(known_script, &self.resources.key_manager)
+        {
             Ok(_) => (),
             Err(OutputManagerStorageError::DieselError(DieselError::DatabaseError(
                 DatabaseErrorKind::UniqueViolation,
@@ -2650,7 +2686,10 @@ where
         outputs: Vec<(TransactionOutput, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut known_keys = Vec::new();
-        let known_scripts = self.resources.db.get_all_known_one_sided_payment_scripts()?;
+        let known_scripts = self
+            .resources
+            .db
+            .get_all_known_one_sided_payment_scripts(&self.resources.key_manager)?;
         for known_script in known_scripts {
             known_keys.push((
                 self.resources
@@ -2824,7 +2863,7 @@ where
             match self
                 .resources
                 .db
-                .add_unspent_output_with_tx_id(tx_id, db_output.clone())
+                .add_unspent_output_with_tx_id(tx_id, db_output.clone(), &self.resources.key_manager)
             {
                 Ok(_) => {
                     trace!(

@@ -64,8 +64,9 @@ use minotari_wallet::{
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tokio::sync::broadcast;
+
 use crate::ffi_basenode_state::TariBaseNodeState;
 
 #[derive(Clone, Copy)]

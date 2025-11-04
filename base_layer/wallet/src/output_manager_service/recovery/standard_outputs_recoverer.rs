@@ -54,7 +54,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
-    db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
+    db: OutputManagerDatabase<TBackend>,
     transaction_service_handle: TransactionServiceHandle,
 }
 
@@ -65,7 +65,7 @@ where
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
-        db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
+        db: OutputManagerDatabase<TBackend>,
         transaction_service_handle: TransactionServiceHandle,
     ) -> Self {
         Self {
@@ -85,7 +85,9 @@ where
         let start = Instant::now();
         let outputs_length = outputs.len();
 
-        let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
+        let known_scripts = self
+            .db
+            .get_all_known_one_sided_payment_scripts(&self.master_key_manager)?;
 
         let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash, Option<TxId>)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
@@ -170,7 +172,10 @@ where
                 },
             };
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
+            if let Err(e) = self
+                .db
+                .add_unspent_output_with_tx_id(tx_id, db_output, &self.master_key_manager)
+            {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         continue;
@@ -273,7 +278,10 @@ where
     ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
-        match self.db.fetch_by_commitment(output.commitment().clone()) {
+        match self
+            .db
+            .fetch_by_commitment(output.commitment().clone(), &self.master_key_manager)
+        {
             Ok(_) => return Ok(None),
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),

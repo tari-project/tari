@@ -166,7 +166,7 @@ impl WalletOutputBuilder {
 
     pub fn sign_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
         mut self,
-        key_manager: &mut KM,
+        key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
     ) -> Result<Self, TransactionError> {
         let script = self
@@ -199,7 +199,7 @@ impl WalletOutputBuilder {
 
     pub fn sign_as_sender_and_receiver_verified<KM: TransactionKeyManagerInterface>(
         mut self,
-        key_manager: &mut KM,
+        key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
         receiver_address: &TariAddress,
     ) -> Result<Self, TransactionError> {

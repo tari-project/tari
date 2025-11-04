@@ -38,7 +38,7 @@ use tari_common_types::types::FixedHashSizeError;
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_script::ScriptError;
 use tari_transaction_components::{
-    legacy_key_manager::error::KeyManagerServiceError,
+    key_manager::error::KeyManagerError,
     tari_amount::MicroMinotariError,
     transaction_components::TransactionError,
 };
@@ -64,7 +64,7 @@ pub enum CommandError {
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerServiceError),
+    KeyManagerError(#[from] KeyManagerError),
     #[error("Tokio join error `{0}`")]
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]

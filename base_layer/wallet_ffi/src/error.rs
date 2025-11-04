@@ -510,7 +510,6 @@ impl From<MnemonicError> for LibWalletError {
     }
 }
 
-
 impl From<PeerManagerError> for LibWalletError {
     fn from(err: PeerManagerError) -> Self {
         error!(target: LOG_TARGET, "Peer manager error: {err}");

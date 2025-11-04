@@ -293,7 +293,6 @@ impl WalletGrpcServer {
             let wallet_address = self
                 .wallet
                 .get_wallet_one_sided_address()
-                .await
                 .map_err(|e| Status::internal(format!("{e:?}")))?;
             let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                 loop {
@@ -382,12 +381,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         Ok(Response::new(GetAddressResponse {
             interactive_address: interactive_address.to_vec(),
@@ -409,7 +406,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: interactive:      '{}'", interactive_address.to_base58());
         let interactive_address = interactive_address
@@ -419,7 +415,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: one_sided:        '{}'", one_sided_address.to_base58());
         let one_sided_address = one_sided_address
@@ -443,12 +438,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         Ok(Response::new(GetCompleteAddressResponse {
@@ -671,7 +664,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         let wallet_address = self
                             .wallet
                             .get_wallet_one_sided_address()
-                            .await
                             .map_err(|e| Status::internal(format!("{e:?}")))?;
                         let wallet_tx = self
                             .get_transaction_service()
@@ -747,7 +739,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         let wallet_address = self
                             .wallet
                             .get_wallet_one_sided_address()
-                            .await
                             .map_err(|e| Status::internal(format!("{e:?}")))?;
                         let wallet_tx = self
                             .get_transaction_service()
@@ -1129,7 +1120,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     let wallet_address = self
                         .wallet
                         .get_wallet_one_sided_address()
-                        .await
                         .map_err(|e| Status::internal(format!("{e:?}")))?;
                     let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                         loop {
@@ -1263,7 +1253,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let wallet_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut transactions = Vec::new();
         for (tx_id, tx) in all_transactions {
@@ -2562,7 +2551,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     let wallet_address = self
                         .wallet
                         .get_wallet_one_sided_address()
-                        .await
                         .map_err(|e| Status::internal(format!("{e:?}")))?;
                     let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                         loop {

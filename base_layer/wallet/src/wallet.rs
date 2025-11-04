@@ -54,7 +54,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{ wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
+    key_manager::{wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -117,7 +117,7 @@ where THttpClientFactory: HttpClientFactory
     pub utxo_scanner_service: UtxoScannerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
-    pub output_db: OutputManagerDatabase<V, TKeyManagerInterface>,
+    pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
     wallet_type: Arc<LegacyWalletType>,
     pub config: WalletConfig,
@@ -143,7 +143,7 @@ where
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
-        output_manager_database: OutputManagerDatabase<V, TKeyManagerInterface>,
+        output_manager_database: OutputManagerDatabase<V>,
         transaction_backend: U,
         output_manager_backend: V,
         key_manager_backend: TKeyManagerBackend,

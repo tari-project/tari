@@ -145,6 +145,7 @@ use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     helpers::borsh::FromBytes,
+    key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
@@ -156,6 +157,10 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
+};
 use tari_utilities::{
     encoding::MBase58,
     hex::{Hex, HexError},
@@ -163,8 +168,7 @@ use tari_utilities::{
 };
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
+
 use crate::{
     callback_handler::{CallbackHandler, Context},
     enums::SeedWordPushResult,
@@ -2568,10 +2572,8 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
     match received_outputs {
         Ok(rec_outputs) => {
             for output in rec_outputs {
-                let unblinded = UnblindedOutput::from_wallet_output(
-                    output.wallet_output,
-                    &(*wallet).wallet.key_manager_service,
-                );
+                let unblinded =
+                    UnblindedOutput::from_wallet_output(output.wallet_output, &(*wallet).wallet.key_manager_service);
                 match unblinded {
                     Ok(uo) => {
                         outputs.push(uo);
@@ -3161,10 +3163,10 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
         match CompressedCommitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
             Ok(commitment) => {
                 match (*wallet)
-                        .wallet
-                        .key_manager_service
-                        .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None)
-                 {
+                    .wallet
+                    .key_manager_service
+                    .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None)
+                {
                     Ok(payment_id) => {
                         if let Some(tx_type) = payment_id.get_tx_type() {
                             transaction_type = c_uint::from(tx_type.as_u8());
@@ -6022,7 +6024,7 @@ pub unsafe extern "C" fn wallet_create(
 
     match w {
         Ok(w) => {
-            let wallet_address = match runtime.block_on(async { w.get_wallet_interactive_address().await }) {
+            let wallet_address = match w.get_wallet_interactive_address() {
                 Ok(address) => address,
                 Err(e) => {
                     *error_out = LibWalletError::from(e).code;
@@ -6269,7 +6271,11 @@ pub unsafe extern "C" fn wallet_get_utxos(
         }],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by_query(q) {
+    match (*wallet)
+        .wallet
+        .output_db
+        .fetch_outputs_by_query(q, &(*wallet).wallet.key_manager_service)
+    {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
             Box::into_raw(Box::new(TariVector::from(outputs)))
@@ -6339,7 +6345,11 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
         sorting: vec![],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by_query(q) {
+    match (*wallet)
+        .wallet
+        .output_db
+        .fetch_outputs_by_query(q, &(*wallet).wallet.key_manager_service)
+    {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
             Box::into_raw(Box::new(TariVector::from(outputs)))
@@ -6865,16 +6875,8 @@ pub unsafe extern "C" fn wallet_get_private_view_key(
         return ptr::null_mut();
     }
 
-    let private_key = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.key_manager_service.get_private_view_key());
-    match private_key {
-        Ok(private_key) => Box::into_raw(Box::new(private_key)),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
+    let private_key = (*wallet).wallet.key_manager_service.get_private_view_key();
+    Box::into_raw(Box::new(private_key))
 }
 
 /// Gets the public spend key of the wallet
@@ -6904,16 +6906,8 @@ pub unsafe extern "C" fn wallet_get_public_spend_key(
         return ptr::null_mut();
     }
 
-    let public_key = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.key_manager_service.clone().get_spend_key());
-    match public_key {
-        Ok(private_key) => Box::into_raw(Box::new(private_key.pub_key)),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
+    let public_key = (*wallet).wallet.key_manager_service.clone().get_spend_key();
+    Box::into_raw(Box::new(public_key.pub_key))
 }
 
 /// Gets the available balance from a TariBalance. This is the balance the user can spend.
@@ -7624,14 +7618,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     for tx in &completed_transactions {
         completed.push(tx.clone());
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return ptr::null_mut();
-        },
-    };
-    let wallet_address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+    let wallet_address = match (*wallet).wallet.get_wallet_interactive_address() {
         Ok(address) => address,
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -7932,14 +7919,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                 return ptr::null_mut();
             },
         };
-        let runtime = match Runtime::new() {
-            Ok(r) => r,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-                return ptr::null_mut();
-            },
-        };
-        let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+        let address = match (*wallet).wallet.get_wallet_interactive_address() {
             Ok(address) => address,
             Err(e) => {
                 *error_out = LibWalletError::from(e).code;
@@ -8013,14 +7993,7 @@ pub unsafe extern "C" fn wallet_get_tari_interactive_address(
         *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         return ptr::null_mut();
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return ptr::null_mut();
-        },
-    };
-    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+    let address = match (*wallet).wallet.get_wallet_interactive_address() {
         Ok(address) => address,
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -8057,14 +8030,7 @@ pub unsafe extern "C" fn wallet_get_tari_one_sided_address(
         *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         return ptr::null_mut();
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return ptr::null_mut();
-        },
-    };
-    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_one_sided_address().await }) {
+    let address = match (*wallet).wallet.get_wallet_one_sided_address() {
         Ok(address) => address,
         Err(e) => {
             *error_out = LibWalletError::from(e).code;

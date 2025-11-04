@@ -139,7 +139,7 @@ where
             let service = OutputManagerService::new(
                 config,
                 receiver,
-                OutputManagerDatabase::new(backend, key_manager.clone()),
+                OutputManagerDatabase::new(backend),
                 publisher,
                 factories,
                 constants,

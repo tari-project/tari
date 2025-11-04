@@ -51,10 +51,11 @@ const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 #[derive(Clone)]
 pub struct TxoValidationTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     operation_id: u64,
-    db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
+    db: OutputManagerDatabase<TBackend>,
     connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
+    key_manager: TKeyManagerInterface,
 }
 
 struct MinedOutputInfo {
@@ -73,10 +74,11 @@ where
 {
     pub fn new(
         operation_id: u64,
-        db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
+        db: OutputManagerDatabase<TBackend>,
         connectivity: TWalletConnectivity,
         event_publisher: OutputManagerEventSender,
         config: OutputManagerServiceConfig,
+        key_manager: TKeyManagerInterface,
     ) -> Self {
         Self {
             operation_id,
@@ -84,6 +86,7 @@ where
             connectivity,
             event_publisher,
             config,
+            key_manager,
         }
     }
 
@@ -129,6 +132,7 @@ where
                             })?,
                     ))
                 .timestamp(),
+                &self.key_manager,
             )
             .for_protocol(self.operation_id)?;
 
@@ -191,7 +195,10 @@ where
             .get_last_scanned_height()
             .for_protocol(self.operation_id)?
             .unwrap_or(0);
-        let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
+        let mined_outputs = self
+            .db
+            .fetch_mined_unspent_outputs(&self.key_manager)
+            .for_protocol(self.operation_id)?;
         debug!(
             target: LOG_TARGET,
             "Found {} mined outputs to validate (Operation ID: {})",
@@ -292,7 +299,10 @@ where
         &self,
         wallet_client: &mut TWalletConnectivity::BaseNodeClient,
     ) -> Result<(), OutputManagerProtocolError> {
-        let unconfirmed_outputs = self.db.fetch_unconfirmed_outputs().for_protocol(self.operation_id)?;
+        let unconfirmed_outputs = self
+            .db
+            .fetch_unconfirmed_outputs(&self.key_manager)
+            .for_protocol(self.operation_id)?;
         debug!(
             target: LOG_TARGET,
             "Found {} unconfirmed outputs to validate (Operation ID: {})",
@@ -380,7 +390,11 @@ where
             "Checking last mined TXO to see if the base node has re-orged (Operation ID: {})", self.operation_id
         );
 
-        while let Some(last_spent_output) = self.db.get_last_spent_output().for_protocol(self.operation_id)? {
+        while let Some(last_spent_output) = self
+            .db
+            .get_last_spent_output(&self.key_manager)
+            .for_protocol(self.operation_id)?
+        {
             let mined_height = if let Some(height) = last_spent_output.marked_deleted_at_height {
                 height
             } else {
@@ -440,7 +454,11 @@ where
             }
         }
 
-        while let Some(last_mined_output) = self.db.get_last_mined_output().for_protocol(self.operation_id)? {
+        while let Some(last_mined_output) = self
+            .db
+            .get_last_mined_output(&self.key_manager)
+            .for_protocol(self.operation_id)?
+        {
             if last_mined_output.mined_height.is_none() || last_mined_output.mined_in_block.is_none() {
                 warn!(
                     target: LOG_TARGET,
