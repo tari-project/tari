@@ -24,11 +24,11 @@ use std::{collections::HashMap, fmt, sync::Arc};
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{
@@ -79,7 +79,7 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
 };
-use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
 
@@ -1022,14 +1022,10 @@ where
         let index = payment_id
             .get_u64_data()
             .map_err(|e| OutputManagerError::InvalidPaymentIdFormat(format!("TxId: {tx_id}, {e}")))?;
-        let old_script_key_id = LegacyTariKeyId::Managed {
-            branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+        let script_key_id = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
             index,
         };
-        let script_key_id = self
-            .resources
-            .key_manager
-            .convert_legacy_tari_key_id_to_current(&old_script_key_id)?;
         Ok(TariKeyAndId {
             pub_key: self.resources.key_manager.get_public_key_at_key_id(&script_key_id)?,
             key_id: script_key_id,

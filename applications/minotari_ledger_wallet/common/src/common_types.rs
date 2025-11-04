@@ -101,44 +101,6 @@ impl Instruction {
 }
 
 /// Key manager branches shared by the Ledger application and the wallet.
-// #[repr(u8)]
-// #[derive(Debug, Copy, Clone, PartialEq)]
-// pub enum Branch {
-//     DataEncryption = 0x00,
-//     MetadataEphemeralNonce = 0x01,
-//     CommitmentMask = 0x02,
-//     Nonce = 0x03,
-//     KernelNonce = 0x04,
-//     SenderOffset = 0x05,
-//     OneSidedSenderOffset = 0x06,
-//     Spend = 0x07,
-//     RandomKey = 0x08,
-//     PreMine = 0x09,
-//     CodeTemplateAuthor = 0x0a,
-// }
-//
-// impl Branch {
-//     pub fn as_byte(self) -> u8 {
-//         self as u8
-//     }
-//
-//     pub fn from_byte(value: u8) -> Option<Self> {
-//         match value {
-//             0x00 => Some(Branch::DataEncryption),
-//             0x01 => Some(Branch::MetadataEphemeralNonce),
-//             0x02 => Some(Branch::CommitmentMask),
-//             0x03 => Some(Branch::Nonce),
-//             0x04 => Some(Branch::KernelNonce),
-//             0x05 => Some(Branch::SenderOffset),
-//             0x06 => Some(Branch::OneSidedSenderOffset),
-//             0x07 => Some(Branch::Spend),
-//             0x08 => Some(Branch::RandomKey),
-//             0x09 => Some(Branch::PreMine),
-//             0x0a => Some(Branch::CodeTemplateAuthor),
-//             _ => None,
-//         }
-//     }
-// }
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LedgerKeyBranch {
@@ -348,74 +310,6 @@ mod test {
                 Instruction::GetScriptSignatureManaged => {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
-                },
-            }
-        }
-    }
-
-    #[test]
-    fn test_branch_conversion() {
-        use crate::common_types::Branch;
-
-        let mappings = [
-            (0x00, Branch::DataEncryption),
-            (0x01, Branch::MetadataEphemeralNonce),
-            (0x02, Branch::CommitmentMask),
-            (0x03, Branch::Nonce),
-            (0x04, Branch::KernelNonce),
-            (0x05, Branch::SenderOffset),
-            (0x06, Branch::OneSidedSenderOffset),
-            (0x07, Branch::Spend),
-            (0x08, Branch::RandomKey),
-            (0x09, Branch::PreMine),
-            (0x0a, Branch::CodeTemplateAuthor),
-        ];
-
-        for (expected_byte, branch) in &mappings {
-            match branch {
-                Branch::DataEncryption => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::MetadataEphemeralNonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::CommitmentMask => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::Nonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::KernelNonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::SenderOffset => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::OneSidedSenderOffset => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::Spend => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::RandomKey => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::PreMine => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::CodeTemplateAuthor => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
                 },
             }
         }
