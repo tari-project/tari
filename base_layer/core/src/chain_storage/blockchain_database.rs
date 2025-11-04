@@ -1434,6 +1434,12 @@ where B: BlockchainBackend
         fetch_block_by_hash(&*db, hash, compact)
     }
 
+    /// Attempt to fetch the block corresponding to the provided hash from the main chain
+    pub fn fetch_orphan_blocks(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_orphan_blocks(&*db)
+    }
+
     /// Attempt to fetch the block corresponding to the provided kernel hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
     pub fn fetch_block_with_kernel(
@@ -1550,6 +1556,11 @@ where B: BlockchainBackend
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_all_active_validator_nodes(height)
+    }
+
+    pub fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_all_orphans()
     }
 
     pub fn fetch_active_validator_nodes(
@@ -2140,6 +2151,10 @@ fn fetch_block_by_hash<T: BlockchainBackend>(
         return Ok(Some(fetch_block(db, header.height, compact)?));
     }
     Ok(None)
+}
+
+fn fetch_orphan_blocks<T: BlockchainBackend>(db: &T) -> Result<Vec<ChainHeader>, ChainStorageError> {
+    db.fetch_all_orphans()
 }
 
 fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(u64, bool), ChainStorageError> {
