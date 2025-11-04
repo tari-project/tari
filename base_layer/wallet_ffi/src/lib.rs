@@ -145,7 +145,6 @@ use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     helpers::borsh::FromBytes,
-    legacy_key_manager::{wallet_types::WalletType, TransactionKeyManagerInterface},
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
@@ -164,7 +163,8 @@ use tari_utilities::{
 };
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
-
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use crate::{
     callback_handler::{CallbackHandler, Context},
     enums::SeedWordPushResult,
@@ -2568,10 +2568,10 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
     match received_outputs {
         Ok(rec_outputs) => {
             for output in rec_outputs {
-                let unblinded = (*wallet).runtime.block_on(UnblindedOutput::from_wallet_output(
+                let unblinded = UnblindedOutput::from_wallet_output(
                     output.wallet_output,
                     &(*wallet).wallet.key_manager_service,
-                ));
+                );
                 match unblinded {
                     Ok(uo) => {
                         outputs.push(uo);
@@ -3160,12 +3160,11 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
     } else {
         match CompressedCommitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
             Ok(commitment) => {
-                match (*wallet).runtime.block_on(
-                    (*wallet)
+                match (*wallet)
                         .wallet
                         .key_manager_service
-                        .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None),
-                ) {
+                        .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None)
+                 {
                     Ok(payment_id) => {
                         if let Some(tx_type) = payment_id.get_tx_type() {
                             transaction_type = c_uint::from(tx_type.as_u8());
@@ -3174,7 +3173,7 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
                     Err(e) => {
                         error!(target: LOG_TARGET, "Error extracting payment id from encrypted data: {e:?}");
                         *error_out = LibWalletError::from(WalletError::TransactionServiceError(
-                            TransactionServiceError::TransactionError(e),
+                            TransactionServiceError::KeyManagerServiceError(e),
                         ))
                         .code;
                     },
@@ -6017,8 +6016,8 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         key_manager_backend,
         shutdown.to_signal(),
-        Some(master_seed),
-        Some(WalletType::default()),
+        master_seed,
+        Some(LegacyWalletType::default()),
     ));
 
     match w {

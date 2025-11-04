@@ -6,6 +6,7 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -24,22 +25,54 @@ use crate::output_manager_service::{
 /// will remain the same
 pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
-    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
+    fn fetch<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key: &DbKey,
+        key_manager: &KM,
+    ) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Fetch outputs with specific features
-    fn fetch_with_features(&self, features: OutputType) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_with_features<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        features: OutputType,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve unspent outputs.
-    fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_sorted_unspent_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
-    fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_mined_unspent_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that are invalid
-    fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_invalid_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        timestamp: i64,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve all outputs matching the provided hashes
-    fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_many_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        outputs: &[FixedHash],
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have not been found or confirmed in the block chain yet
-    fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_unspent_mined_unconfirmed_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
-    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
-    fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn write<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        op: WriteOperation,
+        key_manager: &KM,
+    ) -> Result<Option<DbValue>, OutputManagerStorageError>;
+    fn fetch_pending_incoming_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Perform a batch update of the received outputs' mined height and status
     fn set_received_outputs_mined_height_and_statuses(
         &self,
@@ -86,9 +119,15 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn revalidate_unspent_output(&self, spending_key: &CompressedCommitment) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
-    fn get_last_mined_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
+    fn get_last_mined_output<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
     /// Get the output that was most recently spent, ordered descending by mined height
-    fn get_last_spent_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
+    fn get_last_spent_output<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
     fn get_last_scanned_height(&self) -> Result<Option<u64>, OutputManagerStorageError>;
     fn save_last_scanned_height(
         &self,
@@ -106,12 +145,21 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
     fn add_unvalidated_output(&self, output: DbWalletOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
-    fn fetch_unspent_outputs_for_spending(
+    fn fetch_unspent_outputs_for_spending<KM: LegacyTransactionKeyManagerInterface>(
         &self,
         selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         current_tip_height: Option<u64>,
+        key_manager: &KM,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
-    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
-    fn fetch_outputs_by_query(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by_tx_id<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        tx_id: TxId,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by_query<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        q: OutputBackendQuery,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
 }

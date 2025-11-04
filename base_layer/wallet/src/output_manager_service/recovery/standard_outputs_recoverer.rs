@@ -54,7 +54,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
-    db: OutputManagerDatabase<TBackend>,
+    db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
     transaction_service_handle: TransactionServiceHandle,
 }
 
@@ -65,7 +65,7 @@ where
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
-        db: OutputManagerDatabase<TBackend>,
+        db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
         transaction_service_handle: TransactionServiceHandle,
     ) -> Self {
         Self {

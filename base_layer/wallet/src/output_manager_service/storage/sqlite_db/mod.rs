@@ -40,8 +40,11 @@ use tari_common_types::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
-use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
-use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    transaction_components::{OutputType, TransactionOutput},
+};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::time::Instant;
 
 use crate::{
@@ -117,7 +120,11 @@ impl OutputManagerSqliteDatabase {
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
-    fn fetch<KM: LegacyTransactionKeyManagerInterface>(&self, key: &DbKey, key_manager: &KM) -> Result<Option<DbValue>, OutputManagerStorageError> {
+    fn fetch<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key: &DbKey,
+        key_manager: &KM,
+    ) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -157,7 +164,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &mut conn) {
-                    Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output()?))),
+                    Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output(key_manager)?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -173,7 +180,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::AnyOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_wallet_output())
+                        .map(|o| o.clone().to_db_wallet_output(key_manager))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -186,7 +193,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_wallet_output())
+                        .map(|o| o.clone().to_db_wallet_output(key_manager))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -196,7 +203,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::SpentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_wallet_output())
+                        .map(|o| o.clone().to_db_wallet_output(key_manager))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -206,7 +213,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_wallet_output())
+                        .map(|o| o.clone().to_db_wallet_output(key_manager))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -216,7 +223,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::InvalidOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_wallet_output())
+                        .map(|o| o.clone().to_db_wallet_output(key_manager))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -245,27 +252,37 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
-    fn fetch_with_features(&self, output_type: OutputType) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_with_features<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        output_type: OutputType,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let outputs = OutputSql::index_by_output_type(output_type, &mut conn)?;
 
         outputs
             .iter()
-            .map(|o| o.clone().to_db_wallet_output())
+            .map(|o| o.clone().to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_sorted_unspent_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let outputs = OutputSql::index_unspent(&mut conn)?;
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output())
+            .map(|o| o.to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_mined_unspent_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -283,11 +300,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output())
+            .map(|o| o.to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_invalid_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        timestamp: i64,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -308,11 +329,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output())
+            .map(|o| o.to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_many_outputs(&self, outputs: &[FixedHash]) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_many_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        outputs: &[FixedHash],
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -328,10 +353,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
 
-        outputs.into_iter().map(|o| o.to_db_wallet_output()).collect()
+        outputs
+            .into_iter()
+            .map(|o| o.to_db_wallet_output(key_manager))
+            .collect()
     }
 
-    fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_unspent_mined_unconfirmed_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -349,11 +380,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output())
+            .map(|o| o.to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
+    fn write<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        op: WriteOperation,
+        key_manager: &KM,
+    ) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -373,7 +408,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         match OutputSql::find_by_commitment(&commitment.to_vec(), conn) {
                             Ok(o) => {
                                 o.delete(conn)?;
-                                Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output()?))))
+                                Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output(key_manager)?))))
                             },
                             Err(e) => match e {
                                 OutputManagerStorageError::DieselError(DieselError::NotFound) => Ok(None),
@@ -407,7 +442,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         result
     }
 
-    fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_pending_incoming_outputs<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -432,7 +470,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
         outputs
             .iter()
-            .map(|o| o.clone().to_db_wallet_output())
+            .map(|o| o.clone().to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -963,7 +1001,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn get_last_mined_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
+    fn get_last_mined_output<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -978,12 +1019,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         match output {
-            Some(o) => Ok(Some(o.to_db_wallet_output()?)),
+            Some(o) => Ok(Some(o.to_db_wallet_output(key_manager)?)),
             None => Ok(None),
         }
     }
 
-    fn get_last_spent_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
+    fn get_last_spent_output<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -999,7 +1043,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         match output {
-            Some(o) => Ok(Some(o.to_db_wallet_output()?)),
+            Some(o) => Ok(Some(o.to_db_wallet_output(key_manager)?)),
             None => Ok(None),
         }
     }
@@ -1233,11 +1277,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
-    fn fetch_unspent_outputs_for_spending(
+    fn fetch_unspent_outputs_for_spending<KM: LegacyTransactionKeyManagerInterface>(
         &self,
         selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         tip_height: Option<u64>,
+        key_manager: &KM,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -1254,26 +1299,34 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         );
         outputs
             .iter()
-            .map(|o| o.clone().to_db_wallet_output())
+            .map(|o| o.clone().to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_outputs_by_tx_id<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        tx_id: TxId,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let outputs = OutputSql::find_by_tx_id(tx_id, &mut conn)?;
 
         outputs
             .iter()
-            .map(|o| o.clone().to_db_wallet_output())
+            .map(|o| o.clone().to_db_wallet_output(key_manager))
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_outputs_by_query(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_outputs_by_query<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        q: OutputBackendQuery,
+        key_manager: &KM,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         Ok(OutputSql::fetch_outputs_by_query(q, &mut conn)?
             .into_iter()
             .filter_map(|x| {
-                x.to_db_wallet_output()
+                x.to_db_wallet_output(key_manager)
                     .inspect_err(|e| {
                         error!(
                             target: LOG_TARGET,
@@ -1470,7 +1523,7 @@ impl KnownOneSidedPaymentScriptSql {
     pub fn to_known_one_sided_payment_script(self) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
         let script_hash = self.script_hash.clone();
         let private_key =
-            LegacyTariKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
+            TariKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
                 reason: "Could not convert private key to TariKeyId".to_string(),
             })?;
 

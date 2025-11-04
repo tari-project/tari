@@ -33,7 +33,7 @@ use tari_common_types::{
         mnemonic::{Mnemonic, MnemonicLanguage},
         seed_words::SeedWords,
     },
-    tari_address::{TariAddress, TariAddressFeatures},
+    tari_address::{TariAddress, TariAddressError, TariAddressFeatures},
     transaction::{LegacyImportStatus, TxId},
     types::{
         ComAndPubSignature,
@@ -54,7 +54,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{error::KeyManagerError, wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
+    key_manager::{ wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -117,7 +117,7 @@ where THttpClientFactory: HttpClientFactory
     pub utxo_scanner_service: UtxoScannerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
-    pub output_db: OutputManagerDatabase<V>,
+    pub output_db: OutputManagerDatabase<V, TKeyManagerInterface>,
     pub factories: CryptoFactories,
     wallet_type: Arc<LegacyWalletType>,
     pub config: WalletConfig,
@@ -143,7 +143,7 @@ where
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
-        output_manager_database: OutputManagerDatabase<V>,
+        output_manager_database: OutputManagerDatabase<V, TKeyManagerInterface>,
         transaction_backend: U,
         output_manager_backend: V,
         key_manager_backend: TKeyManagerBackend,
@@ -320,7 +320,7 @@ where
         }
     }
 
-    pub fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerError> {
+    pub fn get_wallet_interactive_address(&self) -> Result<TariAddress, TariAddressError> {
         let view_key = self.key_manager_service.get_view_key();
         let comms_key = self.key_manager_service.get_spend_key();
         let features = match *self.wallet_type {
@@ -329,25 +329,25 @@ where
                 TariAddressFeatures::create_interactive_only()
             },
         };
-        Ok(TariAddress::new_dual_address(
+        TariAddress::new_dual_address(
             view_key.pub_key,
             comms_key.pub_key,
             self.network.as_network(),
             features,
             None,
-        )?)
+        )
     }
 
-    pub fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerError> {
+    pub fn get_wallet_one_sided_address(&self) -> Result<TariAddress, TariAddressError> {
         let view_key = self.key_manager_service.get_view_key();
         let spend_key = self.key_manager_service.get_spend_key();
-        Ok(TariAddress::new_dual_address(
+        TariAddress::new_dual_address(
             view_key.pub_key,
             spend_key.pub_key,
             self.network.as_network(),
             TariAddressFeatures::create_one_sided_only(),
             None,
-        )?)
+        )
     }
 
     pub fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {

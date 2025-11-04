@@ -972,7 +972,10 @@ impl OutputSql {
                         "Could not create spending key id({}) from stored string ({e})",self.spending_key
                     );
                     OutputManagerStorageError::ConversionError {
-                        reason: format!("Spending key id({}) could not be converted from string ({e})",self.spending_key),
+                        reason: format!(
+                            "Spending key id({}) could not be converted from string ({e})",
+                            self.spending_key
+                        ),
                     }
                 })?;
                 key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
@@ -988,7 +991,10 @@ impl OutputSql {
                         "Could not create script private key id({}) from stored string ({e})",self.script_private_key
                     );
                     OutputManagerStorageError::ConversionError {
-                        reason: format!("Could not create script private key id({}) from stored string ({e})",self.script_private_key),
+                        reason: format!(
+                            "Could not create script private key id({}) from stored string ({e})",
+                            self.script_private_key
+                        ),
                     }
                 })?;
                 key_manager.convert_legacy_tari_key_id_to_current(&legacy)?

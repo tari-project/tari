@@ -3762,7 +3762,7 @@ where
         address: &TariAddress,
         sending_method: TariAddressFeatures,
     ) -> Result<(), TransactionServiceError> {
-        if address.network() != self.resources.interactive_tari_address.network() {
+        if address.network() != self.resources.one_sided_tari_address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }
         if !address.features().contains(sending_method) {

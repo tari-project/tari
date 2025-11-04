@@ -38,7 +38,7 @@ use crate::{
 #[derive(Clone)]
 pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     pub config: OutputManagerServiceConfig,
-    pub db: OutputManagerDatabase<TBackend>,
+    pub db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
     pub factories: CryptoFactories,
     pub event_publisher: OutputManagerEventSender,
     pub key_manager: TKeyManagerInterface,

@@ -49,7 +49,7 @@ use tari_transaction_key_manager::legacy_key_manager::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-
+use tari_transaction_components::transaction_components::one_sided::public_key_to_output_encryption_key;
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
@@ -574,7 +574,7 @@ where
             let shared_secret = self
                 .key_manager
                 .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)?;
-            let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
+            let recovery_key = public_key_to_output_encryption_key(&shared_secret)
                 .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
                 .ok()

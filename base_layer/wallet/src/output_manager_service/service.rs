@@ -142,7 +142,7 @@ where
             OutputManagerRequest,
             Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError>,
         >,
-        db: OutputManagerDatabase<TBackend>,
+        db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
         consensus_constants: ConsensusConstants,

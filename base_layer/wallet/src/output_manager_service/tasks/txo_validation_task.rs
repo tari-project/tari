@@ -29,6 +29,7 @@ use chrono::{Duration, Utc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::{BlockHash, FixedHash};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -48,9 +49,9 @@ use crate::{
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
 #[derive(Clone)]
-pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
+pub struct TxoValidationTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     operation_id: u64,
-    db: OutputManagerDatabase<TBackend>,
+    db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
     connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
@@ -63,14 +64,16 @@ struct MinedOutputInfo {
     mined_timestamp: u64,
 }
 
-impl<TBackend, TWalletConnectivity> TxoValidationTask<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TxoValidationTask<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + 'static,
 {
     pub fn new(
         operation_id: u64,
-        db: OutputManagerDatabase<TBackend>,
+        db: OutputManagerDatabase<TBackend, TKeyManagerInterface>,
         connectivity: TWalletConnectivity,
         event_publisher: OutputManagerEventSender,
         config: OutputManagerServiceConfig,

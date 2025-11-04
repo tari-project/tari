@@ -100,6 +100,8 @@ pub enum WalletError {
     WalletConnectivityError(#[from] WalletConnectivityError),
     #[error("Invalid http node url: `{0}`")]
     InvalidHttpNodeUrl(String),
+    #[error("Tari address error: `{0}`")]
+    AddressError(#[from] tari_common_types::tari_address::TariAddressError),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";

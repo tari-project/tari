@@ -114,13 +114,9 @@ where
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
             let view_key = key_manager
-                .get_view_key()
-                .await
-                .expect("Could not initialize UTXO scanner Service");
+                .get_view_key();
             let spend_key = key_manager
-                .get_spend_key()
-                .await
-                .expect("Could not initialize UTXO scanner Service");
+                .get_spend_key();
             let one_sided_tari_address = TariAddress::new_dual_address(
                 view_key.pub_key,
                 spend_key.pub_key,

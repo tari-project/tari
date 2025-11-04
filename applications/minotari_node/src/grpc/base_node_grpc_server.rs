@@ -43,7 +43,6 @@ use minotari_app_grpc::{
 };
 use tari_common_types::{
     epoch::VnEpoch,
-    key_branches::TransactionKeyManagerBranch,
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     types::{
@@ -1543,8 +1542,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             block_template.body.add_output(coinbase_output);
             let new_nonce = key_manager
-                .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-                .await
+                .get_random_key(None, false)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce +
                 &new_nonce
@@ -1580,7 +1578,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         &last_kernel.features,
                         TxoStage::Output,
                     )
-                    .await
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
                     .to_schnorr_signature()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
