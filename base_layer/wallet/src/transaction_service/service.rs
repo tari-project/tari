@@ -81,7 +81,6 @@ use tari_transaction_components::{
     key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
-    rpc::models::FeePerGramStat,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -404,6 +403,8 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
+        let mut reply_channel = Some(reply_channel);
+
         trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         let response: Result<TransactionServiceResponse, TransactionServiceError> = match request {
 
@@ -1264,10 +1265,11 @@ where
                 Ok(TransactionServiceResponse::TransactionSent(tx_id))
             }.await,
 
-            TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => async {
-                let resp = self.handle_get_fee_per_gram_stats_per_block_request(count).await?;
-                Ok(TransactionServiceResponse::FeePerGramStatsPerBlock(resp))
-            }.await,
+            TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
+                let reply_channel = reply_channel.take().expect("reply_channel is Some");
+                self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
+                return Ok(());
+            },
 
             TransactionServiceRequest::GetPaymentByReference { payref } => async {
                 let res = self.get_payment_by_reference(payref)?;
@@ -1481,28 +1483,50 @@ where
             }.await,
         };
 
-        let _result = reply_channel
-            .send(response.inspect_err(|e1| warn!(target: LOG_TARGET, "{}", e1)))
-            .inspect_err(|e2| {
-                warn!(target: LOG_TARGET, "Failed to send reply: {:?}", e2);
-            });
+        // If the individual handlers did not already send the API response then do it here.
+        if let Some(rp) = reply_channel {
+            let _result = rp
+                .send(response.inspect_err(|e1| warn!(target: LOG_TARGET, "{}", e1)))
+                .inspect_err(|e2| {
+                    warn!(target: LOG_TARGET, "Failed to send reply: {:?}", e2);
+                });
+        }
 
         Ok(())
     }
 
-    async fn handle_get_fee_per_gram_stats_per_block_request(
+    fn handle_get_fee_per_gram_stats_per_block_request(
         &self,
         count: u64,
-    ) -> Result<FeePerGramStat, TransactionServiceError> {
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) {
         let connectivity = self.resources.connectivity.clone();
 
-        let client = connectivity.obtain_base_node_wallet_rpc_client().await;
+        let query_base_node_fut = async move {
+            let client = connectivity.obtain_base_node_wallet_rpc_client().await;
 
-        let resp = client
-            .get_mempool_fee_per_gram_stats(count)
-            .await
-            .map_err(|e| TransactionServiceError::Other(e.to_string()))?;
-        Ok(resp)
+            match client.get_mempool_fee_per_gram_stats(count).await {
+                Ok(resp) => Ok(TransactionServiceResponse::FeePerGramStatsPerBlock(resp)),
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error handling 'TransactionServiceRequest::GetFeePerGramStatsPerBlock' {:?}",
+                        e
+                    );
+                    Err(TransactionServiceError::Other(e.to_string()))
+                },
+            }
+        };
+
+        tokio::spawn(async move {
+            let resp = query_base_node_fut.await;
+            if reply_channel.send(resp).is_err() {
+                warn!(
+                    target: LOG_TARGET,
+                    "handle_get_fee_per_gram_stats_per_block_request: service reply cancelled"
+                );
+            }
+        });
     }
 
     async fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
