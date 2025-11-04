@@ -77,8 +77,8 @@ pub enum OutputManagerError {
     ApiSendFailed,
     #[error("Error receiving a message from the public API")]
     ApiReceiveFailed,
-    #[error("API returned something unexpected.")]
-    UnexpectedApiResponse,
+    #[error("Unexpected API response with `{0}`")]
+    UnexpectedApiResponse(String),
     #[error("Invalid config provided to Output Manager")]
     InvalidConfig,
     #[error("The response received from another service is an incorrect variant: `{0}`")]
