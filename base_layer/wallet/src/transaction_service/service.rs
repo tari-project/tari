@@ -3588,6 +3588,7 @@ where
                 );
                 TransactionServiceProtocolError::new(id, TransactionServiceError::TransactionValidationInProgress)
             })?;
+            let mut num_resets = 0;
             'outer: loop {
                 let local_run = protocol.clone();
                 let exec_fut = local_run.execute();
@@ -3600,7 +3601,11 @@ where
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
-                                continue 'outer;
+                                num_resets += 1;
+                                // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
+                                if num_resets < 1{
+                                    continue 'outer;
+                                }
                             }
                         }
                     }
