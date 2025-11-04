@@ -3340,7 +3340,7 @@ where
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
                                 num_resets += 1;
                                 // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
-                                if num_resets > 1{
+                                if num_resets < 1{
                                     continue 'outer;
                                 }
                             }
