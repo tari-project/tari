@@ -71,7 +71,11 @@ pub enum OutputManagerRequest {
         tx_id_old: TxId,
         tx_id_new: TxId,
     },
-    ConfirmPendingTransaction(TxId, Option<TxId>, Option<Vec<WalletOutput>>),
+    ConfirmPendingTransaction {
+        tx_id: TxId,
+        tx_id_update: Option<TxId>,
+        change_outputs: Option<Vec<WalletOutput>>,
+    },
     EncumberAggregateUtxo {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
@@ -217,7 +221,9 @@ impl fmt::Display for OutputManagerRequest {
                 expected_commitment.to_hex(),
                 output_hash
             ),
-            ConfirmPendingTransaction(tx_id, tx_id_update, ..) => {
+            ConfirmPendingTransaction {
+                tx_id, tx_id_update, ..
+            } => {
                 write!(f, "ConfirmPendingTransaction ({tx_id} replace with {:?})", tx_id_update)
             },
             GetTransactionBuilder { .. } => write!(f, "PrepareToSendTransaction "),
@@ -634,11 +640,11 @@ where KM: TransactionKeyManagerInterface
     ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ConfirmPendingTransaction(
+            .call(OutputManagerRequest::ConfirmPendingTransaction {
                 tx_id,
                 tx_id_update,
                 change_outputs,
-            ))
+            })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ConfirmPendingTransaction({e})"))??
         {

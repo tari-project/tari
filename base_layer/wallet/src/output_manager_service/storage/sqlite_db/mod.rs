@@ -893,16 +893,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         conn.immediate_transaction::<_, OutputManagerStorageError, _>(|conn| {
             if let Some(tx_id_new) = tx_id_update {
-                let tx_id_new_i64 = tx_id_new.as_i64_wrapped();
-                let tx_id_old_i64 = tx_id.as_i64_wrapped();
-                debug!(target: LOG_TARGET, "Replacing temp tx_id in outputs '{tx_id_old_i64}' with '{tx_id_new_i64}'");
-                diesel::update(outputs::table.filter(outputs::spent_in_tx_id.eq(Some(tx_id_old_i64))))
-                    .set(outputs::spent_in_tx_id.eq(Some(tx_id_new_i64)))
-                    .execute(conn)?;
-
-                diesel::update(outputs::table.filter(outputs::received_in_tx_id.eq(Some(tx_id_old_i64))))
-                    .set(outputs::received_in_tx_id.eq(Some(tx_id_new_i64)))
-                    .execute(conn)?;
+                replace_tx_id(conn, tx_id, tx_id_new)?;
                 tx_id = tx_id_new;
             }
 
@@ -1167,17 +1158,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
     fn replace_tx_id_in_outputs(&self, tx_id_old: TxId, tx_id_new: TxId) -> Result<(), OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
-        let tx_id_new_i64 = tx_id_new.as_i64_wrapped();
-        let tx_id_old_i64 = tx_id_old.as_i64_wrapped();
 
         conn.immediate_transaction::<_, OutputManagerStorageError, _>(|conn| {
-            diesel::update(outputs::table.filter(outputs::spent_in_tx_id.eq(Some(tx_id_old_i64))))
-                .set(outputs::spent_in_tx_id.eq(Some(tx_id_new_i64)))
-                .execute(conn)?;
-
-            diesel::update(outputs::table.filter(outputs::received_in_tx_id.eq(Some(tx_id_old_i64))))
-                .set(outputs::received_in_tx_id.eq(Some(tx_id_new_i64)))
-                .execute(conn)?;
+            replace_tx_id(conn, tx_id_old, tx_id_new)?;
 
             Ok(())
         })?;
@@ -1317,6 +1300,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             })
             .collect())
     }
+}
+
+fn replace_tx_id(
+    conn: &mut SqliteConnection,
+    tx_id_old: TxId,
+    tx_id_new: TxId,
+) -> Result<(), OutputManagerStorageError> {
+    let tx_id_new_i64 = tx_id_new.as_i64_wrapped();
+    let tx_id_old_i64 = tx_id_old.as_i64_wrapped();
+    debug!(target: LOG_TARGET, "Replacing temp tx_id in outputs '{tx_id_old_i64}' with '{tx_id_new_i64}'");
+
+    diesel::update(outputs::table.filter(outputs::spent_in_tx_id.eq(Some(tx_id_old_i64))))
+        .set(outputs::spent_in_tx_id.eq(Some(tx_id_new_i64)))
+        .execute(conn)?;
+
+    diesel::update(outputs::table.filter(outputs::received_in_tx_id.eq(Some(tx_id_old_i64))))
+        .set(outputs::received_in_tx_id.eq(Some(tx_id_new_i64)))
+        .execute(conn)?;
+
+    Ok(())
 }
 
 /// These are the fields to be set for the received outputs batch mode update

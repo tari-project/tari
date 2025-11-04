@@ -390,8 +390,12 @@ where
                 .fee_estimate(amount, selection_criteria, fee_per_gram, num_kernels, num_outputs)
                 .await
                 .map(OutputManagerResponse::FeeEstimate),
-            OutputManagerRequest::ConfirmPendingTransaction(tx_id, tx_id_update, change) => {
-                let change_outputs = change.unwrap_or(Vec::new());
+            OutputManagerRequest::ConfirmPendingTransaction {
+                tx_id,
+                tx_id_update,
+                change_outputs,
+            } => {
+                let change_outputs = change_outputs.unwrap_or(Vec::new());
                 self.confirm_encumberance(tx_id, tx_id_update, change_outputs)
                     .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
             },
