@@ -193,18 +193,19 @@ impl ProactiveDialer {
         let mut managed_and_excluded = managed.clone();
         managed_and_excluded.append(&mut excluded_peers.to_vec());
 
-        // Get available dial candidates using SQL-based filtering
+        // Get available dial candidates
         let mut candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed_and_excluded, Some(count * 3)) // Get 3x more for health scoring
+            .get_available_dial_candidates(&managed_and_excluded, Some(count * 3), true, true) // Get 3x more for health scoring
             .await?;
         if candidates.len() < count * 3 {
             // Only exclude managed and current selected nodes to get more candidates (thus include 'excluded_peers')
             let mut to_be_excluded = candidates.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
             to_be_excluded.append(&mut managed);
+            // Now also allow selection from previously failed peers
             let mut random = self
                 .peer_manager
-                .random_peers(count * 3 - candidates.len(), &to_be_excluded, None)
+                .get_available_dial_candidates(&to_be_excluded, Some(count * 3 - candidates.len()), false, true)
                 .await?;
             candidates.append(&mut random);
         }
