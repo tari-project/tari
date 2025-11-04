@@ -494,7 +494,7 @@ where
                     let block_hash: FixedHash = current_header_hash.try_into()?;
                     trace!(
                         target: LOG_TARGET,
-                        "Scanned block at height {} with header hash {}, :{:?}",
+                        "Scanned block at height {} with header hash {}, previous: {:?}",
                         current_height,
                         block_hash.to_hex(), prev_scanned_block
                     );

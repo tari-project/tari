@@ -238,7 +238,6 @@ where
                     }
                 },
                 Some(request_context) = request_stream.next() => {
-                trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.inspect_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {e:?}");

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Display;
+
 use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
@@ -179,4 +181,14 @@ pub struct ScannedBlock {
     pub header_hash: HashOutput,
     pub height: u64,
     pub timestamp: NaiveDateTime,
+}
+
+impl Display for ScannedBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ScannedBlock {{ height: {}, header_hash: {}, timestamp: {} }}",
+            self.height, self.header_hash, self.timestamp
+        )
+    }
 }
