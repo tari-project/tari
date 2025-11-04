@@ -676,7 +676,8 @@ pub async fn test_short_term_encumberance() {
     db.encumber_outputs(2u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
         .unwrap();
 
-    db.confirm_encumbered_outputs(TxId::from(2u64), None, Vec::new()).unwrap();
+    db.confirm_encumbered_outputs(TxId::from(2u64), None, Vec::new())
+        .unwrap();
     db.clear_short_term_encumberances().unwrap();
 
     let balance = db.get_balance(None).unwrap();

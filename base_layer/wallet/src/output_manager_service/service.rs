@@ -1737,7 +1737,9 @@ where
                 None,
             ));
         }
-        self.resources.db.confirm_encumbered_outputs(tx_id, tx_id_update, change)?;
+        self.resources
+            .db
+            .confirm_encumbered_outputs(tx_id, tx_id_update, change)?;
         Ok(())
     }
 

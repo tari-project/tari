@@ -24,11 +24,7 @@ use std::{convert::TryFrom, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use derivative::Derivative;
-use diesel::{
-    connection::SimpleConnection,
-    prelude::*,
-    result::Error as DieselError,
-};
+use diesel::{connection::SimpleConnection, prelude::*, result::Error as DieselError};
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
