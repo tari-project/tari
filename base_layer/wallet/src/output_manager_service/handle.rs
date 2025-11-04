@@ -68,7 +68,7 @@ pub enum OutputManagerRequest {
         tx_id_old: TxId,
         tx_id_new: TxId,
     },
-    ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
+    ConfirmPendingTransaction(TxId, Option<TxId>, Option<Vec<WalletOutput>>),
     EncumberAggregateUtxo {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
@@ -153,7 +153,6 @@ pub enum OutputManagerRequest {
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
-    ConfirmEncumberance(TxId, Vec<WalletOutput>),
     ClearShortTermEncumberances,
 }
 
@@ -215,7 +214,9 @@ impl fmt::Display for OutputManagerRequest {
                 expected_commitment.to_hex(),
                 output_hash
             ),
-            ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({v})"),
+            ConfirmPendingTransaction(tx_id, tx_id_update, ..) => {
+                write!(f, "ConfirmPendingTransaction ({tx_id} replace with {:?})", tx_id_update)
+            },
             GetTransactionBuilder { .. } => write!(f, "PrepareToSendTransaction "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
@@ -272,9 +273,6 @@ impl fmt::Display for OutputManagerRequest {
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
             FetchUnspentOutputs(hashes) => write!(f, "FetchUnspentOutputs: {:?}", hashes),
-            ConfirmEncumberance(tx_id, change_outputs) => {
-                write!(f, "ConfirmEncumberance: {}, {:?}", tx_id, change_outputs)
-            },
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
             ScanOutputsForMultisig(outputs) => write!(f, "ScanOutputsForMultisig: {:?}", outputs),
@@ -587,11 +585,16 @@ where KM: TransactionKeyManagerInterface
     pub async fn confirm_pending_transaction(
         &mut self,
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
         change_outputs: Option<Vec<WalletOutput>>,
     ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id, change_outputs))
+            .call(OutputManagerRequest::ConfirmPendingTransaction(
+                tx_id,
+                tx_id_update,
+                change_outputs,
+            ))
             .await??
         {
             OutputManagerResponse::PendingTransactionConfirmed => Ok(()),
@@ -1022,18 +1025,6 @@ where KM: TransactionKeyManagerInterface
             OutputManagerResponse::FetchUnspentOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
-    }
-
-    pub async fn confirm_encumberance(
-        &mut self,
-        tx_id: TxId,
-        change_outputs: Vec<WalletOutput>,
-    ) -> Result<(), OutputManagerError> {
-        self.handle
-            .call(OutputManagerRequest::ConfirmEncumberance(tx_id, change_outputs))
-            .await??;
-
-        Ok(())
     }
 
     pub async fn clear_short_term_encumberances(&mut self) -> Result<(), OutputManagerError> {

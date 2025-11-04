@@ -391,9 +391,9 @@ where
                 .fee_estimate(amount, selection_criteria, fee_per_gram, num_kernels, num_outputs)
                 .await
                 .map(OutputManagerResponse::FeeEstimate),
-            OutputManagerRequest::ConfirmPendingTransaction(tx_id, change) => {
+            OutputManagerRequest::ConfirmPendingTransaction(tx_id, tx_id_update, change) => {
                 let change_outputs = change.unwrap_or(Vec::new());
-                self.confirm_encumberance(tx_id, change_outputs)
+                self.confirm_encumberance(tx_id, tx_id_update, change_outputs)
                     .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
             },
             OutputManagerRequest::CancelTransaction(tx_id) => self
@@ -530,10 +530,6 @@ where
                     }
                 }
                 Ok(OutputManagerResponse::FetchUnspentOutputs(outputs))
-            },
-            OutputManagerRequest::ConfirmEncumberance(tx_id, change_outputs) => {
-                self.confirm_encumberance(tx_id, change_outputs)?;
-                Ok(OutputManagerResponse::ConfirmEncumberance)
             },
             OutputManagerRequest::ClearShortTermEncumberances => self
                 .clear_short_term_encumberances()
@@ -1243,7 +1239,7 @@ where
             .await?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created sender transaction protocol");
 
-        self.confirm_encumberance(tx_id, Vec::new())?;
+        self.confirm_encumberance(tx_id, None, Vec::new())?;
 
         // Prepare receiver part of the transaction
 
@@ -1532,7 +1528,7 @@ where
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-        self.confirm_encumberance(tx_id, Vec::new())?;
+        self.confirm_encumberance(tx_id, None, Vec::new())?;
 
         // Prepare receiver part of the transaction
 
@@ -1718,7 +1714,7 @@ where
         self.resources
             .db
             .encumber_outputs(finalized.tx_id, input_selection.into_selected(), outputs)?;
-        self.confirm_encumberance(finalized.tx_id, Vec::new())?;
+        self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", finalized.tx_id);
 
         Ok((fee, finalized.transaction, finalized.tx_id))
@@ -1729,6 +1725,7 @@ where
     fn confirm_encumberance(
         &mut self,
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
         change_outputs: Vec<WalletOutput>,
     ) -> Result<(), OutputManagerError> {
         let mut change = Vec::new();
@@ -1741,7 +1738,7 @@ where
                 None,
             ));
         }
-        self.resources.db.confirm_encumbered_outputs(tx_id, change)?;
+        self.resources.db.confirm_encumbered_outputs(tx_id, tx_id_update, change)?;
         Ok(())
     }
 
@@ -2192,7 +2189,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
-        self.confirm_encumberance(tx_id, Vec::new())?;
+        self.confirm_encumberance(tx_id, None, Vec::new())?;
 
         trace!(
             target: LOG_TARGET,
@@ -2377,7 +2374,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
-        self.confirm_encumberance(tx_id, Vec::new())?;
+        self.confirm_encumberance(tx_id, None, Vec::new())?;
 
         trace!(
             target: LOG_TARGET,
@@ -2573,7 +2570,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), vec![output])?;
-        self.confirm_encumberance(tx_id, Vec::new())?;
+        self.confirm_encumberance(tx_id, None, Vec::new())?;
 
         trace!(
             target: LOG_TARGET,
@@ -2694,7 +2691,7 @@ where
                 self.resources
                     .db
                     .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
-                self.confirm_encumberance(finalized.tx_id, Vec::new())?;
+                self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
 
                 Ok((finalized.tx_id, fee, amount - fee, finalized.transaction))
             } else {
@@ -2757,7 +2754,7 @@ where
         self.resources
             .db
             .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
-        self.confirm_encumberance(finalized.tx_id, Vec::new())?;
+        self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
         Ok((finalized.tx_id, fee, amount - fee, finalized.transaction))
     }
 

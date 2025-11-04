@@ -477,10 +477,9 @@ where
                     )
                     .await?;
 
-                self.replace_tx_id_in_outputs(temp_tx_id, res.tx_id).await?;
                 self.resources
                     .output_manager_service
-                    .confirm_pending_transaction(res.tx_id, None)
+                    .confirm_pending_transaction(temp_tx_id, Some(res.tx_id), None)
                     .await
                     .map_err(|e| TransactionServiceProtocolError::new(res.tx_id, e.into()))?;
                 Ok(TransactionServiceResponse::OneSidedTransactionPreparedForSigning(
@@ -536,10 +535,9 @@ where
                     )
                     .await?;
 
-                self.replace_tx_id_in_outputs(temp_tx_id, response.tx_id).await?;
                 self.resources
                     .output_manager_service
-                    .confirm_pending_transaction(response.tx_id, None)
+                    .confirm_pending_transaction(temp_tx_id, Some(response.tx_id), None)
                     .await
                     .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
 
@@ -664,7 +662,7 @@ where
 
                 self.resources
                     .output_manager_service
-                    .confirm_pending_transaction(response.tx_id, None)
+                    .confirm_pending_transaction(response.tx_id, None, None)
                     .await
                     .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
 
@@ -1273,10 +1271,9 @@ where
 
                 let fee = tx.body.get_total_fee()?;
 
-                self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
                 self.resources
                     .output_manager_service
-                    .confirm_pending_transaction(tx_id, change)
+                    .confirm_pending_transaction(temp_tx_id, Some(tx_id), change)
                     .await
                     .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1408,7 +1405,7 @@ where
                 self.resources
                     .output_manager_service
                     .clone()
-                    .confirm_pending_transaction(tx_id, change)
+                    .confirm_pending_transaction(tx_id, None, change)
                     .await
                     .map_err(|e| {
                         TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
@@ -1845,7 +1842,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, None)
+            .confirm_pending_transaction(tx_id, None, None)
             .await?;
 
         // Notify that the transaction was successfully resolved.
@@ -2026,15 +2023,14 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(finalized.tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(finalized.tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
@@ -2163,10 +2159,9 @@ where
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
         let change = finalized.change.clone().map(|change| vec![change]);
-        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(finalized.tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
@@ -2329,15 +2324,14 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(finalized.tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(finalized.tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let received_hashes = finalized.sent_output_hashes.clone();
@@ -2510,11 +2504,10 @@ where
 
         let tx = finalized.transaction.clone();
 
-        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(finalized.tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
@@ -2720,16 +2713,15 @@ where
 
         let finalized = tx_builder.build().await?;
 
-        self.replace_tx_id_in_outputs(temp_tx_id, finalized.tx_id).await?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(finalized.tx_id, output, None)
+            .add_output_with_tx_id(temp_tx_id, output, None)
             .await?;
 
         let change = finalized.change.map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(finalized.tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
 
@@ -4077,7 +4069,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(tx_id, None, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 

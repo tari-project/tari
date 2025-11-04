@@ -969,7 +969,7 @@ async fn sending_transaction_persisted_while_offline() {
         .await
         .unwrap();
     oms.output_manager_handle
-        .confirm_pending_transaction(tx_id, None)
+        .confirm_pending_transaction(tx_id, None, None)
         .await
         .unwrap();
 
