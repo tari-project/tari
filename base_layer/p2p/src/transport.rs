@@ -97,6 +97,7 @@ pub enum TransportType {
     Tcp,
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
     /// onion v3 and DNS addresses.
+    #[default]
     Tor,
     /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
     Socks5,

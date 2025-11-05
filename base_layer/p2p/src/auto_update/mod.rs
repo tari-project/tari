@@ -21,11 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod dns;
-mod signature;
-
 mod service;
+mod signature;
+use pgp::composed::Deserializable;
 pub use service::{SoftwareUpdaterHandle, SoftwareUpdaterService};
-
 mod error;
 use std::{
     fmt,
@@ -37,7 +36,6 @@ use std::{
 
 pub use error::AutoUpdateError;
 use futures::future;
-use pgp::Deserializable;
 use reqwest::IntoUrl;
 // Re-exports of foreign types used in public interface
 pub use semver::Version;
@@ -189,11 +187,11 @@ async fn download_hashes_file<T: IntoUrl>(url: T) -> Result<String, AutoUpdateEr
     Ok(txt)
 }
 
-async fn download_hashes_sig_file<T: IntoUrl>(url: T) -> Result<pgp::StandaloneSignature, AutoUpdateError> {
+async fn download_hashes_sig_file<T: IntoUrl>(url: T) -> Result<pgp::composed::DetachedSignature, AutoUpdateError> {
     let resp = http_download(url).await?;
     let sig_bytes = resp.bytes().await?;
     let cursor = io::Cursor::new(&sig_bytes);
-    let sig = pgp::StandaloneSignature::from_bytes(cursor).map_err(AutoUpdateError::SignatureError)?;
+    let sig = pgp::composed::DetachedSignature::from_bytes(cursor).map_err(AutoUpdateError::SignatureError)?;
     Ok(sig)
 }
 
@@ -204,9 +202,9 @@ async fn http_download<T: IntoUrl>(url: T) -> Result<reqwest::Response, AutoUpda
 
 const MAINTAINERS: &[&str] = &[include_str!("gpg_keys/swvheerden.asc")];
 
-fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
+fn maintainers() -> impl Iterator<Item = pgp::composed::SignedPublicKey> {
     MAINTAINERS.iter().map(|s| {
-        let (pk, _) = pgp::SignedPublicKey::from_string(s).expect("Malformed maintainer PGP signature");
+        let (pk, _) = pgp::composed::SignedPublicKey::from_string(s).expect("Malformed maintainer PGP signature");
         pk
     })
 }

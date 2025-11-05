@@ -21,7 +21,7 @@ tari_utilities = { workspace = true }
 anyhow = { workspace = true }
 futures = { version = "^0.3.1" }
 log = { workspace = true }
-pgp = { version = "0.14.2", optional = true }
+pgp = { version = "0.17", optional = true }
 prost = "0.13.3"
 rand = { workspace = true }
 reqwest = { version = "0.11", optional = true, default-features = false }
