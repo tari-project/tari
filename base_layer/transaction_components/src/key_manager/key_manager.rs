@@ -199,6 +199,7 @@ impl KeyManager {
         commitment_mask_key_id: &TariKeyId,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let commitment = self.get_commitment(commitment_mask_key_id, value)?;
             let commitment_private_key = self.get_private_key(commitment_mask_key_id)?;
@@ -245,6 +246,7 @@ impl KeyManager {
         branch: &LedgerKeyBranch,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let signature = ledger_get_script_schnorr_signature(ledger.account, index, branch, challenge)
                 .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
@@ -261,6 +263,7 @@ impl KeyManager {
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let mut partial_script_offset = PrivateKey::default();
             let mut derived_script_keys = vec![];
@@ -329,6 +332,7 @@ impl KeyManager {
         nonce: &LedgerKeyBranch,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let signature = ledger_get_raw_schnorr_signature(
                 ledger.account,
@@ -352,6 +356,7 @@ impl KeyManager {
         branch: &LedgerKeyBranch,
         index: u64,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let key = ledger_get_public_key(ledger.account, index, branch)
                 .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
@@ -369,6 +374,7 @@ impl KeyManager {
         index: u64,
         public_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let key = ledger_get_dh_shared_secret(ledger.account, index, branch, public_key)
                 .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
@@ -389,6 +395,7 @@ impl KeyManager {
         receiver_address: &TariAddress,
         metadata_signature_message_common: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let sender_offset_key_index = match sender_offset_key_id {
                 TariKeyId::LedgerKey {
