@@ -85,6 +85,9 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use super::{
     smt_hasher::SmtHasher,
     AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    CheckFailure,
+    MetadataKey,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -107,6 +110,7 @@ use crate::{
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         kernel_merkle_proof::KernelMerkleProof,
+        lmdb_db::BlockchainCheckStatus,
         smt_hasher::ValidatorNodeJmtHasher,
         utxo_mined_info::OutputMinedInfo,
         BlockAddResult,
@@ -385,6 +389,7 @@ where B: BlockchainBackend
 
         self.rebuild_payref_indexes_background_task()?;
         self.rebuild_accumulated_data_background_task()?;
+        self.initialize_blockchain_check_tasks()?;
 
         Ok(())
     }
@@ -464,6 +469,536 @@ where B: BlockchainBackend
         });
 
         Ok(())
+    }
+
+    /// This function will check the accumulated data in the background, up to the last stored chain header, and correct
+    /// any corrupt accumulated data it finds.
+    #[allow(clippy::too_many_lines)]
+    pub fn check_accumulated_data_background_task(&self) -> Result<(), ChainStorageError> {
+        // We cannot check the accumulated data if the migration background task has not completed
+        let accumulated_data_rebuild_status = {
+            let db = self.db_read_access()?;
+            db.fetch_accumulated_data_rebuild_status()?
+        };
+        if !accumulated_data_rebuild_status.is_rebuilt {
+            warn!(target: LOG_TARGET, "[AccData check] Accumulated data migration task in progress, cannot continue.");
+            return Err(ChainStorageError::AccDataMigrationStillInProgress);
+        }
+
+        // Now we can continue with the accumulated data check
+        let metadata_key = MetadataKey::AccumulatedDataCheckStatus;
+        let check_status = self.fetch_blockchain_check_status(metadata_key)?;
+
+        let initial_status = if let Some(status) = check_status {
+            if status.checked_status().0 {
+                debug!(target: LOG_TARGET, "[AccData check] Accumulated data check has concluded.");
+                return Ok(());
+            }
+            if status.is_running() {
+                debug!(target: LOG_TARGET, "[AccData check] Accumulated data check is already busy.");
+                return Ok(());
+            }
+            debug!(target: LOG_TARGET, "[AccData check] Accumulated data check in progress: {status:?}.");
+            status
+        } else {
+            return Ok(());
+        };
+
+        {
+            let db = self.db_write_access()?;
+            db.update_blockchain_check_status(BlockchainCheckRequest::SetRunState(true), metadata_key)?;
+        }
+        let db_rw_lock = self.db.clone();
+        let rules = self.consensus_manager.clone();
+
+        tokio::task::spawn(async move {
+            let clear_flags =
+                |db: Arc<RwLock<B>>, has_concluded: bool, last_failure: Option<CheckFailure>| match db.write() {
+                    Ok(db) => {
+                        if let Err(e) = db.update_blockchain_check_status(
+                            BlockchainCheckRequest::ClearRunningFlags {
+                                has_concluded,
+                                last_failure,
+                            },
+                            metadata_key,
+                        ) {
+                            error!(
+                                target: LOG_TARGET,
+                                "[Blockchain check] Failed to clear the db consistency check status run flags: {e:?}"
+                            );
+                        }
+                    },
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "[Blockchain check] Write lock on blockchain db failed: {e:?}");
+                    },
+                };
+
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
+            // The genesis block will not be at fault - start at height 1 if no data exists.
+            let start_height = initial_status.last_check_height.unwrap_or(1);
+            let mut last_status = initial_status.clone();
+            debug!(
+                target: LOG_TARGET,
+                "[AccData check] Start checking accumulated data from height {start_height}"
+
+            );
+
+            let mut height = start_height;
+            let sleep_ms = max(
+                last_status.breathing_time_ms,
+                BlockchainCheckStatus::default().breathing_time_ms,
+            );
+            let autocorrect_enabled = initial_status.autocorrect_enabled();
+            loop {
+                // Add a small tokio sleep to allow other tasks to run more freely - this will push out the check a bit.
+                tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                let db = db_rw_lock.clone();
+                let difficulty_calculator = difficulty_calculator.clone();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered
+                let cc = rules.consensus_constants(height).clone();
+                let res = tokio::task::spawn_blocking(move || {
+                    verify_accumulated_data_for_height(
+                        db,
+                        difficulty_calculator,
+                        height,
+                        &cc,
+                        metadata_key,
+                        autocorrect_enabled,
+                    )
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
+                        last_status = current_status;
+                    },
+                    Ok(ref _err @ Err(ChainStorageError::CorruptedDatabase(ref e))) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData check] Accumulated data check found corruption. Initial \
+                            status: {initial_status:?}. Last updated status: {last_status:?}. ({e})"
+                        );
+                        info!(
+                            target: LOG_TARGET,
+                            "[AccData check] Autocorrect flag is disabled - re-run with autocorrect flag enabled",
+                        );
+                        clear_flags(
+                            db_rw_lock.clone(),
+                            true,
+                            Some(CheckFailure {
+                                corrupt_db: true,
+                                error: e.to_string(),
+                            }),
+                        );
+                        break;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData check] Checking accumulated data failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})"
+                        );
+                        clear_flags(
+                            db_rw_lock.clone(),
+                            false,
+                            Some(CheckFailure {
+                                corrupt_db: false,
+                                error: e.to_string(),
+                            }),
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData check] Checking accumulated data failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})",
+                        );
+                        clear_flags(
+                            db_rw_lock.clone(),
+                            false,
+                            Some(CheckFailure {
+                                corrupt_db: false,
+                                error: e.to_string(),
+                            }),
+                        );
+                        break;
+                    },
+                }
+
+                if last_status.checked_status().0 || last_status.stop_if_running {
+                    clear_flags(db_rw_lock.clone(), true, None);
+                    if last_status.checked_status().0 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[AccData check] Accumulated data check from height {start_height} completed, Final status: \
+                            {last_status:?}"
+                        );
+                    } else {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[AccData check] Accumulated data check stopped as requested, Final status: {last_status:?}"
+                        );
+                    }
+                    break;
+                }
+                height = height.saturating_add(1);
+            }
+        });
+
+        Ok(())
+    }
+
+    /// This function will check the blockchain consistency in the background, up to the last stored chain header, and
+    /// correct any corrupt accumulated data it finds.
+    #[allow(clippy::too_many_lines)]
+    pub fn check_blockchain_consistency_background_task(&self) -> Result<(), ChainStorageError> {
+        // We cannot check the accumulated data if the migration background task has not completed
+        let accumulated_data_rebuild_status = {
+            let db = self.db_read_access()?;
+            db.fetch_accumulated_data_rebuild_status()?
+        };
+        if !accumulated_data_rebuild_status.is_rebuilt {
+            warn!(target: LOG_TARGET, "[Blockchain check] Accumulated data migration task in progress, cannot continue.");
+            return Err(ChainStorageError::AccDataMigrationStillInProgress);
+        }
+
+        // Now we can continue with the accumulated data check
+        let metadata_key = MetadataKey::BlockchainConsistencyCheckStatus;
+        let check_status = self.fetch_blockchain_check_status(metadata_key)?;
+
+        let initial_status = if let Some(status) = check_status {
+            if status.checked_status().0 {
+                debug!(target: LOG_TARGET, "[Blockchain check] Blockchain consistency check has concluded.");
+                return Ok(());
+            }
+            if status.is_running() {
+                debug!(target: LOG_TARGET, "[Blockchain check] Blockchain consistency check is already busy.");
+                return Ok(());
+            }
+            debug!(target: LOG_TARGET, "[Blockchain check] Blockchain consistency check in progress: {status:?}.");
+            status
+        } else {
+            return Ok(());
+        };
+
+        {
+            let db = self.db_write_access()?;
+            db.update_blockchain_check_status(BlockchainCheckRequest::SetRunState(true), metadata_key)?;
+        }
+        let db_rw_lock = self.db.clone();
+        let validators = self.validators.clone();
+
+        tokio::task::spawn(async move {
+            let clear_flags =
+                |db: Arc<RwLock<B>>, has_concluded: bool, last_failure: Option<CheckFailure>| match db.write() {
+                    Ok(db) => {
+                        if let Err(e) = db.update_blockchain_check_status(
+                            BlockchainCheckRequest::ClearRunningFlags {
+                                has_concluded,
+                                last_failure,
+                            },
+                            metadata_key,
+                        ) {
+                            error!(
+                                target: LOG_TARGET,
+                                "[Blockchain check] Failed to clear the db consistency check status run flags: {e:?}"
+                            );
+                        }
+                    },
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "[Blockchain check] Write lock on blockchain db failed: {e:?}");
+                    },
+                };
+
+            // The genesis block will not be at fault - start at height 1 if no data exists.
+            let start_height = initial_status.last_check_height.unwrap_or(1);
+            let mut last_status = initial_status.clone();
+            debug!(
+                target: LOG_TARGET,
+                "[Blockchain check] Start checking blockchain consistency from height {start_height}"
+            );
+
+            let mut height = start_height;
+            let sleep_ms = max(
+                last_status.breathing_time_ms,
+                BlockchainCheckStatus::default().breathing_time_ms,
+            );
+            loop {
+                // Add a small tokio sleep to allow other tasks to run more freely - this will push out the check a bit.
+                tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+                let db = db_rw_lock.clone();
+                let validators = validators.clone();
+                let full_validation = initial_status.full_validation_enabled();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered
+                let res = tokio::task::spawn_blocking(move || {
+                    verify_blockchain_consistency_for_height(db, &validators, height, full_validation, metadata_key)
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
+                        last_status = current_status;
+                    },
+                    Ok(ref _err @ Err(ChainStorageError::CorruptedDatabase(ref e))) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[Blockchain check] Blockchain consistency check found unrecoverable corruption. Initial \
+                            status: {initial_status:?}. Last updated status: {last_status:?}. ({e})"
+                        );
+                        if initial_status.autocorrect_enabled() {
+                            let db_rw_lock = db_rw_lock.clone();
+                            let res = tokio::task::spawn_blocking(move || {
+                                if let Ok(mut db) = db_rw_lock.write() {
+                                    rewind_to_height(&mut *db, height - 1)
+                                } else {
+                                    Err(ChainStorageError::AccessError(
+                                        "Write lock on blockchain backend failed".into(),
+                                    ))
+                                }
+                            })
+                            .await;
+                            match res {
+                                Ok(Ok(_)) => {
+                                    info!(target: LOG_TARGET,
+                                        "[Blockchain check] Rewound the blockchain to height {} after unrecoverable \
+                                        corruption at height {}.",
+                                        height - 1, height
+                                    );
+                                },
+                                Ok(Err(e)) => {
+                                    error!(target: LOG_TARGET,
+                                        "[Blockchain check] Rewind after unrecoverable corruption at height {height} \
+                                        failed: {e}",
+                                    );
+                                },
+                                Err(e) => {
+                                    error!(target: LOG_TARGET,
+                                        "[Blockchain check] Rewind task join error after unrecoverable corruption at \
+                                        height {height}: {e}",
+                                    );
+                                },
+                            }
+                        } else {
+                            info!(
+                                target: LOG_TARGET,
+                                "[Blockchain check] Autocorrect flag is disabled - manually rewind to height {}",
+                                height - 1,
+                            );
+                        }
+                        clear_flags(
+                            db_rw_lock.clone(),
+                            true,
+                            Some(CheckFailure {
+                                corrupt_db: true,
+                                error: e.to_string(),
+                            }),
+                        );
+                        break;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[Blockchain check] Checking blockchain consistency failed. Initial status: \
+                            {initial_status:?}. Last updated status: {last_status:?} ({e})"
+                        );
+                        clear_flags(
+                            db_rw_lock.clone(),
+                            false,
+                            Some(CheckFailure {
+                                corrupt_db: false,
+                                error: e.to_string(),
+                            }),
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[Blockchain check] Checking blockchain consistency failed. Initial status: \
+                            {initial_status:?}. Last updated status: {last_status:?} ({e})",
+                        );
+                        clear_flags(
+                            db_rw_lock.clone(),
+                            false,
+                            Some(CheckFailure {
+                                corrupt_db: false,
+                                error: e.to_string(),
+                            }),
+                        );
+                        break;
+                    },
+                }
+
+                if last_status.checked_status().0 || last_status.stop_if_running {
+                    clear_flags(db_rw_lock.clone(), true, None);
+                    if last_status.checked_status().0 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[Blockchain check] Blockchain consistency check from height {start_height} completed, \
+                            Final status: {last_status:?}"
+                        );
+                    } else {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[Blockchain check] Blockchain consistency check stopped as requested, Final status: \
+                            {last_status:?}"
+                        );
+                    }
+                    break;
+                }
+                height = height.saturating_add(1);
+            }
+        });
+
+        Ok(())
+    }
+
+    fn initialize_blockchain_check_tasks(&self) -> Result<(), ChainStorageError> {
+        let db = self.db_write_access()?;
+        db.update_blockchain_check_status(
+            BlockchainCheckRequest::SetRunState(false),
+            MetadataKey::AccumulatedDataCheckStatus,
+        )?;
+        db.update_blockchain_check_status(
+            BlockchainCheckRequest::SetRunState(false),
+            MetadataKey::BlockchainConsistencyCheckStatus,
+        )?;
+
+        Ok(())
+    }
+
+    /// Initialize and start the accumulated-data check (difficulty only).
+    pub fn request_accumulated_data_check(
+        &self,
+        auto_correct: bool,
+        breathing_time_ms: u64,
+    ) -> Result<(), ChainStorageError> {
+        {
+            let metadata_key = MetadataKey::AccumulatedDataCheckStatus;
+            if self
+                .fetch_blockchain_check_status(metadata_key)?
+                .unwrap_or_default()
+                .is_running()
+            {
+                return Err(ChainStorageError::InvalidOperation(
+                    "[Blockchain check] Cannot start a new accumulated data check while one is already running."
+                        .to_string(),
+                ));
+            }
+
+            let db = self.db_write_access()?;
+            db.update_blockchain_check_status(BlockchainCheckRequest::ResumeCheck, metadata_key)?;
+            db.update_blockchain_check_status(BlockchainCheckRequest::SetAutoCorrect(auto_correct), metadata_key)?;
+            db.update_blockchain_check_status(
+                BlockchainCheckRequest::SetBreathingTime(breathing_time_ms),
+                metadata_key,
+            )?;
+            trace!(
+                target: LOG_TARGET,
+                "[AccData check] Requested accumulated data check: auto_correct({auto_correct})"
+            );
+        }
+        self.check_accumulated_data_background_task()
+    }
+
+    /// Initialize and start the chain consistency check (blocks+headers; full or light).
+    pub fn request_blockchain_consistency_check(
+        &self,
+        full_validation: bool,
+        auto_correct: bool,
+        breathing_time_ms: u64,
+    ) -> Result<(), ChainStorageError> {
+        {
+            let metadata_key = MetadataKey::BlockchainConsistencyCheckStatus;
+            if self
+                .fetch_blockchain_check_status(metadata_key)?
+                .unwrap_or_default()
+                .is_running()
+            {
+                return Err(ChainStorageError::InvalidOperation(
+                    "[Blockchain check] Cannot start a new blockchain consistency check while one is already running."
+                        .to_string(),
+                ));
+            }
+
+            let db = self.db_write_access()?;
+            db.update_blockchain_check_status(BlockchainCheckRequest::ResumeCheck, metadata_key)?;
+            db.update_blockchain_check_status(
+                BlockchainCheckRequest::SetFullValidation(full_validation),
+                metadata_key,
+            )?;
+            db.update_blockchain_check_status(BlockchainCheckRequest::SetAutoCorrect(auto_correct), metadata_key)?;
+            db.update_blockchain_check_status(
+                BlockchainCheckRequest::SetBreathingTime(breathing_time_ms),
+                metadata_key,
+            )?;
+            trace!(
+                target: LOG_TARGET,
+                "[Blockchain check] Requested blockchain consistency check: auto_correct({auto_correct}), \
+                full_validation({full_validation})"
+            );
+        }
+        self.check_blockchain_consistency_background_task()
+    }
+
+    /// Initialize and start the chain consistency check (blocks+headers; full or light).
+    pub fn stop_running_check_db_background_tasks(&self) -> Result<(), ChainStorageError> {
+        let db = self.db_write_access()?;
+        db.update_blockchain_check_status(
+            BlockchainCheckRequest::SetStopIfRunning(true),
+            MetadataKey::AccumulatedDataCheckStatus,
+        )?;
+        trace!(target: LOG_TARGET, "[AccData check] Requested stop");
+        db.update_blockchain_check_status(
+            BlockchainCheckRequest::SetStopIfRunning(true),
+            MetadataKey::BlockchainConsistencyCheckStatus,
+        )?;
+        trace!(target: LOG_TARGET, "[Blockchain check] Requested stop");
+        Ok(())
+    }
+
+    /// Reset the check counters for both blockchain check tasks.
+    pub fn reset_check_db_counters(&self) -> Result<(), ChainStorageError> {
+        let acc_diff_status = self.fetch_blockchain_check_status(MetadataKey::AccumulatedDataCheckStatus)?;
+        if let Some(acc_diff) = acc_diff_status {
+            if acc_diff.is_running() {
+                return Err(ChainStorageError::InvalidOperation(
+                    "[AccData check] Cannot reset accumulated difficulty check counters while a check is running."
+                        .to_string(),
+                ));
+            }
+        }
+        let consistency_status = self.fetch_blockchain_check_status(MetadataKey::BlockchainConsistencyCheckStatus)?;
+        if let Some(consistency) = consistency_status {
+            if consistency.is_running() {
+                return Err(ChainStorageError::InvalidOperation(
+                    "[Blockchain check] Cannot reset blockchain consistency check counters while a check is running."
+                        .to_string(),
+                ));
+            }
+        }
+        let db = self.db_write_access()?;
+        db.update_blockchain_check_status(
+            BlockchainCheckRequest::ResetAllCounters,
+            MetadataKey::AccumulatedDataCheckStatus,
+        )?;
+        trace!(target: LOG_TARGET, "[AccData check] Requested reset counters");
+        db.update_blockchain_check_status(
+            BlockchainCheckRequest::ResetAllCounters,
+            MetadataKey::BlockchainConsistencyCheckStatus,
+        )?;
+        trace!(target: LOG_TARGET, "[Blockchain check] Requested reset counters");
+        Ok(())
+    }
+
+    /// Fetch the current status of a blockchain check task.
+    pub fn fetch_blockchain_check_status(
+        &self,
+        metadata_key: MetadataKey,
+    ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_blockchain_check_status(metadata_key)
     }
 
     /// This function will rebuild the payref indexes in the background if they are not already rebuilt.
@@ -3115,7 +3650,173 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .with_total_kernel_offset(header.total_kernel_offset.clone())
         .build(consensus_constants)?;
 
-    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, true)?;
+
+    Ok(status)
+}
+
+// Verify accumulated data for the given height, fixing it if needed
+fn verify_accumulated_data_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    difficulty_calculator: DifficultyCalculator,
+    height: u64,
+    consensus_constants: &ConsensusConstants,
+    metadata_key: MetadataKey,
+    autocorrect: bool,
+) -> Result<BlockchainCheckStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[AccData check] Checking accumulated data for height {height}");
+
+    let read_lock = db
+        .read()
+        .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
+    let last_chain_header = read_lock.fetch_last_chain_header()?;
+    // Safety check to ensure we do not check accumulated data for a height that has been reorged out.
+    let height = min(height, last_chain_header.height());
+
+    // Check the accumulated data for the given height
+    let chain_header = read_lock.fetch_chain_header_by_height(height)?;
+    let header = chain_header.header().clone();
+    let prev_chain_header = read_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
+
+    let achieved_difficulty = difficulty_calculator.check_achieved_and_target_difficulty(&*read_lock, &header)?;
+    drop(read_lock);
+
+    let calculated_accumulated_data =
+        BlockHeaderAccumulatedDataBuilder::from_previous(prev_chain_header.accumulated_data())
+            .with_hash(header.hash())
+            .with_achieved_target_difficulty(achieved_difficulty)
+            .with_total_kernel_offset(header.total_kernel_offset.clone())
+            .build(consensus_constants)?;
+
+    let current_accumulated_data = chain_header.accumulated_data();
+
+    if &calculated_accumulated_data == current_accumulated_data {
+        trace!(
+            target: LOG_TARGET,
+            "[AccData check] Accumulated data for height {height} is correct. No update needed."
+        );
+    } else if autocorrect {
+        let write_lock = db
+            .write()
+            .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+        write_lock.update_accumulated_difficulty(height, calculated_accumulated_data, last_chain_header, false)?;
+        info!(
+            target: LOG_TARGET,
+            "[AccData check] Accumulated data for height {height} was corrupted, but rebuilt."
+        );
+    } else {
+        return Err(ChainStorageError::CorruptedDatabase(format!(
+            "Accumulated data for height {height} is corrupted."
+        )));
+    }
+
+    let write_lock = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+    let last_chain_header = write_lock.fetch_last_chain_header()?;
+    let status = write_lock.update_blockchain_check_status(
+        BlockchainCheckRequest::SetCheckResult {
+            has_concluded: height == last_chain_header.height(),
+            last_check_height: height,
+            current_height: last_chain_header.height(),
+        },
+        metadata_key,
+    )?;
+
+    Ok(status)
+}
+
+// Verify blockchain consistency for the given height
+fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    validators: &Validators<B>,
+    height: u64,
+    full_validation: bool,
+    metadata_key: MetadataKey,
+) -> Result<BlockchainCheckStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[Blockchain check] Checking blockchain data for height {height} with full_validation({full_validation})");
+
+    let read_lock = db
+        .read()
+        .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
+    let last_chain_header = read_lock.fetch_last_chain_header()?;
+    // Safety check to ensure we do not check accumulated data for a height that has been reorged out.
+    let height = min(height, last_chain_header.height());
+
+    let block_data = {
+        let metadata = read_lock.fetch_chain_metadata()?;
+        let horizon_height = metadata.pruned_height_at_given_chain_tip(height);
+        if height > horizon_height {
+            let historical_block = fetch_block(&*read_lock, height, false).map_err(|e| {
+                ChainStorageError::CorruptedDatabase(format!("Could not fetch block for height {height}: {e}"))
+            })?;
+            Some((
+                historical_block.block().clone(),
+                historical_block.accumulated_data().clone(),
+            ))
+        } else {
+            None
+        }
+    };
+    let prev_chain_header = read_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
+    let this_block_header = if let Some((ref block, ref _accumulated_data)) = block_data {
+        block.header.clone()
+    } else {
+        read_lock.fetch_chain_header_by_height(height)?.header().clone()
+    };
+    drop(read_lock);
+
+    // Simple consistency checks
+    if &this_block_header.prev_hash != prev_chain_header.hash() {
+        return Err(ChainStorageError::CorruptedDatabase(format!(
+            "Block at height {height} has invalid previous hash"
+        )));
+    }
+    if this_block_header.height != prev_chain_header.height() + 1 {
+        return Err(ChainStorageError::CorruptedDatabase(format!(
+            "Block at height {height} does not follow previous header height"
+        )));
+    }
+
+    // Full validation of block body and internal consistency if requested
+    if full_validation {
+        if let Some((block, accumulated_data)) = block_data {
+            let block_hash = block.hash();
+            let accumulated_data_hash = accumulated_data.hash;
+            let chain_block = ChainBlock::try_construct(Arc::new(block), accumulated_data).ok_or_else(|| {
+                ChainStorageError::CorruptedDatabase(format!(
+                    "Inconsistent hash in historical block: block hash {} vs. acc_data hash {}",
+                    block_hash, accumulated_data_hash
+                ))
+            })?;
+            let block_validator = validators.block.clone();
+            block_validator.validate_body_in_isolation(&chain_block).map_err(|e| {
+                ChainStorageError::CorruptedDatabase(format!("Block body validation failed for height {height}: {e}"))
+            })?;
+
+            let orphan_validator = validators.orphan.clone();
+            orphan_validator
+                .validate_internal_consistency(chain_block.block())
+                .map_err(|e| {
+                    ChainStorageError::CorruptedDatabase(format!(
+                        "Block internal consistency validation failed for height {height}: {e}"
+                    ))
+                })?;
+        }
+    }
+
+    let write_lock = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+    let last_chain_header = write_lock.fetch_last_chain_header()?;
+    let status = write_lock.update_blockchain_check_status(
+        BlockchainCheckRequest::SetCheckResult {
+            has_concluded: height == last_chain_header.height(),
+            last_check_height: height,
+            current_height: last_chain_header.height(),
+        },
+        metadata_key,
+    )?;
 
     Ok(status)
 }

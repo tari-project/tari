@@ -71,8 +71,12 @@ pub use lmdb_db::{
     get_all_database_names,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    BlockchainCheckStatus,
+    CheckFailure,
     DatabaseStats,
     LMDBDatabase,
+    MetadataKey,
     PayrefRebuildStatus,
 };
 mod stats;

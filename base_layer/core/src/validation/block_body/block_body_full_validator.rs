@@ -131,6 +131,15 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         self.validate(backend, block.block(), Some(metadata))?;
         Ok(())
     }
+
+    // This body-in-isolation validation is intended to validate the block body without any knowledge of consecutive
+    // blocks that may exist. For example, it cannot validate that kernels are unique, that outputs have not been
+    // spent already or that the block is building on tip.
+    fn validate_body_in_isolation(&self, block: &ChainBlock) -> Result<(), ValidationError> {
+        self.block_internal_validator.validate(block.block())?;
+
+        Ok(())
+    }
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {

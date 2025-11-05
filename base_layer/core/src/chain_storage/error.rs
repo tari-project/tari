@@ -155,6 +155,8 @@ pub enum ChainStorageError {
     InvalidSerializedPublicKey(String),
     #[error("JellyfishMerkleTree error: {0}")]
     JellyfishMerkleTreeError(anyhow::Error),
+    #[error("Cannot perform accumulated difficulty check while its migration task is still in progress")]
+    AccDataMigrationStillInProgress,
 }
 
 impl ChainStorageError {
@@ -211,7 +213,8 @@ impl ChainStorageError {
             _err @ ChainStorageError::OutOfRange |
             _err @ ChainStorageError::MrHashError(_) |
             _err @ ChainStorageError::JellyfishMerkleTreeError(_) |
-            _err @ ChainStorageError::PayRefIndexNotAvailable { .. } => None,
+            _err @ ChainStorageError::PayRefIndexNotAvailable { .. } |
+            _err @ ChainStorageError::AccDataMigrationStillInProgress => None,
         }
     }
 }
