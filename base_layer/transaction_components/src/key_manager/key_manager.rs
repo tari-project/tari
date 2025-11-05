@@ -26,6 +26,7 @@ use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
 use digest::{consts::U64, KeyInit};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+#[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_dh_shared_secret,
     ledger_get_one_sided_metadata_signature,
