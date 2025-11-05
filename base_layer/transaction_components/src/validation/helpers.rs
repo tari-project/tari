@@ -216,7 +216,6 @@ mod test {
 
     use super::*;
     use crate::{crypto_factories::CryptoFactories, test_helpers, test_helpers::TestParams};
-
     mod is_all_unique_and_sorted {
         use super::*;
 
@@ -256,14 +255,14 @@ mod test {
         use super::*;
         use crate::{
             aggregated_body::AggregateBody,
-            legacy_key_manager::create_new_random_key_manager,
             transaction_components::{RangeProofType, TransactionError},
         };
+        use crate::key_manager::KeyManager;
 
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let mut key_manager = create_new_random_key_manager().await.unwrap();
+            let mut key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&mut key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let coinbase = test_helpers::create_coinbase_wallet_output(
@@ -286,10 +285,11 @@ mod test {
                 .unwrap();
         }
 
+
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let mut key_manager = create_new_random_key_manager().await.unwrap();
+            let mut key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&mut key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(
@@ -321,7 +321,7 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let mut key_manager = create_new_random_key_manager().await.unwrap();
+            let mut key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&mut key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(

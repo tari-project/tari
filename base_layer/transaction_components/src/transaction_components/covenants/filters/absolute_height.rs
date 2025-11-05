@@ -71,16 +71,15 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        legacy_key_manager::create_new_random_key_manager,
+        key_manager::KeyManager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
-
     #[tokio::test]
     async fn it_filters_all_out_if_height_not_reached() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
-        let input = create_input(&mut key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 42, |_| {}, &mut key_manager).await;
+        let input = create_input(&mut key_manager);
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 42, |_| {}, &mut key_manager);
 
         let mut output_set = OutputSet::new(&outputs);
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
@@ -90,10 +89,10 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_reached() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
-        let input = create_input(&mut key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &mut key_manager).await;
+        let input = create_input(&mut key_manager);
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &mut key_manager);
 
         let mut output_set = OutputSet::new(&outputs);
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
@@ -103,10 +102,10 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_exceeded() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(absolute_height(@uint(42))).unwrap();
-        let input = create_input(&mut key_manager).await;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &mut key_manager).await;
+        let input = create_input(&mut key_manager);
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &mut key_manager);
 
         let mut output_set = OutputSet::new(&outputs);
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();

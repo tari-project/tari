@@ -85,7 +85,7 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        legacy_key_manager::create_new_random_key_manager,
+        key_manager::KeyManager,
         transaction_components::{
             covenants::test::{create_context, create_input, create_outputs},
             OutputType,
@@ -94,13 +94,13 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_uint() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(@field::features_maturity, @uint(42))).unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let mut outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let mut outputs = create_outputs(10, Default::default(), &mut key_manager);
         outputs[5].features.maturity = 42;
         let mut output_set = OutputSet::new(&outputs);
         FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
@@ -113,17 +113,17 @@ mod test {
     async fn it_filters_sender_offset_public_key() {
         let pk =
             CompressedPublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(
             @field::sender_offset_public_key,
             @public_key(pk.clone())
         ))
         .unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let mut outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let mut outputs = create_outputs(10, Default::default(), &mut key_manager);
         outputs[5].sender_offset_public_key = pk.clone();
         let mut output_set = OutputSet::new(&outputs);
         FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
@@ -134,7 +134,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_commitment() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let commitment =
             CompressedCommitment::from_hex("7ca31ba517d8b563609ed6707fedde5a2be64ac1d67b254cb5348bc2f680557f").unwrap();
         let covenant = covenant!(field_eq(
@@ -142,11 +142,11 @@ mod test {
             @commitment(commitment.clone())
         ))
         .unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let mut outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let mut outputs = create_outputs(10, Default::default(), &mut key_manager);
         outputs[5].commitment = commitment.clone();
         outputs[7].commitment = commitment;
         let mut output_set = OutputSet::new(&outputs);
@@ -158,18 +158,18 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_tari_script() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(field_eq(
             @field::script,
             @script(script.clone())
         ))
         .unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let mut outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let mut outputs = create_outputs(10, Default::default(), &mut key_manager);
         outputs[5].script = script.clone();
         outputs[7].script = script;
         let mut output_set = OutputSet::new(&outputs);
@@ -181,14 +181,14 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_covenant() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42))))).unwrap();
         let covenant = covenant!(field_eq(@field::covenant, @covenant(next_cov.clone()))).unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let mut outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let mut outputs = create_outputs(10, Default::default(), &mut key_manager);
         outputs[5].covenant = next_cov.clone();
         outputs[7].covenant = next_cov;
         let mut output_set = OutputSet::new(&outputs);
@@ -200,13 +200,13 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_output_type() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(@field::features_output_type, @output_type(Coinbase))).unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let mut outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let mut outputs = create_outputs(10, Default::default(), &mut key_manager);
         outputs[5].features.output_type = OutputType::Coinbase;
         outputs[7].features.output_type = OutputType::Coinbase;
         let mut output_set = OutputSet::new(&outputs);
@@ -218,13 +218,13 @@ mod test {
 
     #[tokio::test]
     async fn it_errors_if_field_has_an_incorrect_type() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(@field::features, @uint(42))).unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let outputs = create_outputs(10, Default::default(), &mut key_manager).await;
+        let outputs = create_outputs(10, Default::default(), &mut key_manager);
         let mut output_set = OutputSet::new(&outputs);
         let err = FieldEqFilter.filter(&mut context, &mut output_set).unwrap_err();
         unpack_enum!(CovenantError::InvalidArgument { .. } = err);

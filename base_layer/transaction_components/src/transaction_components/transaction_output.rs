@@ -587,7 +587,7 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         crypto_factories::CryptoFactories,
-        legacy_key_manager::{create_new_random_key_manager, TransactionKeyManagerInterface},
+        key_manager::{KeyManager, TransactionKeyManagerInterface},
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
         MicroMinotari,
@@ -596,8 +596,8 @@ mod test {
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let mut key_manager = KeyManager::new_random().unwrap();
+        let test_params = TestParams::new(&mut key_manager);
 
         let value = MicroMinotari(10);
         let minimum_value_promise = MicroMinotari(10);
@@ -608,7 +608,6 @@ mod test {
             RangeProofType::BulletProofPlus,
             &mut key_manager,
         )
-        .await
         .unwrap();
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
@@ -619,7 +618,6 @@ mod test {
                 tx_output.encrypted_data(),
                 &tx_output.sender_offset_public_key,
             )
-            .await
             .unwrap()
             .unwrap();
         assert_eq!(recovered_value, value);
@@ -628,8 +626,8 @@ mod test {
     #[tokio::test]
     async fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let mut key_manager = KeyManager::new_random().unwrap();
+        let test_params = TestParams::new(&mut key_manager);
 
         let value = MicroMinotari(10);
         let minimum_value_promise = MicroMinotari(11);
@@ -639,8 +637,7 @@ mod test {
             minimum_value_promise,
             RangeProofType::BulletProofPlus,
             &mut key_manager,
-        )
-        .await;
+        );
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_err());
     }
@@ -648,8 +645,8 @@ mod test {
     #[tokio::test]
     async fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let mut key_manager = KeyManager::new_random().unwrap();
+        let test_params = TestParams::new(&mut key_manager);
 
         let outputs = [
             &create_output(
@@ -659,7 +656,6 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
             &create_output(
                 &test_params,
@@ -668,7 +664,6 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
             &create_output(
                 &test_params,
@@ -677,7 +672,6 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
         ];
 
@@ -686,9 +680,9 @@ mod test {
 
     #[tokio::test]
     async fn it_does_batch_verify_with_mixed_range_proof_types() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let test_params = TestParams::new(&mut key_manager);
 
         let outputs = [
             &create_output(
@@ -698,7 +692,6 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
             &create_output(
                 &test_params,
@@ -707,7 +700,6 @@ mod test {
                 RangeProofType::RevealedValue,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
             &create_output(
                 &test_params,
@@ -716,7 +708,6 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
             &create_output(
                 &test_params,
@@ -725,7 +716,6 @@ mod test {
                 RangeProofType::RevealedValue,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
         ];
 
@@ -734,8 +724,8 @@ mod test {
 
     #[tokio::test]
     async fn invalid_revealed_value_proofs_are_blocked() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let mut key_manager = KeyManager::new_random().unwrap();
+        let test_params = TestParams::new(&mut key_manager);
         assert!(create_output(
             &test_params,
             MicroMinotari(20),
@@ -743,7 +733,6 @@ mod test {
             RangeProofType::BulletProofPlus,
             &mut key_manager
         )
-        .await
         .is_ok());
         match create_output(
             &test_params,
@@ -752,7 +741,6 @@ mod test {
             RangeProofType::RevealedValue,
             &mut key_manager,
         )
-        .await
         {
             Ok(_) => panic!("Should not have been able to create output"),
             Err(e) => assert_eq!(
@@ -766,8 +754,8 @@ mod test {
     #[tokio::test]
     async fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let mut key_manager = KeyManager::new_random().unwrap();
+        let test_params = TestParams::new(&mut key_manager);
 
         let outputs = [
             &create_output(
@@ -777,7 +765,6 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await
             .unwrap(),
             &create_invalid_output(
                 &test_params,
@@ -786,37 +773,34 @@ mod test {
                 RangeProofType::BulletProofPlus,
                 &mut key_manager,
             )
-            .await,
         ];
 
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
     }
 
-    async fn create_output<KM: TransactionKeyManagerInterface>(
+     fn create_output<KM: TransactionKeyManagerInterface>(
         test_params: &TestParams,
         value: MicroMinotari,
         minimum_value_promise: MicroMinotari,
         range_proof_type: RangeProofType,
         key_manager: &mut KM,
     ) -> Result<TransactionOutput, String> {
-        let utxo = test_params
-            .create_output(
-                UtxoTestParams {
-                    value,
-                    minimum_value_promise,
-                    features: OutputFeatures {
-                        range_proof_type,
-                        ..Default::default()
-                    },
+        let utxo = test_params.create_output(
+            UtxoTestParams {
+                value,
+                minimum_value_promise,
+                features: OutputFeatures {
+                    range_proof_type,
                     ..Default::default()
                 },
-                key_manager,
-            )
-            .await;
+                ..Default::default()
+            },
+            key_manager,
+        );
         utxo?.to_transaction_output().map_err(|e| e.to_string())
     }
 
-    async fn create_invalid_output<KM: TransactionKeyManagerInterface>(
+     fn create_invalid_output<KM: TransactionKeyManagerInterface>(
         test_params: &TestParams,
         value: MicroMinotari,
         minimum_value_promise: MicroMinotari,
@@ -826,7 +810,6 @@ mod test {
         // we need first to create a valid minimum value, regardless of the minimum_value_promise
         // because this test function should allow creating an invalid proof for later testing
         let mut output = create_output(test_params, value, MicroMinotari::zero(), range_proof_type, key_manager)
-            .await
             .unwrap();
 
         // Now we can updated the minimum value, even to an invalid value

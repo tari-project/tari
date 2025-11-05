@@ -47,21 +47,20 @@ impl Filter for AndFilter {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-
     use tari_script::script;
 
     use super::*;
     use crate::{
         covenant,
-        legacy_key_manager::create_new_random_key_manager,
+        key_manager::KeyManager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
     #[tokio::test]
     async fn it_filters_outputset_using_intersection() {
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
+        let mut key_manager = KeyManager::new_random().unwrap();
         let script = script!(CheckHeight(101)).unwrap();
         let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone())))).unwrap();
-        let input = create_input(&mut key_manager).await;
+        let input = create_input(&mut key_manager);
         let (mut context, outputs) = setup_filter_test(
             &covenant,
             &input,
@@ -81,8 +80,7 @@ mod test {
                 outputs[8].script = script.clone();
             },
             &mut key_manager,
-        )
-        .await;
+        );
 
         let mut output_set = OutputSet::new(&outputs);
         AndFilter.filter(&mut context, &mut output_set).unwrap();

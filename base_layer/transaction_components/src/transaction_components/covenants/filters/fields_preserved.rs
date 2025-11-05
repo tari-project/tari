@@ -45,11 +45,10 @@ impl Filter for FieldsPreservedFilter {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-
     use super::*;
     use crate::{
         covenant,
-        legacy_key_manager::create_new_random_key_manager,
+        key_manager::KeyManager,
         transaction_components::{
             covenants::{filters::test::setup_filter_test, test::create_input},
             OutputType,
@@ -60,8 +59,8 @@ mod test {
     async fn it_filters_outputs_that_match_input_fields() {
         let covenant =
             covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type))).unwrap();
-        let mut key_manager = create_new_random_key_manager().await.unwrap();
-        let mut input = create_input(&mut key_manager).await;
+        let mut key_manager = KeyManager::new_random().unwrap();
+        let mut input = create_input(&mut key_manager);
         input.set_maturity(42).unwrap();
         input.features_mut().unwrap().output_type = OutputType::ValidatorNodeRegistration;
         let (mut context, outputs) = setup_filter_test(
@@ -77,8 +76,7 @@ mod test {
                 outputs[8].features.output_type = OutputType::Coinbase;
             },
             &mut key_manager,
-        )
-        .await;
+        );
         let mut output_set = OutputSet::new(&outputs);
 
         FieldsPreservedFilter.filter(&mut context, &mut output_set).unwrap();

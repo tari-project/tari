@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    legacy_key_manager::TransactionKeyManagerInterface,
+    key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         covenants::{
             context::CovenantContext,
@@ -35,7 +35,7 @@ use crate::{
 /// Create a covenant context and outputs for testing a filter with a given covenant, input and block height. The
 /// outputs are default random and modified by closure parameter `output_mod: F` (anonymous function) before it is
 /// returned.
-pub async fn setup_filter_test<'a, F, KM: TransactionKeyManagerInterface>(
+pub fn setup_filter_test<'a, F, KM: TransactionKeyManagerInterface>(
     covenant: &Covenant,
     input: &'a TransactionInput,
     block_height: u64,
@@ -48,7 +48,7 @@ where
     let mut context = create_context(covenant, input, block_height);
     // Consume root token (i.e the filter we're testing), args for filter presumably come next
     context.next_filter().unwrap();
-    let mut outputs = create_outputs(10, Default::default(), key_manager).await;
+    let mut outputs = create_outputs(10, Default::default(), key_manager);
     output_mod(&mut outputs);
     (context, outputs)
 }

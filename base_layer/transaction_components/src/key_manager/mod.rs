@@ -27,7 +27,6 @@ mod interface;
 pub use interface::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface, TxoStage};
 pub mod key_id;
 pub use key_id::*;
-use tari_common_types::seeds::cipher_seed::CipherSeed;
 
 pub mod error;
 
@@ -39,18 +38,5 @@ pub mod wallet_types;
 
 use tari_hashing::ConfidentialOutputHashDomain;
 
-use crate::key_manager::{
-    error::KeyManagerError,
-    wallet_types::{SeedWordsWallet, WalletType},
-};
-
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
-
-// key manager key digest used
-
-pub fn create_new_random_key_manager() -> Result<KeyManager, KeyManagerError> {
-    let seed = CipherSeed::random();
-    let wallet = WalletType::SeedWords(SeedWordsWallet::construct_new(seed)?);
-    KeyManager::new(wallet)
-}

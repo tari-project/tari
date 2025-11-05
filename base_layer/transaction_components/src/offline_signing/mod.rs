@@ -27,18 +27,12 @@ pub mod one_sided_signer;
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use std::sync::Arc;
-
     use argon2::password_hash::rand_core::OsRng;
-    use chacha20poly1305::Key;
     use rand::RngCore;
     use tari_common::configuration::Network;
     use tari_common_types::{
-        key_branches::TransactionKeyManagerBranch,
-        seeds::cipher_seed::CipherSeed,
         tari_address::{TariAddress, TariAddressFeatures},
         transaction::TxId,
-        wallet_types::{ProvidedKeysWallet, WalletType},
     };
     use tari_script::{
         push_pubkey_script,
@@ -48,81 +42,63 @@ mod test {
         StackItem,
         TariScript,
     };
-    use zeroize::Zeroizing;
 
     use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         helpers::borsh::SerializedSize,
-        legacy_key_manager::{
-            create_new_random_key_manager,
-            error::KeyManagerServiceError,
-            MemoryKeyManager,
+        key_manager::{
+            error::KeyManagerError,
+            wallet_types::{ViewWallet, WalletType},
+            KeyManager,
             SerializedKeyString,
             TariKeyId,
             TransactionKeyManagerInterface,
-            TransactionKeyManagerWrapper,
         },
         multisig::script::derive_multisig_ephemeral_pubkeys,
         offline_signing::offline_signer::OfflineSigner,
         test_helpers::{create_consensus_manager, create_test_input},
-        transaction_components::{
-            covenants::Covenant,
-            one_sided::shared_secret_to_output_encryption_key,
-            EncryptedData,
-            MemoField,
-            OutputFeatures,
-            WalletOutputBuilder,
-        },
+        transaction_components::{covenants::Covenant, EncryptedData, MemoField, OutputFeatures, WalletOutputBuilder},
         validation::transaction::TransactionInternalConsistencyValidator,
         MicroMinotari,
         TransactionBuilder,
     };
 
-    async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {
-        let cipher = CipherSeed::random();
-        let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
-        OsRng.fill_bytes(key.as_mut());
-        let factory = CryptoFactories::new(64);
-
-        TransactionKeyManagerWrapper::new(Some(cipher), factory, Arc::new(WalletType::ProvidedKeys(keys))).await
+    fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
+        let wallet = WalletType::ViewWallet(view_wallet);
+        KeyManager::new(wallet)
     }
+
     #[tokio::test]
     async fn offline_sign_is_valid() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_new_random_key_manager().await.unwrap();
-        let keys = ProvidedKeysWallet {
-            public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: alice_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
-        let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
-        let bob_key_manager = create_new_random_key_manager().await.unwrap();
+        let mut alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &mut alice_view_key_manager, vec![], None).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &mut alice_view_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
             alice_view_key_manager.clone(),
             Network::LocalNet,
         )
-        .await
         .unwrap();
         tx_builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(20))
             .with_input(input)
-            .await
             .unwrap()
             .with_input(input2)
-            .await
             .unwrap()
             .with_input(input3)
-            .await
             .unwrap();
 
         // now we start the offline process
@@ -132,8 +108,8 @@ mod test {
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
 
-        let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = bob_key_manager.get_spend_key().pub_key;
+        let view_key = bob_key_manager.get_view_key().pub_key;
         let bob_address = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -142,8 +118,8 @@ mod test {
             None,
         )
         .unwrap();
-        let spend_key = alice_view_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = alice_view_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = alice_view_key_manager.get_spend_key().pub_key;
+        let view_key = alice_view_key_manager.get_view_key().pub_key;
         let alice_address = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -153,8 +129,8 @@ mod test {
         )
         .unwrap();
 
-        let spend_key = alice_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = alice_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = alice_key_manager.get_spend_key().pub_key;
+        let view_key = alice_key_manager.get_view_key().pub_key;
         let alice_address_s = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -176,7 +152,6 @@ mod test {
                 payment_id,
                 alice_address,
             )
-            .await
             .unwrap();
 
         assert!(init.info.change_output.is_some());
@@ -185,7 +160,7 @@ mod test {
         assert_eq!(init.info.outputs.len(), 0);
 
         let mut signer = OfflineSigner::new(alice_key_manager.clone());
-        let signed = signer.sign_locked_transaction(init).await.unwrap();
+        let signed = signer.sign_locked_transaction(init).unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
@@ -205,30 +180,19 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn offline_deposit_multisign_is_valid() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_new_random_key_manager().await.unwrap();
-        let charlie_key_manager = create_new_random_key_manager().await.unwrap();
-        let bob_key_manager = create_new_random_key_manager().await.unwrap();
+        let charlie_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let alice_keys = ProvidedKeysWallet {
-            public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: alice_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
+        let mut alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).await.unwrap();
 
-        let mut alice_view_key_manager = create_view_key_manager(alice_keys.clone()).await.unwrap();
-
-        let charlie_keys = ProvidedKeysWallet {
-            public_spend_key: charlie_key_manager.get_spend_key().await.unwrap().pub_key,
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: charlie_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
-
-        let bob_spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
-        let bob_view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let bob_spend_key = bob_key_manager.get_spend_key().pub_key;
+        let bob_view_key = bob_key_manager.get_view_key().pub_key;
         let bob_address = TariAddress::new_dual_address(
             bob_view_key,
             bob_spend_key.clone(),
@@ -238,8 +202,8 @@ mod test {
         )
         .unwrap();
 
-        let spend_key = alice_view_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = alice_view_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = alice_view_key_manager.get_spend_key().pub_key;
+        let view_key = alice_view_key_manager.get_view_key().pub_key;
         let alice_address = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -252,8 +216,8 @@ mod test {
         let party_number = 2;
 
         let multisignature_participiants = vec![
-            charlie_keys.clone().public_spend_key,
-            alice_keys.clone().public_spend_key,
+            charlie_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_spend_key().pub_key,
             bob_spend_key.clone(),
         ];
 
@@ -342,30 +306,20 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn offline_withdraw_multisign_is_valid() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_new_random_key_manager().await.unwrap();
-        let charlie_key_manager = create_new_random_key_manager().await.unwrap();
-        let bob_key_manager = create_new_random_key_manager().await.unwrap();
-        let alice_spend_key = alice_key_manager.get_spend_key().await.unwrap();
-        let alice_keys = ProvidedKeysWallet {
-            public_spend_key: alice_spend_key.pub_key.clone(),
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: alice_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
+        let mut alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).await.unwrap();
 
-        let mut alice_view_key_manager = create_view_key_manager(alice_keys.clone()).await.unwrap();
+        let charlie_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let alice_spend_key = alice_key_manager.get_spend_key();
 
-        let charlie_keys = ProvidedKeysWallet {
-            public_spend_key: charlie_key_manager.get_spend_key().await.unwrap().pub_key,
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: charlie_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
-
-        let bob_spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
-        let bob_view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let bob_spend_key = bob_key_manager.get_spend_key().pub_key;
+        let bob_view_key = bob_key_manager.get_view_key().pub_key;
         let bob_address = TariAddress::new_dual_address(
             bob_view_key,
             bob_spend_key.clone(),
@@ -375,8 +329,8 @@ mod test {
         )
         .unwrap();
 
-        let spend_key = alice_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = alice_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = alice_key_manager.get_spend_key().pub_key;
+        let view_key = alice_key_manager.get_view_key().pub_key;
         let alice_address_s = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -400,15 +354,12 @@ mod test {
         let party_number = 2;
 
         let multisignature_participiants = vec![
-            charlie_keys.clone().public_spend_key,
-            alice_keys.clone().public_spend_key,
+            charlie_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_spend_key().pub_key,
             bob_spend_key.clone(),
         ];
 
-        let sender_offset_key = alice_view_key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await
-            .unwrap();
+        let sender_offset_key = alice_view_key_manager.get_random_ke(None, false).unwrap();
 
         let mut message = Box::new([0u8; 32]);
         OsRng.fill_bytes(message.as_mut());
@@ -563,16 +514,14 @@ mod test {
     #[tokio::test]
     async fn offline_sign_can_be_claimed() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_new_random_key_manager().await.unwrap();
-        let keys = ProvidedKeysWallet {
-            public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: alice_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
-        let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
-        let bob_key_manager = create_new_random_key_manager().await.unwrap();
+        let mut alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).await.unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
 
         let input = create_test_input(MicroMinotari(100000), 0, &mut alice_view_key_manager, vec![], None).await;
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
@@ -592,8 +541,8 @@ mod test {
 
         // now we start the offline process
         let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let spend_key = bob_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = bob_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = bob_key_manager.get_spend_key().pub_key;
+        let view_key = bob_key_manager.get_view_key().pub_key;
         let bob_address = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -602,8 +551,8 @@ mod test {
             None,
         )
         .unwrap();
-        let spend_key = alice_view_key_manager.get_spend_key().await.unwrap().pub_key;
-        let view_key = alice_view_key_manager.get_view_key().await.unwrap().pub_key;
+        let spend_key = alice_view_key_manager.get_spend_key().pub_key;
+        let view_key = alice_view_key_manager.get_view_key().pub_key;
         let alice_address = TariAddress::new_dual_address(
             view_key,
             spend_key,
@@ -658,10 +607,9 @@ mod test {
 
         // lets see if bob's wallet can claim the sent:
         let sent_output = &signed.signed_transaction.transaction.body.outputs()[sent_index].clone();
-        let view_key = bob_key_manager.get_view_key().await.unwrap();
+        let view_key = bob_key_manager.get_view_key();
         let shared_secret = bob_key_manager
             .get_diffie_hellman_shared_secret(&view_key.key_id, &sent_output.sender_offset_public_key)
-            .await
             .unwrap();
 
         let recovery_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
@@ -673,16 +621,15 @@ mod test {
     #[tokio::test]
     async fn view_only_cannot_sign_offline() {
         let rules = create_consensus_manager();
-        let alice_key_manager = create_new_random_key_manager().await.unwrap();
-        let keys = ProvidedKeysWallet {
-            public_spend_key: alice_key_manager.get_spend_key().await.unwrap().pub_key,
-            private_spend_key: None,
-            private_comms_key: None,
-            view_key: alice_key_manager.get_private_view_key().await.unwrap(),
-            birthday: None,
-        };
-        let mut alice_view_key_manager = create_view_key_manager(keys).await.unwrap();
-        let bob_key_manager = create_new_random_key_manager().await.unwrap();
+        let mut alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).await.unwrap();
+
+        let bob_key_manager = KeyManager::new_random().unwrap();
 
         let input = create_test_input(MicroMinotari(10000), 0, &mut alice_view_key_manager, vec![], None).await;
         let input2 = create_test_input(MicroMinotari(2000), 0, &mut alice_view_key_manager, vec![], None).await;
@@ -699,13 +646,10 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(20))
             .with_input(input)
-            .await
             .unwrap()
             .with_input(input2)
-            .await
             .unwrap()
             .with_input(input3)
-            .await
             .unwrap();
 
         // now we start the offline process

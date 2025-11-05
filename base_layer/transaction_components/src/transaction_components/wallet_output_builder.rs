@@ -342,10 +342,8 @@ impl WalletOutputBuilder {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
     use super::*;
-    use crate::legacy_key_manager::create_new_random_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {
