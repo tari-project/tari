@@ -31,7 +31,7 @@ use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::transaction_components::{EncryptedDataError, TransactionError};
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum KeyManagerError {
     #[error("Error generating Commitment and PublicKey signature: `{0}`")]
     CommitmentAndPublicKeySignatureError(String),
