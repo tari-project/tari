@@ -231,6 +231,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             })?
             .hash();
         let next_header_to_request;
+        let mut has_next_page = false;
         loop {
             let current_header_hash = current_header.hash();
 
@@ -305,6 +306,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
             if current_header.height >= tip_header.header().height {
                 next_header_to_request = vec![];
+                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break;
             }
             if fetched_utxos >= request.limit {
@@ -342,11 +344,10 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     })?;
             if current_header.height == end_height {
                 next_header_to_request = current_header.hash().to_vec();
-                break; // Stop if we reach the end height}
+                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                break; // Stop if we reach the end height
             }
         }
-
-        let has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
 
         Ok(SyncUtxosByBlockResponse {
             blocks: utxos,
