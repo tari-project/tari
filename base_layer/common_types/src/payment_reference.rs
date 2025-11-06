@@ -175,20 +175,15 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
 }
 
 /// Display format options for Payment References
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PayRefDisplayFormat {
     /// Show full 64-character hex string
     Full,
     /// Show shortened format (8...8)
+    #[default]
     Shortened,
     /// Custom format with specified prefix and suffix character counts
     Custom { prefix_chars: u8, suffix_chars: u8 },
-}
-
-impl Default for PayRefDisplayFormat {
-    fn default() -> Self {
-        Self::Shortened
-    }
 }
 
 #[cfg(test)]
