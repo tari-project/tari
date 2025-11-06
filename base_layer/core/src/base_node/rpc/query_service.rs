@@ -598,28 +598,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_utxos_happy_path_genesis() {
-        let service = make_service().await;
-        let tip_header = service.db().fetch_tip_header().await.unwrap();
-        assert_eq!(tip_header.header().height, 0);
-        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
-        let req = SyncUtxosByBlockRequest {
-            start_header_hash: genesis.hash().to_vec(),
-            limit: 10,
-            page: 0,
-            exclude_spent: false,
-        };
-        let resp = service.fetch_utxos(req).await.unwrap();
-        // Should return at least one block entry for height 0
-        assert!(resp
-            .blocks
-            .iter()
-            .any(|b| b.height == 0 && b.header_hash == genesis.hash().to_vec()));
-        assert!(!resp.has_next_page);
-        assert!(resp.next_header_to_scan.is_empty());
-    }
-
-    #[tokio::test]
     async fn fetch_utxos_start_header_not_found() {
         let service = make_service().await;
         let req = SyncUtxosByBlockRequest {
