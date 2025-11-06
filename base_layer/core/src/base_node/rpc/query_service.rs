@@ -605,7 +605,7 @@ mod tests {
         let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
         let req = SyncUtxosByBlockRequest {
             start_header_hash: genesis.hash().to_vec(),
-            limit: 1,
+            limit: 10,
             page: 0,
             exclude_spent: false,
         };
