@@ -590,7 +590,7 @@ mod tests {
     }
 
     async fn make_service() -> Service<crate::test_helpers::blockchain::TempDatabase> {
-        let db = create_new_blockchain_with_network(Network::Esmeralda);
+        let db = create_new_blockchain_with_network(Network::default());
         let adb = AsyncBlockchainDb::from(db);
         let state_machine = make_state_machine_handle();
         let mempool = make_mempool_handle();
