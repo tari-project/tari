@@ -32,8 +32,8 @@ pub mod error;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
-pub mod key_manager;
-pub use key_manager::KeyManager;
+pub mod manager;
+pub use manager::KeyManager;
 pub mod wallet_types;
 
 use tari_hashing::ConfidentialOutputHashDomain;
