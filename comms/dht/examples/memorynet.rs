@@ -83,18 +83,16 @@ async fn main() {
 
     let (node_message_tx, mut messaging_events_rx) = mpsc::unbounded_channel();
 
-    let seed_node = vec![
-        make_node(
-            PeerFeatures::COMMUNICATION_NODE,
-            vec![],
-            node_message_tx.clone(),
-            NUM_NEIGHBOURING_NODES,
-            NUM_RANDOM_NODES,
-            PROPAGATION_FACTOR,
-            QUIET_MODE,
-        )
-        .await,
-    ];
+    let seed_node = [make_node(
+        PeerFeatures::COMMUNICATION_NODE,
+        vec![],
+        node_message_tx.clone(),
+        NUM_NEIGHBOURING_NODES,
+        NUM_RANDOM_NODES,
+        PROPAGATION_FACTOR,
+        QUIET_MODE,
+    )
+    .await];
 
     let mut nodes = future::join_all(
         repeat_with(|| {

@@ -249,7 +249,7 @@ async fn range_proof_verification_batch() {
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
     // The batch should pass
-    let outputs = vec![
+    let outputs = [
         tx_output1.clone(),
         tx_output2.clone(),
         tx_output3.clone(),
@@ -261,7 +261,7 @@ async fn range_proof_verification_batch() {
 
     // The batch should fail after tampering with a single proof
     tx_output5.proof = tx_output4.proof.clone();
-    let outputs = vec![tx_output1, tx_output2, tx_output3, tx_output4, tx_output5];
+    let outputs = [tx_output1, tx_output2, tx_output3, tx_output4, tx_output5];
     let outputs = outputs.iter().collect::<Vec<_>>();
     assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
 }

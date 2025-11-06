@@ -36,17 +36,12 @@ use thiserror::Error;
 
 use super::command::Command;
 
-#[derive(Debug, Display, EnumString)]
+#[derive(Debug, Display, EnumString, Default)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Format {
     Json,
+    #[default]
     Text,
-}
-
-impl Default for Format {
-    fn default() -> Self {
-        Self::Text
-    }
 }
 
 #[derive(Debug)]
