@@ -180,7 +180,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         request.validate()?;
 
         let hash = request.start_header_hash.clone().try_into()?;
-
         let start_header = self
             .db()
             .fetch_header_by_block_hash(hash)
@@ -209,7 +208,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .ok_or_else(|| Error::HeaderNotFound {
                 height: start_header_height,
             })?;
-
         // fetch utxos
         let mut utxos = vec![];
         let mut current_header = start_header;
@@ -234,7 +232,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let mut has_next_page = false;
         loop {
             let current_header_hash = current_header.hash();
-
             trace!(
                 target: LOG_TARGET,
                 "current header = {} ({})",
@@ -264,7 +261,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 .into_iter()
                 .map(|input| input.output_hash())
                 .collect::<Vec<FixedHash>>();
-
             for output_chunk in outputs.chunks(2000) {
                 let inputs_to_send = if inputs.is_empty() {
                     Vec::new()
@@ -354,6 +350,98 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             has_next_page,
             next_header_to_scan: next_header_to_request,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common::configuration::Network;
+    use tari_shutdown::Shutdown;
+
+    use super::*;
+    use crate::test_helpers::blockchain::{
+        create_main_chain,
+        create_new_blockchain,
+        create_new_blockchain_with_network,
+        create_test_blockchain_db,
+    };
+    fn make_state_machine_handle() -> StateMachineHandle {
+        use tokio::sync::{broadcast, watch};
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) =
+            watch::channel(crate::base_node::state_machine_service::states::StatusInfo::new());
+        let shutdown = Shutdown::new();
+        StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal())
+    }
+
+    fn make_mempool_handle() -> MempoolHandle {
+        use crate::mempool::test_utils::mock::create_mempool_service_mock;
+        let (handle, _state) = create_mempool_service_mock();
+        handle
+    }
+
+    async fn make_service() -> Service<crate::test_helpers::blockchain::TempDatabase> {
+        let db = create_new_blockchain_with_network(Network::Esmeralda);
+        let adb = AsyncBlockchainDb::from(db);
+        let state_machine = make_state_machine_handle();
+        let mempool = make_mempool_handle();
+        Service::new(adb, state_machine, mempool)
+    }
+
+    #[tokio::test]
+    async fn fetch_utxos_happy_path_genesis() {
+        let service = make_service().await;
+        let tip_header = service.db().fetch_tip_header().await.unwrap();
+        assert_eq!(tip_header.header().height, 0);
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+        let req = SyncUtxosByBlockRequest {
+            start_header_hash: genesis.hash().to_vec(),
+            limit: 1,
+            page: 0,
+            exclude_spent: false,
+        };
+        let resp = service.fetch_utxos(req).await.unwrap();
+        // Should return at least one block entry for height 0
+        assert!(resp
+            .blocks
+            .iter()
+            .any(|b| b.height == 0 && b.header_hash == genesis.hash().to_vec()));
+        assert!(!resp.has_next_page);
+        assert!(resp.next_header_to_scan.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_utxos_start_header_not_found() {
+        let service = make_service().await;
+        let req = SyncUtxosByBlockRequest {
+            start_header_hash: vec![0xAB; 32],
+            limit: 4,
+            page: 0,
+            exclude_spent: false,
+        };
+        let err = service.fetch_utxos(req).await.unwrap_err();
+        match err {
+            Error::StartHeaderHashNotFound => {},
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_utxos_header_height_mismatch() {
+        let service = make_service().await;
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+        // page * limit moves start height beyond tip (0)
+        let req = SyncUtxosByBlockRequest {
+            start_header_hash: genesis.hash().to_vec(),
+            limit: 1,
+            page: 1,
+            exclude_spent: false,
+        };
+        let err = service.fetch_utxos(req).await.unwrap_err();
+        match err {
+            Error::HeaderHeightMismatch { .. } => {},
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }
 
