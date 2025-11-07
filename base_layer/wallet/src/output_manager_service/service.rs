@@ -269,7 +269,6 @@ where
                 .add_output(Some(tx_id), *uo, spend_priority)
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::EncumberAggregateUtxo {
-                tx_id,
                 fee_per_gram,
                 expected_commitment,
                 script_input_shares,
@@ -281,9 +280,8 @@ where
                 original_maturity,
                 use_output,
                 payment_id,
-            } => self
-                .encumber_aggregate_utxo(
-                    tx_id,
+            } => {
+                self.encumber_aggregate_utxo(
                     fee_per_gram,
                     expected_commitment,
                     script_input_shares,
@@ -299,16 +297,14 @@ where
                     use_output,
                 )
                 .await
-                .map(|val| OutputManagerResponse::EncumberAggregateUtxo(Box::new(val))),
+            },
             OutputManagerRequest::SpendBackupPreMineUtxo {
-                tx_id,
                 fee_per_gram,
                 output_hash,
                 expected_commitment,
                 recipient_address,
             } => self
                 .spend_backup_pre_mine_utxo(
-                    tx_id,
                     fee_per_gram,
                     output_hash,
                     expected_commitment,
@@ -327,9 +323,6 @@ where
             OutputManagerRequest::UpdateOutputMetadataSignature(uo) => self
                 .update_output_metadata_signature(*uo)
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
-            OutputManagerRequest::ReplaceTxId { tx_id_old, tx_id_new } => self
-                .replace_tx_id_in_outputs(tx_id_old, tx_id_new)
-                .map(|_| OutputManagerResponse::TxIdReplaced),
             OutputManagerRequest::GetBalance => {
                 let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance(current_tip_for_time_lock_calculation)
@@ -762,13 +755,6 @@ where
         Ok(())
     }
 
-    /// Replace the TxId for all outputs that match the old_tx_id with the new_tx_id in `spent_in_tx_id` or
-    /// `received_in_tx_id` fields.
-    pub fn replace_tx_id_in_outputs(&mut self, tx_id_old: TxId, tx_id_new: TxId) -> Result<(), OutputManagerError> {
-        self.resources.db.replace_tx_id_in_outputs(tx_id_old, tx_id_new)?;
-        Ok(())
-    }
-
     async fn create_output_with_features(
         &mut self,
         value: MicroMinotari,
@@ -1084,7 +1070,6 @@ where
     #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_utxo(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
         mut script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
@@ -1098,18 +1083,7 @@ where
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
         use_output: UseOutput,
-    ) -> Result<
-        (
-            Transaction,
-            MicroMinotari,
-            MicroMinotari,
-            CompressedPublicKey,
-            CompressedPublicKey,
-            CompressedPublicKey,
-            CompressedPublicKey,
-        ),
-        OutputManagerError,
-    > {
+    ) -> Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError> {
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
         // Fetch the output from the blockchain or use provided
         let output = match use_output {
@@ -1118,19 +1092,19 @@ where
                 .await?
                 .ok_or_else(|| {
                     OutputManagerError::ServiceError(format!(
-                        "Output with hash {output_hash} not found in blockchain (TxId: {tx_id})"
+                        "Output with hash {output_hash} not found in blockchain (TxId: 0)"
                     ))
                 })?,
             UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
-            return Err(OutputManagerError::ServiceError(format!(
-                "Output commitment does not match expected commitment (TxId: {tx_id})"
-            )));
+            return Err(OutputManagerError::ServiceError(
+                "Output commitment does not match expected commitment (TxId: 0)".to_string(),
+            ));
         }
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: fetched outputs");
         // Retrieve the list of n public keys from the script
-        let (multi_sig_public_keys, threshold) = get_multi_sig_script_components(&output.script, tx_id)?;
+        let (multi_sig_public_keys, threshold) = get_multi_sig_script_components(&output.script, TxId::from(0u64))?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: retrieved public keys from script");
         // Create a deterministic encryption key from the sum of the public keys
         let mut sum_public_keys = UncompressedPublicKey::default();
@@ -1147,7 +1121,7 @@ where
         {
             if output.verify_mask(&self.resources.factories.range_proof, &commitment_mask, amount.as_u64())? {
                 let script_key = self
-                    .pre_mine_script_key_from_payment_id(payment_id.clone(), tx_id)
+                    .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
                     .await?;
                 let mut script_signatures = Vec::new();
                 // lets add our own signature to the list
@@ -1172,8 +1146,7 @@ where
                 }
                 if script_signatures.len() != usize::from(threshold) {
                     return Err(OutputManagerError::ServiceError(format!(
-                        "Invalid number of signatures (TxId: {}), expected {}, received {}",
-                        tx_id,
+                        "Invalid number of signatures (TxId: 0), expected {}, received {}",
                         threshold,
                         script_signatures.len()
                     )));
@@ -1191,14 +1164,14 @@ where
                     payment_id,
                 )
             } else {
-                return Err(OutputManagerError::ServiceError(format!(
-                    "Could not verify mask (TxId: {tx_id})"
-                )));
+                return Err(OutputManagerError::ServiceError(
+                    "Could not verify mask (TxId: 0)".to_string(),
+                ));
             }
         } else {
-            return Err(OutputManagerError::ServiceError(format!(
-                "Could not decrypt output (TxId: {tx_id})"
-            )));
+            return Err(OutputManagerError::ServiceError(
+                "Could not decrypt output (TxId: 0)".to_string(),
+            ));
         };
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: decrypt secrets, created unblinded input");
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: {:?}", input.input_data());
@@ -1247,8 +1220,6 @@ where
             .await?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created sender transaction protocol");
 
-        self.confirm_encumberance(tx_id, None, Vec::new())?;
-
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
@@ -1267,9 +1238,9 @@ where
                     &sender_offset_private_key_id_self.key_id,
                     recipient_address
                         .public_view_key()
-                        .ok_or(OutputManagerError::ServiceError(format!(
-                            "Missing public view key (TxId: {tx_id})"
-                        )))?,
+                        .ok_or(OutputManagerError::ServiceError(
+                            "Missing public view key (TxId: 0)".to_string(),
+                        ))?,
                 )
                 .await?;
             key_sum = key_sum + &UncompressedPublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
@@ -1338,10 +1309,10 @@ where
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
+            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
 
         builder
             .add_recipient(
@@ -1354,12 +1325,13 @@ where
 
         // Finalize
         let finalized = builder.build().await?;
+        self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
 
         let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares +
             output.metadata_signature().ephemeral_pubkey().to_public_key()?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created output with partial metadata signature");
 
-        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {} (trace TxId: 0)", finalized.tx_id);
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: finalized partial transaction");
 
         let mut aggregated_script_signature_public_nonces = UncompressedPublicKey::default();
@@ -1410,21 +1382,23 @@ where
         trace!(target: LOG_TARGET, "kernel_sum:                 {}", kernel_sum.to_hex());
         trace!(target: LOG_TARGET, "kernel_sum + sender_offset: {}", (&kernel_sum + &total_offset).to_hex());
 
-        Ok((
-            tx,
+        Ok(OutputManagerResponse::EncumberAggregateUtxo {
+            tx_id: finalized.tx_id,
+            transaction: Box::new(tx),
             amount,
             fee,
-            total_script_public_key,
-            CompressedPublicKey::new_from_pk(total_metadata_ephemeral_public_key),
-            CompressedPublicKey::new_from_pk(total_script_nonce),
-            shared_secret_public_key,
-        ))
+            total_script_public_key: Box::new(total_script_public_key),
+            total_metadata_ephemeral_public_key: Box::new(CompressedPublicKey::new_from_pk(
+                total_metadata_ephemeral_public_key,
+            )),
+            total_script_nonce: Box::new(CompressedPublicKey::new_from_pk(total_script_nonce)),
+            shared_secret_public_key: Box::new(shared_secret_public_key),
+        })
     }
 
     #[allow(clippy::too_many_lines)]
     pub async fn spend_backup_pre_mine_utxo(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
@@ -1433,21 +1407,21 @@ where
         maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         // Fetch the output from the blockchain
         let output = self
             .fetch_unspent_outputs_from_node(output_hash)
             .await?
             .ok_or_else(|| {
                 OutputManagerError::ServiceError(format!(
-                    "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash, tx_id
+                    "Output with hash {} not found in blockchain (TxId: 0)",
+                    output_hash
                 ))
             })?;
         if output.commitment != expected_commitment {
-            return Err(OutputManagerError::ServiceError(format!(
-                "Output commitment does not match expected commitment (TxId: {tx_id})"
-            )));
+            return Err(OutputManagerError::ServiceError(
+                "Output commitment does not match expected commitment (TxId: 0)".to_string(),
+            ));
         }
         // Retrieve the list of n public keys from the script
         let public_keys = if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) =
@@ -1455,9 +1429,7 @@ where
         {
             keys.clone()
         } else {
-            return Err(OutputManagerError::ServiceError(format!(
-                "Invalid script (TxId: {tx_id})"
-            )));
+            return Err(OutputManagerError::ServiceError("Invalid script (TxId: 0)".to_string()));
         };
         // Create a deterministic encryption key from the sum of the public keys
         let mut sum_public_keys = UncompressedPublicKey::default();
@@ -1473,7 +1445,7 @@ where
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
                 let spending_key_id = self.resources.key_manager.import_key(spending_key, None).await?;
                 let script_key = self
-                    .pre_mine_script_key_from_payment_id(payment_id.clone(), tx_id)
+                    .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
                     .await?;
 
                 WalletOutput::new_from_transaction_output(
@@ -1485,14 +1457,14 @@ where
                     script_key.key_id,
                 )
             } else {
-                return Err(OutputManagerError::ServiceError(format!(
-                    "Could not verify mask (TxId: {tx_id})"
-                )));
+                return Err(OutputManagerError::ServiceError(
+                    "Could not verify mask (TxId: 0)".to_string(),
+                ));
             }
         } else {
-            return Err(OutputManagerError::ServiceError(format!(
-                "Could not decrypt output (TxId: {tx_id})"
-            )));
+            return Err(OutputManagerError::ServiceError(
+                "Could not decrypt output (TxId: 0)".to_string(),
+            ));
         };
 
         // The entire input will be spent to a single recipient with no change
@@ -1536,8 +1508,6 @@ where
             .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
-        self.confirm_encumberance(tx_id, None, Vec::new())?;
-
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
@@ -1550,9 +1520,9 @@ where
                 &sender_offset_private_key_id_self.key_id,
                 recipient_address
                     .public_view_key()
-                    .ok_or(OutputManagerError::ServiceError(format!(
-                        "Missing public view key (TxId: {tx_id})"
-                    )))?,
+                    .ok_or(OutputManagerError::ServiceError(
+                        "Missing public view key (TxId: 0)".to_string(),
+                    ))?,
             )
             .await?;
 
@@ -1607,10 +1577,10 @@ where
                 &recipient_address,
             )
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
+            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
 
         tx_builder
             .add_recipient(
@@ -1622,11 +1592,12 @@ where
             .await?;
 
         let finalized = tx_builder.build().await?;
-        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
+        self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
+        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {} (Trace TxId: 0)", finalized.tx_id);
         let fee = finalized.fee;
         let tx = finalized.transaction;
 
-        Ok((tx, amount, fee))
+        Ok((finalized.tx_id, tx, amount, fee))
     }
 
     #[allow(clippy::too_many_lines)]

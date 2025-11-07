@@ -67,17 +67,12 @@ pub enum OutputManagerRequest {
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
-    ReplaceTxId {
-        tx_id_old: TxId,
-        tx_id_new: TxId,
-    },
     ConfirmPendingTransaction {
         tx_id: TxId,
         tx_id_update: Option<TxId>,
         change_outputs: Option<Vec<WalletOutput>>,
     },
     EncumberAggregateUtxo {
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
         script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
@@ -91,7 +86,6 @@ pub enum OutputManagerRequest {
         payment_id: MemoField,
     },
     SpendBackupPreMineUtxo {
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
@@ -185,12 +179,10 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
-            ReplaceTxId { tx_id_old, tx_id_new } => write!(f, "ReplaceTxId '{}' with '{}'", tx_id_old, tx_id_new),
             ScrapeWallet { tx_id, fee_per_gram } => {
                 write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram})")
             },
             EncumberAggregateUtxo {
-                tx_id,
                 expected_commitment,
                 original_maturity,
                 use_output,
@@ -202,22 +194,19 @@ impl fmt::Display for OutputManagerRequest {
                 };
                 write!(
                     f,
-                    "Encumber aggregate utxo with tx_id: {} and output: ({},{}) with original maturity: {}",
-                    tx_id,
+                    "Encumber aggregate utxo with output: ({},{}) with original maturity: {}",
                     expected_commitment.to_hex(),
                     output_hash,
                     original_maturity,
                 )
             },
             SpendBackupPreMineUtxo {
-                tx_id,
                 output_hash,
                 expected_commitment,
                 ..
             } => write!(
                 f,
-                "spending backup pre-mine utxo with tx_id: {} and output: ({},{})",
-                tx_id,
+                "spending backup pre-mine utxo with output: ({},{})",
                 expected_commitment.to_hex(),
                 output_hash
             ),
@@ -299,18 +288,17 @@ pub enum OutputManagerResponse<KM> {
     OutputMetadataSignatureUpdated,
     TxIdReplaced,
     // RecipientTransactionGenerated(ReceiverTransactionProtocol),
-    EncumberAggregateUtxo(
-        Box<(
-            Transaction,
-            MicroMinotari,
-            MicroMinotari,
-            CompressedPublicKey,
-            CompressedPublicKey,
-            CompressedPublicKey,
-            CompressedPublicKey,
-        )>,
-    ),
-    SpendBackupPreMineUtxo((Transaction, MicroMinotari, MicroMinotari)),
+    EncumberAggregateUtxo {
+        tx_id: TxId,
+        transaction: Box<Transaction>,
+        amount: MicroMinotari,
+        fee: MicroMinotari,
+        total_script_public_key: Box<CompressedPublicKey>,
+        total_metadata_ephemeral_public_key: Box<CompressedPublicKey>,
+        total_script_nonce: Box<CompressedPublicKey>,
+        shared_secret_public_key: Box<CompressedPublicKey>,
+    },
+    SpendBackupPreMineUtxo((TxId, Transaction, MicroMinotari, MicroMinotari)),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction, TxId)),
@@ -982,7 +970,6 @@ where KM: TransactionKeyManagerInterface
     #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_utxo(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
         script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
@@ -996,6 +983,7 @@ where KM: TransactionKeyManagerInterface
         payment_id: MemoField,
     ) -> Result<
         (
+            TxId,
             Transaction,
             MicroMinotari,
             MicroMinotari,
@@ -1009,7 +997,6 @@ where KM: TransactionKeyManagerInterface
         match self
             .handle
             .call(OutputManagerRequest::EncumberAggregateUtxo {
-                tx_id,
                 fee_per_gram,
                 expected_commitment,
                 script_input_shares,
@@ -1025,61 +1012,41 @@ where KM: TransactionKeyManagerInterface
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::EncumberAggregateUtxo({e})"))??
         {
-            OutputManagerResponse::EncumberAggregateUtxo(values) => {
-                let (
-                    transaction,
-                    amount,
-                    fee,
-                    total_script_key,
-                    total_metadata_ephemeral_public_key,
-                    total_script_nonce,
-                    shared_secret,
-                ) = *values;
-                Ok((
-                    transaction,
-                    amount,
-                    fee,
-                    total_script_key,
-                    total_metadata_ephemeral_public_key,
-                    total_script_nonce,
-                    shared_secret,
-                ))
-            },
+            OutputManagerResponse::EncumberAggregateUtxo {
+                tx_id,
+                transaction,
+                amount,
+                fee,
+                total_script_public_key,
+                total_metadata_ephemeral_public_key,
+                total_script_nonce,
+                shared_secret_public_key,
+            } => Ok((
+                tx_id,
+                *transaction,
+                amount,
+                fee,
+                *total_script_public_key,
+                *total_metadata_ephemeral_public_key,
+                *total_script_nonce,
+                *shared_secret_public_key,
+            )),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::EncumberAggregateUtxo".to_string(),
             )),
         }
     }
 
-    pub async fn replace_tx_id_in_outputs(
-        &mut self,
-        tx_id_old: TxId,
-        tx_id_new: TxId,
-    ) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ReplaceTxId { tx_id_old, tx_id_new })
-            .await??
-        {
-            OutputManagerResponse::TxIdReplaced => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse(
-                "OutputManagerRequest::ReplaceTxId".to_string(),
-            )),
-        }
-    }
-
     pub async fn spend_backup_pre_mine_utxo(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
-    ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::SpendBackupPreMineUtxo {
-                tx_id,
                 fee_per_gram,
                 output_hash,
                 expected_commitment,
@@ -1088,7 +1055,9 @@ where KM: TransactionKeyManagerInterface
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::SpendBackupPreMineUtxo({e})"))??
         {
-            OutputManagerResponse::SpendBackupPreMineUtxo((transaction, amount, fee)) => Ok((transaction, amount, fee)),
+            OutputManagerResponse::SpendBackupPreMineUtxo((tx_id, transaction, amount, fee)) => {
+                Ok((tx_id, transaction, amount, fee))
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::SpendBackupPreMineUtxo".to_string(),
             )),

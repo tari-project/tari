@@ -339,12 +339,6 @@ where T: OutputManagerBackend + 'static
         self.db.update_output_metadata_signature(&output)
     }
 
-    /// Replace the TxId for all outputs that match the old_tx_id with the new_tx_id in `spent_in_tx_id` or
-    /// `received_in_tx_id` fields.
-    pub fn replace_tx_id_in_outputs(&self, tx_id_old: TxId, tx_id_new: TxId) -> Result<(), OutputManagerStorageError> {
-        self.db.replace_tx_id_in_outputs(tx_id_old, tx_id_new)
-    }
-
     pub fn revalidate_output(&self, commitment: CompressedCommitment) -> Result<(), OutputManagerStorageError> {
         self.db.revalidate_unspent_output(&commitment)
     }

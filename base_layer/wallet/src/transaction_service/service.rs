@@ -1796,13 +1796,10 @@ where
         ),
         TransactionServiceError,
     > {
-        let temp_tx_id = TxId::new_random();
-
         match self
             .resources
             .output_manager_service
             .encumber_aggregate_utxo(
-                temp_tx_id,
                 fee_per_gram,
                 expected_commitment,
                 script_input_shares,
@@ -1818,6 +1815,7 @@ where
             .await
         {
             Ok((
+                tx_id,
                 transaction,
                 amount,
                 fee,
@@ -1832,16 +1830,6 @@ where
                     .iter()
                     .map(|o| o.hash())
                     .collect::<Vec<HashOutput>>();
-                let tx_id = tx_outputs_to_tx_id(
-                    self.resources
-                        .transaction_key_manager_service
-                        .get_view_key()
-                        .await?
-                        .pub_key
-                        .as_bytes(),
-                    transaction.body.outputs(),
-                );
-                self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
                 let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.one_sided_tari_address.clone(),
@@ -1882,13 +1870,10 @@ where
         recipient_address: TariAddress,
         payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
-        let temp_tx_id = TxId::new_random();
-
         match self
             .resources
             .output_manager_service
             .spend_backup_pre_mine_utxo(
-                temp_tx_id,
                 fee_per_gram,
                 output_hash,
                 expected_commitment,
@@ -1896,23 +1881,13 @@ where
             )
             .await
         {
-            Ok((transaction, amount, fee)) => {
+            Ok((tx_id, transaction, amount, fee)) => {
                 let all_outputs = transaction
                     .body
                     .outputs()
                     .iter()
                     .map(|o| o.hash())
                     .collect::<Vec<HashOutput>>();
-                let tx_id = tx_outputs_to_tx_id(
-                    self.resources
-                        .transaction_key_manager_service
-                        .get_view_key()
-                        .await?
-                        .pub_key
-                        .as_bytes(),
-                    transaction.body.outputs(),
-                );
-                self.replace_tx_id_in_outputs(temp_tx_id, tx_id).await?;
                 let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.one_sided_tari_address.clone(),
@@ -2576,19 +2551,6 @@ where
         .await?;
 
         Ok(finalized.tx_id)
-    }
-
-    async fn replace_tx_id_in_outputs(
-        &mut self,
-        tx_id_old: TxId,
-        tx_id_new: TxId,
-    ) -> Result<(), TransactionServiceError> {
-        debug!(target: LOG_TARGET, "Replacing temp tx_id in outputs '{tx_id_old}' with '{tx_id_new}'");
-        Ok(self
-            .resources
-            .output_manager_service
-            .replace_tx_id_in_outputs(tx_id_old, tx_id_new)
-            .await?)
     }
 
     /// Sends a one side payment transaction to a recipient
