@@ -1239,6 +1239,9 @@ impl PeerDatabaseSql {
             return Ok(Vec::new());
         }
 
+        // A peer can have more than one valid address, so that if the join-limit-load query is not returning node IDs,
+        // it will give the requested number of unique peer-adress combinations, which will result in less peer records
+        // than what was required. For that reason, we need a 2nd query to fetch the peers by node IDs.
         self.get_peers_by_node_ids_str(&node_ids, false, &mut conn)
     }
 
