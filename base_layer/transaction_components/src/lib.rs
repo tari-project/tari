@@ -68,7 +68,7 @@ impl BanReason {
     }
 }
 
-// Helper function to derive a TxId from the first ransaction output, or a random TxId if there are no outputs
+// Helper function to derive a TxId from the first transaction output, or a random TxId if there are no outputs
 pub fn tx_outputs_to_tx_id(unique_key: &[u8], outputs: &[TransactionOutput]) -> TxId {
     if let Some(first_output) = outputs.first() {
         TxId::new_deterministic(unique_key, &first_output.hash())
