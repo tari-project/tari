@@ -241,10 +241,12 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                 "Peer '{}' already exists in peer list. Updating.",
                 peer.node_id.short_str()
             );
-            peer.addresses
-                .update_addresses(&peer_identity.claim.addresses, &PeerAddressSource::FromPeerConnection {
+            peer.addresses.add_or_update_addresses(
+                &peer_identity.claim.addresses,
+                &PeerAddressSource::FromPeerConnection {
                     peer_identity_claim: peer_identity.claim.clone(),
-                });
+                },
+            );
 
             // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
             peer.addresses

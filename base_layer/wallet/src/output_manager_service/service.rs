@@ -238,7 +238,6 @@ where
                     }
                 },
                 Some(request_context) = request_stream.next() => {
-                trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.inspect_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {e:?}");
@@ -627,6 +626,7 @@ where
         let event_publisher = self.resources.event_publisher.clone();
         let validation_in_progress = self.validation_in_progress.clone();
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
+        let mut num_resets = 0;
         tokio::spawn(async move {
             // Note: We do not want the validation task to be queued
             let mut _lock = match validation_in_progress.try_lock() {
@@ -691,8 +691,12 @@ where
                         },
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
+                                num_resets += 1;
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
-                                continue 'outer;
+                                // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
+                                if num_resets < 1{
+                                    continue 'outer;
+                                }
                             }
                         }
                     }
