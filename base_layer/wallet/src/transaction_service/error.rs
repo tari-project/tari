@@ -73,8 +73,8 @@ pub enum TransactionServiceError {
     TransactionDoesNotExistError,
     #[error("The Outbound Message Service is not initialized")]
     OutboundMessageServiceNotInitialized,
-    #[error("Received an unexpected API response")]
-    UnexpectedApiResponse,
+    #[error("Unexpected API response with `{0}`")]
+    UnexpectedApiResponse(String),
     #[error("Failed to send from API")]
     ApiSendFailed,
     #[error("Failed to receive in API from service")]

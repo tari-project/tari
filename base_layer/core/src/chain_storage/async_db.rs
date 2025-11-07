@@ -254,6 +254,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_by_hash(hash: HashOutput, compact: bool) -> Option<HistoricalBlock>, "fetch_block_by_hash");
 
+    make_async_fn!(fetch_orphan_blocks() -> Vec<ChainHeader>, "fetch_orphan_blocks");
+
     make_async_fn!(fetch_block_with_kernel(excess_sig: CompressedSignature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 
     make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");

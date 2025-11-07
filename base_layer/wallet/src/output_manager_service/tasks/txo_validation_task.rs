@@ -555,7 +555,7 @@ where
                     output: output.clone(),
                     mined_at_height: returned_output.mined_in_height,
                     mined_block_hash: FixedHash::try_from(returned_output.mined_in_hash.clone())
-                        .map_err(|_| OutputManagerError::UnexpectedApiResponse)?,
+                        .map_err(|_| OutputManagerError::UnexpectedApiResponse("FixedHash".to_string()))?,
                     mined_timestamp: returned_output.mined_in_timestamp,
                 });
             } else {

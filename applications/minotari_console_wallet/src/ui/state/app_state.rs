@@ -750,7 +750,7 @@ impl AppStateInner {
                         .partial_cmp(&a.timestamp)
                         .expect("Should be able to compare timestamps")
                 });
-                self.calculate_payment_references_for_specific_transactions(&vec![txn.into()])
+                self.calculate_payment_references_for_specific_transactions(&[txn.into()])
                     .await?;
             },
         }

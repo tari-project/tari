@@ -30,7 +30,7 @@ use tari_common::{
 };
 use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
-    peer_manager::Peer,
+    peer_manager::{NodeId, Peer},
     protocol::rpc::RpcServer,
     tor::TorIdentity,
     NodeIdentity,
@@ -106,17 +106,29 @@ where B: BlockchainBackend + 'static
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = base_node_config.mempool.service.clone();
 
-        let sync_peers = base_node_config
+        let force_sync_peers = base_node_config
             .force_sync_peers
             .iter()
             .map(|s| SeedPeer::from_str(s))
-            .map(|r| r.map(Peer::from).map(|p| p.node_id))
+            .map(|r| r.map(Peer::from))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        let force_sync_node_ids: Vec<NodeId> = force_sync_peers.clone().into_iter().map(|p| p.node_id).collect();
 
-        base_node_config.state_machine.blockchain_sync_config.forced_sync_peers = sync_peers.clone();
+        let monitored_peers = base_node_config
+            .monitored_peers
+            .iter()
+            .map(|s| SeedPeer::from_str(s))
+            .map(|r| r.map(Peer::from))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        let mut monitored_node_ids: Vec<NodeId> = monitored_peers.clone().into_iter().map(|p| p.node_id).collect();
+        let mut total_monitored_ids = force_sync_node_ids.clone();
+        total_monitored_ids.append(&mut monitored_node_ids);
 
-        debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
+        base_node_config.state_machine.blockchain_sync_config.forced_sync_peers = force_sync_node_ids.clone();
+
+        debug!(target: LOG_TARGET, "{} sync peer(s) configured", force_sync_node_ids.len());
 
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
@@ -159,7 +171,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(base_node_config.metadata_auto_ping_interval),
-                    monitored_peers: sync_peers.clone(),
+                    monitored_peers: total_monitored_ids,
                     ..Default::default()
                 },
                 peer_message_subscriptions,
@@ -239,7 +251,20 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             },
         };
-
+        for peer in force_sync_peers {
+            comms
+                .peer_manager()
+                .add_or_update_peer(peer)
+                .await
+                .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        }
+        for peer in monitored_peers {
+            comms
+                .peer_manager()
+                .add_or_update_peer(peer)
+                .await
+                .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        }
         handles.register(comms);
 
         Ok(handles)

@@ -45,8 +45,10 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 )]
 #[repr(u8)]
 #[borsh(use_discriminant = true)]
+#[derive(Default)]
 pub enum OutputType {
     /// A standard output.
+    #[default]
     Standard = 0,
     /// Output is a coinbase output, must not be spent until maturity.
     Coinbase = 1,
@@ -106,12 +108,6 @@ impl OutputType {
 
     pub fn is_burn(&self) -> bool {
         matches!(self, OutputType::Burn)
-    }
-}
-
-impl Default for OutputType {
-    fn default() -> Self {
-        Self::Standard
     }
 }
 

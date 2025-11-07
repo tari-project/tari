@@ -282,7 +282,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         //   peer, but they claimed better POW before we attempted sync.
         // - This method will return ban-able errors for certain offenses.
         let (header_sync_status, peer_response) = self
-            .determine_sync_status(sync_peer, best_header.clone(), best_block_header.clone(), &mut client)
+            .determine_sync_status(
+                sync_peer,
+                best_header.clone(),
+                best_block_header.clone(),
+                self.config.max_reorg_depth_allowed,
+                &mut client,
+            )
             .await?;
 
         match header_sync_status.clone() {
@@ -323,25 +329,26 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     async fn find_chain_split(
         &mut self,
         peer_node_id: &NodeId,
+        max_reorg_depth_allowed: usize,
         client: &mut rpc::BaseNodeSyncRpcClient,
         header_count: u64,
     ) -> Result<FindChainSplitResult, BlockHeaderSyncError> {
         const NUM_CHAIN_SPLIT_HEADERS: usize = 500;
         // Limit how far back we're willing to go. A peer might just say it does not have a chain split
         // and keep us busy going back until the genesis.
-        // 20 x 500 = max 10,000 block split can be detected
-        const MAX_CHAIN_SPLIT_ITERS: usize = 20;
+        // 20 x 500 = max 10,000 block split can be detected. The 10_000 limit is default, but can be overridden
+        let max_chain_split_iters = max_reorg_depth_allowed.saturating_div(NUM_CHAIN_SPLIT_HEADERS);
 
         let mut offset = 0;
         let mut iter_count = 0;
         loop {
             iter_count += 1;
-            if iter_count > MAX_CHAIN_SPLIT_ITERS {
+            if iter_count > max_chain_split_iters {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                     peer_node_id,
-                    NUM_CHAIN_SPLIT_HEADERS * MAX_CHAIN_SPLIT_ITERS,
+                    NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
                 );
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
@@ -365,7 +372,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     target: LOG_TARGET,
                     "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                     peer_node_id,
-                    NUM_CHAIN_SPLIT_HEADERS * MAX_CHAIN_SPLIT_ITERS,
+                    NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
                 );
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
@@ -385,7 +392,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             target: LOG_TARGET,
                             "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                             peer_node_id,
-                            NUM_CHAIN_SPLIT_HEADERS * MAX_CHAIN_SPLIT_ITERS,
+                            NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
                         );
                         return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
                     }
@@ -461,11 +468,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         sync_peer: &SyncPeer,
         best_header: ChainHeader,
         best_block_header: ChainHeader,
+        max_reorg_depth_allowed: usize,
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<(HeaderSyncStatus, FindChainSplitResult), BlockHeaderSyncError> {
         // This method will return ban-able errors for certain offenses.
         let chain_split_result = self
-            .find_chain_split(sync_peer.node_id(), client, HEADER_SYNC_INITIAL_MAX_HEADERS as u64)
+            .find_chain_split(
+                sync_peer.node_id(),
+                max_reorg_depth_allowed,
+                client,
+                HEADER_SYNC_INITIAL_MAX_HEADERS as u64,
+            )
             .await?;
         if chain_split_result.reorg_steps_back > 0 {
             debug!(

@@ -383,9 +383,9 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     use crate::peer_manager::PeerFlags;
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     let node_id = NodeId::from_key(&pk);
-    let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
 
     // Create 1 to 4 random addresses
+    let mut addresses = Vec::new();
     for _i in 1..=rand::thread_rng().gen_range(1..4) {
         let n = [
             match rand::thread_rng().gen_range(0..3) {
@@ -398,11 +398,15 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
             rand::thread_rng().gen_range(1..255),
             rand::thread_rng().gen_range(5000..9000),
         ];
-        let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{}", n[0], n[1], n[2], n[3], n[4])
+        let address = format!("/ip4/{}.{}.{}.{}/tcp/{}", n[0], n[1], n[2], n[3], n[4])
             .parse::<Multiaddr>()
             .unwrap();
-        net_addresses.add_address(&net_address, &PeerAddressSource::Config);
+        addresses.push(address);
     }
+    let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
+        addresses.clone(),
+        &create_peer_address_source_with_claim(addresses, features),
+    );
 
     let mut peer = Peer::new(
         pk,
@@ -456,18 +460,22 @@ pub fn create_test_peer_with_onion_address(ban_flag: bool, features: PeerFeature
     use crate::peer_manager::PeerFlags;
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     let node_id = NodeId::from_key(&pk);
-    let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
 
     // Create 1 to 4 random onion addresses
+    let mut addresses = Vec::new();
     for _i in 1..=rand::thread_rng().gen_range(1..4) {
         use std::str::FromStr;
 
         let host = random_onion3_host();
         let port = rand::thread_rng().gen_range(1024..=65535);
         let addr_str = format!("/onion3/{}:{}", host, port);
-        let maddr = Multiaddr::from_str(&addr_str).expect("valid onion3 multiaddr");
-        net_addresses.add_address(&maddr, &PeerAddressSource::Config);
+        let address = Multiaddr::from_str(&addr_str).expect("valid onion3 multiaddr");
+        addresses.push(address);
     }
+    let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
+        addresses.clone(),
+        &create_peer_address_source_with_claim(addresses, features),
+    );
 
     let mut peer = Peer::new(
         pk,
@@ -526,9 +534,9 @@ pub fn create_test_peer_internal_addresses_only(ban_flag: bool, features: PeerFe
 fn add_internal_addresses(peer: &mut Peer) {
     use rand::{prelude::SliceRandom, Rng};
 
-    let mut net_addresses = Vec::new();
+    let mut addresses = Vec::new();
     // IPv4 Loopback
-    let net_address = format!(
+    let address_1 = format!(
         "/ip4/127.{}.{}.{}/tcp/{}",
         rand::thread_rng().gen_range(0..255),
         rand::thread_rng().gen_range(0..255),
@@ -537,14 +545,14 @@ fn add_internal_addresses(peer: &mut Peer) {
     )
     .parse::<Multiaddr>()
     .unwrap();
-    net_addresses.push(net_address);
+    addresses.push(address_1);
     // IPv4 Unspecified
-    let net_address = format!("/ip4/0.0.0.0/tcp/{}", rand::thread_rng().gen_range(9100..9200))
+    let address_2 = format!("/ip4/0.0.0.0/tcp/{}", rand::thread_rng().gen_range(9100..9200))
         .parse::<Multiaddr>()
         .unwrap();
-    net_addresses.push(net_address);
+    addresses.push(address_2);
     // IPv4 Private
-    let net_address = format!(
+    let address_3 = format!(
         "/ip4/10.{}.{}.{}/tcp/{}",
         rand::thread_rng().gen_range(0..255),
         rand::thread_rng().gen_range(0..255),
@@ -553,9 +561,9 @@ fn add_internal_addresses(peer: &mut Peer) {
     )
     .parse::<Multiaddr>()
     .unwrap();
-    net_addresses.push(net_address);
+    addresses.push(address_3);
     // IPv4 Private
-    let net_address = format!(
+    let address_4 = format!(
         "/ip4/172.{}.{}.{}/tcp/{}",
         rand::thread_rng().gen_range(16..=31),
         rand::thread_rng().gen_range(0..255),
@@ -564,9 +572,9 @@ fn add_internal_addresses(peer: &mut Peer) {
     )
     .parse::<Multiaddr>()
     .unwrap();
-    net_addresses.push(net_address);
+    addresses.push(address_4);
     // IPv4 Private
-    let net_address = format!(
+    let address_5 = format!(
         "/ip4/192.168.{}.{}/tcp/{}",
         rand::thread_rng().gen_range(0..255),
         rand::thread_rng().gen_range(0..255),
@@ -574,27 +582,64 @@ fn add_internal_addresses(peer: &mut Peer) {
     )
     .parse::<Multiaddr>()
     .unwrap();
-    net_addresses.push(net_address);
+    addresses.push(address_5);
     // IPv6 Loopback
-    let net_address = format!("/ip6/::1/tcp/{}", rand::thread_rng().gen_range(9500..9600))
+    let address_6 = format!("/ip6/::1/tcp/{}", rand::thread_rng().gen_range(9500..9600))
         .parse::<Multiaddr>()
         .unwrap();
-    net_addresses.push(net_address);
+    addresses.push(address_6);
     // IPv6 Unspecified
-    let net_address = format!("/ip6/::/tcp/{}", rand::thread_rng().gen_range(9600..9700))
+    let address_7 = format!("/ip6/::/tcp/{}", rand::thread_rng().gen_range(9600..9700))
         .parse::<Multiaddr>()
         .unwrap();
-    net_addresses.push(net_address);
-    net_addresses.shuffle(&mut rand::thread_rng());
+    addresses.push(address_7);
+    addresses.shuffle(&mut rand::thread_rng());
 
-    for net_address in net_addresses.iter().take(2) {
-        peer.addresses.add_address(net_address, &PeerAddressSource::Config);
+    // Do not create a new PeerAddressSource with PeerIdentityClaim - use PeerAddressSource::Config - otherwise the
+    // previous claims and associated addresses will be discarded.
+    peer.addresses
+        .add_or_update_addresses(&addresses, &PeerAddressSource::Config);
+}
+
+#[cfg(test)]
+pub fn create_peer_address_source_with_claim(
+    addresses: Vec<Multiaddr>,
+    peer_features: PeerFeatures,
+) -> PeerAddressSource {
+    use chrono::Utc;
+    use rand::rngs::OsRng;
+    use tari_crypto::keys::SecretKey;
+
+    use crate::{
+        peer_manager::{IdentitySignature, PeerIdentityClaim},
+        types::CommsSecretKey,
+    };
+
+    fn create_identity_signature(addresses: &[Multiaddr], peer_features: PeerFeatures) -> IdentitySignature {
+        let secret = CommsSecretKey::random(&mut OsRng);
+        let public_key = CommsPublicKey::from_secret_key(&secret);
+        let updated_at = Utc::now();
+        let identity = IdentitySignature::sign_new(&secret, peer_features, addresses, updated_at);
+        assert!(
+            identity.is_valid(&public_key, peer_features, addresses).unwrap(),
+            "Signature is not valid"
+        );
+        identity
+    }
+
+    PeerAddressSource::FromPeerConnection {
+        peer_identity_claim: PeerIdentityClaim {
+            addresses: addresses.clone(),
+            features: peer_features,
+            signature: create_identity_signature(&addresses, peer_features),
+        },
     }
 }
 
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
+    use chrono::{DateTime, Utc};
     use tari_common_sqlite::connection::DbConnection;
 
     use super::*;
@@ -857,6 +902,112 @@ mod test {
             .unwrap();
 
         assert!(!peer.is_offline());
+    }
+
+    async fn validate_claim_bump_by_newer(
+        peer_manager: &PeerManager,
+        update_peer: &Peer,
+        previous_claim_time: Option<DateTime<Utc>>,
+        expected_count: usize,
+    ) -> DateTime<Utc> {
+        let peer_from_db = peer_manager
+            .find_by_node_id(&update_peer.node_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let newest_time = peer_from_db.addresses.newest_claim_updated_at().unwrap();
+
+        if let Some(prev_time) = previous_claim_time {
+            assert!(
+                newest_time > prev_time,
+                "New claim time was not newer than previous claim time"
+            );
+        }
+
+        for addr in peer_from_db.addresses.addresses() {
+            let claim_time = match addr.source() {
+                PeerAddressSource::FromPeerConnection { peer_identity_claim } => {
+                    peer_identity_claim.signature.updated_at()
+                },
+                _ => panic!("Expected FromPeerConnection source for address: {}", addr.address()),
+            };
+            assert_eq!(
+                claim_time, newest_time,
+                "Address claim time inconsistent among addresses"
+            );
+        }
+
+        assert_eq!(peer_manager.count().await, expected_count, "Peer count mismatch");
+
+        let mut expected_addresses = update_peer
+            .addresses
+            .addresses()
+            .iter()
+            .map(|a| a.address().clone())
+            .collect::<Vec<_>>();
+        let mut addresses_from_db = peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .map(|a| a.address().clone())
+            .collect::<Vec<_>>();
+        expected_addresses.sort();
+        addresses_from_db.sort();
+        assert_eq!(expected_addresses, addresses_from_db);
+
+        newest_time
+    }
+
+    #[tokio::test]
+    async fn it_correctly_merges_old_and_new_address_claims() {
+        // Create a PeerManager and a test peer
+        let peer_manager = create_peer_manager();
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+
+        // Add the original peer to the database
+        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
+
+        // Verify that the peer from the database has consistent claim timestamps
+        let claim_1_time = validate_claim_bump_by_newer(&peer_manager, &peer, None, 1).await;
+
+        // Create a new claim with the same addresses but a new timestamp
+        tokio::time::sleep(Duration::from_millis(150)).await; // Sleep to ensure different timestamp
+        let peer_addresses = peer
+            .addresses
+            .addresses()
+            .iter()
+            .map(|a| a.address().clone())
+            .collect::<Vec<_>>();
+        let peer_address_source = create_peer_address_source_with_claim(peer_addresses.clone(), peer.features);
+        // Update the peer's addresses with a new claim
+        peer.addresses
+            .add_or_update_addresses(&peer_addresses, &peer_address_source);
+
+        // Update the peer in the database
+        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
+
+        // Assert that the updated peer from the database has the new claim timestamp and that it is consistent
+        let claim_2_time = validate_claim_bump_by_newer(&peer_manager, &peer, Some(claim_1_time), 1).await;
+
+        // Create a total new set addresses and claim with a new timestamp for the same peer
+        tokio::time::sleep(Duration::from_millis(150)).await; // Sleep to ensure different timestamp
+        let mut update_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        update_peer.node_id = peer.node_id.clone();
+        update_peer.public_key = peer.public_key.clone();
+
+        // Add the updated peer to the database
+        peer_manager.add_or_update_peer(update_peer.clone()).await.unwrap();
+
+        // Assert that the database still contains only one peer and that the peer from the database has the new claim
+        // timestamp and that it is consistent
+        let _claim_3_time = validate_claim_bump_by_newer(&peer_manager, &update_peer, Some(claim_2_time), 1).await;
+
+        // Update the peer in the database with the old peer (which has an older claim timestamp)
+        // This should NOT update the claim timestamp
+        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
+
+        // Assert that the database still contains only one peer with the latest claim and addresses
+        let _claim_3_time = validate_claim_bump_by_newer(&peer_manager, &update_peer, Some(claim_2_time), 1).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]

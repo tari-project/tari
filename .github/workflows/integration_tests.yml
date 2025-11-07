@@ -125,7 +125,7 @@ jobs:
           fi
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4 # upload test results as artifact
+        uses: actions/upload-artifact@v5 # upload test results as artifact
         if: always()
         with:
           name: junit-cucumber
@@ -216,7 +216,7 @@ jobs:
           fi
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4 # upload test results as artifact
+        uses: actions/upload-artifact@v5 # upload test results as artifact
         if: always()
         with:
           name: junit-ffi-cucumber
@@ -228,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Event File
           path: ${{ github.event_path }}

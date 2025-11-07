@@ -291,9 +291,9 @@ async fn inputs_are_not_malleable() {
     malicious_test_params.commitment_mask_key_id = spent_output.commitment_mask_key_id().clone();
     let modified_so = blockchain
         .key_manager
-        .get_script_offset(&vec![spent_output.script_key_id().clone()], &vec![
-            malicious_test_params.script_key_id.clone(),
-        ])
+        .get_script_offset(&[spent_output.script_key_id().clone()], &[malicious_test_params
+            .script_key_id
+            .clone()])
         .await
         .unwrap();
     // so is calculated as ks-ko

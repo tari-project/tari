@@ -86,13 +86,14 @@ impl TransportConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum TransportType {
     /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.
     Memory,
     /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
     /// configured to allow communication with peers using the tor transport.
+    #[default]
     Tcp,
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
     /// onion v3 and DNS addresses.
@@ -117,14 +118,6 @@ impl TransportType {
                 TransportProtocol::Ipv6,
             ],
         }
-    }
-}
-
-impl Default for TransportType {
-    fn default() -> Self {
-        // The tor transport configures itself as long as it has access to the control port at
-        // `TorConfig::control_address`
-        Self::Tor
     }
 }
 

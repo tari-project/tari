@@ -45,6 +45,8 @@ pub struct BlockchainSyncConfig {
     /// An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty, sync peers
     /// are chosen based on their advertised chain metadata.
     pub forced_sync_peers: Vec<NodeId>,
+    /// An allowed list of nodes which should always be connected to
+    pub monitored_peers: Vec<NodeId>,
     /// Number of threads to use for validation
     pub validation_concurrency: usize,
     /// The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for
@@ -54,6 +56,9 @@ pub struct BlockchainSyncConfig {
     /// The number of initial rounds of seed peer based bootstrapping.
     #[serde(default = "default_num_initial_sync_rounds_seed_bootstrap")]
     pub num_initial_sync_rounds_seed_bootstrap: usize,
+    /// The maximum reorg depth allowed during header synchronization.
+    #[serde(default = "max_reorg_depth_allowed")]
+    pub max_reorg_depth_allowed: usize,
 }
 
 fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
@@ -61,6 +66,10 @@ fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
     // For now, a sensible default. This will be overridden by DhtEvent if DhtNetworkDiscoveryRoundInfo provides
     // total_rounds.
     5
+}
+
+fn max_reorg_depth_allowed() -> usize {
+    10000
 }
 
 impl Default for BlockchainSyncConfig {
@@ -71,9 +80,11 @@ impl Default for BlockchainSyncConfig {
             ban_period: Duration::from_secs(60 * 60 * 2),       // 2 hours
             short_ban_period: Duration::from_secs(240),         // 4 mins
             forced_sync_peers: Default::default(),
+            monitored_peers: Default::default(),
             validation_concurrency: 6,
             rpc_deadline: Duration::from_secs(240), // Syncing many full blocks over tor require this
             num_initial_sync_rounds_seed_bootstrap: default_num_initial_sync_rounds_seed_bootstrap(),
+            max_reorg_depth_allowed: max_reorg_depth_allowed(),
         }
     }
 }

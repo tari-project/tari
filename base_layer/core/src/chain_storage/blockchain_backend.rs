@@ -284,4 +284,6 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn set_stats_total_height(&self, total: u64);
     /// Update the current progress step
     fn update_stats_progress(&self, current: u64);
+
+    fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError>;
 }
