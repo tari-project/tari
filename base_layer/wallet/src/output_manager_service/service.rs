@@ -81,6 +81,7 @@ use tari_transaction_components::{
         WalletOutput,
         WalletOutputBuilder,
     },
+    tx_outputs_to_tx_id,
     MicroMinotari,
     TransactionBuilder,
 };
@@ -112,7 +113,6 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
-    tx_outputs_to_tx_id,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 const LOG_TARGET: &str = "wallet::output_manager_service";

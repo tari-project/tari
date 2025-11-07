@@ -34,8 +34,6 @@ mod config;
 pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
-use tari_common_types::transaction::TxId;
-use tari_transaction_components::transaction_components::TransactionOutput;
 use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 pub use wallet::Wallet;
 
@@ -60,12 +58,3 @@ pub type WalletSqlite = Wallet<
 >;
 
 pub type WalletKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>;
-
-// Helper function to derive a TxId from the first ransaction output, or a random TxId if there are no outputs
-pub(crate) fn tx_outputs_to_tx_id(mac_key: &[u8], outputs: &[TransactionOutput]) -> TxId {
-    if let Some(first_output) = outputs.first() {
-        TxId::new_deterministic(mac_key, &first_output.hash())
-    } else {
-        TxId::new_random()
-    }
-}
