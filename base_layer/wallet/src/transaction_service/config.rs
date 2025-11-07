@@ -91,10 +91,11 @@ impl Default for TransactionServiceConfig {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize, Default)]
 pub enum TransactionRoutingMechanism {
     DirectOnly,
     StoreAndForwardOnly,
+    #[default]
     DirectAndStoreAndForward,
 }
 
@@ -123,11 +124,5 @@ impl From<String> for TransactionRoutingMechanism {
                 Self::DirectAndStoreAndForward
             },
         }
-    }
-}
-
-impl Default for TransactionRoutingMechanism {
-    fn default() -> Self {
-        Self::DirectAndStoreAndForward
     }
 }

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.2](https://github.com/tari-project/tari/compare/v5.2.0-pre.1...v5.2.0-pre.2) (2025-11-06)
+
+
+### Features
+
+* expand transport channel errors ([#7564](https://github.com/tari-project/tari/issues/7564)) ([30e822b](https://github.com/tari-project/tari/commit/30e822b8486c97e92e932d10ded4dc10dec4b914))
+
+
+### Bug Fixes
+
+* http paging ([#7572](https://github.com/tari-project/tari/issues/7572)) ([9f88df4](https://github.com/tari-project/tari/commit/9f88df425d4f5a3c7382f5109c623691a12a5b76))
+* validation deadlock ([#7563](https://github.com/tari-project/tari/issues/7563)) ([18b38f8](https://github.com/tari-project/tari/commit/18b38f84766e8b00a75149e4f9b0d7aa92cb6b24))
+
 ## [5.2.0-pre.1](https://github.com/tari-project/tari/compare/v5.2.0-pre.0...v5.2.0-pre.1) (2025-10-30)
 
 

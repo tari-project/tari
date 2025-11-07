@@ -40,8 +40,10 @@ use serde::{Deserialize, Serialize};
 #[repr(u8)]
 #[serde(rename_all = "snake_case")]
 #[borsh(use_discriminant = true)]
+#[derive(Default)]
 pub enum RangeProofType {
     /// Range proof is a BulletProofPlus
+    #[default]
     BulletProofPlus = 0,
     /// Range proof is a revealed value
     RevealedValue = 1,
@@ -61,12 +63,6 @@ impl RangeProofType {
 
     pub fn all() -> Vec<Self> {
         vec![RangeProofType::BulletProofPlus, RangeProofType::RevealedValue]
-    }
-}
-
-impl Default for RangeProofType {
-    fn default() -> Self {
-        Self::BulletProofPlus
     }
 }
 
