@@ -121,7 +121,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         script_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
@@ -129,7 +129,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         &self,
         commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
@@ -141,7 +141,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         nonce_id: &TariKeyId,
         total_nonce: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
-        kernel_version: &TransactionKernelVersion,
+        kernel_version: TransactionKernelVersion,
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
@@ -194,7 +194,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
@@ -204,7 +204,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
         script: &TariScript,
@@ -242,7 +242,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
         ephemeral_pubkey: &CompressedPublicKey,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
@@ -256,7 +256,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_key_id: &TariKeyId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 

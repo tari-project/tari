@@ -34,10 +34,7 @@ pub struct MarshalOutputPair {
 impl MarshalOutputPair {
     pub fn marshal(output_pair: OutputPair) -> Result<Self, TransactionError> {
         let encrypted_kernel_nonce = output_pair.kernel_nonce.to_string();
-        let encrypted_sender_offset_key = match &output_pair.sender_offset_key_id {
-            Some(key) => Some(key.to_string()),
-            None => None,
-        };
+        let encrypted_sender_offset_key = output_pair.sender_offset_key_id.as_ref().map(|key| key.to_string());
         let encrypted_output_commitment_mask = output_pair.output.commitment_mask_key_id().to_string();
 
         Ok(MarshalOutputPair {

@@ -36,7 +36,6 @@ use tari_transaction_components::{
     transaction_components::WalletOutput,
     txn_schema,
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
@@ -98,7 +97,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         &mut outputs,
         txs,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -113,7 +112,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         &mut outputs,
         txs,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -128,7 +127,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         &mut outputs,
         txs,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -143,7 +142,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         &mut outputs,
         txs,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -165,7 +164,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         &mut outputs,
         txs,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -189,9 +188,9 @@ pub async fn create_new_blockchain(
     BaseNodeConsensusManager,
     MemoryDbKeyManager,
 ) {
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = consensus_constants(network).build();
-    let (block0, output) = create_genesis_block(&consensus_constants, &mut key_manager).await;
+    let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
@@ -218,8 +217,8 @@ pub async fn create_new_blockchain_with_constants(
     BaseNodeConsensusManager,
     MemoryDbKeyManager,
 ) {
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
-    let (block0, output) = create_genesis_block(&constants, &mut key_manager).await;
+    let key_manager = KeyManager::new_random().unwrap();
+    let (block0, output) = create_genesis_block(&constants, &key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(constants)
         .with_block(block0.clone())
@@ -247,9 +246,9 @@ pub async fn create_new_blockchain_lmdb(
     BaseNodeConsensusManager,
     MemoryDbKeyManager,
 ) {
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = consensus_constants(network).build();
-    let (block0, output) = create_genesis_block(&consensus_constants, &mut key_manager).await;
+    let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())

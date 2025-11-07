@@ -305,7 +305,7 @@ async fn setup_transaction_service_no_comms(
 
     let ts_service_db = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
-    let key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection));
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -433,7 +433,7 @@ async fn large_coin_split_transaction() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut key_manager_handle,
+        &key_manager_handle,
     )
     .await;
 
@@ -530,7 +530,7 @@ async fn single_transaction_burn_tari() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut key_manager_handle,
+        &key_manager_handle,
     )
     .await;
 
@@ -674,7 +674,7 @@ async fn send_one_sided_transaction_to_other() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut key_manager_handle,
+        &key_manager_handle,
     )
     .await;
     let mut alice_oms_clone = alice_oms.clone();
@@ -847,7 +847,7 @@ async fn recover_one_sided_transaction() {
 
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
+    let bob_view_key = bob_key_manager_handle.get_view_key();
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
@@ -965,7 +965,7 @@ async fn recover_stealth_one_sided_transaction() {
     )
     .await;
 
-    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
+    let bob_view_key = bob_key_manager_handle.get_view_key();
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
@@ -1102,7 +1102,7 @@ async fn test_htlc_send_and_claim() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut key_manager_handle,
+        &key_manager_handle,
     )
     .await;
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
@@ -1112,7 +1112,7 @@ async fn test_htlc_send_and_claim() {
 
     let value = 10000.into();
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap();
+    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key();
     let bob_address =
         TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network).unwrap();
     let (tx_id, pre_image, output) = alice_ts
@@ -1234,7 +1234,7 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut key_manager_handle,
+        &key_manager_handle,
     )
     .await;
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
@@ -1244,7 +1244,7 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
 
     let value = 10000.into();
 
-    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
+    let bob_view_key = bob_key_manager_handle.get_view_key();
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),

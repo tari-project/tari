@@ -163,7 +163,7 @@ impl TransactionInput {
 
     /// Convenience function to create the entire script challenge
     pub fn build_script_signature_challenge(
-        version: &TransactionInputVersion,
+        version: TransactionInputVersion,
         ephemeral_commitment: &CompressedCommitment,
         ephemeral_pubkey: &CompressedPublicKey,
         script: &TariScript,
@@ -186,7 +186,7 @@ impl TransactionInput {
 
     /// Convenience function to create the finalize script challenge
     pub fn finalize_script_signature_challenge(
-        version: &TransactionInputVersion,
+        version: TransactionInputVersion,
         ephemeral_commitment: &CompressedCommitment,
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
@@ -210,14 +210,14 @@ impl TransactionInput {
     /// Convenience function to create the entire script signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
     pub fn build_script_signature_message(
-        version: &TransactionInputVersion,
+        version: TransactionInputVersion,
         script: &TariScript,
         input_data: &ExecutionStack,
     ) -> [u8; 32] {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
                 DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("script_message")
-                    .chain(version)
+                    .chain(&version)
                     .chain(script)
                     .chain(input_data)
                     .finalize()
@@ -367,7 +367,7 @@ impl TransactionInput {
                 ..
             } => {
                 let challenge = TransactionInput::build_script_signature_challenge(
-                    &self.version,
+                    self.version,
                     self.script_signature.ephemeral_commitment(),
                     self.script_signature.ephemeral_pubkey(),
                     script,

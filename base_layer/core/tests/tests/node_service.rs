@@ -53,7 +53,7 @@ use tari_transaction_components::{
     transaction_components::OutputFeatures,
     txn_schema,
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
+
 use tempfile::tempdir;
 
 use crate::{
@@ -76,7 +76,7 @@ use crate::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn propagate_and_forward_many_valid_blocks() {
     let temp_dir = tempdir().unwrap();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     // Alice will propagate a number of block hashes to bob, bob will receive it, request the full block, verify and
     // then propagate the hash to carol and dan. Dan and Carol will also try to propagate the block hashes to each
     // other, but the block should not be re-requested. These duplicate blocks will be discarded and wont be
@@ -92,10 +92,10 @@ async fn propagate_and_forward_many_valid_blocks() {
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants, &mut key_manager).await;
+    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants, &key_manager).await;
 
     let (tx01, _tx01_out) = spend_utxos(
-        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&mut key_manager
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&key_manager
     ).await;
 
     let rules = BaseNodeConsensusManager::builder(network)
@@ -179,7 +179,7 @@ async fn propagate_and_forward_many_valid_blocks() {
             rules
                 .consensus_constants(block0.height())
                 .min_pow_difficulty(PowAlgorithm::Sha3x),
-            &mut key_manager,
+            &key_manager,
         )
         .await
         .unwrap()
@@ -191,7 +191,7 @@ async fn propagate_and_forward_many_valid_blocks() {
             blocks[0].clone(),
             &rules,
             5,
-            &mut key_manager,
+            &key_manager,
         )
         .await,
     );
@@ -246,9 +246,9 @@ async fn propagate_and_forward_invalid_block_hash() {
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
     let network = Network::LocalNet;
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (block0, genesis_coinbase) = create_genesis_block(&consensus_constants, &mut key_manager).await;
+    let (block0, genesis_coinbase) = create_genesis_block(&consensus_constants, &key_manager).await;
     let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
@@ -304,7 +304,7 @@ async fn propagate_and_forward_invalid_block_hash() {
     // Add a transaction that Bob does not have to force a request
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(from: vec![genesis_coinbase.clone()], to: vec![5 * T], fee: 5.into())],
-        &mut key_manager,
+        &key_manager,
     )
     .await;
     let txs = txs.into_iter().map(|tx| (*tx).clone()).collect();
@@ -314,7 +314,7 @@ async fn propagate_and_forward_invalid_block_hash() {
         txs,
         &rules,
         Difficulty::from_u64(4).unwrap(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -376,10 +376,10 @@ async fn propagate_and_forward_invalid_block() {
     let bob_node_identity = random_node_identity();
     let carol_node_identity = random_node_identity();
     let dan_node_identity = random_node_identity();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (block0, _) = create_genesis_block(&consensus_constants, &mut key_manager).await;
+    let (block0, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
@@ -471,7 +471,7 @@ async fn propagate_and_forward_invalid_block() {
         vec![],
         &rules,
         Difficulty::from_u64(4).unwrap(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -525,7 +525,7 @@ async fn propagate_and_forward_invalid_block() {
 async fn local_get_metadata() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let (mut node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
@@ -537,7 +537,7 @@ async fn local_get_metadata() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -547,7 +547,7 @@ async fn local_get_metadata() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -563,9 +563,9 @@ async fn local_get_metadata() {
 async fn local_get_new_block_template_and_get_new_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
-    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &mut key_manager).await;
+    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &key_manager).await;
     let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
@@ -580,7 +580,7 @@ async fn local_get_new_block_template_and_get_new_block() {
         txn_schema!(from: vec![outputs[1].clone()], to: vec![10_000 * uT, 20_000 * uT]),
         txn_schema!(from: vec![outputs[2].clone()], to: vec![30_000 * uT, 40_000 * uT]),
     ];
-    let (txs, _) = schema_to_transaction(&schema, &mut key_manager).await;
+    let (txs, _) = schema_to_transaction(&schema, &key_manager).await;
     node.mempool.insert(txs[0].clone()).await.unwrap();
     node.mempool.insert(txs[1].clone()).await.unwrap();
 
@@ -606,9 +606,9 @@ async fn local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
-    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &mut key_manager).await;
+    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &key_manager).await;
     let rules = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
@@ -626,10 +626,10 @@ async fn local_get_new_block_with_zero_conf() {
         .await;
 
     let (tx01, tx01_out) = spend_utxos(
-        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&mut key_manager
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&key_manager
     ).await;
     let (tx02, tx02_out) = spend_utxos(
-        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),&mut key_manager
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),&key_manager
     ).await;
     assert_eq!(
         node.mempool.insert(Arc::new(tx01)).await.unwrap(),
@@ -642,12 +642,12 @@ async fn local_get_new_block_with_zero_conf() {
 
     let (tx11, _) = spend_utxos(
         txn_schema!(from: tx01_out, to: vec![10_000 * uT], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
-        &mut key_manager,
+        &key_manager,
     )
     .await;
     let (tx12, _) = spend_utxos(
         txn_schema!(from: tx02_out, to: vec![20_000 * uT], fee: 60*uT, lock: 0, features: OutputFeatures::default()),
-        &mut key_manager,
+        &key_manager,
     )
     .await;
     assert_eq!(
@@ -671,7 +671,7 @@ async fn local_get_new_block_with_zero_conf() {
         coinbase_value,
         rules.consensus_constants(1).coinbase_min_maturity() + 1,
         None,
-        &mut key_manager,
+        &key_manager,
     )
     .await;
     block_template.body.add_kernel(kernel);
@@ -692,9 +692,9 @@ async fn local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
-    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &mut key_manager).await;
+    let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants[0], &key_manager).await;
     let rules = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
@@ -712,19 +712,19 @@ async fn local_get_new_block_with_combined_transaction() {
         .await;
 
     let (tx01, tx01_out) = spend_utxos(
-        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&mut key_manager
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&key_manager
     ).await;
     let (tx02, tx02_out) = spend_utxos(
-        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),&mut key_manager
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),&key_manager
     ).await;
     let (tx11, _) = spend_utxos(
         txn_schema!(from: tx01_out, to: vec![10_000 * uT], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
-        &mut key_manager,
+        &key_manager,
     )
     .await;
     let (tx12, _) = spend_utxos(
         txn_schema!(from: tx02_out, to: vec![20_000 * uT], fee: 60*uT, lock: 0, features: OutputFeatures::default()),
-        &mut key_manager,
+        &key_manager,
     )
     .await;
 
@@ -752,7 +752,7 @@ async fn local_get_new_block_with_combined_transaction() {
         coinbase_value,
         rules.consensus_constants(1).coinbase_min_maturity() + 1,
         None,
-        &mut key_manager,
+        &key_manager,
     )
     .await;
     block_template.body.add_kernel(kernel);
@@ -772,7 +772,7 @@ async fn local_get_new_block_with_combined_transaction() {
 async fn local_submit_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let (mut node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
@@ -781,7 +781,7 @@ async fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0, true).unwrap().block().clone();
     let mut block1 = db
-        .prepare_new_block(chain_block(&block0, vec![], &consensus_manager, &mut key_manager).await)
+        .prepare_new_block(chain_block(&block0, vec![], &consensus_manager, &key_manager).await)
         .unwrap();
     block1.header.kernel_mmr_size += 1;
     block1.header.output_smt_size += 1;

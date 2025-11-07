@@ -1485,11 +1485,10 @@ pub async fn command_runner(
                     let script = push_pubkey_script(&script_spending_key);
 
                     // Metadata signature
-                    let script_offset = key_manager_service
-                        .get_script_offset(
-                            std::slice::from_ref(&party_info.pre_mine_script_key_id),
-                            std::slice::from_ref(&party_info.sender_offset_key_id),
-                        )?;
+                    let script_offset = key_manager_service.get_script_offset(
+                        std::slice::from_ref(&party_info.pre_mine_script_key_id),
+                        std::slice::from_ref(&party_info.sender_offset_key_id),
+                    )?;
                     let challenge = TransactionOutput::build_metadata_signature_challenge(
                         &TransactionOutputVersion::get_current_version(),
                         &script,

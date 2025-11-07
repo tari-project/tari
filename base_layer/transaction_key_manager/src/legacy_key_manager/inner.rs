@@ -127,7 +127,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 key: key.as_str().into(),
             }),
             LegacyTariKeyId::Imported { .. } => {
-                let private_key = self.get_legacy_private_key(&key_id)?;
+                let private_key = self.get_legacy_private_key(key_id)?;
                 self.key_manager.import_key(private_key, None)
             },
             LegacyTariKeyId::CodeTemplateAuthor => Ok(TariKeyId::CodeTemplateAuthor),
@@ -202,7 +202,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     }
 
     pub fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
-        self.key_manager.get_public_key_at_key_id(&key_id)
+        self.key_manager.get_public_key_at_key_id(key_id)
     }
 
     pub(crate) fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerError> {
@@ -265,7 +265,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         public_script_key: Option<&CompressedPublicKey>,
     ) -> Result<Option<TariKeyId>, KeyManagerError> {
         self.key_manager
-            .find_script_key_id_from_commitment_mask_key_id(&commitment_mask_key_id, public_script_key)
+            .find_script_key_id_from_commitment_mask_key_id(commitment_mask_key_id, public_script_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -277,7 +277,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         private_key: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerError> {
-        self.key_manager.get_commitment(&private_key, value)
+        self.key_manager.get_commitment(private_key, value)
     }
 
     /// Verify that the commitment matches the value and the spending key/mask
@@ -287,7 +287,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerError> {
-        self.key_manager.verify_mask(commitment, &commitment_mask_key_id, value)
+        self.key_manager.verify_mask(commitment, commitment_mask_key_id, value)
     }
 
     pub fn get_diffie_hellman_shared_secret(
@@ -296,7 +296,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         public_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         self.key_manager
-            .get_diffie_hellman_shared_secret(&secret_key_id, public_key)
+            .get_diffie_hellman_shared_secret(secret_key_id, public_key)
     }
 
     pub fn generate_burn_claim_signature(
@@ -306,7 +306,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, KeyManagerError> {
         self.key_manager
-            .generate_burn_claim_signature(&commitment_mask_key_id, value, claim_public_key)
+            .generate_burn_claim_signature(commitment_mask_key_id, value, claim_public_key)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -318,12 +318,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         script_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_script_signature(
-            &script_key_id,
-            &commitment_mask_key_id,
+            script_key_id,
+            commitment_mask_key_id,
             value,
             txi_version,
             script_message,
@@ -334,13 +334,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
         &self,
         commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_partial_script_signature(
-            &commitment_mask_id,
+            commitment_mask_id,
             value,
             txi_version,
             ephemeral_pubkey,
@@ -360,7 +360,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         min_value: u64,
     ) -> Result<RangeProof, KeyManagerError> {
         self.key_manager
-            .construct_range_proof(&commitment_mask_key_id, value, min_value)
+            .construct_range_proof(commitment_mask_key_id, value, min_value)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -370,7 +370,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, KeyManagerError> {
         self.key_manager
-            .get_script_offset(&script_key_ids, &sender_offset_key_ids)
+            .get_script_offset(script_key_ids, sender_offset_key_ids)
     }
 
     pub fn sign_script_message(
@@ -378,7 +378,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         private_key_id: &TariKeyId,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
-        self.key_manager.sign_script_message(&private_key_id, challenge)
+        self.key_manager.sign_script_message(private_key_id, challenge)
     }
 
     pub fn sign_message_with_spend_key(
@@ -406,7 +406,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
         self.key_manager
-            .sign_with_nonce_and_challenge(&private_key_id, &nonce_key_id, challenge)
+            .sign_with_nonce_and_challenge(private_key_id, nonce_key_id, challenge)
     }
 
     pub fn get_metadata_signature(
@@ -414,14 +414,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_metadata_signature(
-            &commitment_mask_key_id,
+            commitment_mask_key_id,
             value_as_private_key,
-            &sender_offset_key_id,
+            sender_offset_key_id,
             txo_version,
             metadata_signature_message,
             range_proof_type,
@@ -433,16 +433,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_one_sided_metadata_signature(
-            &commitment_mask_key_id,
+            commitment_mask_key_id,
             value,
-            &sender_offset_key_id,
+            sender_offset_key_id,
             txo_version,
             metadata_signature_message_common,
             range_proof_type,
@@ -457,12 +457,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
         ephemeral_pubkey: &CompressedPublicKey,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_receiver_partial_metadata_signature(
-            &commitment_mask_key_id,
+            commitment_mask_key_id,
             value,
             sender_offset_public_key,
             ephemeral_pubkey,
@@ -481,12 +481,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         sender_offset_key_id: &TariKeyId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_sender_partial_metadata_signature(
-            &ephemeral_private_nonce_id,
-            &sender_offset_key_id,
+            ephemeral_private_nonce_id,
+            sender_offset_key_id,
             commitment,
             ephemeral_commitment,
             txo_version,
@@ -504,7 +504,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, KeyManagerError> {
         self.key_manager
-            .get_txo_private_kernel_offset(&commitment_mask_key_id, &nonce_id)
+            .get_txo_private_kernel_offset(commitment_mask_key_id, nonce_id)
     }
 
     pub fn get_partial_txo_kernel_signature(
@@ -513,14 +513,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
         nonce_id: &TariKeyId,
         total_nonce: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
-        kernel_version: &TransactionKernelVersion,
+        kernel_version: TransactionKernelVersion,
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
     ) -> Result<CompressedSignature, KeyManagerError> {
         self.key_manager.get_partial_txo_kernel_signature(
-            &commitment_mask_key_id,
-            &nonce_id,
+            commitment_mask_key_id,
+            nonce_id,
             total_nonce,
             total_excess,
             kernel_version,
@@ -536,7 +536,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         nonce: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         self.key_manager
-            .get_txo_kernel_signature_excess_with_offset(&commitment_mask_key_id, &nonce)
+            .get_txo_kernel_signature_excess_with_offset(commitment_mask_key_id, nonce)
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -551,7 +551,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
         self.key_manager
-            .encrypt_data_for_recovery(&commitment_mask_key_id, custom_recovery_key_id, value, payment_id)
+            .encrypt_data_for_recovery(commitment_mask_key_id, custom_recovery_key_id, value, payment_id)
     }
 
     pub fn extract_payment_id_from_encrypted_data(
@@ -561,7 +561,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<MemoField, KeyManagerError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
-            self.key_manager.get_private_key(&key_id)?
+            self.key_manager.get_private_key(key_id)?
         } else {
             self.get_private_view_key()
         };
@@ -595,6 +595,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         self.key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, spend_key)
+            .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
     }
 }

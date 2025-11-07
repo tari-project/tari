@@ -47,6 +47,7 @@ mod benches {
         tx,
     };
     use tokio::runtime::Runtime;
+    use tari_transaction_components::key_manager::KeyManager;
 
     async fn generate_transactions(
         num_txs: usize,
@@ -54,10 +55,10 @@ mod benches {
         num_outputs: usize,
         features: OutputFeatures,
     ) -> std::io::Result<Vec<Arc<Transaction>>> {
-        let mut key_manager = create_memory_db_key_manager().await.unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let mut txs = Vec::new();
         for _ in 0..num_txs {
-            let (tx, _, _) = tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &mut key_manager)?;
+            let (tx, _, _) = tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &key_manager)?;
             txs.push(Arc::new(tx));
         }
         Ok(txs)

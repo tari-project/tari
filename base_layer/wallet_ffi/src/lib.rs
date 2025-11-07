@@ -9327,7 +9327,7 @@ mod test {
         legacy_key_manager::SecretTransactionKeyManagerInterface,
         test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
+
     use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 
@@ -11730,13 +11730,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let mut key_manager = create_memory_db_key_manager().await.unwrap();
+            let key_manager = KeyManager::new_random().unwrap();
             let utxo_1 = create_wallet_output_with_data(
                 script!(Nop).unwrap(),
                 OutputFeatures::default(),
-                &TestParams::new(&mut key_manager).await,
+                &TestParams::new(&key_manager).await,
                 MicroMinotari(1234u64),
-                &mut key_manager,
+                &key_manager,
             )
             .await
             .unwrap();
@@ -12096,13 +12096,13 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let mut key_manager = create_memory_db_key_manager().await.unwrap();
+            let key_manager = KeyManager::new_random().unwrap();
             let utxo_1 = create_wallet_output_with_data(
                 script!(Nop).unwrap(),
                 OutputFeatures::default(),
-                &TestParams::new(&mut key_manager).await,
+                &TestParams::new(&key_manager).await,
                 MicroMinotari(1234u64),
-                &mut key_manager,
+                &key_manager,
             )
             .await
             .unwrap();

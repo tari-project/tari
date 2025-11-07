@@ -114,7 +114,7 @@ fn main() {
     println!("\ntest: GetPublicKey");
     let index = OsRng.next_u64();
 
-    for branch in &[
+    for branch in [
         LedgerKeyBranch::OneSidedSenderOffset,
         LedgerKeyBranch::Spend,
         LedgerKeyBranch::Random,
@@ -221,7 +221,7 @@ fn main() {
     let branch = LedgerKeyBranch::OneSidedSenderOffset;
     let public_key = CompressedPublicKey::from_secret_key(&get_random_nonce());
 
-    match ledger_get_dh_shared_secret(account, index, &branch, &public_key) {
+    match ledger_get_dh_shared_secret(account, index, branch, &public_key) {
         Ok(shared_secret) => println!("shared_secret:  {}", shared_secret.as_bytes().to_vec().to_hex()),
         Err(e) => {
             println!("\nError: {e}\n");
@@ -241,9 +241,9 @@ fn main() {
     match ledger_get_raw_schnorr_signature(
         account,
         private_key_index,
-        &private_key_branch,
+        private_key_branch,
         nonce_index,
-        &nonce_branch,
+        nonce_branch,
         &challenge,
     ) {
         Ok(signature) => println!(
@@ -264,7 +264,7 @@ fn main() {
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
 
-    match ledger_get_script_schnorr_signature(account, private_key_index, &private_key_branch, &nonce) {
+    match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
         Ok(signature) => println!(
             "signature:      ({},{})",
             signature.get_signature().to_hex(),

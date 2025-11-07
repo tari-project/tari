@@ -272,7 +272,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &kernel_version,
+            kernel_version,
             tx_meta.fee,
             tx_meta.lock_height,
             &tx_meta.kernel_features,
@@ -285,7 +285,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             &public_nonce.key_id,
             &CompressedPublicKey::new_from_pk(total_nonce),
             &CompressedPublicKey::new_from_pk(total_excess),
-            &kernel_version,
+            kernel_version,
             &kernel_message,
             &tx_meta.kernel_features,
             TxoStage::Output,
@@ -389,7 +389,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &kernel_version,
+            kernel_version,
             tx_meta.fee,
             tx_meta.lock_height,
             &tx_meta.kernel_features,
@@ -403,7 +403,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             &public_nonce.key_id,
             &CompressedPublicKey::new_from_pk(total_nonce),
             &CompressedPublicKey::new_from_pk(total_excess),
-            &kernel_version,
+            kernel_version,
             &kernel_message,
             &tx_meta.kernel_features,
             TxoStage::Output,
@@ -503,7 +503,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &kernel_version,
+            kernel_version,
             tx_meta.fee,
             tx_meta.lock_height,
             &tx_meta.kernel_features,
@@ -516,7 +516,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             &public_nonce.key_id,
             &CompressedPublicKey::new_from_pk(total_nonce),
             &CompressedPublicKey::new_from_pk(total_excess),
-            &kernel_version,
+            kernel_version,
             &kernel_message,
             &tx_meta.kernel_features,
             TxoStage::Output,
@@ -577,7 +577,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &kernel_version,
+            kernel_version,
             info.metadata.fee,
             info.metadata.lock_height,
             &info.metadata.kernel_features,
@@ -593,7 +593,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                         &input.output_pair.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
-                        &kernel_version,
+                        kernel_version,
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Input,
@@ -617,7 +617,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                         &output.output_pair.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
-                        &kernel_version,
+                        kernel_version,
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Output,
@@ -650,7 +650,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                             &change.kernel_nonce,
                             &total_public_nonce,
                             &total_public_excess,
-                            &kernel_version,
+                            kernel_version,
                             &kernel_message,
                             &info.metadata.kernel_features,
                             TxoStage::Output,

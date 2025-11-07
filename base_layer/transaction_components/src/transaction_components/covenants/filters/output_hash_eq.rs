@@ -56,11 +56,11 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_output_with_specific_hash() {
-        let mut key_manager = KeyManager::new_random().unwrap();
-        let output = create_outputs(1, Default::default(), &mut key_manager).remove(0);
+        let key_manager = KeyManager::new_random().unwrap();
+        let output = create_outputs(1, Default::default(), &key_manager).remove(0);
         let output_hash = output.hash();
         let covenant = covenant!(output_hash_eq(@hash(output_hash))).unwrap();
-        let input = create_input(&mut key_manager);
+        let input = create_input(&key_manager);
         let (mut context, outputs) = setup_filter_test(
             &covenant,
             &input,
@@ -68,7 +68,7 @@ mod test {
             move |outputs| {
                 outputs.insert(5, output);
             },
-            &mut key_manager,
+            &key_manager,
         );
         let mut output_set = OutputSet::new(&outputs);
         OutputHashEqFilter.filter(&mut context, &mut output_set).unwrap();

@@ -50,7 +50,7 @@ async fn test_block_sync_happy_path() {
         &initial_coinbase,
         5,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         &[3; 5],
         &None,
     )
@@ -115,7 +115,7 @@ async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
         &initial_coinbase,
         10,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         &[3; 10],
         &None,
     )
@@ -175,7 +175,7 @@ async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
         &initial_coinbase,
         10,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         &[3; 10],
         &None,
     )
@@ -240,7 +240,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_1() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         3,
         10,                           // > follow_up_transaction_in_block + intermediate_height + 1
         2,                            // < intermediate_height,
@@ -349,7 +349,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_2() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         3,
         10,                           // > follow_up_transaction_in_block + intermediate_height + 1
         2,                            // < intermediate_height,

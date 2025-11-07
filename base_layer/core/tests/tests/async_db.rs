@@ -78,14 +78,14 @@ async fn async_add_new_block() {
     let (db, blocks, outputs, consensus_manager, mut key_manager) = create_new_blockchain(network).await;
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
 
-    let txns = schema_to_transaction(&schema, &mut key_manager)
+    let txns = schema_to_transaction(&schema, &key_manager)
         .await
         .0
         .iter()
         .map(|t| t.deref().clone())
         .collect();
     let new_block =
-        chain_block_with_new_coinbase(blocks.last().unwrap(), txns, &consensus_manager, None, &mut key_manager)
+        chain_block_with_new_coinbase(blocks.last().unwrap(), txns, &consensus_manager, None, &key_manager)
             .await
             .0;
 
@@ -103,7 +103,7 @@ async fn async_add_new_block() {
 async fn async_add_block_fetch_orphan() {
     let (db, _, _, consensus, mut key_manager) = create_blockchain_db_no_cut_through().await;
 
-    let orphan = create_orphan_block(7, vec![], &consensus, &mut key_manager).await;
+    let orphan = create_orphan_block(7, vec![], &consensus, &key_manager).await;
     let block_hash = orphan.hash();
     let db = AsyncBlockchainDb::new(db);
     db.add_block(orphan.clone().into()).await.unwrap();

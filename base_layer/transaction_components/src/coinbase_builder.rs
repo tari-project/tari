@@ -253,7 +253,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         // generate kernel signature
         let kernel_version = TransactionKernelVersion::get_current_version();
         let kernel_message =
-            TransactionKernel::build_kernel_signature_message(&kernel_version, 0.into(), 0, &kernel_features, &None);
+            TransactionKernel::build_kernel_signature_message(kernel_version, 0.into(), 0, &kernel_features, &None);
         let public_nonce = self.key_manager.get_random_key(None, false)?;
 
         let public_commitment_mask_key = self.key_manager.get_public_key_at_key_id(&commitment_mask_key_id)?;
@@ -263,7 +263,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &public_nonce.key_id,
             &public_nonce.pub_key,
             &public_commitment_mask_key,
-            &kernel_version,
+            kernel_version,
             &kernel_message,
             &kernel_features,
             TxoStage::Output,
@@ -287,7 +287,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let output_version = TransactionOutputVersion::get_current_version();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            &output_version,
+            output_version,
             &script,
             &output_features,
             &covenant,
@@ -301,7 +301,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &commitment_mask_key_id,
             &value.into(),
             &sender_offset_key_id,
-            &output_version,
+            output_version,
             &metadata_message,
             output_features.range_proof_type,
         )?;
@@ -559,8 +559,8 @@ mod test {
 
     #[tokio::test]
     async fn valid_coinbase() {
-        let (builder, rules, factories, mut key_manager) = get_builder();
-        let p = TestParams::new(&mut key_manager);
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager);
         let wallet_payment_address = TariAddress::default();
         let builder = builder
             .with_block_height(42)
@@ -612,8 +612,8 @@ mod test {
 
     #[tokio::test]
     async fn invalid_coinbase_maturity() {
-        let (builder, rules, factories, mut key_manager) = get_builder();
-        let p = TestParams::new(&mut key_manager);
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager);
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
         let wallet_payment_address = TariAddress::default();
         let builder = builder
@@ -650,8 +650,8 @@ mod test {
     #[tokio::test]
     #[allow(clippy::identity_op)]
     async fn invalid_coinbase_value() {
-        let (builder, rules, factories, mut key_manager) = get_builder();
-        let p = TestParams::new(&mut key_manager);
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager);
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -743,8 +743,8 @@ mod test {
     async fn invalid_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and
         // a duplicate coinbase kernel to the other one.
-        let (builder, rules, factories, mut key_manager) = get_builder();
-        let p = TestParams::new(&mut key_manager);
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager);
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -794,7 +794,7 @@ mod test {
         coinbase_kernel2.features = KernelFeatures::empty();
         let new_nonce = key_manager.get_random_key(None, false).unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &TransactionKernelVersion::get_current_version(),
+            TransactionKernelVersion::get_current_version(),
             coinbase_kernel2.fee,
             coinbase_kernel2.lock_height,
             &coinbase_kernel2.features,
@@ -809,7 +809,7 @@ mod test {
                 &new_nonce.key_id,
                 &new_nonce.pub_key,
                 &excess,
-                &TransactionKernelVersion::get_current_version(),
+                TransactionKernelVersion::get_current_version(),
                 &kernel_message,
                 &coinbase_kernel2.features,
                 TxoStage::Output,
@@ -820,7 +820,7 @@ mod test {
             .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &new_nonce.key_id)
             .unwrap();
         let sig_challenge = TransactionKernel::finalize_kernel_signature_challenge(
-            &TransactionKernelVersion::get_current_version(),
+            TransactionKernelVersion::get_current_version(),
             &new_nonce.pub_key,
             &excess,
             &kernel_message,
@@ -879,8 +879,8 @@ mod test {
     async fn multi_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and
         // a duplicate coinbase kernel to the other one.
-        let (builder, rules, factories, mut key_manager) = get_builder();
-        let p = TestParams::new(&mut key_manager);
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager);
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -951,7 +951,7 @@ mod test {
         let new_nonce2 = key_manager.get_random_key(None, false).unwrap();
         let nonce = &new_nonce1.pub_key.to_public_key().unwrap() + &new_nonce2.pub_key.to_public_key().unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &TransactionKernelVersion::get_current_version(),
+            TransactionKernelVersion::get_current_version(),
             kernel_1.fee,
             kernel_1.lock_height,
             &kernel_1.features,
@@ -964,7 +964,7 @@ mod test {
                 &new_nonce1.key_id,
                 &CompressedPublicKey::new_from_pk(nonce.clone()),
                 &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
-                &TransactionKernelVersion::get_current_version(),
+                TransactionKernelVersion::get_current_version(),
                 &kernel_message,
                 &kernel_1.features,
                 TxoStage::Output,
@@ -979,7 +979,7 @@ mod test {
                     &new_nonce2.key_id,
                     &CompressedPublicKey::new_from_pk(nonce.clone()),
                     &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
-                    &TransactionKernelVersion::get_current_version(),
+                    TransactionKernelVersion::get_current_version(),
                     &kernel_message,
                     &kernel_1.features,
                     TxoStage::Output,
@@ -1015,8 +1015,8 @@ mod test {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::identity_op)]
     async fn too_may_coinbases() {
-        let (builder, rules, factories, mut key_manager) = get_builder();
-        let p = TestParams::new(&mut key_manager);
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager);
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
         let wallet_payment_address = TariAddress::default();
@@ -1069,7 +1069,7 @@ mod test {
         let new_nonce2 = key_manager.get_random_key(None, false).unwrap();
         let nonce = &new_nonce1.pub_key.to_public_key().unwrap() + &new_nonce2.pub_key.to_public_key().unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &TransactionKernelVersion::get_current_version(),
+            TransactionKernelVersion::get_current_version(),
             kernel_1.fee,
             kernel_1.lock_height,
             &kernel_1.features,
@@ -1082,7 +1082,7 @@ mod test {
                 &new_nonce1.key_id,
                 &CompressedPublicKey::new_from_pk(nonce.clone()),
                 &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
-                &TransactionKernelVersion::get_current_version(),
+                TransactionKernelVersion::get_current_version(),
                 &kernel_message,
                 &kernel_1.features,
                 TxoStage::Output,
@@ -1097,7 +1097,7 @@ mod test {
                     &new_nonce2.key_id,
                     &CompressedPublicKey::new_from_pk(nonce),
                     &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
-                    &TransactionKernelVersion::get_current_version(),
+                    TransactionKernelVersion::get_current_version(),
                     &kernel_message,
                     &kernel_1.features,
                     TxoStage::Output,
@@ -1129,7 +1129,7 @@ mod test {
 
     #[tokio::test]
     async fn test_generate_coinbase_with_payment_id_from_address() {
-        let mut key_manager = KeyManager::new_random().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
 
@@ -1158,7 +1158,7 @@ mod test {
             reward,
             header_height,
             &CoinBaseExtra::default(),
-            &mut key_manager,
+            &key_manager,
             &script_key_id,
             &wallet_payment_address,
             false,

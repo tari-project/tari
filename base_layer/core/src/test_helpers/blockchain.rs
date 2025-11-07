@@ -589,7 +589,7 @@ pub fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
     let gb_height = genesis_block.header().height;
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
-    let mut km = KeyManager::new_random().unwrap();
+    let km = KeyManager::new_random().unwrap();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
     let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km);
@@ -634,7 +634,7 @@ pub fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
             &rules,
             prev_block.block(),
             block_spec,
-            &mut km,
+            &km,
             &script_key_id,
             &wallet_payment_address,
             None,

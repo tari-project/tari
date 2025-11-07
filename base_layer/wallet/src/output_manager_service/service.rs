@@ -985,7 +985,7 @@ where
         for mut wallet_output in outputs {
             let sender_offset_key = self.resources.key_manager.get_random_key(None, true)?;
             wallet_output = wallet_output
-                .sign_as_sender_and_receiver(&mut self.resources.key_manager, &sender_offset_key.key_id)?;
+                .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)?;
             let ub = wallet_output.try_build(&self.resources.key_manager)?;
 
             builder
@@ -1272,7 +1272,7 @@ where
             .with_script_key(self.resources.key_manager.get_spend_key().key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
-                &mut self.resources.key_manager,
+                &self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
@@ -1522,7 +1522,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
-                &mut self.resources.key_manager,
+                &self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &recipient_address,
             )
@@ -2334,7 +2334,7 @@ where
             payment_id.clone(),
         )?;
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            &TransactionOutputVersion::get_current_version(),
+            TransactionOutputVersion::get_current_version(),
             &script,
             &output_features,
             &covenant,
@@ -2346,7 +2346,7 @@ where
             &commitment_mask_key.key_id,
             &PrivateKey::from(amount),
             &sender_offset.key_id,
-            &TransactionOutputVersion::get_current_version(),
+            TransactionOutputVersion::get_current_version(),
             &metadata_message,
             output_features.range_proof_type,
         )?;

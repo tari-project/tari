@@ -31,7 +31,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
-use tari_service_framework::{ ServiceInitializationError};
+use tari_service_framework::ServiceInitializationError;
 use tari_transaction_components::{key_manager::error::KeyManagerError, transaction_components::TransactionError};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;

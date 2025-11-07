@@ -2714,7 +2714,7 @@ mod test {
         },
         MicroMinotari,
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
+
     use tempfile::tempdir;
 
     use crate::{
@@ -2738,7 +2738,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
-        let mut key_manager = create_memory_db_key_manager().await.unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2771,13 +2771,13 @@ mod test {
         let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
             .await
             .unwrap();
-        let test_params = TestParams::new(&mut key_manager).await;
+        let test_params = TestParams::new(&key_manager).await;
         let input = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
             &test_params,
             MicroMinotari::from(100_000),
-            &mut key_manager,
+            &key_manager,
         )
         .await
         .unwrap();
@@ -2863,13 +2863,13 @@ mod test {
                 .unwrap()
         );
 
-        let receiver_test_params = TestParams::new(&mut key_manager).await;
+        let receiver_test_params = TestParams::new(&key_manager).await;
         let output = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
             &receiver_test_params,
             MicroMinotari::from(100_000),
-            &mut key_manager,
+            &key_manager,
         )
         .await
         .unwrap();

@@ -1983,7 +1983,7 @@ where
             .with_script_key(self.resources.transaction_key_manager_service.get_spend_key().key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver(
-                &mut self.resources.transaction_key_manager_service,
+                &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )
             .unwrap()

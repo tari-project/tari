@@ -107,9 +107,9 @@ fn verify() -> Result<(), LedgerDeviceError> {
     let private_key_branch = LedgerKeyBranch::OneSidedSenderOffset;
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
-    let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, &private_key_branch, &nonce)
+    let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce)
     {
-        Ok(signature) => match ledger_get_public_key(account, private_key_index, &private_key_branch) {
+        Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
             Ok(public_key) => {
                 let schnorr_signature = signature.to_schnorr_signature().map_err(|e| {
                     LedgerDeviceError::Processing(format!(
@@ -140,7 +140,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
             )))
         },
     };
-    match ledger_get_script_schnorr_signature(account, private_key_index, &private_key_branch, &nonce) {
+    match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
         Ok(signature_b) => {
             if signature_a == signature_b {
                 return Err(LedgerDeviceError::Processing(
@@ -262,7 +262,7 @@ pub fn ledger_get_public_key_legacy(
 pub fn ledger_get_public_key(
     account: u64,
     index: u64,
-    branch: &LedgerKeyBranch,
+    branch: LedgerKeyBranch,
 ) -> Result<RistrettoPublicKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
@@ -501,7 +501,7 @@ pub fn ledger_get_dh_shared_secret_dhke(
 pub fn ledger_get_dh_shared_secret(
     account: u64,
     index: u64,
-    branch: &LedgerKeyBranch,
+    branch: LedgerKeyBranch,
     public_key: &CompressedPublicKey,
 ) -> Result<CompressedPublicKey, LedgerDeviceError> {
     debug!(
@@ -536,9 +536,9 @@ pub fn ledger_get_dh_shared_secret(
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
-    private_key_branch: &LedgerKeyBranch,
+    private_key_branch: LedgerKeyBranch,
     nonce_index: u64,
-    nonce_branch: &LedgerKeyBranch,
+    nonce_branch: LedgerKeyBranch,
     challenge: &[u8; 64],
 ) -> Result<CompressedSignature, LedgerDeviceError> {
     debug!(
@@ -580,7 +580,7 @@ pub fn ledger_get_raw_schnorr_signature(
 pub fn ledger_get_script_schnorr_signature(
     account: u64,
     private_key_index: u64,
-    private_key_branch: &LedgerKeyBranch,
+    private_key_branch: LedgerKeyBranch,
     nonce: &[u8],
 ) -> Result<CompressedCheckSigSchnorrSignature, LedgerDeviceError> {
     debug!(

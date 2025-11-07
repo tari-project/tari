@@ -59,7 +59,6 @@ use tari_transaction_components::{
     transaction_components::{Transaction, WalletOutput},
     txn_schema,
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tempfile::tempdir;
 use tokio::sync::{broadcast, watch};
 
@@ -152,9 +151,9 @@ pub async fn create_network_with_multiple_nodes(
     }
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
-    let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &mut key_manager).await;
+    let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(initial_block.clone())

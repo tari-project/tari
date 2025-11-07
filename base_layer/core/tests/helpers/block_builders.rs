@@ -24,7 +24,6 @@ use std::{convert::TryFrom, sync::Arc};
 use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     types::{CompressedCommitment, FixedHash},
 };
 use tari_core::{
@@ -48,7 +47,6 @@ use tari_node_components::blocks::{
 use tari_script::script;
 use tari_transaction_components::{
     consensus::{emission::Emission, ConsensusConstants},
-    legacy_key_manager::{TransactionKeyManagerInterface, TxoStage},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
     transaction_components::{
@@ -65,14 +63,14 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::ByteArray;
+use tari_transaction_components::key_manager::KeyManager;
 
 pub async fn create_coinbase(
     value: MicroMinotari,
     maturity_height: u64,
     extra: Option<CoinBaseExtra>,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager).await;
     let public_exess = key_manager

@@ -193,7 +193,7 @@ impl KeyManager {
 
     fn ledger_get_script_signature_wrapper(
         &self,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         script_key_id: &TariKeyId,
         value: &PrivateKey,
         commitment_mask_key_id: &TariKeyId,
@@ -205,7 +205,7 @@ impl KeyManager {
             let commitment_private_key = self.get_private_key(commitment_mask_key_id)?;
             let signature_key = match script_key_id {
                 TariKeyId::LedgerKey { branch, index } => ScriptSignatureKey::Managed {
-                    branch: branch.clone(),
+                    branch: *branch,
                     index: *index,
                 },
                 TariKeyId::Derived { key: key_str } => {
@@ -243,7 +243,7 @@ impl KeyManager {
     fn ledger_get_script_schnorr_signature_wrapper(
         &self,
         index: u64,
-        branch: &LedgerKeyBranch,
+        branch: LedgerKeyBranch,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
@@ -271,7 +271,7 @@ impl KeyManager {
             for script_key_id in script_key_ids {
                 match script_key_id {
                     TariKeyId::LedgerKey { branch, index } => {
-                        script_key_indexes.push((branch.clone(), *index));
+                        script_key_indexes.push((*branch, *index));
                     },
                     TariKeyId::Derived { key } => {
                         let key_id = TariKeyId::from_str(key.to_string().as_str())
@@ -291,7 +291,7 @@ impl KeyManager {
             for sender_offset_key_id in sender_offset_key_ids {
                 match sender_offset_key_id {
                     TariKeyId::LedgerKey { branch, index } => {
-                        sender_offset_indexes.push((branch.clone(), *index));
+                        sender_offset_indexes.push((*branch, *index));
                     },
                     TariKeyId::Derived { key } => {
                         let key_id = TariKeyId::from_str(key.to_string().as_str())
@@ -327,9 +327,9 @@ impl KeyManager {
     fn ledger_get_raw_schnorr_signature_wrapper(
         &self,
         private_key_index: u64,
-        private_key: &LedgerKeyBranch,
+        private_key: LedgerKeyBranch,
         nonce_index: u64,
-        nonce: &LedgerKeyBranch,
+        nonce: LedgerKeyBranch,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
@@ -353,7 +353,7 @@ impl KeyManager {
 
     fn ledger_get_public_key_wrapper(
         &self,
-        branch: &LedgerKeyBranch,
+        branch: LedgerKeyBranch,
         index: u64,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         #[cfg(feature = "ledger")]
@@ -370,7 +370,7 @@ impl KeyManager {
 
     fn ledger_get_dh_shared_secret_wrapper(
         &self,
-        branch: &LedgerKeyBranch,
+        branch: LedgerKeyBranch,
         index: u64,
         public_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
@@ -388,7 +388,7 @@ impl KeyManager {
 
     fn ledger_get_one_sided_metadata_signature_wrapper(
         &self,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
@@ -480,7 +480,7 @@ impl TransactionKeyManagerInterface for KeyManager {
             let random_index = OsRng.next_u64();
 
             let branch = LedgerKeyBranch::Random;
-            let public_key = self.ledger_get_public_key_wrapper(&branch, random_index)?;
+            let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
             Ok(TariKeyAndId {
                 key_id: TariKeyId::LedgerKey {
                     branch,
@@ -559,7 +559,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 Ok(CompressedPublicKey::from_secret_key(&private_key))
             },
             TariKeyId::Zero => Ok(CompressedPublicKey::default()),
-            TariKeyId::LedgerKey { branch, index } => self.ledger_get_public_key_wrapper(branch, *index),
+            TariKeyId::LedgerKey { branch, index } => self.ledger_get_public_key_wrapper(*branch, *index),
             TariKeyId::SpendKey => Ok(self.wallet_type.get_public_spend_key()),
             TariKeyId::ViewKey => Ok(self.wallet_type.get_public_view_key()),
         }
@@ -658,7 +658,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         public_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         if let TariKeyId::LedgerKey { branch, index } = secret_key_id {
-            return self.ledger_get_dh_shared_secret_wrapper(branch, *index, public_key);
+            return self.ledger_get_dh_shared_secret_wrapper(*branch, *index, public_key);
         }
 
         let secret_key = self.get_private_key(secret_key_id)?;
@@ -716,17 +716,17 @@ impl TransactionKeyManagerInterface for KeyManager {
         script_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         if self.wallet_type.is_ledger() {
             let signature = self
                 .ledger_get_script_signature_wrapper(
                     txi_version,
-                    &script_key_id,
+                    script_key_id,
                     value,
-                    &commitment_mask_key_id,
-                    &script_message,
+                    commitment_mask_key_id,
+                    script_message,
                 )
                 .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?;
             Ok(signature)
@@ -767,7 +767,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         &self,
         commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
-        txi_version: &TransactionInputVersion,
+        txi_version: TransactionInputVersion,
         ephemeral_pubkey: &CompressedPublicKey,
         script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
@@ -805,7 +805,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         nonce_id: &TariKeyId,
         total_nonce: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
-        kernel_version: &TransactionKernelVersion,
+        kernel_version: TransactionKernelVersion,
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
@@ -988,7 +988,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
@@ -1025,7 +1025,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
         script: &TariScript,
@@ -1033,8 +1033,8 @@ impl TransactionKeyManagerInterface for KeyManager {
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         if self.wallet_type.is_ledger() {
             let comm_and_pub_sig = self.ledger_get_one_sided_metadata_signature_wrapper(
-                &txo_version,
-                value.into(),
+                txo_version,
+                value,
                 sender_offset_key_id,
                 commitment_mask_key_id,
                 receiver_address,
@@ -1097,7 +1097,7 @@ impl TransactionKeyManagerInterface for KeyManager {
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
         if self.wallet_type.is_ledger() {
             if let TariKeyId::LedgerKey { branch, index } = private_key_id {
-                return self.ledger_get_script_schnorr_signature_wrapper(*index, branch, challenge);
+                return self.ledger_get_script_schnorr_signature_wrapper(*index, *branch, challenge);
             }
         }
 
@@ -1142,9 +1142,9 @@ impl TransactionKeyManagerInterface for KeyManager {
                 },
             ) => self.ledger_get_raw_schnorr_signature_wrapper(
                 *private_key_index,
-                &private_key_branch,
+                *private_key_branch,
                 *nonce_index,
-                &nonce_branch,
+                *nonce_branch,
                 challenge,
             ),
             (TariKeyId::LedgerKey { .. }, _) | (_, TariKeyId::LedgerKey { .. }) => Err(KeyManagerError::LedgerError(
@@ -1166,7 +1166,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         value: &PrivateKey,
         sender_offset_public_key: &CompressedPublicKey,
         ephemeral_pubkey: &CompressedPublicKey,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
@@ -1207,7 +1207,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         sender_offset_key_id: &TariKeyId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
-        txo_version: &TransactionOutputVersion,
+        txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id)?;

@@ -255,27 +255,26 @@ mod test {
         use super::*;
         use crate::{
             aggregated_body::AggregateBody,
+            key_manager::KeyManager,
             transaction_components::{RangeProofType, TransactionError},
         };
-        use crate::key_manager::KeyManager;
 
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let mut key_manager = KeyManager::new_random().unwrap();
-            let test_params = TestParams::new(&mut key_manager).await;
+            let key_manager = KeyManager::new_random().unwrap();
+            let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
             let coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
                 RangeProofType::RevealedValue,
-                &mut key_manager,
-            )
-            .await;
+                &key_manager,
+            );
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &mut key_manager).await;
+                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -285,27 +284,25 @@ mod test {
                 .unwrap();
         }
 
-
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let mut key_manager = KeyManager::new_random().unwrap();
-            let test_params = TestParams::new(&mut key_manager).await;
+            let key_manager = KeyManager::new_random().unwrap();
+            let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
                 RangeProofType::RevealedValue,
-                &mut key_manager,
-            )
-            .await;
+                &key_manager,
+            );
             let mut features = coinbase.features().clone();
             features.maturity = 0;
             coinbase.set_features(features);
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &mut key_manager).await;
+                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -321,21 +318,20 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let mut key_manager = KeyManager::new_random().unwrap();
-            let test_params = TestParams::new(&mut key_manager).await;
+            let key_manager = KeyManager::new_random().unwrap();
+            let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
                 RangeProofType::BulletProofPlus,
-                &mut key_manager,
-            )
-            .await;
-            coinbase.set_value(123.into(), &key_manager).await.unwrap();
+                &key_manager,
+            );
+            coinbase.set_value(123.into(), &key_manager).unwrap();
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &mut key_manager).await;
+                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();

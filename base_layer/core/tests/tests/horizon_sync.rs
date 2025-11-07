@@ -67,7 +67,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         pruning_horizon,
         30,                           // > follow_up_transaction_in_block + pruning_horizon + 1
         3,                            // < pruning_horizon
@@ -334,7 +334,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         min(pruning_horizon_alice, pruning_horizon_carol),
         28,                           // > follow_up_transaction_in_block + pruning_horizon_carol + 1
         2,                            // < pruning_horizon_alice, < pruning_horizon_carol
@@ -715,7 +715,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
         &initial_block,
         &initial_coinbase,
         &consensus_manager,
-        &mut key_manager,
+        &key_manager,
         min(pruning_horizon_alice, pruning_horizon_carol),
         28,                           // > follow_up_transaction_in_block + pruning_horizon_carol + 1
         2,                            // < pruning_horizon_alice, < pruning_horizon_carol

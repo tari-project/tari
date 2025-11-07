@@ -40,7 +40,7 @@ pub fn setup_filter_test<'a, F, KM: TransactionKeyManagerInterface>(
     input: &'a TransactionInput,
     block_height: u64,
     output_mod: F,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> (CovenantContext<'a>, Vec<TransactionOutput>)
 where
     F: FnOnce(&mut Vec<TransactionOutput>),

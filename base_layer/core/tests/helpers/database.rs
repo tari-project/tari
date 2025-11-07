@@ -30,7 +30,6 @@ use tari_transaction_components::{
     transaction_components::Transaction,
     MicroMinotari,
 };
-use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::helpers::block_builders::create_coinbase;
 

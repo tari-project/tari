@@ -1265,7 +1265,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             prev_coinbase_value += u128::from(coinbase.value);
         }
 
-        let mut key_manager = KeyManager::new_random().map_err(|e| {
+        let key_manager = KeyManager::new_random().map_err(|e| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: '{e}'")))
         })?;
         let height = new_template.header.height;
@@ -1291,7 +1291,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 height,
                 &CoinBaseExtra::try_from(coinbase.coinbase_extra)
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?,
-                &mut key_manager,
+                &key_manager,
                 &script_key_id,
                 &address,
                 coinbase.stealth_payment,
@@ -1505,7 +1505,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument("Malformed coinbase amounts".to_string()),
             ));
         }
-        let mut key_manager = KeyManager::new_random().map_err(|s| {
+        let key_manager = KeyManager::new_random().map_err(|s| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: {s}")))
         })?;
         let height = block_template.header.height;
@@ -1531,7 +1531,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 height,
                 &CoinBaseExtra::try_from(coinbase.coinbase_extra)
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?,
-                &mut key_manager,
+                &key_manager,
                 &script_key_id,
                 &address,
                 coinbase.stealth_payment,

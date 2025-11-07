@@ -387,13 +387,13 @@ impl WalletOutput {
             None => FixedHash::zero(),
         };
         let version = TransactionInputVersion::get_current_version();
-        let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        let script_message = TransactionInput::build_script_signature_message(version, &self.script, &self.input_data);
         let value = self.value.into();
         let script_signature = key_manager.get_script_signature(
             &self.script_key_id,
             &self.commitment_mask_key_id,
             &value,
-            &version,
+            version,
             &script_message,
         )?;
         let input = TransactionInput::new_current_version(
@@ -428,7 +428,7 @@ impl WalletOutput {
         let version = TransactionInputVersion::get_current_version();
         let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value)?;
 
-        let message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        let message = TransactionInput::build_script_signature_message(version, &self.script, &self.input_data);
         let ephemeral_public_key_self = key_manager.get_random_key(None, true)?;
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id)?;
         let script_public_key = CompressedPublicKey::new_from_pk(
@@ -442,13 +442,13 @@ impl WalletOutput {
         let commitment_partial_script_signature = key_manager.get_partial_script_signature(
             &self.commitment_mask_key_id,
             &value,
-            &version,
+            version,
             &total_ephemeral_public_key,
             &script_public_key,
             &message,
         )?;
         let challenge = TransactionInput::finalize_script_signature_challenge(
-            &version,
+            version,
             commitment_partial_script_signature.ephemeral_commitment(),
             &total_ephemeral_public_key,
             &script_public_key,
@@ -550,7 +550,7 @@ impl WalletOutput {
         encrypted_data: EncryptedData,
         sender_offset: &TariKeyId,
         payment_id: MemoField,
-        key_manager: &mut KM,
+        key_manager: &KM,
     ) -> Result<(), TransactionError> {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
@@ -558,7 +558,7 @@ impl WalletOutput {
         self.payment_id = payment_id;
         // now we have to update the metadata signature as this has changed
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            &self.version,
+            self.version,
             &self.script,
             &self.features,
             &self.covenant,
@@ -570,7 +570,7 @@ impl WalletOutput {
             &self.commitment_mask_key_id,
             &self.value.into(),
             sender_offset,
-            &self.version,
+            self.version,
             &metadata_message,
             self.features.range_proof_type,
         )?;

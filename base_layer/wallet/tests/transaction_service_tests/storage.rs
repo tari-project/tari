@@ -66,23 +66,23 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
+
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&mut key_manager).await,
+        &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet)
         .await
         .unwrap();

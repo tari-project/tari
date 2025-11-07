@@ -96,7 +96,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     config.set_base_path(cli.common.get_base_path());
 
     debug!(target: LOG_TARGET_FILE, "{config:?}");
-    let mut key_manager = KeyManager::new_random().map_err(|err| {
+    let key_manager = KeyManager::new_random().map_err(|err| {
         ExitError::new(
             ExitCode::KeyManagerServiceError,
             "'wallet_payment_address' ".to_owned() + &err.to_string(),
@@ -180,7 +180,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 p2pool_node_client.clone(),
                 &config,
                 &cli,
-                &mut key_manager,
+                &key_manager,
                 &wallet_payment_address,
                 &consensus_manager,
             )

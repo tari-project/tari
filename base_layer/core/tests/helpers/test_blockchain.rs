@@ -34,7 +34,6 @@ use tari_core::{
 };
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::WalletOutput};
-use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::helpers::{
     block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},

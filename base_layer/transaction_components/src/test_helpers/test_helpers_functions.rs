@@ -232,7 +232,7 @@ pub fn create_signature(
 ) -> CompressedSignature {
     let r = PrivateKey::random(&mut OsRng);
     let e = TransactionKernel::build_kernel_signature_challenge(
-        &TransactionKernelVersion::get_current_version(),
+        TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &CompressedPublicKey::from_secret_key(&k),
         fee,
@@ -246,7 +246,7 @@ pub fn create_signature(
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
 pub fn create_random_signature_from_secret_key<KM: TransactionKeyManagerInterface>(
-    key_manager: &mut KM,
+    key_manager: &KM,
     secret_key_id: TariKeyId,
     fee: MicroMinotari,
     lock_height: u64,
@@ -257,14 +257,14 @@ pub fn create_random_signature_from_secret_key<KM: TransactionKeyManagerInterfac
     let total_excess = key_manager.get_public_key_at_key_id(&secret_key_id).unwrap();
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_message =
-        TransactionKernel::build_kernel_signature_message(&kernel_version, fee, lock_height, &kernel_features, &None);
+        TransactionKernel::build_kernel_signature_message(kernel_version, fee, lock_height, &kernel_features, &None);
     let kernel_signature = key_manager
         .get_partial_txo_kernel_signature(
             &secret_key_id,
             &total_nonce.key_id,
             &total_nonce.pub_key,
             &total_excess,
-            &kernel_version,
+            kernel_version,
             &kernel_message,
             &kernel_features,
             txo_type,
@@ -290,7 +290,7 @@ pub fn create_coinbase_wallet_output<KM: TransactionKeyManagerInterface>(
     height: u64,
     extra: Option<CoinBaseExtra>,
     range_proof_type: RangeProofType,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> WalletOutput {
     let rules = create_consensus_manager();
     let constants = rules.consensus_constants(height);
@@ -320,7 +320,7 @@ pub fn create_wallet_output_with_data<KM: TransactionKeyManagerInterface>(
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroMinotari,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> Result<WalletOutput, String> {
     test_params.create_output(
         UtxoTestParams {
@@ -344,7 +344,7 @@ pub fn create_wallet_output_with_data<KM: TransactionKeyManagerInterface>(
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr, features: $features:expr, $key_manager:expr) => {{
       use $crate::test_helpers::create_tx;
-      create_tx($amount, $fee, $lock, $n_in, $mat, $n_out, $features, $key_manager).await
+      create_tx($amount, $fee, $lock, $n_in, $mat, $n_out, $features, $key_manager)
   }};
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr, $key_manager:expr) => {{
     tx!($amount, fee: $fee, lock: $lock, inputs: $n_in, maturity: $mat, outputs: $n_out, features: Default::default(), $key_manager)
@@ -485,7 +485,7 @@ pub fn create_tx<KM: TransactionKeyManagerInterface>(
     input_maturity: u64,
     output_count: usize,
     output_features: OutputFeatures,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> std::io::Result<(Transaction, Vec<WalletOutput>, Vec<WalletOutput>)> {
     let (inputs, outputs) = create_wallet_outputs(
         amount,
@@ -502,6 +502,7 @@ pub fn create_tx<KM: TransactionKeyManagerInterface>(
     Ok((tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect()))
 }
 
+#[allow(clippy::type_complexity)]
 pub fn create_wallet_outputs<KM: TransactionKeyManagerInterface>(
     amount: MicroMinotari,
     input_count: usize,
@@ -511,7 +512,7 @@ pub fn create_wallet_outputs<KM: TransactionKeyManagerInterface>(
     output_features: &OutputFeatures,
     output_script: &TariScript,
     output_covenant: &Covenant,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> std::io::Result<(Vec<WalletOutput>, Vec<(WalletOutput, TariKeyId)>)> {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
@@ -608,7 +609,7 @@ pub fn create_transaction_with<KM: TransactionKeyManagerInterface>(
 /// The output features will be applied to every output
 pub fn spend_utxos<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> (Transaction, Vec<WalletOutput>) {
     let (finalized_tx, mut outputs) = create_test_transaction(schema, key_manager);
     let txn = finalized_tx.transaction.clone();
@@ -621,7 +622,7 @@ pub fn spend_utxos<KM: TransactionKeyManagerInterface>(
 #[allow(clippy::too_many_lines)]
 pub fn create_test_transaction<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> (FinalizedTransaction, Vec<WalletOutput>) {
     let mut outputs = Vec::with_capacity(schema.to.len());
     let builder = create_test_transaction_internal(schema, key_manager, &mut outputs);
@@ -633,7 +634,7 @@ pub fn create_test_transaction<KM: TransactionKeyManagerInterface>(
 #[allow(clippy::too_many_lines)]
 fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,
-    key_manager: &mut KM,
+    key_manager: &KM,
     outputs: &mut Vec<WalletOutput>,
 ) -> TransactionBuilder<KM> {
     let constants = ConsensusManager::builder(Network::LocalNet)
@@ -687,7 +688,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
                     utxo.commitment_mask_key_id(),
                     &(utxo.value()).into(),
                     &sender_offset.key_id,
-                    &utxo.version(),
+                    utxo.version(),
                     &metadata_message,
                     utxo.features().range_proof_type,
                 )
@@ -702,12 +703,12 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
 
 pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
     commitment_mask_key_id: &TariKeyId,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> TransactionKernel {
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_features = KernelFeatures::COINBASE_KERNEL;
     let kernel_message =
-        TransactionKernel::build_kernel_signature_message(&kernel_version, 0.into(), 0, &kernel_features, &None);
+        TransactionKernel::build_kernel_signature_message(kernel_version, 0.into(), 0, &kernel_features, &None);
     let public_nonce = key_manager.get_random_key(None, false).unwrap();
     let public_commitment_mask = key_manager.get_random_key(None, false).unwrap();
 
@@ -717,7 +718,7 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
             &public_nonce.key_id,
             &public_nonce.pub_key,
             &public_commitment_mask.pub_key,
-            &kernel_version,
+            kernel_version,
             &kernel_message,
             &kernel_features,
             TxoStage::Output,
@@ -750,7 +751,7 @@ pub fn create_test_kernel(fee: MicroMinotari, lock_height: u64, features: Kernel
 /// Create a new UTXO for the specified value and return the output and spending key
 pub fn create_utxo<KM: TransactionKeyManagerInterface>(
     value: MicroMinotari,
-    key_manager: &mut KM,
+    key_manager: &KM,
     features: &OutputFeatures,
     script: &TariScript,
     covenant: &Covenant,
@@ -762,7 +763,7 @@ pub fn create_utxo<KM: TransactionKeyManagerInterface>(
         .unwrap();
     let sender_offset = key_manager.get_random_key(None, false).unwrap();
     let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-        &TransactionOutputVersion::get_current_version(),
+        TransactionOutputVersion::get_current_version(),
         script,
         features,
         covenant,
@@ -774,7 +775,7 @@ pub fn create_utxo<KM: TransactionKeyManagerInterface>(
             &commitment_mask.key_id,
             &value.into(),
             &sender_offset.key_id,
-            &TransactionOutputVersion::get_current_version(),
+            TransactionOutputVersion::get_current_version(),
             &metadata_message,
             features.range_proof_type,
         )
@@ -810,7 +811,7 @@ pub fn create_utxo<KM: TransactionKeyManagerInterface>(
 
 pub fn schema_to_transaction<KM: TransactionKeyManagerInterface>(
     txns: &[TransactionSchema],
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> (Vec<Arc<Transaction>>, Vec<WalletOutput>) {
     let mut txs = Vec::new();
     let mut utxos = Vec::new();

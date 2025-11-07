@@ -48,7 +48,7 @@ use tari_transaction_components::{
     transaction_components::covenants::Covenant,
     MicroMinotari,
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
+
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
@@ -187,10 +187,10 @@ async fn inbound_fetch_utxos() {
     let utxo_1 = block0.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let (utxo_2, _, _) = create_utxo(
         MicroMinotari(10_000),
-        &mut key_manager,
+        &key_manager,
         &Default::default(),
         &script!(Nop).unwrap(),
         &Covenant::default(),
@@ -253,7 +253,7 @@ async fn inbound_fetch_blocks() {
 async fn inbound_fetch_blocks_before_horizon_height() {
     let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -293,7 +293,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -303,7 +303,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -313,7 +313,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -323,7 +323,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();
@@ -333,7 +333,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         vec![],
         &consensus_manager,
         Difficulty::min(),
-        &mut key_manager,
+        &key_manager,
     )
     .await
     .unwrap();

@@ -22,7 +22,7 @@
 
 #![allow(clippy::indexing_slicing)]
 use std::{fmt, io, sync::Arc};
-
+use tari_transaction_components::key_manager::KeyManager;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
 use tari_comms::{
@@ -40,7 +40,7 @@ use tari_comms::{
     BytesMut,
 };
 use tari_transaction_components::{tari_amount::uT, test_helpers::create_tx, transaction_components::Transaction};
-use tari_transaction_key_manager::create_memory_db_key_manager;
+
 use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -57,12 +57,11 @@ use crate::{
     validation::mocks::MockValidator,
 };
 
-pub async fn create_transactions(n: usize) -> Vec<Transaction> {
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+pub fn create_transactions(n: usize) -> Vec<Transaction> {
+    let key_manager = KeyManager::new_random().unwrap();
     let mut transactions = Vec::new();
     for _i in 0..n {
-        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default(), &mut key_manager)
-            .await
+        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default(), &key_manager)
             .expect("Failed to get transaction");
         transactions.push(transaction);
     }
@@ -76,7 +75,7 @@ async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) 
         Box::new(MockValidator::new(true)),
     );
 
-    let transactions = create_transactions(n).await;
+    let transactions = create_transactions(n);
     for txn in &transactions {
         mempool.insert(Arc::new(txn.clone())).await.unwrap();
     }
@@ -257,7 +256,7 @@ async fn initiator_messages() {
         .await
         .unwrap();
 
-    let mut transactions = create_transactions(2).await;
+    let mut transactions = create_transactions(2);
     transactions.push(transactions1[0].clone());
     let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
     // As the initiator, send an inventory
