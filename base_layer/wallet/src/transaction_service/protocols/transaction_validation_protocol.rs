@@ -104,8 +104,10 @@ where
             tip,
         )
         .await;
+        debug!(target: LOG_TARGET, "Completed transaction validation for detected transactions");
 
         if !confirmed_burnt.is_empty() {
+            debug!(target: LOG_TARGET, "Tx validation needs to handle burns");
             tokio::spawn(fetch_claim_burn_merkle_proofs::execute(
                 self.db.clone(),
                 self.output_manager.clone(),
@@ -121,6 +123,7 @@ where
             });
         }
         self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
+        debug!(target: LOG_TARGET, "Completed events for tx validation process");
         Ok(self.operation_id)
     }
 

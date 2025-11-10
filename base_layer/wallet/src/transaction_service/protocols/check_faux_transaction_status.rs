@@ -126,7 +126,8 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
     all_detected_transactions.append(&mut confirmed_dectected);
 
     let mut state_changed = false;
-    for tx in all_detected_transactions {
+    for (i, tx) in all_detected_transactions.iter().enumerate() {
+        debug!(target: LOG_TARGET, "Checking transaction {}/{}: TxId: {}", i + 1, all_detected_transactions.len(), tx.tx_id);
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
@@ -190,6 +191,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
                 );
                 continue;
             }
+            debug!(target: LOG_TARGET, "Db status updated for TxId: {}", tx.tx_id,);
             let transaction_event = if must_be_confirmed {
                 TransactionEvent::DetectedTransactionConfirmed {
                     tx_id: tx.tx_id,
@@ -210,6 +212,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
             });
         }
     }
+    debug!(target: LOG_TARGET, "Updated all transactions in validation");
     if state_changed {
         let _size = event_publisher
             .send(Arc::new(TransactionEvent::TransactionValidationStateChanged {
@@ -223,4 +226,5 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
                 );
             });
     }
+    debug!(target: LOG_TARGET, "Done firing events in validation");
 }

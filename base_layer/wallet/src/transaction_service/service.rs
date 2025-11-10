@@ -1538,7 +1538,7 @@ where
     }
 
     async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
+        if let OutputManagerEvent::TxoValidationSuccess(tx) = (*event).clone() {
             let db = self.db.clone();
             let output_manager_handle = self.resources.output_manager_service.clone();
             let tip_height = self
@@ -1547,13 +1547,13 @@ where
                 .unwrap_or_default()
                 .unwrap_or_default();
             let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_detected_transactions(
-                output_manager_handle,
-                db,
-                event_publisher,
-                self.config.clone(),
-                tip_height,
-            ));
+            debug!(target: LOG_TARGET, "Received txo validation success event for oms: {}, starting output detection", tx);
+            let conf = self.config.clone();
+            tokio::spawn(async move {
+                let res =
+                    check_detected_transactions(output_manager_handle, db, event_publisher, conf, tip_height).await;
+                debug!(target: LOG_TARGET, "Finished tx detection for oms validation: {} with result: {:?}", tx, res);
+            });
         }
     }
 
@@ -3339,9 +3339,9 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        trace!(target: LOG_TARGET, "Starting transaction validation protocol");
         let id = OperationId::new_random();
 
+        debug!(target: LOG_TARGET, "Starting transaction validation protocol: id{id}");
         let protocol = TransactionValidationProtocol::new(
             id,
             self.resources.db.clone(),
@@ -3365,20 +3365,24 @@ where
             })?;
             let mut num_resets = 0;
             'outer: loop {
+                debug!(target: LOG_TARGET, "Starting transaction validation protocol loop: id{id}");
                 let local_run = protocol.clone();
                 let exec_fut = local_run.execute();
                 tokio::pin!(exec_fut);
                 loop {
                     tokio::select! {
                         result = &mut exec_fut => {
+                            debug!(target: LOG_TARGET, "finished transaction validation protocol: id{id}");
                            return result;
                         },
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
-                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
+
+                                debug!(target: LOG_TARGET, "received scanner event while Validation Protocol (Id: {id}) is busy");
                                 num_resets += 1;
                                 // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
                                 if num_resets < 1{
+                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
                                     continue 'outer;
                                 }
                             }

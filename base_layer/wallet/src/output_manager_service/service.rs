@@ -614,6 +614,7 @@ where
     #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
         let id = OsRng.next_u64();
+        debug!(target: LOG_TARGET,"UTXO Validation Protocol (Id: {id}) started");
         let txo_validation = TxoValidationTask::new(
             id,
             self.resources.db.clone(),
@@ -646,6 +647,7 @@ where
                 },
             };
             'outer: loop {
+                debug!(target: LOG_TARGET,"UTXO Validation Protocol (Id: {id}) processing loop started");
                 let local_run = txo_validation.clone();
                 let exec_fut = local_run.execute();
                 tokio::pin!(exec_fut);
@@ -692,9 +694,11 @@ where
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 num_resets += 1;
-                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
+
+                                debug!(target: LOG_TARGET, "Received scanner event while TXO Validation Protocol (Id: {id}) is busy");
                                 // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
                                 if num_resets < 1{
+                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
                                     continue 'outer;
                                 }
                             }
