@@ -1417,7 +1417,7 @@ pub async fn command_runner(
 
                     // Script signature
                     let challenge = TransactionInput::build_script_signature_challenge(
-                        &TransactionInputVersion::get_current_version(),
+                        TransactionInputVersion::get_current_version(),
                         &leader_info.script_signature_ephemeral_commitment,
                         &leader_info.script_signature_ephemeral_pubkey,
                         &leader_info.input_script,
@@ -1490,7 +1490,7 @@ pub async fn command_runner(
                         std::slice::from_ref(&party_info.sender_offset_key_id),
                     )?;
                     let challenge = TransactionOutput::build_metadata_signature_challenge(
-                        &TransactionOutputVersion::get_current_version(),
+                        TransactionOutputVersion::get_current_version(),
                         &script,
                         &leader_info.output_features,
                         &leader_info.sender_offset_pubkey,

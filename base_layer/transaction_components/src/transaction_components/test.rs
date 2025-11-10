@@ -137,12 +137,14 @@ async fn range_proof_verification() {
     .sign_as_sender_and_receiver(&key_manager, &test_params_2.sender_offset_key_id)
     .unwrap()
     .try_build(&key_manager);
-
     match wallet_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
         Err(e) => {
-            unpack_enum!(TransactionError::BuilderError(s) = e);
-            assert_eq!(s, "Value provided is outside the range allowed by the range proof");
+            assert_eq!(
+                e.to_string(),
+                "KeyManager encountered an error: Transaction error: `Error building the transaction: Value provided \
+                 is outside the range allowed by the range proof`"
+            );
         },
     }
     let key = PrivateKey::random(&mut OsRng);

@@ -599,14 +599,14 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 }
 
 #[when(expr = "I create a transaction {word} spending {word} to {word}")]
-pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
+pub fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos, &mut world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -625,26 +625,20 @@ async fn create_tx_custom_fee_per_gram(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &mut world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
 #[when(expr = "I create a custom locked transaction {word} spending {word} to {word} with lockheight {word}")]
-async fn create_tx_custom_lock(
-    world: &mut TariWorld,
-    transaction: String,
-    inputs: String,
-    output: String,
-    lockheight: u64,
-) {
+fn create_tx_custom_lock(world: &mut TariWorld, transaction: String, inputs: String, output: String, lockheight: u64) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &mut world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }

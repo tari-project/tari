@@ -76,7 +76,6 @@ pub struct TransactionKeyManagerInner<TBackend> {
     legacy_wallet_type: Arc<LegacyWalletType>,
 }
 
-
 impl<TBackend> TransactionKeyManagerInner<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {

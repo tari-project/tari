@@ -553,7 +553,6 @@ mod test {
             let key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
-            let key_manager = KeyManager::new_random().unwrap();
             let coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,

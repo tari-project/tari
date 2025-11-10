@@ -52,7 +52,7 @@ use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tari_transaction_components::{
-    key_manager::KeyManager,
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_builder::TransactionBuilder,
     transaction_components::{
@@ -65,9 +65,8 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::create_new_random_key_manager;
 use tempfile::tempdir;
-use tari_transaction_components::key_manager::{TariKeyId, TransactionKeyManagerInterface};
-use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager};
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
@@ -79,32 +78,23 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         MicroMinotari::from(100_000),
         &key_manager,
     )
-
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_new_random_key_manager().await.unwrap();
-    let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet)
-
-        .unwrap();
+    let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
     let amount = MicroMinotari::from(10_000);
     builder
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
         .with_memo(MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap())
         .with_input(input)
-
         .unwrap();
 
-    let commitment_mask_key = key_manager.get_random_key(None, false)
-
-        .unwrap();
+    let commitment_mask_key = key_manager.get_random_key(None, false).unwrap();
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask_key.key_id).into(),
     };
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
 
-    let sender_offset = key_manager.get_random_key(None, false)
-
-        .unwrap();
+    let sender_offset = key_manager.get_random_key(None, false).unwrap();
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(
             &commitment_mask_key.key_id,
@@ -112,7 +102,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount.as_u64(),
             MemoField::new_empty(),
         )
-
         .unwrap();
     let output = WalletOutput::new(
         TransactionOutputVersion::get_current_version(),
@@ -132,10 +121,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         &key_manager,
     )
     .unwrap();
-    builder
-        .with_output(output.clone(), sender_offset.key_id, None)
-
-        .unwrap();
+    builder.with_output(output.clone(), sender_offset.key_id, None).unwrap();
     let finalized = builder.build().unwrap();
 
     let messages = ["Hey!", "Yo!", "Sup!"];

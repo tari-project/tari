@@ -23,12 +23,11 @@
 use rand::{CryptoRng, Rng};
 use tari_script::{script, TariScript};
 use tari_transaction_components::{
-    key_manager::TransactionKeyManagerInterface,
+    key_manager::{KeyManager, TransactionKeyManagerInterface},
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_components::{OutputFeatures, WalletOutput},
     MicroMinotari,
 };
-use tari_transaction_components::key_manager::KeyManager;
 
 pub fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
@@ -37,16 +36,13 @@ pub fn make_input<R: Rng + CryptoRng>(
     key_manager: &KeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager);
-    create_wallet_output_with_data(TariScript::default(), features.clone(), &test_params, val, key_manager)
-
-        .unwrap()
+    create_wallet_output_with_data(TariScript::default(), features.clone(), &test_params, val, key_manager).unwrap()
 }
 
 pub async fn make_fake_input_from_copy(wallet_output: &mut WalletOutput, key_manager: &KeyManager) -> WalletOutput {
     let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
     wallet_output
         .set_commitment_mask_key_id(commitment_mask_key.key_id, key_manager)
-
         .unwrap();
     wallet_output.set_script_key_id(script_key.key_id);
     wallet_output.clone()
@@ -59,9 +55,7 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
     key_manager: &KeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager);
-    create_wallet_output_with_data(script!(Nop).unwrap(), features, &test_params, value, key_manager)
-
-        .unwrap()
+    create_wallet_output_with_data(script!(Nop).unwrap(), features, &test_params, value, key_manager).unwrap()
 }
 
 /// This macro unlocks a Mutex or RwLock. If the lock is

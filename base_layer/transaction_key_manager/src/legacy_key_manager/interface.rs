@@ -38,10 +38,16 @@ pub const DH_COMMITMENT_MASK_BRANCH: &str = "dh_commitment_mask";
 pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
 pub const ENCRYPTED_BRANCH: &str = "encrypted";
 use tari_transaction_components::{
-    key_manager::{error::KeyManagerError, TariKeyId, TransactionKeyManagerInterface, CODE_TEMPLATE_AUTHOR},
+    key_manager::{
+        error::KeyManagerError,
+        KeyManager,
+        TariKeyId,
+        TransactionKeyManagerInterface,
+        CODE_TEMPLATE_AUTHOR,
+    },
     transaction_components::{EncryptedData, MemoField},
 };
-use tari_transaction_components::key_manager::KeyManager;
+
 use crate::legacy_key_manager::error::KeyManagerStorageError;
 
 #[repr(u8)]
@@ -272,7 +278,6 @@ impl fmt::Display for LegacySerializedKeyString {
     }
 }
 pub trait LegacyTransactionKeyManagerInterface: TransactionKeyManagerInterface + Clone + Send + Sync + 'static {
-
     fn key_manager(&self) -> &KeyManager;
 
     fn extract_payment_id_from_encrypted_data(

@@ -32,8 +32,8 @@ use minotari_wallet::output_manager_service::{
 use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
+use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";
 

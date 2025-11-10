@@ -652,7 +652,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     let script_key_id = &world.script_key_id().await;
     let block = mine_block_before_submit(
         &mut client,
-        &mut world.key_manager,
+        &world.key_manager,
         script_key_id,
         &world.default_payment_address.clone(),
         false,
@@ -677,7 +677,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     let mut block: Block = Block::try_from(
         mine_block_before_submit(
             &mut client,
-            &mut world.key_manager,
+            &world.key_manager,
             script_key_id,
             &world.default_payment_address.clone(),
             false,
@@ -702,7 +702,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     let mut block: Block = Block::try_from(
         mine_block_before_submit(
             &mut client,
-            &mut world.key_manager,
+            &world.key_manager,
             script_key_id,
             &world.default_payment_address.clone(),
             false,

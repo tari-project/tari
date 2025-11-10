@@ -710,14 +710,14 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
     let kernel_message =
         TransactionKernel::build_kernel_signature_message(kernel_version, 0.into(), 0, &kernel_features, &None);
     let public_nonce = key_manager.get_random_key(None, false).unwrap();
-    let public_commitment_mask = key_manager.get_random_key(None, false).unwrap();
+    let public_commitment_mask = key_manager.get_public_key_at_key_id(commitment_mask_key_id).unwrap();
 
     let kernel_signature = key_manager
         .get_partial_txo_kernel_signature(
             commitment_mask_key_id,
             &public_nonce.key_id,
             &public_nonce.pub_key,
-            &public_commitment_mask.pub_key,
+            &public_commitment_mask,
             kernel_version,
             &kernel_message,
             &kernel_features,
@@ -727,9 +727,7 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
 
     KernelBuilder::new()
         .with_features(kernel_features)
-        .with_excess(&CompressedCommitment::from_compressed_key(
-            public_commitment_mask.pub_key,
-        ))
+        .with_excess(&CompressedCommitment::from_compressed_key(public_commitment_mask))
         .with_signature(kernel_signature)
         .build()
         .unwrap()

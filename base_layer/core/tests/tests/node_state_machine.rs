@@ -136,11 +136,15 @@ async fn test_listening_lagging() {
         Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
-
     .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager))
+        .prepare_new_block(chain_block(
+            prev_block.block(),
+            vec![],
+            &consensus_manager,
+            &key_manager,
+        ))
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -202,11 +206,15 @@ async fn test_listening_initial_fallen_behind() {
         Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
-
     .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager))
+        .prepare_new_block(chain_block(
+            prev_block.block(),
+            vec![],
+            &consensus_manager,
+            &key_manager,
+        ))
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -229,11 +237,15 @@ async fn test_listening_initial_fallen_behind() {
         Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
-
     .unwrap();
     // charlie Block 2 - with block event and liveness service metadata update
     let mut prev_block = charlie_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager))
+        .prepare_new_block(chain_block(
+            prev_block.block(),
+            vec![],
+            &consensus_manager,
+            &key_manager,
+        ))
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;

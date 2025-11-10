@@ -2768,9 +2768,7 @@ mod test {
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let constants = create_consensus_constants(0);
-        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
-
-            .unwrap();
+        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
         let test_params = TestParams::new(&key_manager);
         let input = create_wallet_output_with_data(
             script!(Nop).unwrap(),
@@ -2786,7 +2784,6 @@ mod test {
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
             .with_memo(MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap())
             .with_input(input)
-
             .unwrap();
 
         let address = TariAddress::new_single_address_with_interactive_only(
@@ -2885,7 +2882,6 @@ mod test {
                 Some(receiver_test_params.sender_offset_key_id),
                 None,
             )
-
             .unwrap();
         let inbound_tx1 = InboundTransaction {
             tx_id: 2u64.into(),

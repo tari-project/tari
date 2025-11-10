@@ -21,21 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{mem::size_of, sync::Arc};
-use crate::legacy_key_manager::TransactionKeyManagerBackend;
+
 use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_transaction_components::crypto_factories::CryptoFactories;
+use tari_transaction_components::{crypto_factories::CryptoFactories, key_manager::error::KeyManagerError};
 use zeroize::Zeroizing;
-use tari_transaction_components::key_manager::error::KeyManagerError;
-use crate::legacy_key_manager::LegacyTransactionKeyManagerWrapper;
+
 use crate::legacy_key_manager::{
-    error::{KeyManagerStorageError},
+    error::KeyManagerStorageError,
     wallet_types::LegacyWalletType,
     KeyManagerState,
+    LegacyTransactionKeyManagerWrapper,
+    TransactionKeyManagerBackend,
 };
 pub type MemoryKeyManager = LegacyTransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 

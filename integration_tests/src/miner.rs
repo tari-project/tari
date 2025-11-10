@@ -338,7 +338,7 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
     let (template, wallet_output) = create_block_template_with_coinbase(
         &mut client,
         0,
-        &mut world.key_manager,
+        &world.key_manager,
         script_key_id,
         &world.default_payment_address.clone(),
         false,

@@ -105,7 +105,17 @@ use tari_transaction_components::{
         Transaction,
     },
 };
-use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
+use tari_transaction_key_manager::{
+    legacy_key_manager::{
+        create_new_random_key_manager,
+        wallet_types::{LegacyWalletType, ProvidedKeysWallet},
+        LegacyTransactionKeyManagerInitializer,
+        LegacyTransactionKeyManagerInterface,
+        LegacyTransactionKeyManagerWrapper,
+        MemoryKeyManager,
+    },
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+};
 use tari_utilities::{ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
@@ -114,13 +124,14 @@ use tokio::{
     time::sleep,
 };
 use url::Url;
-use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager, LegacyTransactionKeyManagerInitializer, MemoryKeyManager};
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::{LegacyWalletType, ProvidedKeysWallet};
+
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::make_input,
 };
+
+pub type MemoryDBKeyManager = LegacyTransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
 
 async fn setup_transaction_service(
     node_identity: Arc<NodeIdentity>,
@@ -130,9 +141,9 @@ async fn setup_transaction_service(
     shutdown_signal: ShutdownSignal,
 ) -> (
     TransactionServiceHandle,
-    OutputManagerHandle<MemoryKeyManager>,
+    OutputManagerHandle<MemoryDBKeyManager>,
     WalletConnectivityHandle<MockHttpClientFactory>,
-    MemoryKeyManager,
+    MemoryDBKeyManager,
     OutputManagerSqliteDatabase,
 ) {
     let passphrase = SafePassword::from("My lovely secret passphrase");
@@ -166,7 +177,7 @@ async fn setup_transaction_service(
         .add_initializer(RegisterHandle::new(wallet_connectivity_service_mock))
         .add_initializer(OutputManagerServiceInitializer::<
             OutputManagerSqliteDatabase,
-            MemoryKeyManager,
+            MemoryDBKeyManager,
             MockHttpClientFactory,
         >::new(
             OutputManagerServiceConfig::default(),
@@ -174,18 +185,15 @@ async fn setup_transaction_service(
             factories.clone(),
             Network::LocalNet.into(),
         ))
-        .add_initializer(
-            LegacyTransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new_with_legacy_storage(
-                kms_backend,
-                cipher,
-                factories.clone(),
-                wallet_type.clone(),
-            ),
-        )
+        .add_initializer(LegacyTransactionKeyManagerInitializer::<
+            TransactionKeyManagerSqliteDatabase<_>,
+        >::new_with_legacy_storage(
+            kms_backend, cipher, factories.clone(), wallet_type.clone()
+        ))
         .add_initializer(TransactionServiceInitializer::<
             _,
             _,
-            MemoryKeyManager,
+            MemoryDBKeyManager,
             MockHttpClientFactory,
         >::new(
             TransactionServiceConfig {
@@ -208,7 +216,7 @@ async fn setup_transaction_service(
             "http://localhost:9001".parse().unwrap(),
             "http://localhost:9001".parse().unwrap(),
         ))
-        .add_initializer(UtxoScannerServiceInitializer::<_, MemoryKeyManager>::new(
+        .add_initializer(UtxoScannerServiceInitializer::<_, MemoryDBKeyManager>::new(
             db,
             Network::LocalNet,
             14,
@@ -220,8 +228,8 @@ async fn setup_transaction_service(
         .await
         .unwrap();
 
-    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<MemoryKeyManager>>();
-    let key_manager_handle = handles.expect_handle::<MemoryKeyManager>();
+    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<MemoryDBKeyManager>>();
+    let key_manager_handle = handles.expect_handle::<MemoryDBKeyManager>();
     let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
     let connectivity_service_handle = handles.expect_handle::<WalletConnectivityHandle<MockHttpClientFactory>>();
 
@@ -414,24 +422,22 @@ async fn large_coin_split_transaction() {
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity.clone(),
-            consensus_manager,
-            factories.clone(),
-            db_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity.clone(),
+        consensus_manager,
+        factories.clone(),
+        db_connection,
+        shutdown.to_signal(),
+    )
+    .await;
 
     let initial_wallet_value = 20 * T;
     let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
-    )
-    .await;
+        key_manager_handle.key_manager(),
+    );
 
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
@@ -472,10 +478,11 @@ async fn large_coin_split_transaction() {
     // The payment id should match the finalized and recovered tx fee
     let mut payment_id_verified = false;
     for output in completed_tx.transaction.body.outputs() {
-        if let Ok(payment_id) = key_manager_handle
-            .extract_payment_id_from_encrypted_data(output.encrypted_data(), output.commitment(), None)
-            .await
-        {
+        if let Ok(payment_id) = key_manager_handle.extract_payment_id_from_encrypted_data(
+            output.encrypted_data(),
+            output.commitment(),
+            None,
+        ) {
             assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
             payment_id_verified = true;
             break;
@@ -512,23 +519,21 @@ async fn single_transaction_burn_tari() {
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity.clone(),
-            consensus_manager,
-            factories.clone(),
-            db_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity.clone(),
+        consensus_manager,
+        factories.clone(),
+        db_connection,
+        shutdown.to_signal(),
+    )
+    .await;
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
-    )
-    .await;
+        key_manager_handle.key_manager(),
+    );
 
     // Burn output
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
@@ -571,10 +576,11 @@ async fn single_transaction_burn_tari() {
     // The payment id should match the finalized and recovered tx fee
     let mut payment_id_verified = false;
     for output in completed_tx.transaction.body.outputs() {
-        if let Ok(payment_id) = key_manager_handle
-            .extract_payment_id_from_encrypted_data(output.encrypted_data(), output.commitment(), None)
-            .await
-        {
+        if let Ok(payment_id) = key_manager_handle.extract_payment_id_from_encrypted_data(
+            output.encrypted_data(),
+            output.commitment(),
+            None,
+        ) {
             assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
             payment_id_verified = true;
             break;
@@ -600,14 +606,11 @@ async fn single_transaction_burn_tari() {
     for output in completed_tx.transaction.body.outputs() {
         if output.is_burned() {
             found_burned_output = true;
-            match key_manager_handle
-                .try_output_key_recovery(
-                    output.commitment(),
-                    output.encrypted_data(),
-                    &output.sender_offset_public_key,
-                )
-                .await
-            {
+            match key_manager_handle.try_output_key_recovery(
+                output.commitment(),
+                output.encrypted_data(),
+                &output.sender_offset_public_key,
+            ) {
                 Ok(Some((_spending_key_id, value, _))) => {
                     assert_eq!(value, burn_value);
                 },
@@ -653,15 +656,14 @@ async fn send_one_sided_transaction_to_other() {
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity,
-            consensus_manager,
-            factories.clone(),
-            db_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager,
+        factories.clone(),
+        db_connection,
+        shutdown.to_signal(),
+    )
+    .await;
 
     let mut alice_event_stream = alice_ts.get_event_stream();
 
@@ -670,9 +672,8 @@ async fn send_one_sided_transaction_to_other() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
-    )
-    .await;
+        key_manager_handle.key_manager(),
+    );
     let mut alice_oms_clone = alice_oms.clone();
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
@@ -736,14 +737,10 @@ async fn send_one_sided_transaction_to_other() {
 
     // The payment id should match the finalized and recovered tx fee
     let mut payment_id_verified = false;
-    let bob_view_key_id = key_manager_handle
-        .import_key(random_pvt_key.clone(), None)
-        .await
-        .unwrap();
+    let bob_view_key_id = key_manager_handle.import_key(random_pvt_key.clone(), None).unwrap();
     for output in completed_tx.transaction.body.outputs() {
         let shared_secret = key_manager_handle
             .get_diffie_hellman_shared_secret(&bob_view_key_id, &output.sender_offset_public_key)
-            .await
             .unwrap();
         let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
         if let Ok((_, _, payment_id)) =
@@ -792,15 +789,14 @@ async fn recover_one_sided_transaction() {
 
     let alice_connection = make_wallet_database_memory_connection();
     let shutdown = Shutdown::new();
-    let (mut alice_ts, alice_oms, _alice_connectivity, mut alice_key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity,
-            consensus_manager.clone(),
-            factories.clone(),
-            alice_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, alice_oms, _alice_connectivity, alice_key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        alice_connection,
+        shutdown.to_signal(),
+    )
+    .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts, mut bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -816,7 +812,6 @@ async fn recover_one_sided_transaction() {
         script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
         script_key_id: bob_key_manager_handle
             .import_key(bob_node_identity.secret_key().clone(), None)
-            .await
             .unwrap(),
         script,
         input: ExecutionStack::default(),
@@ -830,9 +825,8 @@ async fn recover_one_sided_transaction() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut alice_key_manager_handle,
-    )
-    .await;
+        alice_key_manager_handle.key_manager(),
+    );
     let mut alice_oms_clone = alice_oms;
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
@@ -888,7 +882,6 @@ async fn recover_one_sided_transaction() {
                 .unwrap()
                 .sender_offset_public_key,
         )
-        .await
         .unwrap();
     let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
     let (_, _, payment_id) = EncryptedData::decrypt_data(
@@ -941,15 +934,14 @@ async fn recover_stealth_one_sided_transaction() {
 
     let alice_connection = make_wallet_database_memory_connection();
     let shutdown = Shutdown::new();
-    let (mut alice_ts, alice_oms, _alice_connectivity, mut alice_key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity,
-            consensus_manager.clone(),
-            factories.clone(),
-            alice_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, alice_oms, _alice_connectivity, alice_key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        alice_connection,
+        shutdown.to_signal(),
+    )
+    .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts, mut bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -968,9 +960,8 @@ async fn recover_stealth_one_sided_transaction() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &mut alice_key_manager_handle,
-    )
-    .await;
+        alice_key_manager_handle.key_manager(),
+    );
     let mut alice_oms_clone = alice_oms;
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
@@ -1022,7 +1013,6 @@ async fn recover_stealth_one_sided_transaction() {
                 .unwrap()
                 .sender_offset_public_key,
         )
-        .await
         .unwrap();
     let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
     let (_, _, payment_id) = EncryptedData::decrypt_data(
@@ -1069,15 +1059,14 @@ async fn test_htlc_send_and_claim() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity,
-            consensus_manager,
-            factories.clone(),
-            alice_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager,
+        factories.clone(),
+        alice_connection,
+        shutdown.to_signal(),
+    )
+    .await;
 
     let bob_temp_dir = tempdir().unwrap();
     let bob_db_path_string = bob_temp_dir.path().to_str().unwrap().to_string();
@@ -1098,9 +1087,8 @@ async fn test_htlc_send_and_claim() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
-    )
-    .await;
+        key_manager_handle.key_manager(),
+    );
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
@@ -1200,15 +1188,14 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
     let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, mut key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity,
-            consensus_manager.clone(),
-            factories.clone(),
-            alice_connection,
-            shutdown.to_signal(),
-        )
-        .await;
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        alice_connection,
+        shutdown.to_signal(),
+    )
+    .await;
 
     let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts_interface, _bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
@@ -1230,9 +1217,8 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
-        &key_manager_handle,
-    )
-    .await;
+        key_manager_handle.key_manager(),
+    );
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
@@ -1276,7 +1262,6 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
     for output in completed_tx.transaction.body.outputs() {
         let shared_secret = bob_key_manager_handle
             .get_diffie_hellman_shared_secret(&bob_view_key.key_id, &output.sender_offset_public_key)
-            .await
             .unwrap();
         let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
         if let Ok((_, _, payment_id)) =
@@ -1886,23 +1871,20 @@ async fn test_update_faux_tx_on_oms_validation() {
         &mut OsRng.clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
-        &mut alice_ts_interface.key_manager_handle,
-    )
-    .await;
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
     let uo_2 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(20000),
         &OutputFeatures::default(),
-        &mut alice_ts_interface.key_manager_handle,
-    )
-    .await;
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
     let uo_3 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(30000),
         &OutputFeatures::default(),
-        &mut alice_ts_interface.key_manager_handle,
-    )
-    .await;
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
 
     let tx_id_1 = alice_ts_interface
         .transaction_service_handle
@@ -2066,23 +2048,20 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         &mut OsRng.clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
-        &mut alice_ts_interface.key_manager_handle,
-    )
-    .await;
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
     let uo_2 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(20000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
-        &mut alice_ts_interface.key_manager_handle,
-    )
-    .await;
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
     let uo_3 = make_input(
         &mut OsRng.clone(),
         MicroMinotari::from(30000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
-        &mut alice_ts_interface.key_manager_handle,
-    )
-    .await;
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
 
     let tx_id_1 = alice_ts_interface
         .transaction_service_handle
