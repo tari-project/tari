@@ -93,8 +93,10 @@ use tari_transaction_components::{
         TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
+        WalletOutput,
         WalletOutputBuilder,
     },
+    tx_outputs_to_tx_id,
     MicroMinotari,
     TransactionBuilder,
     TransactionBuilderError,
@@ -400,7 +402,6 @@ where
 
         trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         let response: Result<TransactionServiceResponse, TransactionServiceError> = match request {
-
             TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
@@ -408,331 +409,356 @@ where
                 output_features,
                 fee_per_gram,
                 mut payment_id,
-            } => async {
-                self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
-                debug!(target: LOG_TARGET, "Locking one sided transaction to {destination} with {amount}");
-                let tx_id = TxId::new_random();
+            } => {
+                async {
+                    self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
+                    debug!(target: LOG_TARGET, "Locking one sided transaction to {destination} with {amount}");
+                    let temp_tx_id = TxId::new_random();
 
-                // let override the payment_id if the address says we should
-                if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                    debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, destination.get_memo_field_payment_id_bytes());
-                    payment_id =
-                        MemoField::new_open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
-                            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
-                }
+                    // let override the payment_id if the address says we should
+                    if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Address contains memo, overriding memo {} with {:?}",
+                            payment_id, destination.get_memo_field_payment_id_bytes()
+                        );
+                        payment_id =
+                            MemoField::new_open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+                    }
 
-                // Prepare sender part of the transaction
-                let script = push_pubkey_script(&Default::default());
-                let covenant = Covenant::default();
-                let tx_builder = self
-                    .resources
-                    .output_manager_service
-                    .prepare_transaction_to_send(
-                        tx_id,
-                        amount,
-                        selection_criteria,
-                        *output_features.clone(),
-                        fee_per_gram,
-                        script,
-                        covenant,
-                    )
-                    .await?;
-                let fee = tx_builder.get_fee_estimate_without_change()?;
+                    // Prepare sender part of the transaction
+                    let script = push_pubkey_script(&Default::default());
+                    let covenant = Covenant::default();
+                    let tx_builder = self
+                        .resources
+                        .output_manager_service
+                        .prepare_transaction_to_send(
+                            temp_tx_id,
+                            amount,
+                            selection_criteria,
+                            *output_features.clone(),
+                            fee_per_gram,
+                            script,
+                            covenant,
+                        )
+                        .await?;
+                    let fee = tx_builder.get_fee_estimate_without_change()?;
 
-                let payment_id = payment_id
-                    .clone()
-                    .add_sender_address(
-                        self.resources.one_sided_tari_address.clone(),
-                        true,
-                        fee,
-                        if destination == self.resources.one_sided_tari_address {
-                            Some(TxType::PaymentToSelf)
-                        } else {
-                            Some(TxType::PaymentToOther)
-                        },
-                    )
-                    .unwrap_or(payment_id);
-
-                let mut offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                let res = offline_signing.prepare_one_sided_transaction_for_signing(
-                    tx_id,
-                    tx_builder,
-                    destination,
-                    amount,
-                    *output_features,
-                    payment_id,
-                    self.resources.one_sided_tari_address.clone(),
-                )?;
-                self.resources
-                    .output_manager_service
-                    .confirm_pending_transaction(res.tx_id, None)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-                Ok(TransactionServiceResponse::OneSidedTransactionPreparedForSigning(
-                    Box::new(res),
-                ))
-            }.await,
-
-            TransactionServiceRequest::PrepareDepositMultisigTransaction { request } => async {
-                self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
-                let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-
-                let tx_id = TxId::new_random();
-                let script = push_pubkey_script(&Default::default());
-                let uuid = Uuid::new_v4();
-                let user_data = uuid.as_bytes().to_vec();
-                let fee_per_gram = MicroMinotari::from(1);
-                let output_features = OutputFeatures::default();
-                let covenant = Covenant::default();
-
-                let tx_builder = self
-                    .resources
-                    .output_manager_service
-                    .prepare_transaction_to_send(
-                        tx_id,
-                        request.amount,
-                        UtxoSelectionCriteria::default(),
-                        output_features.clone(),
-                        fee_per_gram,
-                        script,
-                        covenant,
-                    )
-                    .await?;
-                let fee = tx_builder.get_fee_estimate_without_change()?;
-
-                let payment_id = MemoField::new_address_and_data(
-                    request.recipient_address.clone(),
-                    fee,
-                    true,
-                    TxType::PaymentToOther,
-                    user_data,
-                )
-                .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
-
-                let response = offline_signing.prepare_deposit_multisig_transaction(
-                    tx_id,
-                    tx_builder,
-                    request.amount,
-                    payment_id,
-                    output_features,
-                    request.party_number,
-                    request.public_keys,
-                    self.resources.one_sided_tari_address.clone(),
-                    request.recipient_address,
-                )?;
-
-                self.resources
-                    .output_manager_service
-                    .confirm_pending_transaction(response.tx_id, None)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
-                Ok(TransactionServiceResponse::PrepareDepositMultisigTransaction(Box::new(
-                    response,
-                )))
-            }.await,
-
-            TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request } => async {
-                self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
-                let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-
-                let mut query = OutputBackendQuery::default();
-                query.commitments.push(request.utxo_commitment.clone());
-
-                query.status.push(OutputStatus::Unspent);
-
-                let utxos = self
-                    .resources
-                    .output_manager_service
-                    .clone()
-                    .get_outputs_by_query(query)
-                    .await
-                    .map_err(TransactionServiceError::OutputManagerError)?;
-
-                let selected_utxo = utxos.first().ok_or(TransactionServiceError::Other(format!(
-                    "UTXO with commitment {:?} not found",
-                    request.utxo_commitment
-                )))?;
-
-                let signatures = request.signatures;
-
-                // Enforce correct signature count and ordering for the multisig script
-                let (_ephemeral_pubkeys, threshold) =
-                    get_multi_sig_script_components(selected_utxo.wallet_output.script())
-                        .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
-
-                if signatures.len() < threshold as usize {
-                    return Err(TransactionServiceError::Other(format!(
-                        "Insufficient signatures: need at least {}, got {}",
-                        threshold,
-                        signatures.len()
-                    )));
-                }
-
-                let mut input_stack = ExecutionStack::default();
-                for sig in signatures.clone() {
-                    input_stack
-                        .push(StackItem::Signature(sig))
-                        .map_err(|e| TransactionServiceError::Other(format!("Failed to push signature: {}", e)))?;
-                }
-
-                let mut input_wallet_output = selected_utxo.wallet_output.clone();
-                input_wallet_output.set_input_data(input_stack);
-
-                let amount = selected_utxo.wallet_output.value();
-
-                let tx_id: TxId = TxId::new_random();
-                let fee_per_gram = MicroMinotari::from(1);
-                let height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
-                let consensus_constants = self.resources.consensus_manager.consensus_constants(height);
-                let mut tx_builder = TransactionBuilder::new(
-                    consensus_constants.clone(),
-                    self.resources.transaction_key_manager_service.clone(),
-                    self.resources.network,
-                )?;
-
-                let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
-                let script = push_pubkey_script(&Default::default());
-
-                let output_features = OutputFeatures::default();
-                let features_and_scripts_byte_size = consensus_constants
-                    .transaction_weight_params()
-                    .round_up_features_and_scripts_size(
-                        output_features
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                            script
-                                .get_serialized_size()
-                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                            Covenant::default()
-                                .get_serialized_size()
-                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                    );
-
-                let fee: MicroMinotari =
-                    fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
-
-                if fee > amount {
-                    return Err(TransactionServiceError::Other(format!(
-                        "insufficient funds: fee: {}, amount: {}",
-                        fee, amount
-                    )));
-                }
-                let total_amount = amount
-                    .checked_sub(fee)
-                    .ok_or(TransactionServiceError::Other("Amount too small to cover fee".into()))?;
-
-                tx_builder.with_input(input_wallet_output)?;
-                tx_builder.with_fee_per_gram(fee_per_gram);
-                tx_builder.with_lock_height(0);
-
-                let payment_id = MemoField::new_address_and_data(
-                    request.recipient_address.clone(),
-                    fee,
-                    true,
-                    TxType::PaymentToOther,
-                    vec![],
-                )
-                .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
-
-                let response = offline_signing.prepare_withdraw_multisig_transaction(
-                    tx_id,
-                    tx_builder,
-                    total_amount,
-                    payment_id,
-                    output_features,
-                    self.resources.one_sided_tari_address.clone(),
-                    request.recipient_address,
-                )?;
-
-                self.resources
-                    .output_manager_service
-                    .confirm_pending_transaction(response.tx_id, None)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
-                Ok(TransactionServiceResponse::PrepareWithdrawMultisigTransaction(
-                    Box::new(response),
-                ))
-            }.await,
-
-            TransactionServiceRequest::SignOneSidedTransaction { request } => async {
-                let mut offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                let res = offline_signing.sign_locked_transaction(request)?;
-                Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
-            }.await,
-
-            TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request } => async {
-                let mut offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                let res = offline_signing.sign_locked_deposit_multisig_transaction(request)?;
-                Ok(TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(
-                    Box::new(res),
-                ))
-            }.await,
-
-            TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request } => async {
-                let key_manager = self.resources.transaction_key_manager_service.clone();
-                let mut offline_signing = OfflineSigner::new(key_manager.clone());
-                let mut request = request;
-
-                for pair_output in &mut request.info.inputs.iter_mut() {
-                    let input_wallet_output = &mut pair_output.output_pair.output;
-                    let view_key = key_manager.get_view_key();
-                    let spend_key = key_manager.get_spend_key();
-
-                    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-                        private_key: view_key.key_id.clone().into(),
-                        public_key: input_wallet_output.sender_offset_public_key().clone(),
-                    };
-                    let script_pubkey =
-                        key_manager.stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)?;
-                    let script_key = TariKeyId::Derived {
-                        key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
-                    };
-
-                    let pushed_pk = input_wallet_output
-                        .script()
-                        .as_slice()
-                        .iter()
-                        .find_map(|op| {
-                            if let Opcode::PushPubKey(pk) = op {
-                                Some(pk.as_ref())
+                    let payment_id = payment_id
+                        .clone()
+                        .add_sender_address(
+                            self.resources.one_sided_tari_address.clone(),
+                            true,
+                            fee,
+                            if destination == self.resources.one_sided_tari_address {
+                                Some(TxType::PaymentToSelf)
                             } else {
-                                None
-                            }
-                        })
-                        .ok_or_else(|| TransactionServiceError::Other("Script has no PushPubKey opcode".into()))?;
+                                Some(TxType::PaymentToOther)
+                            },
+                        )
+                        .unwrap_or(payment_id);
 
-                    if pushed_pk != &script_pubkey {
+                    let mut offline_signing =
+                        OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+                    let res = offline_signing.prepare_one_sided_transaction_for_signing(
+                        tx_builder,
+                        destination,
+                        amount,
+                        *output_features,
+                        payment_id,
+                        self.resources.one_sided_tari_address.clone(),
+                    )?;
+
+                    self.resources
+                        .output_manager_service
+                        .confirm_pending_transaction(temp_tx_id, Some(res.tx_id), None)
+                        .await
+                        .map_err(|e| TransactionServiceProtocolError::new(res.tx_id, e.into()))?;
+                    Ok(TransactionServiceResponse::OneSidedTransactionPreparedForSigning(
+                        Box::new(res),
+                    ))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::PrepareDepositMultisigTransaction { request } => {
+                async {
+                    self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
+                    let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+
+                    let temp_tx_id = TxId::new_random();
+                    let script = push_pubkey_script(&Default::default());
+                    let uuid = Uuid::new_v4();
+                    let user_data = uuid.as_bytes().to_vec();
+                    let fee_per_gram = MicroMinotari::from(1);
+                    let output_features = OutputFeatures::default();
+                    let covenant = Covenant::default();
+
+                    let tx_builder = self
+                        .resources
+                        .output_manager_service
+                        .prepare_transaction_to_send(
+                            temp_tx_id,
+                            request.amount,
+                            UtxoSelectionCriteria::default(),
+                            output_features.clone(),
+                            fee_per_gram,
+                            script,
+                            covenant,
+                        )
+                        .await?;
+                    let fee = tx_builder.get_fee_estimate_without_change()?;
+
+                    let payment_id = MemoField::new_address_and_data(
+                        request.recipient_address.clone(),
+                        fee,
+                        true,
+                        TxType::PaymentToOther,
+                        user_data,
+                    )
+                    .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
+
+                    let response = offline_signing.prepare_deposit_multisig_transaction(
+                        tx_builder,
+                        request.amount,
+                        payment_id,
+                        output_features,
+                        request.party_number,
+                        request.public_keys,
+                        self.resources.one_sided_tari_address.clone(),
+                        request.recipient_address,
+                    )?;
+
+                    self.resources
+                        .output_manager_service
+                        .confirm_pending_transaction(temp_tx_id, Some(response.tx_id), None)
+                        .await
+                        .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
+
+                    Ok(TransactionServiceResponse::PrepareDepositMultisigTransaction(Box::new(
+                        response,
+                    )))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request } => {
+                async {
+                    self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
+                    let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+
+                    let mut query = OutputBackendQuery::default();
+                    query.commitments.push(request.utxo_commitment.clone());
+
+                    query.status.push(OutputStatus::Unspent);
+
+                    let utxos = self
+                        .resources
+                        .output_manager_service
+                        .clone()
+                        .get_outputs_by_query(query)
+                        .await
+                        .map_err(TransactionServiceError::OutputManagerError)?;
+
+                    let selected_utxo = utxos.first().ok_or(TransactionServiceError::Other(format!(
+                        "UTXO with commitment {:?} not found",
+                        request.utxo_commitment
+                    )))?;
+
+                    let signatures = request.signatures;
+
+                    // Enforce correct signature count and ordering for the multisig script
+                    let (_ephemeral_pubkeys, threshold) =
+                        get_multi_sig_script_components(selected_utxo.wallet_output.script())
+                            .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
+
+                    if signatures.len() < threshold as usize {
                         return Err(TransactionServiceError::Other(format!(
-                            "Script-spend key mismatch: script[1]={} derived(k')={}",
-                            pushed_pk.to_hex(),
-                            script_pubkey.to_hex()
+                            "Insufficient signatures: need at least {}, got {}",
+                            threshold,
+                            signatures.len()
                         )));
                     }
 
-                    if *input_wallet_output.commitment_mask_key_id() == TariKeyId::Zero {
-                        return Err(TransactionServiceError::ServiceError(
-                            "Input commitment mask key id is zero".into(),
-                        ));
+                    let mut input_stack = ExecutionStack::default();
+                    for sig in signatures.clone() {
+                        input_stack
+                            .push(StackItem::Signature(sig))
+                            .map_err(|e| TransactionServiceError::Other(format!("Failed to push signature: {}", e)))?;
                     }
 
-                    // 5) Attach k' so signer uses the correct key
-                    input_wallet_output.set_script_key_id(script_key);
+                    let mut input_wallet_output = selected_utxo.wallet_output.clone();
+                    input_wallet_output.set_input_data(input_stack);
+
+                    let amount = selected_utxo.wallet_output.value();
+
+                    let fee_per_gram = MicroMinotari::from(1);
+                    let height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+                    let consensus_constants = self.resources.consensus_manager.consensus_constants(height);
+                    let mut tx_builder = TransactionBuilder::new(
+                        consensus_constants.clone(),
+                        self.resources.transaction_key_manager_service.clone(),
+                        self.resources.network,
+                    )?;
+
+                    let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
+                    let script = push_pubkey_script(&Default::default());
+
+                    let output_features = OutputFeatures::default();
+                    let features_and_scripts_byte_size = consensus_constants
+                        .transaction_weight_params()
+                        .round_up_features_and_scripts_size(
+                            output_features
+                                .get_serialized_size()
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                                script
+                                    .get_serialized_size()
+                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                                Covenant::default()
+                                    .get_serialized_size()
+                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        );
+
+                    let fee: MicroMinotari =
+                        fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
+
+                    if fee > amount {
+                        return Err(TransactionServiceError::Other(format!(
+                            "insufficient funds: fee: {}, amount: {}",
+                            fee, amount
+                        )));
+                    }
+                    let total_amount = amount
+                        .checked_sub(fee)
+                        .ok_or(TransactionServiceError::Other("Amount too small to cover fee".into()))?;
+
+                    tx_builder.with_input(input_wallet_output)?;
+                    tx_builder.with_fee_per_gram(fee_per_gram);
+                    tx_builder.with_lock_height(0);
+
+                    let payment_id = MemoField::new_address_and_data(
+                        request.recipient_address.clone(),
+                        fee,
+                        true,
+                        TxType::PaymentToOther,
+                        vec![],
+                    )
+                    .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
+
+                    let response = offline_signing.prepare_withdraw_multisig_transaction(
+                        tx_builder,
+                        total_amount,
+                        payment_id,
+                        output_features,
+                        self.resources.one_sided_tari_address.clone(),
+                        request.recipient_address,
+                    )?;
+
+                    self.resources
+                        .output_manager_service
+                        .confirm_pending_transaction(response.tx_id, None, None)
+                        .await
+                        .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
+
+                    Ok(TransactionServiceResponse::PrepareWithdrawMultisigTransaction(
+                        Box::new(response),
+                    ))
                 }
-                let res = offline_signing.sign_locked_withdraw_multisig_transaction(request)?;
+                .await
+            },
 
-                Ok(TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(
-                    Box::new(res),
-                ))
-            }.await,
+            TransactionServiceRequest::SignOneSidedTransaction { request } => {
+                async {
+                    let mut offline_signing =
+                        OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+                    let res = offline_signing.sign_locked_transaction(request)?;
+                    Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => async {
-                let res = self
-                    .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSent(res))
-            }.await,
+            TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request } => {
+                async {
+                    let mut offline_signing =
+                        OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
+                    let res = offline_signing.sign_locked_deposit_multisig_transaction(request)?;
+                    Ok(TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(
+                        Box::new(res),
+                    ))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request } => {
+                async {
+                    let key_manager = self.resources.transaction_key_manager_service.clone();
+                    let mut offline_signing = OfflineSigner::new(key_manager.clone());
+                    let mut request = request;
+
+                    for pair_output in &mut request.info.inputs.iter_mut() {
+                        let input_wallet_output = &mut pair_output.output_pair.output;
+                        let view_key = key_manager.get_view_key();
+                        let spend_key = key_manager.get_spend_key();
+
+                        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+                            private_key: view_key.key_id.clone().into(),
+                            public_key: input_wallet_output.sender_offset_public_key().clone(),
+                        };
+                        let script_pubkey = key_manager
+                            .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)?;
+                        let script_key = TariKeyId::Derived {
+                            key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
+                        };
+
+                        let pushed_pk = input_wallet_output
+                            .script()
+                            .as_slice()
+                            .iter()
+                            .find_map(|op| {
+                                if let Opcode::PushPubKey(pk) = op {
+                                    Some(pk.as_ref())
+                                } else {
+                                    None
+                                }
+                            })
+                            .ok_or_else(|| TransactionServiceError::Other("Script has no PushPubKey opcode".into()))?;
+
+                        if pushed_pk != &script_pubkey {
+                            return Err(TransactionServiceError::Other(format!(
+                                "Script-spend key mismatch: script[1]={} derived(k')={}",
+                                pushed_pk.to_hex(),
+                                script_pubkey.to_hex()
+                            )));
+                        }
+
+                        if *input_wallet_output.commitment_mask_key_id() == TariKeyId::Zero {
+                            return Err(TransactionServiceError::ServiceError(
+                                "Input commitment mask key id is zero".into(),
+                            ));
+                        }
+
+                        // 5) Attach k' so signer uses the correct key
+                        input_wallet_output.set_script_key_id(script_key);
+                    }
+                    let res = offline_signing.sign_locked_withdraw_multisig_transaction(request)?;
+
+                    Ok(TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(
+                        Box::new(res),
+                    ))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => {
+                async {
+                    let res = self
+                        .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
 
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,
@@ -741,48 +767,57 @@ where
                 output_features,
                 fee_per_gram,
                 payment_id,
-            } => async {
-                let res = self
-                    .send_one_sided_transaction(
-                        destination,
-                        amount,
-                        selection_criteria,
-                        *output_features,
-                        fee_per_gram,
-                        payment_id,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSent(res))
-            }.await,
+            } => {
+                async {
+                    let res = self
+                        .send_one_sided_transaction(
+                            destination,
+                            amount,
+                            selection_criteria,
+                            *output_features,
+                            fee_per_gram,
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
 
             TransactionServiceRequest::SendManyOneSidedTransactions {
                 destinations,
                 selection_criteria,
                 output_features,
                 fee_per_gram,
-            } => async {
-                let res = self
-                    .send_many_one_sided_transactions(
-                        destinations,
-                        selection_criteria,
-                        *output_features,
-                        fee_per_gram,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionsSent(res))
-            }.await,
+            } => {
+                async {
+                    let res = self
+                        .send_many_one_sided_transactions(
+                            destinations,
+                            selection_criteria,
+                            *output_features,
+                            fee_per_gram,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionsSent(res))
+                }
+                .await
+            },
 
             TransactionServiceRequest::ScrapeWallet {
                 destination,
                 fee_per_gram,
-            } => async {
-                let res = self
-                    .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSent(res))
-            }.await,
+            } => {
+                async {
+                    let res = self
+                        .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
 
             TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 destination,
@@ -791,20 +826,23 @@ where
                 output_features,
                 fee_per_gram,
                 payment_id,
-            } => async {
-                let res = self
-                    .send_one_sided_to_stealth_address_transaction(
-                        destination,
-                        amount,
-                        selection_criteria,
-                        *output_features,
-                        fee_per_gram,
-                        payment_id,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSent(res))
-            }.await,
+            } => {
+                async {
+                    let res = self
+                        .send_one_sided_to_stealth_address_transaction(
+                            destination,
+                            amount,
+                            selection_criteria,
+                            *output_features,
+                            fee_per_gram,
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
 
             TransactionServiceRequest::BurnTari {
                 amount,
@@ -813,23 +851,26 @@ where
                 payment_id,
                 claim_public_key,
                 sidechain_deployment_key,
-            } => async {
-                let (tx_id, proof) = self
-                    .burn_tari(
-                        amount,
-                        selection_criteria,
-                        fee_per_gram,
-                        payment_id,
-                        claim_public_key,
-                        sidechain_deployment_key,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?;
-                Ok(TransactionServiceResponse::BurntTransactionSent {
-                    tx_id,
-                    proof: proof.map(Box::new),
-                })
-            }.await,
+            } => {
+                async {
+                    let (tx_id, proof) = self
+                        .burn_tari(
+                            amount,
+                            selection_criteria,
+                            fee_per_gram,
+                            payment_id,
+                            claim_public_key,
+                            sidechain_deployment_key,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::BurntTransactionSent {
+                        tx_id,
+                        proof: proof.map(Box::new),
+                    })
+                }
+                .await
+            },
 
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
@@ -843,40 +884,43 @@ where
                 original_maturity,
                 use_output,
                 payment_id,
-            } => async {
-                let (
-                    tx_id,
-                    tx,
-                    total_script_pubkey,
-                    total_metadata_ephemeral_public_key,
-                    total_script_nonce,
-                    shared_secret,
-                ) = self
-                    .encumber_aggregate_tx(
-                        fee_per_gram,
-                        expected_commitment,
-                        script_input_shares,
-                        script_signature_public_nonces,
-                        sender_offset_public_key_shares,
-                        metadata_ephemeral_public_key_shares,
-                        dh_shared_secret_shares,
-                        recipient_address,
-                        original_maturity,
-                        use_output,
-                        payment_id,
-                    )
-                    .await?;
-                Ok({
-                    TransactionServiceResponse::EncumberAggregateUtxo(
+            } => {
+                async {
+                    let (
                         tx_id,
-                        Box::new(tx),
-                        Box::new(total_script_pubkey),
-                        Box::new(total_metadata_ephemeral_public_key),
-                        Box::new(total_script_nonce),
-                        Box::new(shared_secret),
-                    )
-                })
-            }.await,
+                        tx,
+                        total_script_pubkey,
+                        total_metadata_ephemeral_public_key,
+                        total_script_nonce,
+                        shared_secret,
+                    ) = self
+                        .encumber_aggregate_tx(
+                            fee_per_gram,
+                            expected_commitment,
+                            script_input_shares,
+                            script_signature_public_nonces,
+                            sender_offset_public_key_shares,
+                            metadata_ephemeral_public_key_shares,
+                            dh_shared_secret_shares,
+                            recipient_address,
+                            original_maturity,
+                            use_output,
+                            payment_id,
+                        )
+                        .await?;
+                    Ok({
+                        TransactionServiceResponse::EncumberAggregateUtxo(
+                            tx_id,
+                            Box::new(tx),
+                            Box::new(total_script_pubkey),
+                            Box::new(total_metadata_ephemeral_public_key),
+                            Box::new(total_script_nonce),
+                            Box::new(shared_secret),
+                        )
+                    })
+                }
+                .await
+            },
 
             TransactionServiceRequest::SpendBackupPreMineUtxo {
                 fee_per_gram,
@@ -884,41 +928,50 @@ where
                 expected_commitment,
                 recipient_address,
                 payment_id,
-            } => async {
-                let res = self
-                    .spend_backup_pre_mine_utxo(
-                        fee_per_gram,
-                        output_hash,
-                        expected_commitment,
-                        recipient_address,
-                        payment_id,
-                    )
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSent(res))
-            }.await,
+            } => {
+                async {
+                    let res = self
+                        .spend_backup_pre_mine_utxo(
+                            fee_per_gram,
+                            output_hash,
+                            expected_commitment,
+                            recipient_address,
+                            payment_id,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => async {
-                let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
-                Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
-            }.await,
+            TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
+                async {
+                    let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
+                    Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
+                }
+                .await
+            },
 
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
                 total_script_data_signature,
                 script_offset,
-            } => async {
-                Ok(TransactionServiceResponse::TransactionSent(
-                    self.finalized_aggregate_encumbed_tx(
-                        tx_id.into(),
-                        total_meta_data_signature,
-                        total_script_data_signature,
-                        script_offset,
-                        transaction_broadcast_join_handles,
-                    )
+            } => {
+                async {
+                    Ok(TransactionServiceResponse::TransactionSent(
+                        self.finalized_aggregate_encumbed_tx(
+                            tx_id.into(),
+                            total_meta_data_signature,
+                            total_script_data_signature,
+                            script_offset,
+                            transaction_broadcast_join_handles,
+                        )
                         .await?,
-                ))
-            }.await,
+                    ))
+                }
+                .await
+            },
 
             TransactionServiceRequest::RegisterValidatorNode {
                 amount,
@@ -930,22 +983,26 @@ where
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
-            } => async {
-                let tx_id = self.register_validator_node(
-                    amount,
-                    validator_node_public_key,
-                    validator_node_signature,
-                    validator_node_claim_public_key,
-                    sidechain_deployment_key,
-                    max_epoch,
-                    selection_criteria,
-                    fee_per_gram,
-                    payment_id,
-                    transaction_broadcast_join_handles,
-                )
-                .await?;
-                Ok(TransactionServiceResponse::TransactionSent(tx_id))
-            }.await,
+            } => {
+                async {
+                    let tx_id = self
+                        .register_validator_node(
+                            amount,
+                            validator_node_public_key,
+                            validator_node_signature,
+                            validator_node_claim_public_key,
+                            sidechain_deployment_key,
+                            max_epoch,
+                            selection_criteria,
+                            fee_per_gram,
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
+                }
+                .await
+            },
 
             TransactionServiceRequest::SubmitValidatorNodeExit {
                 amount,
@@ -956,21 +1013,25 @@ where
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
-            } => async {
-                let tx_id = self.submit_validator_exit(
-                    amount,
-                    validator_node_public_key,
-                    validator_node_signature,
-                    sidechain_deployment_key,
-                    selection_criteria,
-                    max_epoch,
-                    fee_per_gram,
-                    payment_id,
-                    transaction_broadcast_join_handles,
-                )
-                .await?;
-                Ok(TransactionServiceResponse::TransactionSent(tx_id))
-            }.await,
+            } => {
+                async {
+                    let tx_id = self
+                        .submit_validator_exit(
+                            amount,
+                            validator_node_public_key,
+                            validator_node_signature,
+                            sidechain_deployment_key,
+                            selection_criteria,
+                            max_epoch,
+                            fee_per_gram,
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
+                }
+                .await
+            },
 
             TransactionServiceRequest::RegisterCodeTemplate {
                 template_name,
@@ -981,32 +1042,35 @@ where
                 binary_url,
                 fee_per_gram,
                 sidechain_deployment_key,
-            } => async {
-                let payment_id = MemoField::new_open(
-                    format!("Template Registration: {template_name}").into_bytes(),
-                    TxType::CodeTemplateRegistration,
-                )
-                .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-                let (tx_id, template_address) = self
-                    .register_code_template(
-                        fee_per_gram,
-                        template_name,
-                        template_version,
-                        template_type,
-                        build_info,
-                        binary_sha,
-                        binary_url,
-                        sidechain_deployment_key,
-                        UtxoSelectionCriteria::default(),
-                        payment_id,
-                        transaction_broadcast_join_handles,
+            } => {
+                async {
+                    let payment_id = MemoField::new_open(
+                        format!("Template Registration: {template_name}").into_bytes(),
+                        TxType::CodeTemplateRegistration,
                     )
-                    .await?;
-                Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
-                    tx_id,
-                    template_address,
-                })
-            }.await,
+                    .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
+                    let (tx_id, template_address) = self
+                        .register_code_template(
+                            fee_per_gram,
+                            template_name,
+                            template_version,
+                            template_type,
+                            build_info,
+                            binary_sha,
+                            binary_url,
+                            sidechain_deployment_key,
+                            UtxoSelectionCriteria::default(),
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
+                        tx_id,
+                        template_address,
+                    })
+                }
+                .await
+            },
 
             TransactionServiceRequest::SubmitValidatorEvictionProof {
                 amount,
@@ -1014,19 +1078,23 @@ where
                 fee_per_gram,
                 payment_id,
                 sidechain_deployment_key,
-            } => async {
-                let tx_id = self.submit_validator_eviction_proof(
-                    amount,
-                    proof,
-                    sidechain_deployment_key,
-                    UtxoSelectionCriteria::default(),
-                    fee_per_gram,
-                    payment_id,
-                    transaction_broadcast_join_handles,
-                )
-                .await?;
-                Ok(TransactionServiceResponse::TransactionSent(tx_id))
-            }.await,
+            } => {
+                async {
+                    let tx_id = self
+                        .submit_validator_eviction_proof(
+                            amount,
+                            proof,
+                            sidechain_deployment_key,
+                            UtxoSelectionCriteria::default(),
+                            fee_per_gram,
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
+                }
+                .await
+            },
 
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 destination,
@@ -1034,177 +1102,236 @@ where
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
-            ) => async {
-                let res = self
-                    .send_sha_atomic_swap_transaction(
-                        destination,
-                        amount,
-                        selection_criteria,
-                        fee_per_gram,
-                        payment_id,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?;
-                Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(res))
-            }.await,
+            ) => {
+                async {
+                    let res = self
+                        .send_sha_atomic_swap_transaction(
+                            destination,
+                            amount,
+                            selection_criteria,
+                            fee_per_gram,
+                            payment_id,
+                            transaction_broadcast_join_handles,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(res))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::CancelTransaction(tx_id) => async {
-                self.cancel_pending_transaction(tx_id).await?;
-                Ok(TransactionServiceResponse::TransactionCancelled)
-            }.await,
+            TransactionServiceRequest::CancelTransaction(tx_id) => {
+                async {
+                    self.cancel_pending_transaction(tx_id).await?;
+                    Ok(TransactionServiceResponse::TransactionCancelled)
+                }
+                .await
+            },
 
-            TransactionServiceRequest::GetPendingInboundTransactions => async {
-                Ok(
-                    TransactionServiceResponse::PendingInboundTransactions(self.db.get_pending_inbound_transactions()?),
-                )
-            }.await,
+            TransactionServiceRequest::GetPendingInboundTransactions => {
+                async {
+                    Ok(TransactionServiceResponse::PendingInboundTransactions(
+                        self.db.get_pending_inbound_transactions()?,
+                    ))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::GetPendingOutboundTransactions => async {
-                Ok(
-                    TransactionServiceResponse::PendingOutboundTransactions(self.db.get_pending_outbound_transactions()?),
-                )
-            }.await,
+            TransactionServiceRequest::GetPendingOutboundTransactions => {
+                async {
+                    Ok(TransactionServiceResponse::PendingOutboundTransactions(
+                        self.db.get_pending_outbound_transactions()?,
+                    ))
+                }
+                .await
+            },
 
             TransactionServiceRequest::GetCompletedTransactions {
                 payment_id,
                 block_hash,
                 block_height,
                 max_limit,
-            } => async {
-                Ok(TransactionServiceResponse::CompletedTransactions(
-                    self.db
-                        .get_completed_transactions(payment_id, block_hash, block_height, max_limit)?,
-                ))
-            }.await,
+            } => {
+                async {
+                    Ok(TransactionServiceResponse::CompletedTransactions(
+                        self.db
+                            .get_completed_transactions(payment_id, block_hash, block_height, max_limit)?,
+                    ))
+                }
+                .await
+            },
 
             TransactionServiceRequest::GetCompletedTransactionsByAddresses {
                 source_address,
                 destination_address,
-            } => async {
-                Ok(TransactionServiceResponse::CompletedTransactions(
-                    self.db
-                        .get_completed_transactions_by_addresses(source_address, destination_address)?,
-                ))
-            }.await,
+            } => {
+                async {
+                    Ok(TransactionServiceResponse::CompletedTransactions(
+                        self.db
+                            .get_completed_transactions_by_addresses(source_address, destination_address)?,
+                    ))
+                }
+                .await
+            },
 
             TransactionServiceRequest::GetCompletedTransactionsPaginated {
                 offset,
                 limit,
                 status_filter,
-            } => async {
-                if limit == 0 {
-                    return Err(TransactionServiceError::InvalidArgument(
-                        "limit must be greater than 0".to_string(),
-                    ));
+            } => {
+                async {
+                    if limit == 0 {
+                        return Err(TransactionServiceError::InvalidArgument(
+                            "limit must be greater than 0".to_string(),
+                        ));
+                    }
+                    Ok(TransactionServiceResponse::CompletedTransactions(
+                        self.db
+                            .get_completed_transactions_paginated(offset, limit, status_filter)?,
+                    ))
                 }
-                Ok(TransactionServiceResponse::CompletedTransactions(
-                    self.db
-                        .get_completed_transactions_paginated(offset, limit, status_filter)?,
-                ))
-            }.await,
+                .await
+            },
 
-            TransactionServiceRequest::GetCancelledPendingInboundTransactions => async {
-                Ok(TransactionServiceResponse::PendingInboundTransactions(
-                    self.db.get_cancelled_pending_inbound_transactions()?,
-                ))
-            }.await,
+            TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
+                async {
+                    Ok(TransactionServiceResponse::PendingInboundTransactions(
+                        self.db.get_cancelled_pending_inbound_transactions()?,
+                    ))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::GetCancelledPendingOutboundTransactions => async {
-                Ok(TransactionServiceResponse::PendingOutboundTransactions(
-                    self.db.get_cancelled_pending_outbound_transactions()?,
-                ))
-            }.await,
+            TransactionServiceRequest::GetCancelledPendingOutboundTransactions => {
+                async {
+                    Ok(TransactionServiceResponse::PendingOutboundTransactions(
+                        self.db.get_cancelled_pending_outbound_transactions()?,
+                    ))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::GetCancelledCompletedTransactions(max_limit) => async {
-                Ok(TransactionServiceResponse::CompletedTransactions(
-                    self.db.get_cancelled_completed_transactions(max_limit)?,
-                ))
-            }.await,
+            TransactionServiceRequest::GetCancelledCompletedTransactions(max_limit) => {
+                async {
+                    Ok(TransactionServiceResponse::CompletedTransactions(
+                        self.db.get_cancelled_completed_transactions(max_limit)?,
+                    ))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::GetCompletedTransaction(tx_id) => async {
-                Ok(
-                    TransactionServiceResponse::CompletedTransaction(Box::new(self.db.get_completed_transaction(tx_id)?)),
-                )
-            }.await,
+            TransactionServiceRequest::GetCompletedTransaction(tx_id) => {
+                async {
+                    Ok(TransactionServiceResponse::CompletedTransaction(Box::new(
+                        self.db.get_completed_transaction(tx_id)?,
+                    )))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::GetAnyTransaction(tx_id) => async {
-                Ok(TransactionServiceResponse::AnyTransaction(
-                    Box::new(self.db.get_any_transaction(tx_id)?),
-                ))
-            }.await,
+            TransactionServiceRequest::GetAnyTransaction(tx_id) => {
+                async {
+                    Ok(TransactionServiceResponse::AnyTransaction(Box::new(
+                        self.db.get_any_transaction(tx_id)?,
+                    )))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::ImportTransaction(tx) => async {
-                let tx_id = match tx {
-                    PendingInbound(inbound_tx) => {
-                        let tx_id = inbound_tx.tx_id;
-                        check_transaction_size(&inbound_tx, tx_id)?;
-                        self.db.insert_pending_inbound_transaction(tx_id, inbound_tx)?;
-                        tx_id
-                    },
-                    PendingOutbound(outbound_tx) => {
-                        let tx_id = outbound_tx.tx_id;
-                        check_transaction_size(&outbound_tx, tx_id)?;
-                        self.db.insert_pending_outbound_transaction(tx_id, outbound_tx)?;
-                        tx_id
-                    },
-                    Completed(completed_tx) => {
-                        let tx_id = completed_tx.tx_id;
-                        check_transaction_size(&completed_tx.transaction, tx_id)?;
-                        self.db.insert_completed_transaction(tx_id, completed_tx)?;
-                        tx_id
-                    },
-                };
-                let _size = self
-                    .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionImported(tx_id)));
-                Ok(TransactionServiceResponse::TransactionImported(tx_id))
-            }.await,
+            TransactionServiceRequest::ImportTransaction(tx) => {
+                async {
+                    let tx_id = match tx {
+                        PendingInbound(inbound_tx) => {
+                            let tx_id = inbound_tx.tx_id;
+                            check_transaction_size(&inbound_tx, tx_id)?;
+                            self.db.insert_pending_inbound_transaction(tx_id, inbound_tx)?;
+                            tx_id
+                        },
+                        PendingOutbound(outbound_tx) => {
+                            let tx_id = outbound_tx.tx_id;
+                            check_transaction_size(&outbound_tx, tx_id)?;
+                            self.db.insert_pending_outbound_transaction(tx_id, outbound_tx)?;
+                            tx_id
+                        },
+                        Completed(completed_tx) => {
+                            let tx_id = completed_tx.tx_id;
+                            check_transaction_size(&completed_tx.transaction, tx_id)?;
+                            self.db.insert_completed_transaction(tx_id, completed_tx)?;
+                            tx_id
+                        },
+                    };
+                    let _size = self
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionImported(tx_id)));
+                    Ok(TransactionServiceResponse::TransactionImported(tx_id))
+                }
+                .await
+            },
 
             TransactionServiceRequest::ImportUtxoWithStatus {
                 amount,
                 source_address,
                 import_status,
-                tx_id,
                 current_height,
                 mined_timestamp,
                 scanned_output,
                 payment_id,
-            } => async {
-                let res = self
-                    .add_utxo_import_transaction_with_status(
-                        amount,
-                        source_address,
-                        import_status,
+            } => {
+                async {
+                    let res = self
+                        .add_utxo_import_transaction_with_status(
+                            amount,
+                            source_address,
+                            import_status,
+                            current_height,
+                            mined_timestamp,
+                            scanned_output,
+                            payment_id,
+                        )
+                        .await?;
+                    Ok(TransactionServiceResponse::UtxoImported(res))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, payment_id) => {
+                async {
+                    self.submit_transaction_to_self(
+                        transaction_broadcast_join_handles,
                         tx_id,
-                        current_height,
-                        mined_timestamp,
-                        scanned_output,
+                        tx,
+                        fee,
+                        amount,
                         payment_id,
                     )
                     .await?;
-                Ok(TransactionServiceResponse::UtxoImported(res))
-            }.await,
+                    Ok(TransactionServiceResponse::TransactionSubmitted)
+                }
+                .await
+            },
 
-            TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, payment_id) => async {
-                self.submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, payment_id)
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSubmitted)
-            }.await,
+            TransactionServiceRequest::SetLowPowerMode => {
+                async {
+                    self.set_power_mode(PowerMode::Low).await?;
+                    Ok(TransactionServiceResponse::LowPowerModeSet)
+                }
+                .await
+            },
 
-            TransactionServiceRequest::SetLowPowerMode => async {
-                self.set_power_mode(PowerMode::Low).await?;
-                Ok(TransactionServiceResponse::LowPowerModeSet)
-            }.await,
+            TransactionServiceRequest::SetNormalPowerMode => {
+                async {
+                    self.set_power_mode(PowerMode::Normal).await?;
+                    Ok(TransactionServiceResponse::NormalPowerModeSet)
+                }
+                .await
+            },
 
-            TransactionServiceRequest::SetNormalPowerMode => async {
-                self.set_power_mode(PowerMode::Normal).await?;
-                Ok(TransactionServiceResponse::NormalPowerModeSet)
-            }.await,
-
-            TransactionServiceRequest::RestartBroadcastProtocols => async {
-                self.restart_broadcast_protocols(transaction_broadcast_join_handles)?;
-                Ok(TransactionServiceResponse::ProtocolsRestarted)
-            }.await,
+            TransactionServiceRequest::RestartBroadcastProtocols => {
+                async {
+                    self.restart_broadcast_protocols(transaction_broadcast_join_handles)?;
+                    Ok(TransactionServiceResponse::ProtocolsRestarted)
+                }
+                .await
+            },
 
             TransactionServiceRequest::GetNumConfirmationsRequired => Ok(
                 TransactionServiceResponse::NumConfirmationsRequired(self.resources.config.num_confirmations_required),
@@ -1215,36 +1342,49 @@ where
                 Ok(TransactionServiceResponse::NumConfirmationsSet)
             },
 
-            TransactionServiceRequest::ValidateTransactions => async {
-                let res = self
-                    .start_transaction_validation_protocol(transaction_validation_join_handles)
-                    .await?;
-                Ok(TransactionServiceResponse::ValidationStarted(res))
-            }.await,
+            TransactionServiceRequest::ValidateTransactions => {
+                async {
+                    let res = self
+                        .start_transaction_validation_protocol(transaction_validation_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::ValidationStarted(res))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::ReValidateRejectedTransactions => async {
-                let res = self
-                    .start_rejected_transaction_revalidation(transaction_validation_join_handles)
-                    .await?;
-                Ok(TransactionServiceResponse::ValidationStarted(res))
-            }.await,
+            TransactionServiceRequest::ReValidateRejectedTransactions => {
+                async {
+                    let res = self
+                        .start_rejected_transaction_revalidation(transaction_validation_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::ValidationStarted(res))
+                }
+                .await
+            },
 
-            TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => async {
-                let res = self
-                    .replace_by_fee(tx_id, fee_increase, transaction_broadcast_join_handles)
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionReplaced(res))
-            }.await,
+            TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => {
+                async {
+                    let res = self
+                        .replace_by_fee(tx_id, fee_increase, transaction_broadcast_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionReplaced(res))
+                }
+                .await
+            },
 
             TransactionServiceRequest::UserPayForFee {
                 tx_id,
                 destination,
                 fee,
-            } => async {
-                let tx_id = self.user_pay_for_fee(tx_id, destination, fee, transaction_broadcast_join_handles)
-                    .await?;
-                Ok(TransactionServiceResponse::TransactionSent(tx_id))
-            }.await,
+            } => {
+                async {
+                    let tx_id = self
+                        .user_pay_for_fee(tx_id, destination, fee, transaction_broadcast_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
+                }
+                .await
+            },
 
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
@@ -1252,214 +1392,236 @@ where
                 return Ok(());
             },
 
-            TransactionServiceRequest::GetPaymentByReference { payref } => async {
-                let res = self.get_payment_by_reference(payref)?;
-                Ok(TransactionServiceResponse::PaymentDetails(res))
-            }.await,
-
-            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => async {
-                match self.get_transaction_with_payref(payref)? {
-                    Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
-                    None => Err(TransactionServiceError::TransactionStorageError(
-                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions(1)),
-                    ))?,
+            TransactionServiceRequest::GetPaymentByReference { payref } => {
+                async {
+                    let res = self.get_payment_by_reference(payref)?;
+                    Ok(TransactionServiceResponse::PaymentDetails(res))
                 }
-            }.await,
+                .await
+            },
 
-            TransactionServiceRequest::CreateMultisigUtxo { request } => async {
-                let fee_per_gram = MicroMinotari::from(1);
-                let selected_criteria = UtxoSelectionCriteria {
-                    excluding_multisig: true,
-                    ..Default::default()
-                };
-                let tx_id = TxId::new_random();
-                let tx_builder = self
-                    .resources
-                    .output_manager_service
-                    .prepare_transaction_to_send(
-                        tx_id,
-                        request.amount,
-                        selected_criteria,
-                        OutputFeatures::default(),
-                        fee_per_gram,
-                        push_pubkey_script(&Default::default()),
-                        Covenant::default(),
-                    )
-                    .await?;
-                let mut multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
-                let uuid = Uuid::new_v4();
-                let (tx, payment_id, sent_hashes, change_hashes, change) = multisig_session
-                    .create_deposit_multisig_transaction(
-                        request.amount,
-                        request.party_number,
-                        request.public_keys,
-                        request.recipient_address.clone(),
-                        tx_builder,
-                        uuid,
-                    )
-                    .await?;
-
-                let fee = tx.body.get_total_fee()?;
-
-                self.resources
-                    .output_manager_service
-                    .confirm_pending_transaction(tx_id, change)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
-                drop(
-                    self.event_publisher
-                        .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id))),
-                );
-
-                self.submit_transaction(
-                    transaction_broadcast_join_handles,
-                    CompletedTransaction::new_with_output_hashes(
-                        tx_id,
-                        self.resources.one_sided_tari_address.clone(),
-                        request.recipient_address.clone(),
-                        request.amount,
-                        fee,
-                        tx.clone(),
-                        LegacyTransactionStatus::Completed,
-                        Utc::now(),
-                        TransactionDirection::Outbound,
-                        None,
-                        None,
-                        payment_id,
-                        sent_hashes,
-                        vec![],
-                        change_hashes,
-                    )?,
-                )
-                .await?;
-
-                Ok(TransactionServiceResponse::CreateMultisigUtxo(tx_id))
-            }.await,
-
-            TransactionServiceRequest::GetMultisigUtxoData { utxo_commitment } => async {
-                let mut query = OutputBackendQuery::default();
-                query.commitments.push(utxo_commitment.clone());
-
-                query.status.push(OutputStatus::Unspent);
-
-                let utxos = self
-                    .resources
-                    .output_manager_service
-                    .clone()
-                    .get_outputs_by_query(query)
-                    .await
-                    .map_err(TransactionServiceError::OutputManagerError)?;
-
-                let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
-                    "UTXO with commitment {:?} not found",
-                    utxo_commitment
-                )))?;
-
-                let scripts = selected_utxo.wallet_output.script().clone();
-                let mut challenge = Box::new([0; 32]);
-                let mut public_keys = Vec::new();
-
-                let sender_offset_pub_key = selected_utxo.wallet_output.sender_offset_public_key().to_public_key()?;
-
-                for op in scripts.as_slice() {
-                    if let Opcode::CheckMultiSigVerify(_m, _n, k, msg) = op {
-                        challenge.clone_from_slice(msg.as_bytes());
-
-                        public_keys.extend(k.clone());
+            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
+                async {
+                    match self.get_transaction_with_payref(payref)? {
+                        Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
+                        None => Err(TransactionServiceError::TransactionStorageError(
+                            TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions(1)),
+                        ))?,
                     }
                 }
+                .await
+            },
 
-                let output = GetMultisigUtxoDataOutput {
-                    challenge,
-                    public_keys,
-                    commitment: selected_utxo.commitment.clone(),
-                    sender_offset_pub_key: CompressedPublicKey::new_from_pk(sender_offset_pub_key),
-                };
+            TransactionServiceRequest::CreateMultisigUtxo { request } => {
+                async {
+                    let fee_per_gram = MicroMinotari::from(1);
+                    let selected_criteria = UtxoSelectionCriteria {
+                        excluding_multisig: true,
+                        ..Default::default()
+                    };
+                    let temp_tx_id = TxId::new_random();
+                    let tx_builder = self
+                        .resources
+                        .output_manager_service
+                        .prepare_transaction_to_send(
+                            temp_tx_id,
+                            request.amount,
+                            selected_criteria,
+                            OutputFeatures::default(),
+                            fee_per_gram,
+                            push_pubkey_script(&Default::default()),
+                            Covenant::default(),
+                        )
+                        .await?;
+                    let mut multisig_session =
+                        MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                    let uuid = Uuid::new_v4();
+                    let (tx, payment_id, sent_hashes, change_hashes, change, tx_id) = multisig_session
+                        .create_deposit_multisig_transaction(
+                            request.amount,
+                            request.party_number,
+                            request.public_keys,
+                            request.recipient_address.clone(),
+                            tx_builder,
+                            uuid,
+                        )
+                        .await?;
 
-                Ok(TransactionServiceResponse::GetMultisigUtxoData(Box::new(output)))
-            }.await,
+                    let fee = tx.body.get_total_fee()?;
+
+                    self.resources
+                        .output_manager_service
+                        .confirm_pending_transaction(temp_tx_id, Some(tx_id), change)
+                        .await
+                        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+                    drop(
+                        self.event_publisher
+                            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id))),
+                    );
+
+                    self.submit_transaction(
+                        transaction_broadcast_join_handles,
+                        CompletedTransaction::new_with_output_hashes(
+                            tx_id,
+                            self.resources.one_sided_tari_address.clone(),
+                            request.recipient_address.clone(),
+                            request.amount,
+                            fee,
+                            tx.clone(),
+                            LegacyTransactionStatus::Completed,
+                            Utc::now(),
+                            TransactionDirection::Outbound,
+                            None,
+                            None,
+                            payment_id,
+                            sent_hashes,
+                            vec![],
+                            change_hashes,
+                        )?,
+                    )
+                    .await?;
+
+                    Ok(TransactionServiceResponse::CreateMultisigUtxo(tx_id))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::GetMultisigUtxoData { utxo_commitment } => {
+                async {
+                    let mut query = OutputBackendQuery::default();
+                    query.commitments.push(utxo_commitment.clone());
+
+                    query.status.push(OutputStatus::Unspent);
+
+                    let utxos = self
+                        .resources
+                        .output_manager_service
+                        .clone()
+                        .get_outputs_by_query(query)
+                        .await
+                        .map_err(TransactionServiceError::OutputManagerError)?;
+
+                    let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
+                        "UTXO with commitment {:?} not found",
+                        utxo_commitment
+                    )))?;
+
+                    let scripts = selected_utxo.wallet_output.script().clone();
+                    let mut challenge = Box::new([0; 32]);
+                    let mut public_keys = Vec::new();
+
+                    let sender_offset_pub_key =
+                        selected_utxo.wallet_output.sender_offset_public_key().to_public_key()?;
+
+                    for op in scripts.as_slice() {
+                        if let Opcode::CheckMultiSigVerify(_m, _n, k, msg) = op {
+                            challenge.clone_from_slice(msg.as_bytes());
+
+                            public_keys.extend(k.clone());
+                        }
+                    }
+
+                    let output = GetMultisigUtxoDataOutput {
+                        challenge,
+                        public_keys,
+                        commitment: selected_utxo.commitment.clone(),
+                        sender_offset_pub_key: CompressedPublicKey::new_from_pk(sender_offset_pub_key),
+                    };
+
+                    Ok(TransactionServiceResponse::GetMultisigUtxoData(Box::new(output)))
+                }
+                .await
+            },
 
             TransactionServiceRequest::SendMultisigUtxo {
                 utxo_commitment,
                 recipient_address,
                 signatures,
-            } => async {
-                let mut query = OutputBackendQuery::default();
-                query.commitments.push(utxo_commitment.clone());
+            } => {
+                async {
+                    let mut query = OutputBackendQuery::default();
+                    query.commitments.push(utxo_commitment.clone());
 
-                query.status.push(OutputStatus::Unspent);
+                    query.status.push(OutputStatus::Unspent);
 
-                let utxos = self
-                    .resources
-                    .output_manager_service
-                    .clone()
-                    .get_outputs_by_query(query)
-                    .await
-                    .map_err(TransactionServiceError::OutputManagerError)?;
+                    let utxos = self
+                        .resources
+                        .output_manager_service
+                        .clone()
+                        .get_outputs_by_query(query)
+                        .await
+                        .map_err(TransactionServiceError::OutputManagerError)?;
 
-                let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
-                    "UTXO with utxo_commitment {:?} not found",
-                    utxo_commitment
-                )))?;
+                    let selected_utxo = utxos.first().ok_or(TransactionError::BuilderError(format!(
+                        "UTXO with utxo_commitment {:?} not found",
+                        utxo_commitment
+                    )))?;
 
-                let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
-                let current_height = self.db.get_last_scanned_height()?.unwrap_or(0);
-                let consensus_constants = self.resources.consensus_manager.consensus_constants(current_height);
-                let (finalized_transaction, payment_id, amount) = multisig_session.spend_multisig_utxo(
-                    signatures,
-                    recipient_address.clone(),
-                    selected_utxo.clone().into(),
-                    consensus_constants,
-                )?;
-                let (change_hashes, change) = match finalized_transaction.change {
-                    Some(change_output) => {
-                        let hash = change_output.output_hash();
-                        (vec![hash], Some(vec![change_output]))
-                    },
-                    None => (vec![], None),
-                };
-                let tx_id = TxId::new_random();
-                self.resources
-                    .output_manager_service
-                    .clone()
-                    .confirm_pending_transaction(tx_id, change)
-                    .await
-                    .map_err(|e| {
-                        TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
-                    })?;
+                    let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
+                    let current_height = self.db.get_last_scanned_height()?.unwrap_or(0);
+                    let consensus_constants = self.resources.consensus_manager.consensus_constants(current_height);
+                    let (finalized_transaction, payment_id, amount) = multisig_session.spend_multisig_utxo(
+                        signatures,
+                        recipient_address.clone(),
+                        selected_utxo.clone().into(),
+                        consensus_constants,
+                    )?;
+                    let view_key = self.resources.transaction_key_manager_service.get_view_key().pub_key;
+                    let (change_hashes, change, tx_id) = match finalized_transaction.change {
+                        Some(change_output) => (
+                            vec![change_output.output_hash()],
+                            Some(vec![change_output.clone()]),
+                            change_output.calculate_tx_id(view_key.as_bytes()),
+                        ),
+                        None => (
+                            vec![],
+                            None,
+                            tx_outputs_to_tx_id(view_key.as_bytes(), finalized_transaction.transaction.body.outputs()),
+                        ),
+                    };
+                    self.resources
+                        .output_manager_service
+                        .clone()
+                        .confirm_pending_transaction(tx_id, None, change)
+                        .await
+                        .map_err(|e| {
+                            TransactionError::BuilderError(format!("Failed to confirm pending transaction: {:?}", e))
+                        })?;
 
-                let fee = finalized_transaction.transaction.body.get_total_fee()?;
+                    let fee = finalized_transaction.transaction.body.get_total_fee()?;
 
-                // This event being sent is important, but not critical to the protocol being successful. Send only
-                // fails if there are no subscribers.
-                let _result = self
-                    .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-                let sent_hashes = finalized_transaction.sent_output_hashes.clone();
-                self.submit_transaction(
-                    transaction_broadcast_join_handles,
-                    CompletedTransaction::new_with_output_hashes(
-                        tx_id,
-                        self.resources.one_sided_tari_address.clone(),
-                        recipient_address,
-                        amount,
-                        fee,
-                        finalized_transaction.transaction,
-                        LegacyTransactionStatus::Completed,
-                        Utc::now(),
-                        TransactionDirection::Outbound,
-                        None,
-                        None,
-                        payment_id,
-                        sent_hashes,
-                        vec![],
-                        change_hashes,
-                    )?,
-                )
-                .await?;
-                Ok(TransactionServiceResponse::SendMultisigUtxo(tx_id))
-            }.await,
+                    // This event being sent is important, but not critical to the protocol being successful. Send only
+                    // fails if there are no subscribers.
+                    let _result = self
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+                    let sent_hashes = finalized_transaction.sent_output_hashes.clone();
+                    self.submit_transaction(
+                        transaction_broadcast_join_handles,
+                        CompletedTransaction::new_with_output_hashes(
+                            tx_id,
+                            self.resources.one_sided_tari_address.clone(),
+                            recipient_address,
+                            amount,
+                            fee,
+                            finalized_transaction.transaction,
+                            LegacyTransactionStatus::Completed,
+                            Utc::now(),
+                            TransactionDirection::Outbound,
+                            None,
+                            None,
+                            payment_id,
+                            sent_hashes,
+                            vec![],
+                            change_hashes,
+                        )?,
+                    )
+                    .await?;
+                    Ok(TransactionServiceResponse::SendMultisigUtxo(tx_id))
+                }
+                .await
+            },
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -1607,13 +1769,10 @@ where
         ),
         TransactionServiceError,
     > {
-        let tx_id = TxId::new_random();
-
         match self
             .resources
             .output_manager_service
             .encumber_aggregate_utxo(
-                tx_id,
                 fee_per_gram,
                 expected_commitment,
                 script_input_shares,
@@ -1629,6 +1788,7 @@ where
             .await
         {
             Ok((
+                tx_id,
                 transaction,
                 amount,
                 fee,
@@ -1683,13 +1843,10 @@ where
         recipient_address: TariAddress,
         payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = TxId::new_random();
-
         match self
             .resources
             .output_manager_service
             .spend_backup_pre_mine_utxo(
-                tx_id,
                 fee_per_gram,
                 output_hash,
                 expected_commitment,
@@ -1697,7 +1854,7 @@ where
             )
             .await
         {
-            Ok((transaction, amount, fee)) => {
+            Ok((tx_id, transaction, amount, fee)) => {
                 let all_outputs = transaction
                     .body
                     .outputs()
@@ -1849,7 +2006,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, None)
+            .confirm_pending_transaction(tx_id, None, None)
             .await?;
 
         // Notify that the transaction was successfully resolved.
@@ -1885,7 +2042,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
-        let tx_id = TxId::new_random();
+        let temp_tx_id = TxId::new_random();
         self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
         let pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
@@ -1913,7 +2070,7 @@ where
             .resources
             .output_manager_service
             .prepare_transaction_to_send(
-                tx_id,
+                temp_tx_id,
                 amount,
                 selection_criteria,
                 output_features.clone(),
@@ -1945,12 +2102,12 @@ where
                 destination
                     .public_view_key()
                     .ok_or(TransactionServiceProtocolError::new(
-                        tx_id,
+                        temp_tx_id,
                         TransactionServiceError::InvalidAddress("Missing public view key".to_string()),
                     ))?,
             )?;
         let spending_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
 
         let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
         let encryption_key = self
@@ -2000,13 +2157,15 @@ where
         // Finalize
         let finalized = tx_builder.build()?;
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _size = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
@@ -2014,21 +2173,21 @@ where
         let fee = finalized.fee;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 destination,
                 amount,
@@ -2049,7 +2208,7 @@ where
 
         let tx_output = output.to_transaction_output()?;
 
-        Ok(Box::new((tx_id, pre_image, tx_output)))
+        Ok(Box::new((finalized.tx_id, pre_image, tx_output)))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2066,7 +2225,7 @@ where
         mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with amount {amount}");
-        let tx_id = TxId::new_random();
+        let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
             debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
@@ -2081,7 +2240,7 @@ where
             .resources
             .output_manager_service
             .prepare_transaction_to_send(
-                tx_id,
+                temp_tx_id,
                 amount,
                 selection_criteria,
                 output_features.clone(),
@@ -2118,13 +2277,15 @@ where
 
         // Finalize
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
@@ -2133,15 +2294,15 @@ where
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address.clone(),
                 amount,
@@ -2160,7 +2321,7 @@ where
         )
         .await?;
 
-        Ok(tx_id)
+        Ok(finalized.tx_id)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2172,14 +2333,14 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = TxId::new_random();
+        let temp_tx_id = TxId::new_random();
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // Prepare sender part of the transaction
         let mut tx_builder = self
             .resources
             .output_manager_service
-            .scrape_wallet(tx_id, fee_per_gram)
+            .scrape_wallet(temp_tx_id, fee_per_gram)
             .await?;
 
         // Prepare receiver part of the transaction
@@ -2199,12 +2360,12 @@ where
                 dest_address
                     .public_view_key()
                     .ok_or(TransactionServiceProtocolError::new(
-                        tx_id,
+                        temp_tx_id,
                         TransactionServiceError::OneSidedTransactionError("Missing public view key".to_string()),
                     ))?,
             )?;
         let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
         let commitment_mask_key_id = &self
             .resources
             .transaction_key_manager_service
@@ -2270,13 +2431,15 @@ where
 
         let finalized = tx_builder.build()?;
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
@@ -2284,21 +2447,21 @@ where
         let fee = finalized.fee;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let received_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address,
                 amount,
@@ -2317,7 +2480,7 @@ where
         )
         .await?;
 
-        Ok(tx_id)
+        Ok(finalized.tx_id)
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -2377,7 +2540,7 @@ where
                 TransactionBuilderError::NoRecipients,
             ));
         }
-        let tx_id = TxId::new_random();
+        let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         let mut total_send = MicroMinotari::zero();
         let covenant = Covenant::default();
@@ -2393,7 +2556,7 @@ where
             .resources
             .output_manager_service
             .prepare_transaction_to_send(
-                tx_id,
+                temp_tx_id,
                 total_send,
                 selection_criteria,
                 output_features.clone(),
@@ -2431,13 +2594,15 @@ where
 
         // Finalize
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Broadcast one-sided transaction
 
@@ -2446,18 +2611,24 @@ where
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
-        check_transaction_size(&tx, tx_id)?;
+        let mut outputs = finalized
+            .sent_outputs
+            .iter()
+            .map(|o| o.output.clone())
+            .collect::<Vec<WalletOutput>>();
+
+        check_transaction_size(&tx, finalized.tx_id)?;
         let (first_address, first_amount, first_memo) = destinations.remove(0);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
-                tx_id,
+                finalized.tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 first_address,
                 first_amount,
@@ -2475,11 +2646,25 @@ where
             )?,
         )
         .await?;
+        if let Some(pos) = outputs.iter().position(|o| o.value() == first_amount) {
+            outputs.swap_remove(pos);
+        }
 
         // Save the other transactions with zero fee and random tx_id to the database
-        let mut tx_ids = vec![tx_id];
+        let mut tx_ids = vec![finalized.tx_id];
+        let view_key = self.resources.transaction_key_manager_service.get_view_key().pub_key;
         for (address, amount, memo) in destinations {
-            let new_tx_id = TxId::new_random();
+            let new_tx_id = if let Some(pos) = outputs.iter().position(|o| o.value() == amount) {
+                let tx_id = outputs
+                    .get(pos)
+                    .expect("pos exists")
+                    .calculate_tx_id(view_key.as_bytes());
+                outputs.swap_remove(pos);
+                tx_id
+            } else {
+                TxId::new_random()
+            };
+
             tx_ids.push(new_tx_id);
             let completed_tx = CompletedTransaction::new_with_output_hashes(
                 new_tx_id,
@@ -2501,7 +2686,7 @@ where
             self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
             trace!(
                 target: LOG_TARGET,
-                "Created transaction for ({tx_id})."
+                "Created transaction for ({}).", finalized.tx_id
             );
         }
 
@@ -2527,7 +2712,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
-        let tx_id = TxId::new_random();
+        let temp_tx_id = TxId::new_random();
 
         if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
             return Err(TransactionServiceError::InvalidBurnTransaction(
@@ -2547,7 +2732,7 @@ where
             .resources
             .output_manager_service
             .prepare_transaction_to_send(
-                tx_id,
+                temp_tx_id,
                 amount,
                 selection_criteria.clone(),
                 output_features.clone(),
@@ -2570,7 +2755,7 @@ where
             target: LOG_TARGET,
             "Burning transaction start - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, \
             selection: {}",
-            tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
+            temp_tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
         );
 
         tx_builder.with_tx_type(TxType::Burn);
@@ -2617,26 +2802,28 @@ where
 
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, output, None)
+            .add_output_with_tx_id(temp_tx_id, output, None)
             .await?;
 
         let change = finalized.change.map(|change| vec![change]);
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
 
-        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", finalized.tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
-            tx_id,
+            finalized.tx_id,
             self.resources.one_sided_tari_address.clone(),
             TariAddress::default(),
             amount,
@@ -2666,7 +2853,7 @@ where
 
         self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
             .await?;
-        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {tx_id}");
+        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", finalized.tx_id);
 
         // Generate claim proof if needed
         let mut burn_proof = None;
@@ -2693,7 +2880,7 @@ where
             burn_proof = Some(proof);
         }
 
-        Ok((tx_id, burn_proof))
+        Ok((finalized.tx_id, burn_proof))
     }
 
     async fn register_validator_node(
@@ -2730,13 +2917,10 @@ where
             max_epoch,
         );
 
-        let tx_id = TxId::new_random();
-
-        let (fee, transaction) = self
+        let (fee, transaction, tx_id) = self
             .resources
             .output_manager_service
             .create_pay_to_self_transaction(
-                tx_id,
                 amount,
                 selection_criteria,
                 output_features,
@@ -2810,13 +2994,10 @@ where
         let output_features =
             OutputFeatures::for_validator_node_exit(signature, sidechain_deployment_key.as_ref(), max_epoch);
 
-        let tx_id = TxId::new_random();
-
-        let (fee, transaction) = self
+        let (fee, transaction, tx_id) = self
             .resources
             .output_manager_service
             .create_pay_to_self_transaction(
-                tx_id,
                 amount,
                 selection_criteria,
                 output_features,
@@ -2878,13 +3059,10 @@ where
         let output_features =
             OutputFeatures::for_validator_node_eviction(eviction_proof, sidechain_deployment_key.as_ref());
 
-        let tx_id = TxId::new_random();
-
-        let (fee, transaction) = self
+        let (fee, transaction, tx_id) = self
             .resources
             .output_manager_service
             .create_pay_to_self_transaction(
-                tx_id,
                 amount,
                 selection_criteria,
                 output_features,
@@ -2980,12 +3158,10 @@ where
 
         let output_features =
             OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
-        let tx_id = TxId::new_random();
-        let (fee, transaction) = self
+        let (fee, transaction, tx_id) = self
             .resources
             .output_manager_service
             .create_pay_to_self_transaction(
-                tx_id,
                 0.into(),
                 selection_criteria,
                 output_features,
@@ -3459,14 +3635,11 @@ where
         value: MicroMinotari,
         source_address: TariAddress,
         import_status: LegacyImportStatus,
-        tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
-
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let (direction, amount, destination_address) =
             if let Some((recipient_address, amount, tx_type, _)) = payment_id.get_transaction_info_details() {
@@ -3499,6 +3672,14 @@ where
                 )
             };
 
+        let tx_id = TxId::new_deterministic(
+            self.resources
+                .transaction_key_manager_service
+                .get_view_key()
+                .pub_key
+                .as_bytes(),
+            &scanned_output.hash(),
+        );
         self.db.add_utxo_import_transaction_with_status(
             tx_id,
             amount,
@@ -3942,7 +4123,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, change)
+            .confirm_pending_transaction(tx_id, None, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::{tari_address::TariAddress, types::FixedHash};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
 
 use crate::{
     key_manager::TariKeyId,
@@ -42,6 +42,7 @@ impl OutputPair {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FinalizedTransaction {
+    pub tx_id: TxId,
     pub source_address: TariAddress,
     pub destination_addresses: Vec<TariAddress>,
     pub amount: MicroMinotari,

@@ -29,7 +29,6 @@ use minotari_wallet::output_manager_service::{
     handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
     storage::models::DbWalletOutput,
 };
-use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
@@ -108,10 +107,9 @@ impl OutputManagerServiceMock {
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
-                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.0.commitment) {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
-                                tx_id: TxId::new_random(),
                                 hash: dbuo.hash,
                             })
                         } else {
@@ -132,10 +130,9 @@ impl OutputManagerServiceMock {
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
-                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.0.commitment) {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
-                                tx_id: TxId::new_random(),
                                 hash: dbuo.hash,
                             })
                         } else {

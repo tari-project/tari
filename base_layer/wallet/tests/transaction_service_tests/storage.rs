@@ -65,7 +65,6 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::legacy_key_manager::create_new_random_key_manager;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {

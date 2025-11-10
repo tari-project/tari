@@ -31,7 +31,6 @@ use crate::{
         handle::OutputManagerEventSender,
         storage::database::OutputManagerDatabase,
     },
-    transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::UtxoScannerHandle,
 };
 /// This struct is a collection of the common resources that a async task in the service requires.
@@ -47,6 +46,5 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub shutdown_signal: ShutdownSignal,
     pub one_sided_tari_address: TariAddress,
     pub utxo_scanner_handle: UtxoScannerHandle,
-    pub transaction_service_handle: TransactionServiceHandle,
     pub network: Network,
 }

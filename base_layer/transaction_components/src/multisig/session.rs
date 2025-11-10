@@ -22,6 +22,7 @@
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     tari_address::TariAddress,
+    transaction::TxId,
     types::{CompressedPublicKey, FixedHash},
 };
 use tari_script::{
@@ -83,6 +84,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             Vec<FixedHash>,
             Vec<FixedHash>,
             Option<Vec<WalletOutput>>,
+            TxId,
         ),
         TransactionBuilderError,
     > {
@@ -179,6 +181,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             sent_hashes,
             change_hashes,
             change,
+            finalized_builder.tx_id,
         ))
     }
 

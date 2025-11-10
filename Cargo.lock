@@ -7613,6 +7613,7 @@ dependencies = [
  "crc32fast",
  "digest",
  "getrandom 0.2.15",
+ "hex",
  "js-sys",
  "minotari_ledger_wallet_common",
  "newtype-ops",

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
+use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 
 use crate::{
     key_manager::TransactionKeyManagerInterface,
@@ -60,7 +60,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     pub fn prepare_one_sided_transaction_for_signing(
         &mut self,
-        tx_id: TxId,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         dest_address: TariAddress,
         amount: MicroMinotari,
@@ -91,14 +90,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             outputs.push(MarshalOutputPair::marshal(output)?);
         }
 
-        let (fee, change_output) = match tx_builder.get_pre_build_change_output()? {
-            (fee, Some(mut change_output)) => {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output
                     .output
                     .set_script_key_id(change_output.output.script_key_id().clone());
-                (fee, Some(MarshalOutputPair::marshal(change_output)?))
+                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
             },
-            (fee, None) => (fee, None),
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
         let metadata = TransactionMetadata {
             fee,
@@ -127,7 +126,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     pub fn prepare_deposit_multisig_transaction(
         &self,
-        tx_id: TxId,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         amount: MicroMinotari,
         payment_id: MemoField,
@@ -149,14 +147,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
         let outputs = Vec::new();
 
-        let (fee, change_output) = match tx_builder.get_pre_build_change_output()? {
-            (fee, Some(mut change_output)) => {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output
                     .output
                     .set_script_key_id(change_output.output.script_key_id().clone());
-                (fee, Some(MarshalOutputPair::marshal(change_output)?))
+                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
             },
-            (fee, None) => (fee, None),
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
 
         let metadata = TransactionMetadata {
@@ -191,7 +189,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     pub fn prepare_withdraw_multisig_transaction(
         &self,
-        tx_id: TxId,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         amount: MicroMinotari,
         payment_id: MemoField,
@@ -215,14 +212,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             outputs.push(MarshalOutputPair::marshal(output)?);
         }
 
-        let (fee, change_output) = match tx_builder.get_pre_build_change_output()? {
-            (fee, Some(mut change_output)) => {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output
                     .output
                     .set_script_key_id(change_output.output.script_key_id().clone());
-                (fee, Some(MarshalOutputPair::marshal(change_output)?))
+                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
             },
-            (fee, None) => (fee, None),
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
 
         let metadata = TransactionMetadata {

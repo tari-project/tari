@@ -33,7 +33,7 @@ use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     seeds::seed_words::get_birthday_from_unix_epoch_in_seconds,
     tari_address::TariAddress,
-    transaction::{LegacyImportStatus, TxId},
+    transaction::LegacyImportStatus,
     types::{BlockHash, FixedHash, HashOutput},
 };
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
@@ -612,7 +612,7 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
+    ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TransactionOutput)>, anyhow::Error> {
         let start = Instant::now();
         let outputs_by_hash: HashMap<_, _> = outputs.iter().cloned().map(|o| (o.hash(), o)).collect();
         let mut found_outputs = Vec::new();
@@ -621,7 +621,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
+                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, anyhow::Error> {
@@ -633,15 +633,15 @@ where
                     let output = outputs_by_hash
                         .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
 
-        let output_without_one_sided: Vec<(TransactionOutput, Option<TxId>)> = outputs
+        let output_without_one_sided: Vec<TransactionOutput> = outputs
             .iter()
-            .filter(|o| !found_outputs.iter().any(|f| f.3.hash() == o.hash()))
-            .map(|o| (o.clone(), None))
+            .filter(|o| !found_outputs.iter().any(|f| f.2.hash() == o.hash()))
+            .cloned()
             .collect();
 
         let one_sided_time = start.elapsed();
@@ -658,15 +658,15 @@ where
                     let output = outputs_by_hash
                         .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
 
-        let other_outputs: Vec<(TransactionOutput, Option<TxId>)> = output_without_one_sided
+        let other_outputs: Vec<TransactionOutput> = output_without_one_sided
             .iter()
-            .filter(|o| !found_outputs.iter().any(|f| f.3.hash() == o.0.hash()))
-            .map(|o| (o.0.clone(), o.1))
+            .filter(|o| !found_outputs.iter().any(|f| f.2.hash() == o.hash()))
+            .cloned()
             .collect();
 
         found_outputs.append(
@@ -685,7 +685,7 @@ where
                     let output = outputs_by_hash
                         .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -703,13 +703,14 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: &[(WalletOutput, LegacyImportStatus, TxId, TransactionOutput)],
+        utxos: &[(WalletOutput, LegacyImportStatus, TransactionOutput)],
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
-        for (wo, import_status, tx_id, to) in utxos {
+        let view_key = self.key_manager.get_view_key().pub_key;
+        for (wo, import_status, to) in utxos {
             let source_address = if wo.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
@@ -725,7 +726,6 @@ where
                     wo.clone(),
                     source_address,
                     import_status.clone(),
-                    *tx_id,
                     current_height,
                     mined_timestamp,
                     to.clone(),
@@ -744,7 +744,7 @@ where
                         "{:?}: Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         self.mode,
-                        tx_id
+                        wo.calculate_tx_id(view_key.as_bytes())
                     );
                 },
                 Err(e) => return Err(e.into()),
@@ -776,19 +776,16 @@ where
         wallet_output: WalletOutput,
         source_address: TariAddress,
         import_status: LegacyImportStatus,
-        tx_id: TxId,
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
         scanned_output: TransactionOutput,
-    ) -> Result<TxId, WalletError> {
-        let tx_id = self
-            .resources
+    ) -> Result<(), WalletError> {
+        self.resources
             .transaction_service
             .import_utxo_with_status(
                 wallet_output.value(),
                 source_address,
                 import_status.clone(),
-                Some(tx_id),
                 Some(current_height),
                 Some(mined_timestamp),
                 scanned_output,
@@ -802,7 +799,7 @@ where
             self.mode, wallet_output.value(), import_status
         );
 
-        Ok(tx_id)
+        Ok(())
     }
 
     async fn get_scanning_start_header_height_hash(

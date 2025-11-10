@@ -228,9 +228,10 @@ where T: OutputManagerBackend + 'static
     pub fn confirm_encumbered_outputs(
         &self,
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
         change_outputs: Vec<DbWalletOutput>,
     ) -> Result<(), OutputManagerStorageError> {
-        self.db.confirm_encumbered_outputs(tx_id, &change_outputs)
+        self.db.confirm_encumbered_outputs(tx_id, tx_id_update, &change_outputs)
     }
 
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished

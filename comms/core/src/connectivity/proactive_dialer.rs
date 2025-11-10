@@ -35,7 +35,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connectivity::proactive_dialer";
-const MAX_CONCURRENT_DIALS: usize = 20;
+const MAX_CONCURRENT_DIALS: usize = 30;
 
 /// Proactive peer dialing logic for maintaining target connection counts
 pub struct ProactiveDialer {
@@ -105,20 +105,15 @@ impl ProactiveDialer {
 
         );
 
-        // Select healthy peers for dialing
-        let mut candidates = self
-            .select_healthy_dial_candidates(pool, connection_stats, excluded_peers, dial_count, task_id)
+        // Select peers for dialing
+        let candidates = self
+            .select_dial_candidates(pool, connection_stats, excluded_peers, dial_count, task_id)
             .await?;
-        if candidates.is_empty() {
-            candidates = self
-                .select_healthy_dial_candidates(pool, connection_stats, &[], dial_count, task_id)
-                .await?;
-        }
 
         if candidates.is_empty() {
             warn!(
                 target: LOG_TARGET,
-                "({task_id}) No healthy peer candidates available for proactive dialing"
+                "({task_id}) No peer candidates available for proactive dialing"
 
             );
 
@@ -173,8 +168,8 @@ impl ProactiveDialer {
         final_count.max(needed).min(MAX_CONCURRENT_DIALS)
     }
 
-    /// Select healthy peer candidates for dialing
-    async fn select_healthy_dial_candidates(
+    /// Select peer candidates for dialing, prioritizing the most healthy
+    async fn select_dial_candidates(
         &self,
         pool: &ConnectionPool,
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
@@ -195,13 +190,25 @@ impl ProactiveDialer {
             .map(|state| state.node_id().clone())
             .collect();
         // Add nominated excluded peers to the managed list so they will not be selected as candidates
-        managed.append(&mut excluded_peers.to_vec());
+        let mut managed_and_excluded = managed.clone();
+        managed_and_excluded.append(&mut excluded_peers.to_vec());
 
-        // Get available dial candidates using SQL-based filtering
-        let candidates = self
+        // Get available dial candidates
+        let mut candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed, Some(count * 3)) // Get 3x more for health scoring
+            .get_available_dial_candidates(&managed_and_excluded, Some(count * 3), true, true) // Get 3x more for health scoring
             .await?;
+        if candidates.len() < count * 3 {
+            // Only exclude managed and current selected nodes to get more candidates (thus include 'excluded_peers')
+            let mut to_be_excluded = candidates.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+            to_be_excluded.append(&mut managed);
+            // Now also allow selection from previously failed peers
+            let mut random = self
+                .peer_manager
+                .get_available_dial_candidates(&to_be_excluded, Some(count * 3 - candidates.len()), false, true)
+                .await?;
+            candidates.append(&mut random);
+        }
 
         // Apply health-based filtering and ranking
         let mut final_candidates = Vec::new();
@@ -323,12 +330,12 @@ mod tests {
         // Low success rate should significantly increase dial count but be capped
         let result = calculate_dial_count(4, 0.1, 2.0);
         assert!(result >= 4); // At least the needed amount
-        assert!(result <= 20); // But capped at max concurrent
+        assert!(result <= MAX_CONCURRENT_DIALS); // But capped at max concurrent
 
         // Edge case: needed > MAX_CONCURRENT_DIALS to verify proper capping
-        assert_eq!(calculate_dial_count(25, 0.8, 1.5), 20); // Should cap at MAX_CONCURRENT_DIALS
-        assert_eq!(calculate_dial_count(25, 0.1, 2.0), 20); // Very low success rate, should still cap
-        assert_eq!(calculate_dial_count(15, 0.5, 3.0), 20); // Should still cap despite multiplier
+        assert_eq!(calculate_dial_count(25, 0.8, 1.5), MAX_CONCURRENT_DIALS); // Should cap at MAX_CONCURRENT_DIALS
+        assert_eq!(calculate_dial_count(25, 0.1, 2.0), MAX_CONCURRENT_DIALS); // Very low success rate, should still cap
+        assert_eq!(calculate_dial_count(15, 0.5, 3.0), MAX_CONCURRENT_DIALS); // Should still cap despite multiplier
     }
 
     #[test]
