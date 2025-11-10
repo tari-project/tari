@@ -154,14 +154,21 @@ impl PeerManager {
     }
 
     /// Get available dial candidates that are communication nodes, not banned, not deleted, reachable
-    /// and not in the excluded node IDs list
+    /// optionally not failed, optionally at random, and not in the excluded node IDs list
     pub async fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
+        exclude_failed: bool,
+        randomize: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql
-            .get_available_dial_candidates(exclude_node_ids, limit, &self.transport_protocols)
+        self.peer_storage_sql.get_available_dial_candidates(
+            exclude_node_ids,
+            limit,
+            &self.transport_protocols,
+            exclude_failed,
+            randomize,
+        )
     }
 
     /// Return "good" peers for syncing
