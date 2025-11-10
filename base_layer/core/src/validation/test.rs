@@ -32,6 +32,7 @@ use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
+    key_manager::{KeyManager, TxoStage},
     tari_amount::{uT, MicroMinotari},
     test_helpers::{create_random_signature_from_secret_key, create_utxo},
     transaction_components::{
@@ -44,8 +45,6 @@ use tari_transaction_components::{
     },
     tx,
 };
-use tari_transaction_components::key_manager::TxoStage;
-use tari_transaction_components::key_manager::KeyManager;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -203,8 +202,7 @@ async fn chain_balance_validation() {
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    ;
+    );
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
         pre_mine_key_id,
@@ -212,8 +210,7 @@ async fn chain_balance_validation() {
         0,
         KernelFeatures::empty(),
         TxoStage::Output,
-    )
-    ;
+    );
     let excess = CompressedCommitment::from_public_key(pk.to_public_key().unwrap());
     let kernel =
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
@@ -292,8 +289,7 @@ async fn chain_balance_validation() {
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    ;
+    );
 
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
@@ -302,8 +298,7 @@ async fn chain_balance_validation() {
         0,
         KernelFeatures::create_coinbase(),
         TxoStage::Output,
-    )
-    ;
+    );
     let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel = KernelBuilder::new()
         .with_signature(sig)
@@ -359,8 +354,7 @@ async fn chain_balance_validation() {
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    ;
+    );
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
         spending_key_id,
@@ -368,8 +362,7 @@ async fn chain_balance_validation() {
         0,
         KernelFeatures::create_coinbase(),
         TxoStage::Output,
-    )
-    ;
+    );
     let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel = KernelBuilder::new()
         .with_signature(sig)
@@ -431,8 +424,7 @@ async fn chain_balance_validation_burned() {
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    ;
+    );
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
         pre_mine_key_id,
@@ -440,8 +432,7 @@ async fn chain_balance_validation_burned() {
         0,
         KernelFeatures::empty(),
         TxoStage::Output,
-    )
-    ;
+    );
     let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel =
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
@@ -521,8 +512,7 @@ async fn chain_balance_validation_burned() {
         &TariScript::default(),
         &Covenant::default(),
         coinbase_value,
-    )
-    ;
+    );
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
         coinbase_key_id,
@@ -530,8 +520,7 @@ async fn chain_balance_validation_burned() {
         0,
         KernelFeatures::create_coinbase(),
         TxoStage::Output,
-    )
-    ;
+    );
     let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel = KernelBuilder::new()
         .with_signature(sig)
@@ -547,8 +536,7 @@ async fn chain_balance_validation_burned() {
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    ;
+    );
 
     let (pk2, sig2) = create_random_signature_from_secret_key(
         &key_manager,
@@ -557,8 +545,7 @@ async fn chain_balance_validation_burned() {
         0,
         KernelFeatures::create_burn(),
         TxoStage::Output,
-    )
-    ;
+    );
     let excess2 = CompressedCommitment::from_compressed_key(pk2);
     let kernel2 = KernelBuilder::new()
         .with_signature(sig2)

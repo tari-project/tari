@@ -45,8 +45,8 @@ pub use inner::LEDGER_NOT_SUPPORTED;
 
 pub mod error;
 
-// pub mod memory_key_manager;
-// pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
+pub mod memory_key_manager;
+pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
 
 pub mod tari_key_manager;
 

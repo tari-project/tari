@@ -41,7 +41,7 @@ use tari_transaction_components::{
     key_manager::{error::KeyManagerError, TariKeyId, TransactionKeyManagerInterface, CODE_TEMPLATE_AUTHOR},
     transaction_components::{EncryptedData, MemoField},
 };
-
+use tari_transaction_components::key_manager::KeyManager;
 use crate::legacy_key_manager::error::KeyManagerStorageError;
 
 #[repr(u8)]
@@ -272,6 +272,9 @@ impl fmt::Display for LegacySerializedKeyString {
     }
 }
 pub trait LegacyTransactionKeyManagerInterface: TransactionKeyManagerInterface + Clone + Send + Sync + 'static {
+
+    fn key_manager(&self) -> &KeyManager;
+
     fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,

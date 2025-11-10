@@ -984,8 +984,8 @@ where
 
         for mut wallet_output in outputs {
             let sender_offset_key = self.resources.key_manager.get_random_key(None, true)?;
-            wallet_output = wallet_output
-                .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)?;
+            wallet_output =
+                wallet_output.sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)?;
             let ub = wallet_output.try_build(&self.resources.key_manager)?;
 
             builder

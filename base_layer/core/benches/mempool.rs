@@ -42,12 +42,12 @@ mod benches {
     };
     use tari_transaction_components::{
         crypto_factories::CryptoFactories,
+        key_manager::KeyManager,
         tari_amount::{uT, T},
         transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
         tx,
     };
     use tokio::runtime::Runtime;
-    use tari_transaction_components::key_manager::KeyManager;
 
     async fn generate_transactions(
         num_txs: usize,
@@ -58,7 +58,8 @@ mod benches {
         let key_manager = KeyManager::new_random().unwrap();
         let mut txs = Vec::new();
         for _ in 0..num_txs {
-            let (tx, _, _) = tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &key_manager)?;
+            let (tx, _, _) =
+                tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &key_manager)?;
             txs.push(Arc::new(tx));
         }
         Ok(txs)

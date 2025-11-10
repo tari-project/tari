@@ -9324,10 +9324,9 @@ mod test {
     use tari_test_utils::random;
     use tari_transaction_components::{
         covenant,
-        legacy_key_manager::SecretTransactionKeyManagerInterface,
+        key_manager::{KeyManager, SecretTransactionKeyManagerInterface},
         test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
     };
-
     use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 
@@ -10659,13 +10658,13 @@ mod test {
             assert_eq!(error, 0);
             let mut test_outputs = Vec::with_capacity(10);
             for i in 0..10u8 {
-                let uout = alice_wallet_runtime.block_on(create_test_input(
+                let uout = create_test_input(
                     (1000u64 * u64::from(i)).into(),
                     0,
-                    key_manager,
+                    key_manager.key_manager(),
                     vec![i, i + 1, i + 2, i + 3, i + 4],
                     None,
-                ));
+                );
                 test_outputs.push(uout.clone());
                 alice_wallet_runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
@@ -10852,13 +10851,13 @@ mod test {
             assert_eq!(error, 0);
 
             for i in 0..10 {
-                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                let uo = create_test_input(
                     (1000 * i).into(),
                     0,
-                    &mut (*alice_wallet).wallet.key_manager_service,
+                    (*alice_wallet).wallet.key_manager_service.key_manager(),
                     vec![],
                     None,
-                ));
+                );
                 (*alice_wallet)
                     .runtime
                     .block_on(
@@ -11007,13 +11006,13 @@ mod test {
                     )
                     .unwrap(),
                 ] {
-                    let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(
+                    let wallet_output = create_test_input(
                         15000.into(),
                         0,
-                        &mut (*alice_wallet).wallet.key_manager_service,
+                        (*alice_wallet).wallet.key_manager_service.key_manager(),
                         vec![],
                         Some(payment_id.clone()),
-                    ));
+                    );
                     assert_eq!(*wallet_output.payment_id(), payment_id);
                     let utxo = wallet_output.to_transaction_output().unwrap();
                     let commitment_bytes = Box::into_raw(Box::new(ByteVector(utxo.commitment.to_vec())));
@@ -11101,13 +11100,13 @@ mod test {
 
             assert_eq!(error, 0);
             for i in 1..=5 {
-                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                let uo = create_test_input(
                     (15000 * i).into(),
                     0,
-                    &mut (*alice_wallet).wallet.key_manager_service,
+                   (*alice_wallet).wallet.key_manager_service.key_manager(),
                     vec![],
                     None,
-                ));
+                );
                 (*alice_wallet)
                     .runtime
                     .block_on(
@@ -11182,12 +11181,12 @@ mod test {
                 .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::EncumberedToBeReceived],
                     ..Default::default()
-                })
+                },   &(*alice_wallet)
+                    .wallet
+                    .key_manager_service)
                 .unwrap();
             for utxo in &utxos_from_db {
-                let extracted_payment_id = (*alice_wallet)
-                    .runtime
-                    .block_on(
+                let extracted_payment_id =
                         (*alice_wallet)
                             .wallet
                             .key_manager_service
@@ -11195,8 +11194,7 @@ mod test {
                                 utxo.wallet_output.encrypted_data(),
                                 &utxo.commitment,
                                 None,
-                            ),
-                    )
+                            )
                     .unwrap();
                 assert_eq!(utxo.payment_id, extracted_payment_id);
             }
@@ -11207,7 +11205,9 @@ mod test {
                 .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::Unspent],
                     ..Default::default()
-                })
+                },&(*alice_wallet)
+                    .wallet
+                    .key_manager_service)
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value())
@@ -11219,7 +11219,9 @@ mod test {
                 .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::EncumberedToBeReceived],
                     ..Default::default()
-                })
+                },&(*alice_wallet)
+                    .wallet
+                    .key_manager_service)
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value())
@@ -11349,13 +11351,13 @@ mod test {
             );
             assert_eq!(error, 0);
             for i in 1..=5 {
-                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                let uo = create_test_input(
                     (15000 * i).into(),
                     0,
-                    &mut (*alice_wallet).wallet.key_manager_service,
+                   (*alice_wallet).wallet.key_manager_service.key_manager(),
                     vec![],
                     None,
-                ));
+                );
                 (*alice_wallet)
                     .runtime
                     .block_on(
@@ -11433,12 +11435,10 @@ mod test {
                 .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::EncumberedToBeReceived],
                     ..Default::default()
-                })
+                },&(*alice_wallet).wallet.key_manager_service)
                 .unwrap();
             for utxo in &utxos_from_db {
-                let extracted_payment_id = (*alice_wallet)
-                    .runtime
-                    .block_on(
+                let extracted_payment_id =
                         (*alice_wallet)
                             .wallet
                             .key_manager_service
@@ -11446,8 +11446,7 @@ mod test {
                                 utxo.wallet_output.encrypted_data(),
                                 &utxo.commitment,
                                 None,
-                            ),
-                    )
+                            )
                     .unwrap();
                 assert_eq!(utxo.payment_id, extracted_payment_id);
             }
@@ -11458,7 +11457,7 @@ mod test {
                 .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::Unspent],
                     ..Default::default()
-                })
+                },&(*alice_wallet).wallet.key_manager_service)
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value())
@@ -11470,7 +11469,7 @@ mod test {
                 .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::EncumberedToBeReceived],
                     ..Default::default()
-                })
+                },&(*alice_wallet).wallet.key_manager_service)
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value())
@@ -11610,13 +11609,13 @@ mod test {
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        (*alice_wallet).runtime.block_on(create_test_input(
+                        create_test_input(
                             (15000 * i).into(),
                             0,
-                            key_manager,
+                            key_manager.key_manager(),
                             vec![],
                             None,
-                        )),
+                        ),
                         None,
                     ))
                     .unwrap();
@@ -11734,18 +11733,16 @@ mod test {
             let utxo_1 = create_wallet_output_with_data(
                 script!(Nop).unwrap(),
                 OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
+                &TestParams::new(&key_manager),
                 MicroMinotari(1234u64),
                 &key_manager,
             )
-            .await
             .unwrap();
             let amount = utxo_1.value().as_u64();
             let spending_key = key_manager
                 .get_private_key(utxo_1.commitment_mask_key_id())
-                .await
                 .unwrap();
-            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).await.unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features().clone()));
@@ -11867,14 +11864,13 @@ mod test {
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
 
             // Test import with bulletproof range proof
-            let utxo_1 = runtime
-                .block_on(create_wallet_output_with_data(
+            let utxo_1 =create_wallet_output_with_data(
                     script!(Nop).unwrap(),
                     OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(key_manager)),
+                    &TestParams::new(key_manager),
                     MicroMinotari(1234u64),
                     key_manager,
-                ))
+                )
                 .unwrap();
             // Test all range proof methods; convenient because we have the data
             {
@@ -11905,11 +11901,9 @@ mod test {
             };
 
             let amount = utxo_1.value().as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(utxo_1.commitment_mask_key_id()))
+            let spending_key = key_manager.get_private_key(utxo_1.commitment_mask_key_id())
                 .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(utxo_1.script_key_id()))
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id())
                 .unwrap();
             let spending_key_ptr_1 = Box::into_raw(Box::new(spending_key));
             let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
@@ -11961,22 +11955,19 @@ mod test {
                 sidechain_feature: None,
                 range_proof_type: RangeProofType::RevealedValue,
             };
-            let utxo_2 = runtime
-                .block_on(create_wallet_output_with_data(
+            let utxo_2 = create_wallet_output_with_data(
                     script!(Nop).unwrap(),
                     features,
-                    &runtime.block_on(TestParams::new(key_manager)),
+                    &TestParams::new(key_manager),
                     MicroMinotari(12345u64),
                     key_manager,
-                ))
+                )
                 .unwrap();
 
             let amount = utxo_2.value().as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(utxo_2.commitment_mask_key_id()))
+            let spending_key = key_manager.get_private_key(utxo_2.commitment_mask_key_id())
                 .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(utxo_2.script_key_id()))
+            let script_private_key =key_manager.get_private_key(utxo_2.script_key_id())
                 .unwrap();
             let spending_key_ptr_2 = Box::into_raw(Box::new(spending_key));
             let features_ptr_2 = Box::into_raw(Box::new(utxo_2.features().clone()));
@@ -12100,16 +12091,16 @@ mod test {
             let utxo_1 = create_wallet_output_with_data(
                 script!(Nop).unwrap(),
                 OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
+                &TestParams::new(&key_manager),
                 MicroMinotari(1234u64),
                 &key_manager,
             )
-            .await
+
             .unwrap();
             let amount = utxo_1.value().as_u64();
             let spending_key = key_manager
                 .get_private_key(utxo_1.commitment_mask_key_id())
-                .await
+
                 .unwrap();
             let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).await.unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));

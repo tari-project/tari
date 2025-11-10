@@ -73,7 +73,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
-    wallet_types::{ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -94,11 +93,11 @@ use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
-    legacy_key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
+    key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInterface},
     tari_amount::*,
     transaction_components::{
         memo_field::{MemoField, TxType},
-        one_sided::shared_secret_to_output_encryption_key,
+        one_sided::public_key_to_output_encryption_key,
         EncryptedData,
         KernelBuilder,
         OutputFeatures,
@@ -106,11 +105,7 @@ use tari_transaction_components::{
         Transaction,
     },
 };
-use tari_transaction_key_manager::{
-    create_memory_db_key_manager,
-    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
-    MemoryDbKeyManager,
-};
+use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 use tari_utilities::{ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
@@ -119,7 +114,8 @@ use tokio::{
     time::sleep,
 };
 use url::Url;
-
+use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager, LegacyTransactionKeyManagerInitializer, MemoryKeyManager};
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::{LegacyWalletType, ProvidedKeysWallet};
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
@@ -134,9 +130,9 @@ async fn setup_transaction_service(
     shutdown_signal: ShutdownSignal,
 ) -> (
     TransactionServiceHandle,
-    OutputManagerHandle<MemoryDbKeyManager>,
+    OutputManagerHandle<MemoryKeyManager>,
     WalletConnectivityHandle<MockHttpClientFactory>,
-    MemoryDbKeyManager,
+    MemoryKeyManager,
     OutputManagerSqliteDatabase,
 ) {
     let passphrase = SafePassword::from("My lovely secret passphrase");
@@ -157,7 +153,7 @@ async fn setup_transaction_service(
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = TransactionKeyManagerSqliteDatabase::init(connection, db_cipher);
-    let wallet_type = Arc::new(WalletType::ProvidedKeys(ProvidedKeysWallet {
+    let wallet_type = Arc::new(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
         public_spend_key: CompressedPublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
@@ -170,7 +166,7 @@ async fn setup_transaction_service(
         .add_initializer(RegisterHandle::new(wallet_connectivity_service_mock))
         .add_initializer(OutputManagerServiceInitializer::<
             OutputManagerSqliteDatabase,
-            MemoryDbKeyManager,
+            MemoryKeyManager,
             MockHttpClientFactory,
         >::new(
             OutputManagerServiceConfig::default(),
@@ -179,9 +175,9 @@ async fn setup_transaction_service(
             Network::LocalNet.into(),
         ))
         .add_initializer(
-            TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new_with_legacy_storage(
+            LegacyTransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new_with_legacy_storage(
                 kms_backend,
-                Some(cipher),
+                cipher,
                 factories.clone(),
                 wallet_type.clone(),
             ),
@@ -189,7 +185,7 @@ async fn setup_transaction_service(
         .add_initializer(TransactionServiceInitializer::<
             _,
             _,
-            MemoryDbKeyManager,
+            MemoryKeyManager,
             MockHttpClientFactory,
         >::new(
             TransactionServiceConfig {
@@ -212,7 +208,7 @@ async fn setup_transaction_service(
             "http://localhost:9001".parse().unwrap(),
             "http://localhost:9001".parse().unwrap(),
         ))
-        .add_initializer(UtxoScannerServiceInitializer::<_, MemoryDbKeyManager>::new(
+        .add_initializer(UtxoScannerServiceInitializer::<_, MemoryKeyManager>::new(
             db,
             Network::LocalNet,
             14,
@@ -224,8 +220,8 @@ async fn setup_transaction_service(
         .await
         .unwrap();
 
-    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<MemoryDbKeyManager>>();
-    let key_manager_handle = handles.expect_handle::<MemoryDbKeyManager>();
+    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<MemoryKeyManager>>();
+    let key_manager_handle = handles.expect_handle::<MemoryKeyManager>();
     let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
     let connectivity_service_handle = handles.expect_handle::<WalletConnectivityHandle<MockHttpClientFactory>>();
 
@@ -242,8 +238,8 @@ async fn setup_transaction_service(
 /// is constructed without a comms layer, base node etc
 pub struct TransactionServiceNoCommsInterface {
     transaction_service_handle: TransactionServiceHandle,
-    output_manager_service_handle: OutputManagerHandle<MemoryDbKeyManager>,
-    key_manager_handle: MemoryDbKeyManager,
+    output_manager_service_handle: OutputManagerHandle<MemoryKeyManager>,
+    key_manager_handle: MemoryKeyManager,
     _shutdown: Shutdown,
     _mock_rpc_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     base_node_identity: Arc<NodeIdentity>,
@@ -305,7 +301,7 @@ async fn setup_transaction_service_no_comms(
 
     let ts_service_db = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
-    let key_manager = KeyManager::new_random().unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection));
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -368,7 +364,7 @@ async fn setup_transaction_service_no_comms(
         factories,
         shutdown.to_signal(),
         base_node_service_handle,
-        key_manager.get_wallet_type().await,
+        key_manager.get_legacy_wallet_type(),
         scanner_handle,
     )
     .await
@@ -749,7 +745,7 @@ async fn send_one_sided_transaction_to_other() {
             .get_diffie_hellman_shared_secret(&bob_view_key_id, &output.sender_offset_public_key)
             .await
             .unwrap();
-        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+        let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
         if let Ok((_, _, payment_id)) =
             EncryptedData::decrypt_data(&encryption_key, output.commitment(), output.encrypted_data())
         {
@@ -894,7 +890,7 @@ async fn recover_one_sided_transaction() {
         )
         .await
         .unwrap();
-    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
     let (_, _, payment_id) = EncryptedData::decrypt_data(
         &encryption_key,
         recovered_outputs_1[0].output.commitment(),
@@ -1028,7 +1024,7 @@ async fn recover_stealth_one_sided_transaction() {
         )
         .await
         .unwrap();
-    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
     let (_, _, payment_id) = EncryptedData::decrypt_data(
         &encryption_key,
         recovered_outputs_1[0].output.commitment(),
@@ -1282,7 +1278,7 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
             .get_diffie_hellman_shared_secret(&bob_view_key.key_id, &output.sender_offset_public_key)
             .await
             .unwrap();
-        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+        let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
         if let Ok((_, _, payment_id)) =
             EncryptedData::decrypt_data(&encryption_key, output.commitment(), output.encrypted_data())
         {

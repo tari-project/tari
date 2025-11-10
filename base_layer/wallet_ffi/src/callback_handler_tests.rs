@@ -48,9 +48,8 @@ mod test {
             Transaction,
         },
     };
-    use tari_transaction_key_manager::MemoryDbKeyManager;
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
-
+    use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
     use crate::{
         callback_handler::{CallbackHandler, Context},
         ffi_basenode_state::TariBaseNodeState,
@@ -447,7 +446,7 @@ mod test {
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
         let mut oms_handle =
-            OutputManagerHandle::<MemoryDbKeyManager>::new(oms_request_sender, oms_event_sender.clone());
+            OutputManagerHandle::<MemoryKeyManager>::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();
         let mut mock_output_manager_service =

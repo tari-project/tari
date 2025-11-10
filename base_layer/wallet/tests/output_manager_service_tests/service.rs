@@ -48,7 +48,6 @@ use minotari_wallet::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput},
 };
@@ -59,13 +58,13 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    legacy_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{uT, MicroMinotari, T},
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},
     weight::TransactionWeight,
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
+use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager, MemoryKeyManager};
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
@@ -84,12 +83,12 @@ fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
 }
 
 struct TestOmsService {
-    pub output_manager_handle: OutputManagerHandle<MemoryDbKeyManager>,
+    pub output_manager_handle: OutputManagerHandle<MemoryKeyManager>,
     pub _wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
     pub _shutdown: Shutdown,
     pub _transaction_service_handle: TransactionServiceHandle,
     pub _node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
-    pub key_manager_handle: MemoryDbKeyManager,
+    pub key_manager_handle: MemoryKeyManager,
 }
 
 #[allow(clippy::type_complexity)]
@@ -116,7 +115,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
 
-    let key_manager = KeyManager::new_random().unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
 
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -158,12 +157,12 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
 ) -> (
-    OutputManagerHandle<MemoryDbKeyManager>,
+    OutputManagerHandle<MemoryKeyManager>,
     Shutdown,
     TransactionServiceHandle,
     BaseNodeServiceHandle,
     broadcast::Sender<Arc<BaseNodeEvent>>,
-    MemoryDbKeyManager,
+    MemoryKeyManager,
 ) {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
@@ -182,7 +181,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let connectivity = WalletConnectivityHandle::new(MockHttpClientFactory::default());
-    let key_manager = KeyManager::new_random().unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
     let one_sided_message_watch = Watch::new("unset".to_string());
@@ -2027,7 +2026,7 @@ async fn scan_for_recovery_test() {
 
     let mut non_recoverable_wallet_outputs = Vec::new();
     // we need to create a new key_manager to make the outputs non recoverable
-    let key_manager = KeyManager::new_random().unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_input(
             &mut OsRng,
@@ -2094,7 +2093,7 @@ async fn recovered_output_key_not_in_keychain() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
     // we need to create a new key manager here as we dont want the input be recoverable from oms key chain
-    let key_manager = KeyManager::new_random().unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000u64),

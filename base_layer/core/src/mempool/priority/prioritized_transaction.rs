@@ -137,15 +137,15 @@ impl Display for PrioritizedTransaction {
 #[cfg(test)]
 mod tests {
     use tari_transaction_components::{
+        key_manager::KeyManager,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::create_tx,
     };
-    use tari_transaction_components::key_manager::KeyManager;
 
     use super::*;
     fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &KeyManager) -> Transaction {
-        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
-            .expect("Failed to get tx");
+        let (tx, _, _) =
+            create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager).expect("Failed to get tx");
         tx
     }
 

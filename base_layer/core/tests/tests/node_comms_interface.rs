@@ -43,12 +43,12 @@ use tari_core::{
 use tari_script::script;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
+    key_manager::KeyManager,
     tari_proof_of_work::Difficulty,
     test_helpers::create_utxo,
     transaction_components::covenants::Covenant,
     MicroMinotari,
 };
-
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
@@ -97,7 +97,7 @@ async fn inbound_get_metadata() {
 #[tokio::test]
 async fn inbound_fetch_kernel_by_excess_sig() {
     let network = Network::LocalNet;
-    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network);
     let mempool = new_mempool();
 
     let (block_event_sender, _) = broadcast::channel(50);
@@ -165,7 +165,7 @@ async fn inbound_fetch_headers() {
 #[tokio::test]
 async fn inbound_fetch_utxos() {
     let network = Network::LocalNet;
-    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network);
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
@@ -195,8 +195,7 @@ async fn inbound_fetch_utxos() {
         &script!(Nop).unwrap(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    .await;
+    );
     let hash_2 = utxo_2.hash();
 
     // Only retrieve a subset of the actual hashes, including a fake hash in the list
@@ -295,7 +294,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (block2, _) = append_block(
         &store,
@@ -305,7 +303,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (block3, _) = append_block(
         &store,
@@ -315,7 +312,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (block4, _) = append_block(
         &store,
@@ -325,7 +321,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (_block5, _) = append_block(
         &store,
@@ -335,7 +330,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch

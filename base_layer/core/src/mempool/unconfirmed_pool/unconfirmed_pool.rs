@@ -862,6 +862,7 @@ mod test {
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
         fee::Fee,
+        key_manager::KeyManager,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_builder::TransactionBuilder,
         tx,
@@ -869,12 +870,11 @@ mod test {
         MicroMinotari,
     };
 
-
     use super::*;
     use crate::{
         consensus::BaseNodeConsensusManagerBuilder,
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
-    };use tari_transaction_components::key_manager::KeyManager;
+    };
     #[tokio::test]
     async fn test_find_duplicate_input() {
         let key_manager = KeyManager::new_random().unwrap();
@@ -973,13 +973,11 @@ mod test {
         let (tx1, _, _) = tx!(MicroMinotari(5_000), fee: MicroMinotari(10), inputs: 1, outputs: 1, &key_manager)
             .expect("Failed to get tx");
         const INPUT_AMOUNT: MicroMinotari = MicroMinotari(5_000);
-        let (tx2, inputs, _) = tx!(INPUT_AMOUNT, fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
-            .expect("Failed to get tx");
+        let (tx2, inputs, _) =
+            tx!(INPUT_AMOUNT, fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
 
         let mut tx_builder =
-            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
-
-                .unwrap();
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
 
         tx_builder.with_lock_height(0).with_fee_per_gram(5.into());
 
@@ -1005,14 +1003,11 @@ mod test {
                 },
                 &key_manager,
             )
-
             .unwrap();
         tx_builder
             .with_input(double_spend_input)
-
             .unwrap()
             .with_output(utxo, test_params.sender_offset_key_id, None)
-
             .unwrap();
 
         let finalized = tx_builder.build().expect("Failed to finalize transaction");
@@ -1351,9 +1346,8 @@ mod test {
                 transactions.push(Arc::new(tx));
             }
 
-            let (tx1, _, _) =
-                tx!(MicroMinotari(150_000), fee: MicroMinotari(5), inputs:1, outputs: 5, &key_manager)
-                    .expect("Failed to get tx");
+            let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(5), inputs:1, outputs: 5, &key_manager)
+                .expect("Failed to get tx");
             transactions.push(Arc::new(tx1));
 
             let tx_weight = TransactionWeight::latest();

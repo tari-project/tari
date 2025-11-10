@@ -22,7 +22,7 @@
 
 #![allow(clippy::indexing_slicing)]
 use std::{fmt, io, sync::Arc};
-use tari_transaction_components::key_manager::KeyManager;
+
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
 use tari_comms::{
@@ -39,8 +39,12 @@ use tari_comms::{
     Bytes,
     BytesMut,
 };
-use tari_transaction_components::{tari_amount::uT, test_helpers::create_tx, transaction_components::Transaction};
-
+use tari_transaction_components::{
+    key_manager::KeyManager,
+    tari_amount::uT,
+    test_helpers::create_tx,
+    transaction_components::Transaction,
+};
 use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},

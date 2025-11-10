@@ -967,8 +967,7 @@ mod test {
         }
 
         let (outputs, kernel) =
-            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys)
-                .unwrap();
+            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys).unwrap();
         (outputs, kernel, threshold_spend_keys, backup_spend_keys)
     }
 

@@ -58,12 +58,18 @@ mod test {
         multisig::script::derive_multisig_ephemeral_pubkeys,
         offline_signing::offline_signer::OfflineSigner,
         test_helpers::{create_consensus_manager, create_test_input},
-        transaction_components::{covenants::Covenant, EncryptedData, MemoField, OutputFeatures, WalletOutputBuilder},
+        transaction_components::{
+            covenants::Covenant,
+            one_sided::public_key_to_output_encryption_key,
+            EncryptedData,
+            MemoField,
+            OutputFeatures,
+            WalletOutputBuilder,
+        },
         validation::transaction::TransactionInternalConsistencyValidator,
         MicroMinotari,
         TransactionBuilder,
     };
-    use crate::transaction_components::one_sided::public_key_to_output_encryption_key;
 
     fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
         let wallet = WalletType::ViewWallet(view_wallet);

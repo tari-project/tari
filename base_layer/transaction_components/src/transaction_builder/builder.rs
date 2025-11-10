@@ -1135,8 +1135,7 @@ mod test {
             )
             .unwrap()
             .with_output(
-                create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager)
-                    .unwrap(),
+                create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager).unwrap(),
                 p2.sender_offset_key_id.clone(),
                 None,
             )

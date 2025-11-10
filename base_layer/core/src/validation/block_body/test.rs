@@ -22,9 +22,9 @@
 
 #![allow(clippy::indexing_slicing)]
 use std::sync::Arc;
-use tari_transaction_components::key_manager::TariKeyId;
+
 use tari_common::configuration::Network;
-use tari_common_types::{tari_address::TariAddress};
+use tari_common_types::tari_address::TariAddress;
 use tari_node_components::blocks::BlockValidationError;
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
@@ -32,6 +32,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{uT, T},
     tari_proof_of_work::Difficulty,
     test_helpers::schema_to_transaction,
@@ -47,7 +48,7 @@ use tari_transaction_components::{
     CoinbaseBuilder,
 };
 use tokio::time::Instant;
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+
 use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
@@ -92,9 +93,7 @@ async fn it_passes_if_large_output_block_is_valid() {
     let (txs, _outputs) = schema_to_transaction(&[schema1], &blockchain.km);
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
-    let (chain_block, _coinbase_b) = blockchain
-        .create_next_tip(block_spec!("B",parent: "A", transactions: txs))
-        ;
+    let (chain_block, _coinbase_b) = blockchain.create_next_tip(block_spec!("B",parent: "A", transactions: txs));
     let (mut block, mmr_roots) = blockchain
         .db()
         .calculate_mmr_roots(chain_block.block().clone())
@@ -128,9 +127,7 @@ async fn it_validates_when_a_coinbase_is_spent() {
     let (txs, _outputs) = schema_to_transaction(&[schema1], &blockchain.km);
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
-    let (chain_block, _coinbase_b) = blockchain
-        .create_next_tip(block_spec!("B",parent: "A", transactions: txs))
-        ;
+    let (chain_block, _coinbase_b) = blockchain.create_next_tip(block_spec!("B",parent: "A", transactions: txs));
     let (mut block, mmr_roots) = blockchain
         .db()
         .calculate_mmr_roots(chain_block.block().clone())
@@ -159,7 +156,6 @@ async fn it_passes_if_large_block_is_valid() {
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (_block, _coinbase_b) = blockchain
         .append(block_spec!("B", parent: "A", transactions: txs))
-
         .unwrap();
 
     let mut schemas = Vec::new();
@@ -170,9 +166,7 @@ async fn it_passes_if_large_block_is_valid() {
     let (txs, _) = schema_to_transaction(&schemas, &blockchain.km);
 
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
-    let (chain_block, _coinbase_c) = blockchain
-        .create_next_tip(block_spec!("C",parent: "B", transactions: txs))
-        ;
+    let (chain_block, _coinbase_c) = blockchain.create_next_tip(block_spec!("C",parent: "B", transactions: txs));
     let (mut block, mmr_roots) = blockchain
         .db()
         .calculate_mmr_roots(chain_block.block().clone())
@@ -224,9 +218,7 @@ async fn it_passes_if_block_is_valid() {
 async fn it_checks_the_coinbase_reward() {
     let (mut blockchain, validator) = setup(true);
 
-    let (block, _) = blockchain
-        .create_chained_block(block_spec!("A", parent: "GB", reward: 10 * T, ))
-        ;
+    let (block, _) = blockchain.create_chained_block(block_spec!("A", parent: "GB", reward: 10 * T, ));
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
     println!("err {err:?}");
@@ -259,15 +251,12 @@ async fn it_allows_multiple_coinbases() {
             coinbase.value(),
             MemoField::new_empty(),
         )
-
         .unwrap();
 
     block.body.add_output(coinbase_output.to_transaction_output().unwrap());
     block.body.sort();
 
-    let (block, _) = blockchain
-        .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))
-        ;
+    let (block, _) = blockchain.create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,));
     let block = blockchain.mine_block("GB", block, Difficulty::min());
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
@@ -284,21 +273,17 @@ async fn it_checks_duplicate_kernel() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
-        &mut blockchain.km,
-    )
-    ;
+        &blockchain.km,
+    );
 
     blockchain
         .add_next_tip(block_spec!("1", transactions: txs.iter().map(|t| (**t).clone()).collect()))
-
         .unwrap();
-    let (block, _) = blockchain
-        .create_next_tip(
-            BlockSpec::new()
-                .with_transactions(txs.iter().map(|t| (**t).clone()).collect())
-                .finish(),
-        )
-        ;
+    let (block, _) = blockchain.create_next_tip(
+        BlockSpec::new()
+            .with_transactions(txs.iter().map(|t| (**t).clone()).collect())
+            .finish(),
+    );
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
     assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
@@ -311,27 +296,22 @@ async fn it_checks_double_spends() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
-        &mut blockchain.km,
-    )
-    ;
+        &blockchain.km,
+    );
 
     blockchain
         .add_next_tip(block_spec!("1", transactions: txs.iter().map(|t| (**t).clone()).collect()))
-
         .unwrap();
     // lets create a new transction from the same input
     let (txs2, _) = schema_to_transaction(
         &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
-        &mut blockchain.km,
-    )
-    ;
-    let (block, _) = blockchain
-        .create_next_tip(
-            BlockSpec::new()
-                .with_transactions(txs2.iter().map(|t| (**t).clone()).collect())
-                .finish(),
-        )
-        ;
+        &blockchain.km,
+    );
+    let (block, _) = blockchain.create_next_tip(
+        BlockSpec::new()
+            .with_transactions(txs2.iter().map(|t| (**t).clone()).collect())
+            .finish(),
+    );
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
     assert!(matches!(err, ValidationError::ContainsSTxO));
@@ -348,13 +328,11 @@ async fn it_checks_input_maturity() {
     schema.from[0].set_features(features);
     let (txs, _) = schema_to_transaction(&[schema], &blockchain.km);
 
-    let (block, _) = blockchain
-        .create_next_tip(
-            BlockSpec::new()
-                .with_transactions(txs.iter().map(|t| (**t).clone()).collect())
-                .finish(),
-        )
-        ;
+    let (block, _) = blockchain.create_next_tip(
+        BlockSpec::new()
+            .with_transactions(txs.iter().map(|t| (**t).clone()).collect())
+            .finish(),
+    );
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
     assert!(matches!(
@@ -374,9 +352,7 @@ async fn it_checks_txo_sort_order() {
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km);
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
 
-    let (mut block, _) = blockchain
-        .create_unmined_block(block_spec!("B->A", transactions: txs))
-        ;
+    let (mut block, _) = blockchain.create_unmined_block(block_spec!("B->A", transactions: txs));
     let outputs = block.body.outputs().iter().rev().cloned().collect::<Vec<_>>();
     let inputs = block.body.inputs().clone();
     let kernels = block.body.kernels().clone();
@@ -499,9 +475,7 @@ async fn it_rejects_zero_conf_double_spends() {
         .map(|b| Arc::try_unwrap(b).unwrap())
         .collect::<Vec<_>>();
 
-    let (unmined, _) = blockchain
-        .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
-        ;
+    let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, &unmined).unwrap_err();
     assert!(matches!(
@@ -532,9 +506,7 @@ mod body_only {
         schema1.from[0].set_sender_offset_public_key(Default::default());
         let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km);
         let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
-        let (block, _) = blockchain
-            .create_next_tip(BlockSpec::new().with_transactions(txs).finish())
-            ;
+        let (block, _) = blockchain.create_next_tip(BlockSpec::new().with_transactions(txs).finish());
 
         let metadata = blockchain.db().get_chain_metadata().unwrap();
 
@@ -580,9 +552,7 @@ mod orphan_validator {
             .map(|b| Arc::try_unwrap(b).unwrap())
             .collect::<Vec<_>>();
 
-        let (unmined, _) = blockchain
-            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
-            ;
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
         let err = validator.validate(&unmined).unwrap_err();
         assert!(matches!(
             err,
@@ -610,9 +580,7 @@ mod orphan_validator {
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
-        let (unmined, _) = blockchain
-            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
-            ;
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
         let err = validator.validate(&unmined).unwrap_err();
         unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
         unpack_enum!(AggregatedBodyValidationError::OutputTypeNotPermitted { output_type } = err);
@@ -649,9 +617,7 @@ mod orphan_validator {
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
-        let (unmined, _) = blockchain
-            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
-            ;
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
         let err = validator.validate(&unmined).unwrap_err();
         unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
         unpack_enum!(AggregatedBodyValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
@@ -688,9 +654,7 @@ mod orphan_validator {
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
-        let (unmined, _) = blockchain
-            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
-            ;
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
         assert!(validator.validate(&unmined).is_ok());
     }
 
@@ -716,9 +680,7 @@ mod orphan_validator {
 
         let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
 
-        let (unmined, _) = blockchain
-            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
-            ;
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
         let err = validator.validate(&unmined).unwrap_err();
         unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
         unpack_enum!(AggregatedBodyValidationError::OutputTypeNotMatchedToRangeProofType { output_type } = err);

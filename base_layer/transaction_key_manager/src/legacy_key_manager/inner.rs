@@ -73,7 +73,9 @@ pub struct TransactionKeyManagerInner<TBackend> {
     master_seed: CipherSeed,
     db: Option<Arc<RwLock<TBackend>>>,
     key_manager: KeyManager,
+    legacy_wallet_type: Arc<LegacyWalletType>,
 }
+
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
@@ -84,6 +86,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         crypto_factories: CryptoFactories,
         wallet_type: Arc<LegacyWalletType>,
     ) -> Result<Self, KeyManagerError> {
+        let legacy_wallet_type = wallet_type.clone();
         let wallet_type = wallet_type
             .to_new_wallet_type(master_seed.clone())
             .map_err(|e| KeyManagerError::UnexpectedError(format!("Failed to convert legacy wallet type: {}", e)))?;
@@ -92,7 +95,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
             db: db.map(|db| Arc::new(RwLock::new(db))),
             master_seed,
             key_manager,
+            legacy_wallet_type,
         })
+    }
+
+    pub fn legacy_wallet_type(&self) -> Arc<LegacyWalletType> {
+        self.legacy_wallet_type.clone()
+    }
+
+    pub fn key_manager(&self) -> &KeyManager {
+        &self.key_manager
     }
 
     fn derive_private_key(seed: &CipherSeed, branch_seed: String, account: u64) -> Result<PrivateKey, ByteArrayError> {

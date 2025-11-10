@@ -2705,6 +2705,7 @@ mod test {
     use tari_script::script;
     use tari_test_utils::random::string;
     use tari_transaction_components::{
+        key_manager::KeyManager,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_builder::TransactionBuilder,
         transaction_components::{
@@ -2714,7 +2715,6 @@ mod test {
         },
         MicroMinotari,
     };
-
     use tempfile::tempdir;
 
     use crate::{
@@ -2769,9 +2769,9 @@ mod test {
 
         let constants = create_consensus_constants(0);
         let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
-            .await
+
             .unwrap();
-        let test_params = TestParams::new(&key_manager).await;
+        let test_params = TestParams::new(&key_manager);
         let input = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
@@ -2779,7 +2779,6 @@ mod test {
             MicroMinotari::from(100_000),
             &key_manager,
         )
-        .await
         .unwrap();
         let amount = MicroMinotari::from(10_000);
         builder
@@ -2787,7 +2786,7 @@ mod test {
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
             .with_memo(MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap())
             .with_input(input)
-            .await
+
             .unwrap();
 
         let address = TariAddress::new_single_address_with_interactive_only(
@@ -2863,7 +2862,7 @@ mod test {
                 .unwrap()
         );
 
-        let receiver_test_params = TestParams::new(&key_manager).await;
+        let receiver_test_params = TestParams::new(&key_manager);
         let output = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
@@ -2871,7 +2870,6 @@ mod test {
             MicroMinotari::from(100_000),
             &key_manager,
         )
-        .await
         .unwrap();
 
         let source_address = TariAddress::new_dual_address_with_default_features(
@@ -2887,7 +2885,7 @@ mod test {
                 Some(receiver_test_params.sender_offset_key_id),
                 None,
             )
-            .await
+
             .unwrap();
         let inbound_tx1 = InboundTransaction {
             tx_id: 2u64.into(),

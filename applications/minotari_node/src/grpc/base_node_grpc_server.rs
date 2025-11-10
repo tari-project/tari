@@ -1316,7 +1316,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             private_keys.push((wallet_output.commitment_mask_key_id().clone(), new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
-                &TransactionKernelVersion::get_current_version(),
+                TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
                 coinbase_kernel.lock_height,
                 &coinbase_kernel.features,
@@ -1333,7 +1333,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         &nonce,
                         &CompressedPublicKey::new_from_pk(total_nonce.clone()),
                         &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
-                        &TransactionKernelVersion::get_current_version(),
+                        TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
                         TxoStage::Output,
@@ -1556,7 +1556,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             private_keys.push((wallet_output.commitment_mask_key_id().clone(), new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
-                &TransactionKernelVersion::get_current_version(),
+                TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
                 coinbase_kernel.lock_height,
                 &coinbase_kernel.features,
@@ -1573,7 +1573,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         &nonce,
                         &CompressedPublicKey::new_from_pk(total_nonce.clone()),
                         &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
-                        &TransactionKernelVersion::get_current_version(),
+                        TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
                         TxoStage::Output,

@@ -24,14 +24,13 @@ use std::{mem::size_of, sync::Arc};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use minotari_wallet::storage::sqlite_utilities::WalletDbConnection;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
-use tari_transaction_components::{
-    crypto_factories::CryptoFactories,
-    legacy_key_manager::{AddResult, TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerWrapper},
-};
+use tari_common_types::seeds::cipher_seed::CipherSeed;
+use tari_transaction_components::crypto_factories::CryptoFactories;
 use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
-
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use crate::support::data::get_temp_sqlite_database_connection;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
+use tari_transaction_key_manager::legacy_key_manager::AddResult;
 
 #[tokio::test]
 async fn get_key_at_test_with_encryption() {
@@ -46,7 +45,7 @@ async fn get_key_at_test_with_encryption() {
         Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
-        Arc::new(WalletType::default()),
+        Arc::new(LegacyWalletType::default()),
     )
     .await
     .unwrap();
@@ -60,7 +59,7 @@ async fn get_key_at_test_with_encryption() {
     assert_ne!(key_2, key_3);
 
     let key_1_2 = key_manager
-        .get_public_key_at_key_id(&TariKeyId::Managed {
+        .get_public_key_at_key_id(&LegacyTariKeyId::Managed {
             branch: "branch1".to_string(),
             index: key_1.key_id.managed_index().unwrap(),
         })
@@ -84,7 +83,7 @@ async fn key_manager_multiple_branches() {
         Some(cipher),
         TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
-        Arc::new(WalletType::default()),
+        Arc::new(LegacyWalletType::default()),
     )
     .await
     .unwrap();
@@ -109,21 +108,21 @@ async fn key_manager_multiple_branches() {
     assert_ne!(key_2, key_3);
 
     let key_1 = key_manager
-        .get_public_key_at_key_id(&TariKeyId::Managed {
+        .get_public_key_at_key_id(&LegacyTariKeyId::Managed {
             branch: "branch1".to_string(),
             index: key_1.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
     let key_2 = key_manager
-        .get_public_key_at_key_id(&TariKeyId::Managed {
+        .get_public_key_at_key_id(&LegacyTariKeyId::Managed {
             branch: "branch2".to_string(),
             index: key_2.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
     let key_3 = key_manager
-        .get_public_key_at_key_id(&TariKeyId::Managed {
+        .get_public_key_at_key_id(&LegacyTariKeyId::Managed {
             branch: "branch3".to_string(),
             index: key_3.key_id.managed_index().unwrap(),
         })

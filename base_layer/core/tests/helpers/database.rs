@@ -26,6 +26,7 @@ use tari_core::consensus::BaseNodeConsensusManager;
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
     consensus::emission::Emission,
+    key_manager::KeyManager,
     tari_proof_of_work::Difficulty,
     transaction_components::Transaction,
     MicroMinotari,
@@ -36,11 +37,11 @@ use crate::helpers::block_builders::create_coinbase;
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 #[allow(dead_code)]
-pub async fn create_orphan_block(
+pub fn create_orphan_block(
     block_height: u64,
     transactions: Vec<Transaction>,
     consensus: &BaseNodeConsensusManager,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
 ) -> Block {
     let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);
     let lock_height = consensus.consensus_constants(block_height).coinbase_min_maturity();
@@ -48,7 +49,7 @@ pub async fn create_orphan_block(
         .iter()
         .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee().unwrap());
     let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
-        create_coinbase(coinbase_value, block_height + lock_height, None, key_manager).await;
+        create_coinbase(coinbase_value, block_height + lock_height, None, key_manager);
     let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version().into());
     header.prev_hash = Vec::from([1u8; 32]).try_into().unwrap(); // Random
     header.height = block_height;

@@ -1582,11 +1582,11 @@ mod test {
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{
+        key_manager::KeyManager,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
         MicroMinotari,
     };
-    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
     use tempfile::tempdir;
 
     use crate::output_manager_service::storage::{
@@ -1595,11 +1595,8 @@ mod test {
         OutputSource,
     };
 
-    pub async fn make_input(
-        val: MicroMinotari,
-        key_manager: &mut MemoryDbKeyManager,
-    ) -> (TransactionInput, WalletOutput) {
-        let test_params = TestParams::new(key_manager).await;
+    pub fn make_input(val: MicroMinotari, key_manager: &KeyManager) -> (TransactionInput, WalletOutput) {
+        let test_params = TestParams::new(key_manager);
 
         let wallet_output = create_wallet_output_with_data(
             script!(Nop).unwrap(),
@@ -1608,9 +1605,8 @@ mod test {
             val,
             key_manager,
         )
-        .await
         .unwrap();
-        let input = wallet_output.to_transaction_input(key_manager).await.unwrap();
+        let input = wallet_output.to_transaction_input(key_manager).unwrap();
 
         (input, wallet_output)
     }
@@ -1647,7 +1643,7 @@ mod test {
 
         let key_manager = KeyManager::new_random().unwrap();
         for _i in 0..2 {
-            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
+            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager);
             let uo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             let o = NewOutputSql::new(uo, Some(OutputStatus::Unspent), None).unwrap();
             outputs.push(o.clone());
@@ -1656,7 +1652,7 @@ mod test {
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
+            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager);
             let uo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             let o = NewOutputSql::new(uo, Some(OutputStatus::Spent), None).unwrap();
             outputs.push(o.clone());

@@ -43,7 +43,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 
     // Create the network with Alice (pruning node) and Bob (archival node)
     let pruning_horizon = 5;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             BlockchainDatabaseConfig {
                 orphan_storage_capacity: 5,
@@ -73,8 +73,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         3,                            // < pruning_horizon
         16,                           // > pruning_horizon
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // Now rewind Bob's chain to height 10 (> pruning_horizon, < follow_up_transaction_in_block)
     sync::delete_some_blocks_and_headers(&blocks[10..=30], WhatToDelete::BlocksAndHeaders, &bob_node);
@@ -297,7 +296,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     // Create the network with Alice (pruning node) and Bob (archival node) and Carol (pruning node)
     let pruning_horizon_alice = 4;
     let pruning_horizon_carol = 12;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             // Alice is a pruned node
             BlockchainDatabaseConfig {
@@ -340,8 +339,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
         2,                            // < pruning_horizon_alice, < pruning_horizon_carol
         14,                           // > pruning_horizon_alice, > pruning_horizon_carol
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // Now rewind Bob's chain to height 8 (> pruning_horizon, < follow_up_transaction_in_block)
     sync::delete_some_blocks_and_headers(&blocks[8..=28], WhatToDelete::BlocksAndHeaders, &bob_node);
@@ -678,7 +676,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     // Create the network with Alice (pruning node) and Bob (archival node) and Carol (pruning node)
     let pruning_horizon_alice = 4;
     let pruning_horizon_carol = 12;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, mut key_manager, initial_coinbase) =
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
         sync::create_network_with_multiple_nodes(vec![
             // Alice is a pruned node
             BlockchainDatabaseConfig {
@@ -721,8 +719,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
         2,                            // < pruning_horizon_alice, < pruning_horizon_carol
         14,                           // > pruning_horizon_alice, > pruning_horizon_carol
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // 1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)
     println!("\n1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)\n");

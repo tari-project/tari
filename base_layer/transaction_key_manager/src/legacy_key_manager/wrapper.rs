@@ -61,7 +61,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-
+use tari_transaction_components::key_manager::KeyManager;
 use crate::legacy_key_manager::{
     wallet_types::LegacyWalletType,
     LegacyTariKeyId,
@@ -124,6 +124,11 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner.get_wallet_type()
     }
 
+    pub fn get_legacy_wallet_type(&self) -> Arc<LegacyWalletType> {
+        self.transaction_key_manager_inner
+            .legacy_wallet_type()
+    }
+
     /// Get the birthday of the wallet seed
     pub async fn get_birthday(&self) -> Option<u16> {
         self.transaction_key_manager_inner.get_wallet_type().get_birthday()
@@ -133,6 +138,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
 impl<TBackend> LegacyTransactionKeyManagerInterface for LegacyTransactionKeyManagerWrapper<TBackend>
 where TBackend: TransactionKeyManagerBackend + 'static
 {
+    fn key_manager(&self) -> &KeyManager{
+        self.transaction_key_manager_inner.key_manager()
+    }
+
     fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,

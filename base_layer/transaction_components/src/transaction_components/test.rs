@@ -419,17 +419,9 @@ async fn test_validate_internal_consistency() {
 #[allow(clippy::identity_op)]
 async fn check_cut_through() {
     let key_manager = KeyManager::new_random().unwrap();
-    let (tx, _, outputs) = test_helpers::create_tx(
-        50000000.into(),
-        3.into(),
-        1,
-        2,
-        1,
-        2,
-        Default::default(),
-        &key_manager,
-    )
-    .expect("Failed to create tx");
+    let (tx, _, outputs) =
+        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
+            .expect("Failed to create tx");
 
     assert_eq!(tx.body.inputs().len(), 2);
     assert_eq!(tx.body.outputs().len(), 2);
@@ -483,17 +475,9 @@ async fn check_cut_through() {
 #[tokio::test]
 async fn check_duplicate_inputs_outputs() {
     let key_manager = KeyManager::new_random().unwrap();
-    let (tx, _, _outputs) = test_helpers::create_tx(
-        50000000.into(),
-        3.into(),
-        1,
-        2,
-        1,
-        2,
-        Default::default(),
-        &key_manager,
-    )
-    .expect("Failed to create tx");
+    let (tx, _, _outputs) =
+        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
+            .expect("Failed to create tx");
     assert!(!tx.body.contains_duplicated_outputs());
     assert!(!tx.body.contains_duplicated_inputs());
 

@@ -542,9 +542,9 @@ mod test {
     mod check_coinbase_maturity {
         use tari_transaction_components::{
             aggregated_body::AggregateBody,
+            key_manager::KeyManager,
             transaction_components::{RangeProofType, TransactionError},
         };
-        use tari_transaction_components::key_manager::KeyManager;
 
         use super::*;
         #[tokio::test]
@@ -562,8 +562,7 @@ mod test {
                 &key_manager,
             );
             let coinbase_output = coinbase.to_transaction_output().unwrap();
-            let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -590,8 +589,7 @@ mod test {
             features.maturity = 0;
             coinbase.set_features(features);
             let coinbase_output = coinbase.to_transaction_output().unwrap();
-            let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -616,12 +614,10 @@ mod test {
                 None,
                 RangeProofType::BulletProofPlus,
                 &key_manager,
-            )
-            ;
+            );
             coinbase.set_value(123.into(), &key_manager).unwrap();
             let coinbase_output = coinbase.to_transaction_output().unwrap();
-            let coinbase_kernel =
-                test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();

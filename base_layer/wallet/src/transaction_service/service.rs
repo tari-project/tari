@@ -2255,7 +2255,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
-                &mut self.resources.transaction_key_manager_service,
+                &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
                 &dest_address,
             )?
@@ -2601,7 +2601,7 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero())
             .sign_as_sender_and_receiver(
-                &mut self.resources.transaction_key_manager_service,
+                &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )?
             .try_build(&self.resources.transaction_key_manager_service)?;

@@ -32,14 +32,14 @@ use minotari_wallet::output_manager_service::{
 use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_key_manager::MemoryDbKeyManager;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
+use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";
 
 pub fn make_output_manager_service_mock(
     shutdown_signal: ShutdownSignal,
-) -> (OutputManagerServiceMock, OutputManagerHandle<MemoryDbKeyManager>) {
+) -> (OutputManagerServiceMock, OutputManagerHandle<MemoryKeyManager>) {
     let (sender, receiver) = reply_channel::unbounded();
     let (publisher, _) = broadcast::channel(100);
     let output_manager_handle = OutputManagerHandle::new(sender, publisher.clone());
@@ -50,7 +50,7 @@ pub fn make_output_manager_service_mock(
 pub struct OutputManagerServiceMock {
     _event_publisher: Sender<Arc<OutputManagerEvent>>,
     request_stream:
-        Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse<MemoryDbKeyManager>, OutputManagerError>>>,
+        Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse<MemoryKeyManager>, OutputManagerError>>>,
     shutdown_signal: ShutdownSignal,
     state: OutputManagerMockState,
 }
@@ -60,7 +60,7 @@ impl OutputManagerServiceMock {
         event_publisher: Sender<Arc<OutputManagerEvent>>,
         request_stream: Receiver<
             OutputManagerRequest,
-            Result<OutputManagerResponse<MemoryDbKeyManager>, OutputManagerError>,
+            Result<OutputManagerResponse<MemoryKeyManager>, OutputManagerError>,
         >,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
@@ -98,7 +98,7 @@ impl OutputManagerServiceMock {
     fn handle_request(
         &self,
         request: OutputManagerRequest,
-        reply_tx: oneshot::Sender<Result<OutputManagerResponse<MemoryDbKeyManager>, OutputManagerError>>,
+        reply_tx: oneshot::Sender<Result<OutputManagerResponse<MemoryKeyManager>, OutputManagerError>>,
     ) {
         info!(target: LOG_TARGET, "Handling Request: {request}");
         match request {

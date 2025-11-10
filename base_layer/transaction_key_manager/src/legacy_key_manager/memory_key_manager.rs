@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{mem::size_of, sync::Arc};
-
+use crate::legacy_key_manager::TransactionKeyManagerBackend;
 use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
@@ -30,19 +30,18 @@ use tari_common_types::{
 };
 use tari_transaction_components::crypto_factories::CryptoFactories;
 use zeroize::Zeroizing;
-
+use tari_transaction_components::key_manager::error::KeyManagerError;
+use crate::legacy_key_manager::LegacyTransactionKeyManagerWrapper;
 use crate::legacy_key_manager::{
     error::{KeyManagerStorageError},
-    wallet_types::WalletType,
+    wallet_types::LegacyWalletType,
     KeyManagerState,
-    TransactionKeyManagerBackend,
-    TransactionKeyManagerWrapper,
 };
-pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
+pub type MemoryKeyManager = LegacyTransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 
 pub async fn create_new_random_key_manager_with_range_proof_size(
     size: usize,
-) -> Result<MemoryKeyManager, KeyManagerServiceError> {
+) -> Result<MemoryKeyManager, KeyManagerError> {
     let cipher = CipherSeed::random();
 
     create_new_random_key_manager_from_seed(cipher, size).await
@@ -51,17 +50,17 @@ pub async fn create_new_random_key_manager_with_range_proof_size(
 pub async fn create_new_random_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
-) -> Result<MemoryKeyManager, KeyManagerServiceError> {
+) -> Result<MemoryKeyManager, KeyManagerError> {
     let cipher = seed;
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
     OsRng.fill_bytes(key.as_mut());
     let factory = CryptoFactories::new(rangeproof_size);
 
-    TransactionKeyManagerWrapper::new(Some(cipher), factory, Arc::new(WalletType::default())).await
+    LegacyTransactionKeyManagerWrapper::new(cipher, factory, Arc::new(LegacyWalletType::default())).await
 }
 
-pub async fn create_new_random_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {
+pub async fn create_new_random_key_manager() -> Result<MemoryKeyManager, KeyManagerError> {
     create_new_random_key_manager_with_range_proof_size(64).await
 }
 

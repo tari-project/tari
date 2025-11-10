@@ -23,17 +23,18 @@
 
 #![allow(clippy::indexing_slicing)]
 use std::sync::Arc;
-use tari_transaction_components::key_manager::TariKeyId;
+
 use tari_common_types::tari_address::TariAddress;
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
+    key_manager::{KeyManager, TariKeyId},
     tari_amount::T,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     test_helpers::schema_to_transaction,
     transaction_components::{Transaction, WalletOutput},
     txn_schema,
 };
-use tari_transaction_components::key_manager::KeyManager;
+
 use crate::{
     chain_storage::{BlockchainDatabase, ChainStorageError},
     proof_of_work::AchievedTargetDifficulty,
@@ -85,7 +86,7 @@ pub fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -
     block.header.validator_node_size = mmr_roots.validator_node_size;
     block
 }
- fn add_many_chained_blocks(
+fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
     key_manager: &KeyManager,
@@ -206,7 +207,6 @@ mod fetch_blocks {
 
 mod fetch_headers {
 
-
     use super::*;
 
     #[test]
@@ -294,7 +294,6 @@ mod fetch_headers {
 mod find_headers_after_hash {
     use tari_common_types::types::FixedHash;
 
-
     use super::*;
 
     #[test]
@@ -349,7 +348,6 @@ mod find_headers_after_hash {
 }
 
 mod fetch_block_hashes_from_header_tip {
-
 
     use super::*;
 
@@ -420,7 +418,6 @@ mod get_stats {
 
 mod fetch_total_size_stats {
 
-
     use super::*;
 
     #[tokio::test]
@@ -480,7 +477,6 @@ mod prepare_new_block {
 
 mod fetch_header_containing_kernel_mmr {
 
-
     use super::*;
     #[tokio::test]
     async fn it_returns_corresponding_header() {
@@ -493,8 +489,7 @@ mod fetch_header_containing_kernel_mmr {
         let (txns, _) = schema_to_transaction(
             &[txn_schema!(from: vec![outputs[0].clone()], to: vec![50 * T])],
             &key_manager,
-        )
-        ;
+        );
 
         let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
         let (block, _) = create_next_block(
@@ -504,8 +499,7 @@ mod fetch_header_containing_kernel_mmr {
             &key_manager,
             &script_key_id,
             &wallet_payment_address,
-        )
-        ;
+        );
         db.add_block(block).unwrap();
         let _block_and_outputs = add_many_chained_blocks(3, &db, &key_manager);
 
@@ -530,7 +524,6 @@ mod fetch_header_containing_kernel_mmr {
 
 mod clear_all_pending_headers {
     use tari_node_components::blocks::ChainHeader;
-
 
     use super::*;
     use crate::blocks::BlockHeaderAccumulatedDataBuilder;
@@ -597,7 +590,6 @@ mod validator_node_merkle_root {
     use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
     use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
 
-
     use super::*;
     use crate::{
         blocks::genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
@@ -628,8 +620,7 @@ mod validator_node_merkle_root {
                 features: features
             )],
             &key_manager,
-        )
-        ;
+        );
         let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
         let (block, _) = create_next_block(
             &db,
@@ -638,13 +629,11 @@ mod validator_node_merkle_root {
             &key_manager,
             &script_key_id,
             &wallet_payment_address,
-        )
-        ;
+        );
         db.add_block(block).unwrap().assert_added();
 
         let consts = db.consensus_constants().unwrap();
-        let (_, _) =
-            add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager);
+        let (_, _) = add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager);
 
         let vn = db.get_validator_node(None, public_key.clone()).unwrap().unwrap();
         let merkle_root = calculate_validator_node_mr(&[vn]).unwrap();
@@ -676,8 +665,7 @@ mod validator_node_merkle_root {
                 features: features
             )],
             &key_manager,
-        )
-        ;
+        );
         let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
         let (block, _) = create_next_block(
             &db,
@@ -686,13 +674,11 @@ mod validator_node_merkle_root {
             &key_manager,
             &script_key_id,
             &wallet_payment_address,
-        )
-        ;
+        );
         db.add_block(block).unwrap().assert_added();
 
         let consts = db.consensus_constants().unwrap();
-        let (_, _) =
-            add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager);
+        let (_, _) = add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager);
 
         let vn = db
             .get_validator_node(Some(sidechain_public.clone()), public_key.clone())

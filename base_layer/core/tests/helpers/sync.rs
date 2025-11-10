@@ -53,6 +53,7 @@ use tari_node_components::blocks::ChainBlock;
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
+    key_manager::KeyManager,
     tari_amount::T,
     tari_proof_of_work::Difficulty,
     test_helpers::schema_to_transaction,
@@ -142,7 +143,7 @@ pub async fn create_network_with_multiple_nodes(
     Vec<NodeInterfaces>,
     ChainBlock,
     BaseNodeConsensusManager,
-    MemoryDbKeyManager,
+    KeyManager,
     WalletOutput,
 ) {
     let num_nodes = blockchain_db_configs.len();
@@ -153,7 +154,7 @@ pub async fn create_network_with_multiple_nodes(
     let temp_dir = tempdir().unwrap();
     let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
-    let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
+    let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager);
     let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(initial_block.clone())
@@ -308,13 +309,13 @@ pub fn add_some_existing_blocks(blocks: &[ChainBlock], node: &NodeInterfaces) {
 }
 
 /// Return blocks and coinbases added, including the start block and coinbase
-pub async fn create_and_add_some_blocks(
+pub fn create_and_add_some_blocks(
     node: &NodeInterfaces,
     start_block: &ChainBlock,
     start_coinbase: &WalletOutput,
     number_of_blocks: usize,
     consensus_manager: &BaseNodeConsensusManager,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     difficulties: &[u64],
     transactions: &Option<Vec<Vec<Transaction>>>,
 ) -> (Vec<ChainBlock>, Vec<WalletOutput>) {
@@ -343,7 +344,6 @@ pub async fn create_and_add_some_blocks(
             Difficulty::from_u64(*item).unwrap(),
             key_manager,
         )
-        .await
         .unwrap();
         prev_block = new_block.clone();
         blocks.push(new_block.clone());
@@ -392,12 +392,12 @@ pub fn state_event(event: &StateEvent) -> String {
 }
 
 /// Return blocks and coinbases added, including the start block and coinbase
-pub async fn create_block_chain_with_transactions(
+pub fn create_block_chain_with_transactions(
     node: &NodeInterfaces,
     initial_block: &ChainBlock,
     initial_coinbase: &WalletOutput,
     consensus_manager: &BaseNodeConsensusManager,
-    key_manager: &mut MemoryDbKeyManager,
+    key_manager: &KeyManager,
     intermediate_height: u64,
     number_of_blocks: usize,
     spend_genesis_coinbase_in_block: usize,
@@ -425,8 +425,7 @@ pub async fn create_block_chain_with_transactions(
         key_manager,
         &vec![3; add_blocks_a],
         &None,
-    )
-    .await;
+    );
     assert_eq!(node.blockchain_db.get_height().unwrap(), add_blocks_a as u64);
     assert_eq!(
         node.blockchain_db.fetch_last_header().unwrap().height,
@@ -437,7 +436,7 @@ pub async fn create_block_chain_with_transactions(
         from: vec![initial_coinbase.clone()],
         to: vec![1 * T; 10]
     );
-    let (txns_genesis_coinbase, _outputs) = schema_to_transaction(&[schema], key_manager).await;
+    let (txns_genesis_coinbase, _outputs) = schema_to_transaction(&[schema], key_manager);
     let mut txns_all = vec![vec![]; add_blocks_b];
     txns_all[0] = txns_genesis_coinbase
         .into_iter()
@@ -453,8 +452,7 @@ pub async fn create_block_chain_with_transactions(
         key_manager,
         &vec![3; add_blocks_b],
         &Some(txns_all),
-    )
-    .await;
+    );
     assert_eq!(
         node.blockchain_db.get_height().unwrap(),
         (add_blocks_a + add_blocks_b) as u64
@@ -482,7 +480,7 @@ pub async fn create_block_chain_with_transactions(
         from: coinbases_to_spend,
         to: vec![1 * T; 20]
     );
-    let (txns_additional_coinbases, _outputs) = schema_to_transaction(&[schema], key_manager).await;
+    let (txns_additional_coinbases, _outputs) = schema_to_transaction(&[schema], key_manager);
     let mut txns_all = vec![vec![]; add_blocks_c];
     txns_all[0] = txns_additional_coinbases
         .into_iter()
@@ -498,8 +496,7 @@ pub async fn create_block_chain_with_transactions(
         key_manager,
         &vec![3; add_blocks_c],
         &Some(txns_all),
-    )
-    .await;
+    );
     assert_eq!(node.blockchain_db.get_height().unwrap(), number_of_blocks as u64);
     assert_eq!(
         node.blockchain_db.fetch_last_header().unwrap().height,

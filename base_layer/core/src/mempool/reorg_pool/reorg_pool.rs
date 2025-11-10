@@ -333,10 +333,8 @@ impl ReorgPool {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use tari_transaction_components::key_manager::KeyManager;
     use tari_common::configuration::Network;
-    use tari_transaction_components::{tx, MicroMinotari};
-
+    use tari_transaction_components::{key_manager::KeyManager, tx, MicroMinotari};
 
     use super::*;
     use crate::{consensus::BaseNodeConsensusManagerBuilder, test_helpers::create_orphan_block};

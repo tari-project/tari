@@ -36,7 +36,7 @@ use crate::helpers::{
 
 #[tokio::test]
 async fn fetch_async_headers() {
-    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through().await;
+    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through();
     let db = AsyncBlockchainDb::new(db);
     for block in blocks {
         let height = block.height();
@@ -51,7 +51,7 @@ async fn fetch_async_headers() {
 
 #[tokio::test]
 async fn async_rewind_to_height() {
-    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through().await;
+    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through();
     let db = AsyncBlockchainDb::new(db);
     db.rewind_to_height(2).await.unwrap();
     let result = db.fetch_block(3, true).await;
@@ -63,7 +63,7 @@ async fn async_rewind_to_height() {
 
 #[tokio::test]
 async fn fetch_async_block() {
-    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through().await;
+    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through();
     let db = AsyncBlockchainDb::new(db);
     for block in blocks {
         let height = block.height();
@@ -75,19 +75,16 @@ async fn fetch_async_block() {
 #[tokio::test]
 async fn async_add_new_block() {
     let network = Network::LocalNet;
-    let (db, blocks, outputs, consensus_manager, mut key_manager) = create_new_blockchain(network).await;
+    let (db, blocks, outputs, consensus_manager, key_manager) = create_new_blockchain(network);
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
 
     let txns = schema_to_transaction(&schema, &key_manager)
-        .await
         .0
         .iter()
         .map(|t| t.deref().clone())
         .collect();
     let new_block =
-        chain_block_with_new_coinbase(blocks.last().unwrap(), txns, &consensus_manager, None, &key_manager)
-            .await
-            .0;
+        chain_block_with_new_coinbase(blocks.last().unwrap(), txns, &consensus_manager, None, &key_manager).0;
 
     let new_block = db.prepare_new_block(new_block).unwrap();
     let db = AsyncBlockchainDb::new(db);
@@ -101,9 +98,9 @@ async fn async_add_new_block() {
 
 #[tokio::test]
 async fn async_add_block_fetch_orphan() {
-    let (db, _, _, consensus, mut key_manager) = create_blockchain_db_no_cut_through().await;
+    let (db, _, _, consensus, key_manager) = create_blockchain_db_no_cut_through();
 
-    let orphan = create_orphan_block(7, vec![], &consensus, &key_manager).await;
+    let orphan = create_orphan_block(7, vec![], &consensus, &key_manager);
     let block_hash = orphan.hash();
     let db = AsyncBlockchainDb::new(db);
     db.add_block(orphan.clone().into()).await.unwrap();
@@ -113,7 +110,7 @@ async fn async_add_block_fetch_orphan() {
 
 #[tokio::test]
 async fn generate_kernel_merkle_proof() {
-    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through().await;
+    let (db, blocks, _, _, _) = create_blockchain_db_no_cut_through();
     let db = AsyncBlockchainDb::new(db);
     for block in blocks.into_iter().skip(1) {
         let kernels = block.block().body.kernels();
