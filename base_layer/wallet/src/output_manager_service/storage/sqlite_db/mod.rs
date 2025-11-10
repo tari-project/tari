@@ -24,12 +24,7 @@ use std::{convert::TryFrom, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use derivative::Derivative;
-use diesel::{
-    connection::SimpleConnection,
-    prelude::*,
-    r2d2::{ConnectionManager, PooledConnection},
-    result::Error as DieselError,
-};
+use diesel::{connection::SimpleConnection, prelude::*, result::Error as DieselError};
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
@@ -888,20 +883,27 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn confirm_encumbered_outputs(
         &self,
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
         change_outputs_to_add: &[DbWalletOutput],
     ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
+        let mut tx_id = tx_id;
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        // Add the change outputs to be correct
-        for output in change_outputs_to_add {
-            let new_output =
-                NewOutputSql::new(output.clone(), Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
-            new_output.commit(&mut conn)?;
-        }
+        conn.immediate_transaction::<_, OutputManagerStorageError, _>(|conn| {
+            if let Some(tx_id_new) = tx_id_update {
+                replace_tx_id(conn, tx_id, tx_id_new)?;
+                tx_id = tx_id_new;
+            }
 
-        conn.transaction::<_, _, _>(|conn| {
+            // Add the change outputs to be correct
+            for output in change_outputs_to_add {
+                let new_output =
+                    NewOutputSql::new(output.clone(), Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
+                new_output.commit(conn)?;
+            }
+
             update_outputs_with_tx_id_and_status_to_new_status(
                 conn,
                 tx_id,
@@ -1288,6 +1290,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 }
 
+fn replace_tx_id(
+    conn: &mut SqliteConnection,
+    tx_id_old: TxId,
+    tx_id_new: TxId,
+) -> Result<(), OutputManagerStorageError> {
+    let tx_id_new_i64 = tx_id_new.as_i64_wrapped();
+    let tx_id_old_i64 = tx_id_old.as_i64_wrapped();
+    debug!(target: LOG_TARGET, "Replacing temp tx_id in outputs '{tx_id_old_i64}' with '{tx_id_new_i64}'");
+
+    diesel::update(outputs::table.filter(outputs::spent_in_tx_id.eq(Some(tx_id_old_i64))))
+        .set(outputs::spent_in_tx_id.eq(Some(tx_id_new_i64)))
+        .execute(conn)?;
+
+    diesel::update(outputs::table.filter(outputs::received_in_tx_id.eq(Some(tx_id_old_i64))))
+        .set(outputs::received_in_tx_id.eq(Some(tx_id_new_i64)))
+        .execute(conn)?;
+
+    Ok(())
+}
+
 /// These are the fields to be set for the received outputs batch mode update
 #[derive(Clone, Debug, Default)]
 pub struct ReceivedOutputInfoForBatch {
@@ -1317,7 +1339,7 @@ pub struct SpentOutputInfoForBatch {
 }
 
 fn update_outputs_with_tx_id_and_status_to_new_status(
-    conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    conn: &mut SqliteConnection,
     tx_id: TxId,
     from_status: OutputStatus,
     to_status: OutputStatus,

@@ -37,7 +37,6 @@ mod test {
         key_branches::TransactionKeyManagerBranch,
         seeds::cipher_seed::CipherSeed,
         tari_address::{TariAddress, TariAddressFeatures},
-        transaction::TxId,
         wallet_types::{ProvidedKeysWallet, WalletType},
     };
     use tari_script::{
@@ -127,7 +126,6 @@ mod test {
 
         // now we start the offline process
         let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -168,7 +166,6 @@ mod test {
 
         let init = offline_signing
             .prepare_one_sided_transaction_for_signing(
-                tx_id,
                 tx_builder,
                 bob_address,
                 amount,
@@ -283,7 +280,6 @@ mod test {
 
         // now we start the offline process
         let offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -302,7 +298,6 @@ mod test {
         assert_eq!(alice_address, alice_address_s);
         let init = offline_signing
             .prepare_deposit_multisig_transaction(
-                tx_id,
                 tx_builder,
                 amount,
                 payment_id,
@@ -516,7 +511,6 @@ mod test {
 
         // now we start the offline process
         let offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
 
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
         let script = push_pubkey_script(&Default::default());
@@ -535,7 +529,6 @@ mod test {
         assert_eq!(alice_address, alice_address_s);
         let init = offline_signing
             .prepare_withdraw_multisig_transaction(
-                tx_id,
                 tx_builder,
                 total_amount,
                 payment_id,
@@ -615,7 +608,6 @@ mod test {
 
         let init = offline_signing
             .prepare_one_sided_transaction_for_signing(
-                TxId::new_random(),
                 tx_builder,
                 bob_address,
                 MicroMinotari(5000),
@@ -710,7 +702,6 @@ mod test {
 
         // now we start the offline process
         let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
-        let tx_id = TxId::new_random();
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -751,7 +742,6 @@ mod test {
 
         let init = offline_signing
             .prepare_one_sided_transaction_for_signing(
-                tx_id,
                 tx_builder,
                 bob_address,
                 amount,

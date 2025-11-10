@@ -67,9 +67,12 @@ pub enum OutputManagerRequest {
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
-    ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
-    EncumberAggregateUtxo {
+    ConfirmPendingTransaction {
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
+        change_outputs: Option<Vec<WalletOutput>>,
+    },
+    EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
         script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
@@ -83,7 +86,6 @@ pub enum OutputManagerRequest {
         payment_id: MemoField,
     },
     SpendBackupPreMineUtxo {
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
@@ -99,7 +101,6 @@ pub enum OutputManagerRequest {
         covenant: Covenant,
     },
     CreatePayToSelfTransaction {
-        tx_id: TxId,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
@@ -139,9 +140,9 @@ pub enum OutputManagerRequest {
         num_outputs: usize,
     },
 
-    ScanForRecoverableOutputs(Vec<(TransactionOutput, Option<TxId>)>),
-    ScanOutputs(Vec<(TransactionOutput, Option<TxId>)>),
-    ScanOutputsForMultisig(Vec<(TransactionOutput, Option<TxId>)>),
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
+    ScanOutputsForMultisig(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroMinotari,
@@ -153,7 +154,6 @@ pub enum OutputManagerRequest {
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
-    ConfirmEncumberance(TxId, Vec<WalletOutput>),
     ClearShortTermEncumberances,
 }
 
@@ -183,7 +183,6 @@ impl fmt::Display for OutputManagerRequest {
                 write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram})")
             },
             EncumberAggregateUtxo {
-                tx_id,
                 expected_commitment,
                 original_maturity,
                 use_output,
@@ -195,26 +194,27 @@ impl fmt::Display for OutputManagerRequest {
                 };
                 write!(
                     f,
-                    "Encumber aggregate utxo with tx_id: {} and output: ({},{}) with original maturity: {}",
-                    tx_id,
+                    "Encumber aggregate utxo with output: ({},{}) with original maturity: {}",
                     expected_commitment.to_hex(),
                     output_hash,
                     original_maturity,
                 )
             },
             SpendBackupPreMineUtxo {
-                tx_id,
                 output_hash,
                 expected_commitment,
                 ..
             } => write!(
                 f,
-                "spending backup pre-mine utxo with tx_id: {} and output: ({},{})",
-                tx_id,
+                "spending backup pre-mine utxo with output: ({},{})",
                 expected_commitment.to_hex(),
                 output_hash
             ),
-            ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({v})"),
+            ConfirmPendingTransaction {
+                tx_id, tx_id_update, ..
+            } => {
+                write!(f, "ConfirmPendingTransaction ({tx_id} replace with {:?})", tx_id_update)
+            },
             GetTransactionBuilder { .. } => write!(f, "PrepareToSendTransaction "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
@@ -271,9 +271,6 @@ impl fmt::Display for OutputManagerRequest {
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
             FetchUnspentOutputs(hashes) => write!(f, "FetchUnspentOutputs: {:?}", hashes),
-            ConfirmEncumberance(tx_id, change_outputs) => {
-                write!(f, "ConfirmEncumberance: {}, {:?}", tx_id, change_outputs)
-            },
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
             ScanOutputsForMultisig(_) => write!(f, "ScanOutputsForMultisig"),
@@ -289,22 +286,22 @@ pub enum OutputManagerResponse<KM> {
     OutputAdded,
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
+    TxIdReplaced,
     // RecipientTransactionGenerated(ReceiverTransactionProtocol),
-    EncumberAggregateUtxo(
-        Box<(
-            Transaction,
-            MicroMinotari,
-            MicroMinotari,
-            CompressedPublicKey,
-            CompressedPublicKey,
-            CompressedPublicKey,
-            CompressedPublicKey,
-        )>,
-    ),
-    SpendBackupPreMineUtxo((Transaction, MicroMinotari, MicroMinotari)),
+    EncumberAggregateUtxo {
+        tx_id: TxId,
+        transaction: Box<Transaction>,
+        amount: MicroMinotari,
+        fee: MicroMinotari,
+        total_script_public_key: Box<CompressedPublicKey>,
+        total_metadata_ephemeral_public_key: Box<CompressedPublicKey>,
+        total_script_nonce: Box<CompressedPublicKey>,
+        shared_secret_public_key: Box<CompressedPublicKey>,
+    },
+    SpendBackupPreMineUtxo((TxId, Transaction, MicroMinotari, MicroMinotari)),
     OutputConfirmed,
     PendingTransactionConfirmed,
-    PayToSelfTransaction((MicroMinotari, Transaction)),
+    PayToSelfTransaction((MicroMinotari, Transaction, TxId)),
     TransactionBuilderToSend(Box<TransactionBuilder<KM>>),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
@@ -374,7 +371,6 @@ pub struct PublicRewindKeys {
 
 #[derive(Debug, Clone)]
 pub struct RecoveredOutput {
-    pub tx_id: TxId,
     pub output: WalletOutput,
     pub hash: FixedHash,
 }
@@ -627,11 +623,16 @@ where KM: TransactionKeyManagerInterface
     pub async fn confirm_pending_transaction(
         &mut self,
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
         change_outputs: Option<Vec<WalletOutput>>,
     ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id, change_outputs))
+            .call(OutputManagerRequest::ConfirmPendingTransaction {
+                tx_id,
+                tx_id_update,
+                change_outputs,
+            })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ConfirmPendingTransaction({e})"))??
         {
@@ -903,7 +904,7 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn scan_for_recoverable_outputs(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
@@ -920,7 +921,7 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
@@ -937,7 +938,7 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn scan_outputs_for_multisig(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
@@ -969,7 +970,6 @@ where KM: TransactionKeyManagerInterface
     #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_utxo(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
         script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
@@ -983,6 +983,7 @@ where KM: TransactionKeyManagerInterface
         payment_id: MemoField,
     ) -> Result<
         (
+            TxId,
             Transaction,
             MicroMinotari,
             MicroMinotari,
@@ -996,7 +997,6 @@ where KM: TransactionKeyManagerInterface
         match self
             .handle
             .call(OutputManagerRequest::EncumberAggregateUtxo {
-                tx_id,
                 fee_per_gram,
                 expected_commitment,
                 script_input_shares,
@@ -1012,26 +1012,25 @@ where KM: TransactionKeyManagerInterface
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::EncumberAggregateUtxo({e})"))??
         {
-            OutputManagerResponse::EncumberAggregateUtxo(values) => {
-                let (
-                    transaction,
-                    amount,
-                    fee,
-                    total_script_key,
-                    total_metadata_ephemeral_public_key,
-                    total_script_nonce,
-                    shared_secret,
-                ) = *values;
-                Ok((
-                    transaction,
-                    amount,
-                    fee,
-                    total_script_key,
-                    total_metadata_ephemeral_public_key,
-                    total_script_nonce,
-                    shared_secret,
-                ))
-            },
+            OutputManagerResponse::EncumberAggregateUtxo {
+                tx_id,
+                transaction,
+                amount,
+                fee,
+                total_script_public_key,
+                total_metadata_ephemeral_public_key,
+                total_script_nonce,
+                shared_secret_public_key,
+            } => Ok((
+                tx_id,
+                *transaction,
+                amount,
+                fee,
+                *total_script_public_key,
+                *total_metadata_ephemeral_public_key,
+                *total_script_nonce,
+                *shared_secret_public_key,
+            )),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::EncumberAggregateUtxo".to_string(),
             )),
@@ -1040,16 +1039,14 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn spend_backup_pre_mine_utxo(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
-    ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::SpendBackupPreMineUtxo {
-                tx_id,
                 fee_per_gram,
                 output_hash,
                 expected_commitment,
@@ -1058,7 +1055,9 @@ where KM: TransactionKeyManagerInterface
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::SpendBackupPreMineUtxo({e})"))??
         {
-            OutputManagerResponse::SpendBackupPreMineUtxo((transaction, amount, fee)) => Ok((transaction, amount, fee)),
+            OutputManagerResponse::SpendBackupPreMineUtxo((tx_id, transaction, amount, fee)) => {
+                Ok((tx_id, transaction, amount, fee))
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::SpendBackupPreMineUtxo".to_string(),
             )),
@@ -1068,7 +1067,6 @@ where KM: TransactionKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     pub async fn create_pay_to_self_transaction(
         &mut self,
-        tx_id: TxId,
         amount: MicroMinotari,
         utxo_selection: UtxoSelectionCriteria,
         output_features: OutputFeatures,
@@ -1076,11 +1074,10 @@ where KM: TransactionKeyManagerInterface
         lock_height: Option<u64>,
         payment_id: MemoField,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotari, Transaction, TxId), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction {
-                tx_id,
                 amount,
                 selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
@@ -1143,24 +1140,6 @@ where KM: TransactionKeyManagerInterface
             OutputManagerResponse::FetchUnspentOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::FetchUnspentOutputs".to_string(),
-            )),
-        }
-    }
-
-    pub async fn confirm_encumberance(
-        &mut self,
-        tx_id: TxId,
-        change_outputs: Vec<WalletOutput>,
-    ) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ConfirmEncumberance(tx_id, change_outputs))
-            .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ConfirmEncumberance({e})"))??
-        {
-            OutputManagerResponse::ConfirmEncumberance => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse(
-                "OutputManagerRequest::ConfirmEncumberance".to_string(),
             )),
         }
     }

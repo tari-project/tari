@@ -23,10 +23,7 @@
 use std::{str::FromStr, time::Instant};
 
 use log::*;
-use tari_common_types::{
-    transaction::TxId,
-    types::{FixedHash, PrivateKey},
-};
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_transaction_components::{
@@ -34,19 +31,16 @@ use tari_transaction_components::{
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
     MicroMinotari,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::{
-    output_manager_service::{
-        error::{OutputManagerError, OutputManagerStorageError},
-        handle::RecoveredOutput,
-        storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
-            models::{DbWalletOutput, KnownOneSidedPaymentScript},
-            OutputSource,
-        },
+use crate::output_manager_service::{
+    error::{OutputManagerError, OutputManagerStorageError},
+    handle::RecoveredOutput,
+    storage::{
+        database::{OutputManagerBackend, OutputManagerDatabase},
+        models::{DbWalletOutput, KnownOneSidedPaymentScript},
+        OutputSource,
     },
-    transaction_service::{handle::TransactionServiceHandle, storage::models::CompletedTransaction},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
@@ -54,7 +48,6 @@ const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
     db: OutputManagerDatabase<TBackend>,
-    transaction_service_handle: TransactionServiceHandle,
 }
 
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
@@ -62,16 +55,8 @@ where
     TBackend: OutputManagerBackend + 'static,
     TKeyManagerInterface: TransactionKeyManagerInterface,
 {
-    pub fn new(
-        master_key_manager: TKeyManagerInterface,
-        db: OutputManagerDatabase<TBackend>,
-        transaction_service_handle: TransactionServiceHandle,
-    ) -> Self {
-        Self {
-            master_key_manager,
-            db,
-            transaction_service_handle,
-        }
+    pub fn new(master_key_manager: TKeyManagerInterface, db: OutputManagerDatabase<TBackend>) -> Self {
+        Self { master_key_manager, db }
     }
 
     /// Attempt to rewind all of the given transaction outputs into key_manager outputs. If they can be rewound then add
@@ -79,16 +64,16 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn scan_and_recover_outputs(
         &mut self,
-        outputs: Vec<(TransactionOutput, Option<TxId>)>,
+        outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash, Option<TxId>)> = Vec::new();
+        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
-        for (output, tx_id) in outputs {
+        for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop)? &&
                 known_script_index.is_none() &&
@@ -119,7 +104,7 @@ where
                 script_key,
             );
 
-            rewound_outputs.push((uo, known_script_index.is_some(), hash, tx_id));
+            rewound_outputs.push((uo, known_script_index.is_some(), hash));
         }
 
         let rewind_time = start.elapsed();
@@ -130,8 +115,8 @@ where
             rewind_time.as_millis(),
         );
 
-        let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, has_known_script, hash, tx_id) in &mut rewound_outputs {
+        let mut recovered_outputs: Vec<RecoveredOutput> = Vec::new();
+        for (output, has_known_script, hash) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 None,
@@ -139,39 +124,12 @@ where
                 None,
                 None,
             );
-            let tx_id = match tx_id {
-                Some(id) => *id,
-                None => {
-                    let mut related_txs: Vec<CompletedTransaction> = Vec::new();
-                    if outputs_length < 6 {
-                        // This is very much a hacky fix to a hacky fix, but this call takes 140ms at min. This piece of
-                        // code is here as a hacky fix to attempt to find the tx if TU already imported it. This will be
-                        // low-volume so we can afford to do this. Scanning during recovery for higher output wallets,
-                        // this becomes a massive bottleneck.
-                        let source_address = db_output.payment_id.get_sender_address();
-                        let recipient_address = db_output.payment_id.get_recipient_address();
-                        if source_address.is_some() || recipient_address.is_some() {
-                            related_txs = self
-                                .transaction_service_handle
-                                .get_completed_transactions_by_addresses(source_address, recipient_address)
-                                .await
-                                .unwrap_or_default();
-                        }
-                    }
-                    let tx_id = related_txs.iter().find_map(|tx| {
-                        tx.transaction
-                            .body
-                            .outputs()
-                            .iter()
-                            .find(|tx| tx.commitment == db_output.commitment)
-                            .map(|_| tx.tx_id)
-                    });
-
-                    tx_id.unwrap_or_else(TxId::new_random)
-                },
-            };
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
+            let view_key = self.master_key_manager.get_view_key().await?.pub_key;
+            if let Err(e) = self
+                .db
+                .add_unspent_output_with_tx_id(output.calculate_tx_id(view_key.as_bytes()), db_output)
+            {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         continue;
@@ -180,9 +138,8 @@ where
                 }
             }
 
-            rewound_outputs_with_tx_id.push(RecoveredOutput {
+            recovered_outputs.push(RecoveredOutput {
                 output: output.clone(),
-                tx_id,
                 hash: *hash,
             });
             trace!(
@@ -194,7 +151,7 @@ where
             );
         }
 
-        Ok(rewound_outputs_with_tx_id)
+        Ok(recovered_outputs)
     }
 
     // Helper function to get the output source for a given output

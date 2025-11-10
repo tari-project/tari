@@ -26,17 +26,32 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use rand::{rngs::OsRng, RngCore};
+use blake2::Blake2b;
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
+use tari_crypto::hashing::Mac;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct TxId(u64);
 
 impl TxId {
+    /// Create a new random TxId. Only for temporary use.
     pub fn new_random() -> Self {
+        use rand::{rngs::OsRng, RngCore};
         TxId(OsRng.next_u64())
     }
 
+    /// Create a new TxId deterministically from the given 32-byte output hash and MAC key.
+    pub fn new_deterministic(mac_key: &[u8], output_hash: &[u8; 32]) -> Self {
+        let hash = Mac::<Blake2b<U32>>::generate(mac_key, output_hash, "tari/tx_id_64");
+        let hash = hash.as_ref();
+
+        let mut buffer = [0u8; 8];
+        buffer.copy_from_slice(hash.get(..8).expect("we have 8 bytes"));
+        TxId(u64::from_le_bytes(buffer))
+    }
+
+    /// Returns the inner u64 value.
     pub fn as_u64(self) -> u64 {
         self.0
     }
@@ -105,5 +120,48 @@ impl From<TxId> for u64 {
 impl fmt::Display for TxId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tx_id::TxId;
+
+    fn bytes32_inc(start: u8) -> [u8; 32] {
+        let mut a = [0u8; 32];
+        for (i, v) in a.iter_mut().enumerate() {
+            *v = start.wrapping_add(u8::try_from(i).unwrap());
+        }
+        a
+    }
+
+    #[test]
+    fn it_gives_deterministic_tx_ids() {
+        let view_key_1 = b"example-view-key-32bytes-len----"; // 32 bytes
+
+        let hash_1 = bytes32_inc(0x10);
+
+        let id1 = TxId::new_deterministic(view_key_1, &hash_1);
+        let id2 = TxId::new_deterministic(view_key_1, &hash_1);
+        assert_eq!(id1, id2, "same inputs must produce same tx_id");
+
+        let hash_2 = bytes32_inc(0x11);
+
+        let id3 = TxId::new_deterministic(view_key_1, &hash_2);
+        let id4 = TxId::new_deterministic(view_key_1, &hash_2);
+        assert_eq!(id3, id4, "same inputs must produce same tx_id");
+
+        assert_ne!(id1, id3, "different inputs must produce different tx_ids");
+
+        let view_key_2 = b"example-view-key-32bytes-len---2"; // 32 bytes
+        let id5 = TxId::new_deterministic(view_key_2, &hash_2);
+
+        let view_key_3 = b"example-view-key-32bytes-len---3"; // 32 bytes
+        let id6 = TxId::new_deterministic(view_key_3, &hash_2);
+
+        assert_ne!(
+            id5, id6,
+            "the same hash input with a different mac key must produce different tx_ids"
+        );
     }
 }

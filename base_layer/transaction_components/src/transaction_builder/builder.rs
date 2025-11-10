@@ -8,6 +8,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
+    transaction::TxId,
     types::{
         CompressedCommitment,
         CompressedPublicKey,
@@ -18,7 +19,7 @@ use tari_common_types::{
     },
 };
 use tari_script::{push_pubkey_script, script, ExecutionStack};
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     consensus::ConsensusConstants,
@@ -45,6 +46,7 @@ use crate::{
         MAX_TRANSACTION_INPUTS,
         MAX_TRANSACTION_OUTPUTS,
     },
+    tx_outputs_to_tx_id,
     MicroMinotari,
 };
 
@@ -365,8 +367,9 @@ where KM: TransactionKeyManagerInterface
 
     pub async fn get_pre_build_change_output(
         &mut self,
-    ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
-        self.add_change_if_required().await
+    ) -> Result<(MicroMinotari, Option<OutputPair>, TxId), TransactionBuilderError> {
+        let (fee, change, tx_id) = self.add_change_if_required(true).await?;
+        Ok((fee, change, tx_id.unwrap_or_else(TxId::new_random)))
     }
 
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -430,7 +433,10 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
-    async fn add_change_if_required(&mut self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+    async fn add_change_if_required(
+        &mut self,
+        calculate_tx_id: bool,
+    ) -> Result<(MicroMinotari, Option<OutputPair>, Option<TxId>), TransactionBuilderError> {
         let total_being_spent =
             self.inputs
                 .iter()
@@ -508,7 +514,29 @@ where KM: TransactionKeyManagerInterface
                 return Err(TransactionBuilderError::FeeGreaterThanAmount { fee, sent: total_sent });
             }
         }
-        Ok((fee, change))
+        let view_key = self.key_manager.get_view_key().await?.pub_key;
+        let tx_id = if calculate_tx_id {
+            Some(
+                change
+                    .as_ref()
+                    .map(|c| c.output.calculate_tx_id(view_key.clone().as_bytes()))
+                    .or_else(|| {
+                        self.recipient_outputs
+                            .first()
+                            .map(|r| r.output.output.calculate_tx_id(view_key.clone().as_bytes()))
+                    })
+                    .or_else(|| {
+                        self.custom_outputs
+                            .first()
+                            .map(|c| c.output.calculate_tx_id(view_key.clone().as_bytes()))
+                    })
+                    .unwrap_or_else(TxId::new_random),
+            )
+        } else {
+            None
+        };
+
+        Ok((fee, change, tx_id))
     }
 
     async fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
@@ -764,7 +792,7 @@ where KM: TransactionKeyManagerInterface
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
-        let (total_fee, mut change_output) = self.add_change_if_required().await?;
+        let (total_fee, mut change_output, _) = self.add_change_if_required(false).await?;
         let mut core_tx_builder = CoreTransactionBuilder::new();
 
         let (total_public_nonce, total_public_excess) = self
@@ -946,6 +974,13 @@ where KM: TransactionKeyManagerInterface
         core_tx_builder.with_kernel(kernel);
         let tx = core_tx_builder.build()?;
 
+        let view_key = self.key_manager.get_view_key().await?.pub_key;
+        let tx_id = if let Some(wallet_output) = &change_output {
+            wallet_output.output.calculate_tx_id(view_key.as_bytes())
+        } else {
+            tx_outputs_to_tx_id(view_key.as_bytes(), tx.body.outputs())
+        };
+
         let destination_addresses = self
             .recipient_outputs
             .iter()
@@ -1002,6 +1037,7 @@ where KM: TransactionKeyManagerInterface
         };
 
         Ok(FinalizedTransaction {
+            tx_id,
             source_address: self.own_address,
             destination_addresses,
             amount,

@@ -327,7 +327,6 @@ async fn setup_transaction_service_no_comms(
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
         scanner_handle,
-        transaction_service_handle.clone(),
     )
     .await
     .unwrap();
@@ -393,6 +392,8 @@ async fn setup_transaction_service_no_comms(
 
 #[tokio::test]
 async fn large_coin_split_transaction() {
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
+
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
@@ -874,7 +875,7 @@ async fn recover_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
+        .scan_outputs_for_one_sided_payments(outputs.clone())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -903,10 +904,7 @@ async fn recover_one_sided_transaction() {
     assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
-        .await
-        .unwrap();
+    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
@@ -1008,7 +1006,7 @@ async fn recover_stealth_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
+        .scan_outputs_for_one_sided_payments(outputs.clone())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -1037,10 +1035,7 @@ async fn recover_stealth_one_sided_transaction() {
     assert_eq!(completed_tx.fee, payment_id.get_fee().unwrap());
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
-        .await
-        .unwrap();
+    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
@@ -1915,7 +1910,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             LegacyImportStatus::Imported,
             None,
             None,
-            None,
             uo_1.to_transaction_output().unwrap(),
             MemoField::open_from_string("blah", TxType::PaymentToOther),
         )
@@ -1929,7 +1923,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             LegacyImportStatus::OneSidedUnconfirmed,
             None,
             None,
-            None,
             uo_2.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-sided 1", TxType::PaymentToOther),
         )
@@ -1941,7 +1934,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(30000),
             alice_address,
             LegacyImportStatus::OneSidedConfirmed,
-            None,
             None,
             None,
             uo_3.to_transaction_output().unwrap(),
@@ -2095,7 +2087,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             LegacyImportStatus::CoinbaseConfirmed,
             None,
             None,
-            None,
             uo_1.to_transaction_output().unwrap(),
             MemoField::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
         )
@@ -2109,7 +2100,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             LegacyImportStatus::CoinbaseUnconfirmed,
             None,
             None,
-            None,
             uo_2.to_transaction_output().unwrap(),
             MemoField::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
         )
@@ -2121,7 +2111,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             MicroMinotari::from(30000),
             alice_address,
             LegacyImportStatus::CoinbaseUnconfirmed,
-            None,
             None,
             None,
             uo_3.to_transaction_output().unwrap(),

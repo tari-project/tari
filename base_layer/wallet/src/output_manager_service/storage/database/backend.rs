@@ -71,6 +71,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn confirm_encumbered_outputs(
         &self,
         tx_id: TxId,
+        tx_id_update: Option<TxId>,
         change_outputs_to_update: &[DbWalletOutput],
     ) -> Result<(), OutputManagerStorageError>;
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished

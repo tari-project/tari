@@ -428,7 +428,6 @@ where
                 LegacyImportStatus::Imported,
                 None,
                 None,
-                None,
                 wallet_output.to_transaction_output()?,
                 payment_id,
             )

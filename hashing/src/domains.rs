@@ -3,7 +3,6 @@
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_crypto::{hash_domain, hasher};
-
 // These are the hash domains that are also used in tari-dan.
 
 hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);

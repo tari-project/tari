@@ -30,7 +30,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof};
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof},
+};
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 
 use super::TransactionOutputVersion;
@@ -424,6 +427,11 @@ impl WalletOutput {
         );
         let _unused = self.input.set(input.clone());
         Ok(input)
+    }
+
+    /// Calculate the deterministic TxId for this output, given a optional unique repeatable key
+    pub fn calculate_tx_id(&self, unique_key: &[u8]) -> TxId {
+        TxId::new_deterministic(unique_key, &self.output_hash)
     }
 
     /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs

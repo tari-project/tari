@@ -137,7 +137,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
         scanner_handle,
-        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -201,7 +200,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         connectivity,
         key_manager.clone(),
         scanner_handle,
-        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -971,7 +969,7 @@ async fn sending_transaction_persisted_while_offline() {
         .await
         .unwrap();
     oms.output_manager_handle
-        .confirm_pending_transaction(tx_id, None)
+        .confirm_pending_transaction(tx_id, None, None)
         .await
         .unwrap();
 
@@ -2040,12 +2038,12 @@ async fn scan_for_recovery_test() {
     }
     let mut recoverable_outputs = Vec::new();
     for output in &recoverable_wallet_outputs {
-        recoverable_outputs.push((output.to_transaction_output().unwrap(), None));
+        recoverable_outputs.push(output.to_transaction_output().unwrap());
     }
 
     let mut non_recoverable_outputs = Vec::new();
     for output in non_recoverable_wallet_outputs {
-        non_recoverable_outputs.push((output.to_transaction_output().unwrap(), None));
+        non_recoverable_outputs.push(output.to_transaction_output().unwrap());
     }
 
     oms.output_manager_handle
@@ -2060,7 +2058,7 @@ async fn scan_for_recovery_test() {
                 .clone()
                 .into_iter()
                 .chain(non_recoverable_outputs.clone().into_iter())
-                .collect::<Vec<(TransactionOutput, Option<TxId>)>>(),
+                .collect::<Vec<TransactionOutput>>(),
         )
         .await
         .unwrap();
@@ -2107,7 +2105,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let result = oms
         .output_manager_handle
-        .scan_for_recoverable_outputs(vec![(rewindable_output, None)])
+        .scan_for_recoverable_outputs(vec![rewindable_output])
         .await;
     assert!(
         matches!(result.as_deref(), Ok([])),

@@ -22,7 +22,7 @@
 
 use std::str::FromStr;
 
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
+use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
@@ -62,7 +62,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
-        tx_id: TxId,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         dest_address: TariAddress,
         amount: MicroMinotari,
@@ -103,8 +102,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
-        let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
-            (fee, Some(mut change_output)) => {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output.output.set_script_key_id(
                     self.make_key_id_export_safe(change_output.output.script_key_id())
                         .await
@@ -113,9 +112,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
+                    tx_id,
                 )
             },
-            (fee, None) => (fee, None),
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
         let metadata = TransactionMetadata {
             fee,
@@ -144,7 +144,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     pub async fn prepare_deposit_multisig_transaction(
         &self,
-        tx_id: TxId,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         amount: MicroMinotari,
         payment_id: MemoField,
@@ -172,8 +171,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
         let outputs = Vec::new();
 
-        let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
-            (fee, Some(mut change_output)) => {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output.output.set_script_key_id(
                     self.make_key_id_export_safe(change_output.output.script_key_id())
                         .await
@@ -182,9 +181,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
+                    tx_id,
                 )
             },
-            (fee, None) => (fee, None),
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
 
         let metadata = TransactionMetadata {
@@ -219,7 +219,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     pub async fn prepare_withdraw_multisig_transaction(
         &self,
-        tx_id: TxId,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         amount: MicroMinotari,
         payment_id: MemoField,
@@ -253,8 +252,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
         }
 
-        let (fee, change_output) = match tx_builder.get_pre_build_change_output().await? {
-            (fee, Some(mut change_output)) => {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
+            (fee, Some(mut change_output), tx_id) => {
                 change_output.output.set_script_key_id(
                     self.make_key_id_export_safe(change_output.output.script_key_id())
                         .await
@@ -263,9 +262,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 (
                     fee,
                     Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
+                    tx_id,
                 )
             },
-            (fee, None) => (fee, None),
+            (fee, None, tx_id) => (fee, None, tx_id),
         };
 
         let metadata = TransactionMetadata {
