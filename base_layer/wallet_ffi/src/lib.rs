@@ -11800,7 +11800,6 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     pub fn test_import_external_utxo() {
-        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -12102,7 +12101,7 @@ mod test {
                 .get_private_key(utxo_1.commitment_mask_key_id())
 
                 .unwrap();
-            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).await.unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features().clone()));

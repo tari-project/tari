@@ -64,7 +64,7 @@ use tari_transaction_components::{
     transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},
     weight::TransactionWeight,
 };
-use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager, MemoryKeyManager};
+use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager, LegacyTransactionKeyManagerInterface, MemoryKeyManager};
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
@@ -228,9 +228,8 @@ async fn fee_estimate() {
         &mut OsRng.clone(),
         MicroMinotari::from(3000),
         &OutputFeatures::default(),
-        &mut oms.key_manager_handle,
-    )
-    .await;
+        oms.key_manager_handle.key_manager(),
+    );
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
 
@@ -341,9 +340,8 @@ async fn test_utxo_selection_no_chain_metadata() {
                 maturity: i,
                 ..Default::default()
             },
-            &key_manager,
-        )
-        .await;
+            key_manager.key_manager(),
+        );
         oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.output_hash(), true));
     }
@@ -469,7 +467,7 @@ async fn test_utxo_selection_with_chain_metadata() {
                 maturity: i,
                 ..Default::default()
             },
-            &key_manager,
+            key_manager.key_manager(),
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();

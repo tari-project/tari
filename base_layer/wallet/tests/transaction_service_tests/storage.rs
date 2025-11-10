@@ -67,7 +67,7 @@ use tari_transaction_components::{
 };
 use tempfile::tempdir;
 use tari_transaction_components::key_manager::{TariKeyId, TransactionKeyManagerInterface};
-use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager, LegacyTariKeyId};
+use tari_transaction_key_manager::legacy_key_manager::{create_new_random_key_manager};
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
@@ -100,7 +100,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask_key.key_id).into(),
     };
-    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
+    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
 
     let sender_offset = key_manager.get_random_key(None, false)
 
