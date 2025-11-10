@@ -2966,7 +2966,9 @@ impl BlockchainBackend for LMDBDatabase {
         request: BlockchainCheckRequest,
         metadata_key: MetadataKey,
     ) -> Result<BlockchainCheckStatus, ChainStorageError> {
-        let current_status = self.fetch_blockchain_check_status(metadata_key)?.unwrap_or_default();
+        let write_txn = self.write_transaction()?;
+        let current_status =
+            fetch_blockchain_check_status_inner(&write_txn, &self.metadata_db, metadata_key)?.unwrap_or_default();
         let status = match request {
             BlockchainCheckRequest::ResetAllCounters => BlockchainCheckStatus { ..Default::default() },
             BlockchainCheckRequest::ResumeCheck => BlockchainCheckStatus {
@@ -3026,7 +3028,6 @@ impl BlockchainBackend for LMDBDatabase {
             },
         };
 
-        let write_txn = self.write_transaction()?;
         lmdb_replace(
             &write_txn,
             &self.metadata_db,
@@ -3044,26 +3045,7 @@ impl BlockchainBackend for LMDBDatabase {
         metadata_key: MetadataKey,
     ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let res: Result<Option<MetadataValue>, ChainStorageError> =
-            lmdb_get(&txn, &self.metadata_db, &metadata_key.as_u32());
-
-        match res {
-            Ok(Some(MetadataValue::BlockchainCheckStatus(s))) => Ok(Some(s)),
-            Ok(Some(other)) => {
-                error!(target: LOG_TARGET, "Unexpected variant under key {metadata_key}: {other}");
-                Ok(None)
-            },
-            Ok(None) => Ok(None),
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("InvalidTagEncoding") || msg.contains("tag for enum is not valid") {
-                    error!(target: LOG_TARGET, "Decode failed for {metadata_key}: {e}. Treating as missing.");
-                    Ok(None)
-                } else {
-                    Err(e)
-                }
-            },
-        }
+        fetch_blockchain_check_status_inner(&txn, &self.metadata_db, metadata_key)
     }
 
     // Builds the payref indexes for a given block height, with stats.
@@ -3746,6 +3728,33 @@ impl BlockchainBackend for LMDBDatabase {
     }
 }
 
+// Returns the blockchain check status - inner.
+fn fetch_blockchain_check_status_inner(
+    txn: &ConstTransaction<'_>,
+    db: &Database,
+    metadata_key: MetadataKey,
+) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+    let res: Result<Option<MetadataValue>, ChainStorageError> = lmdb_get(txn, db, &metadata_key.as_u32());
+
+    match res {
+        Ok(Some(MetadataValue::BlockchainCheckStatus(s))) => Ok(Some(s)),
+        Ok(Some(other)) => {
+            error!(target: LOG_TARGET, "Unexpected variant under key {metadata_key}: {other}");
+            Ok(None)
+        },
+        Ok(None) => Ok(None),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("InvalidTagEncoding") || msg.contains("tag for enum is not valid") {
+                error!(target: LOG_TARGET, "Decode failed for {metadata_key}: {e}. Treating as missing.");
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        },
+    }
+}
+
 // Fetch the chain metadata
 fn fetch_metadata(txn: &ConstTransaction<'_>, db: &Database) -> Result<ChainMetadata, ChainStorageError> {
     Ok(ChainMetadata::new(
@@ -3923,6 +3932,13 @@ pub struct AccumulatedDataRebuildStatus {
     pub last_rebuild_height: Option<u64>,
 }
 
+/// Breathing time minimum (ms) for check_db
+pub const BREATHING_TIME_MS_MIN: u64 = 1;
+/// Breathing time maximum (ms) for check_db
+pub const BREATHING_TIME_MS_MAX: u64 = 1000;
+// Breathing time default (ms) for check_db
+const BREATHING_TIME_MS_DEFAULT: u64 = 10;
+
 /// Blockchain consistency check status - this will be re-initialized when a new check is requested
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct BlockchainCheckStatus {
@@ -3936,7 +3952,7 @@ pub struct BlockchainCheckStatus {
     #[serde(default)]
     pub current_height: Option<u64>,
     /// Milli-seconds 'breathing time' between consecutive checks - very short breathing time may starve other critical
-    /// tasks (minimum is 1 ms).
+    /// tasks (minimum 1ms, maximum 1000ms, default 10ms).
     #[serde(default)]
     pub breathing_time_ms: u64,
     /// A flag to indicate if the background task is running.
@@ -3963,7 +3979,7 @@ impl Default for BlockchainCheckStatus {
             has_concluded: None,
             last_check_height: None,
             current_height: None,
-            breathing_time_ms: 1,
+            breathing_time_ms: BREATHING_TIME_MS_DEFAULT,
             run_state: RunState::Stopped,
             stop_if_running: false,
             validation_mode: ValidationMode::Light,

@@ -48,6 +48,8 @@ pub use lmdb_db::{
     CheckFailure,
     MetadataKey,
     PayrefRebuildStatus,
+    BREATHING_TIME_MS_MAX,
+    BREATHING_TIME_MS_MIN,
 };
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;

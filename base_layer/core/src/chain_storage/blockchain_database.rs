@@ -110,7 +110,7 @@ use crate::{
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         kernel_merkle_proof::KernelMerkleProof,
-        lmdb_db::BlockchainCheckStatus,
+        lmdb_db::{BlockchainCheckStatus, BREATHING_TIME_MS_MAX, BREATHING_TIME_MS_MIN},
         smt_hasher::ValidatorNodeJmtHasher,
         utxo_mined_info::OutputMinedInfo,
         BlockAddResult,
@@ -544,10 +544,9 @@ where B: BlockchainBackend
             );
 
             let mut height = start_height;
-            let sleep_ms = max(
-                last_status.breathing_time_ms,
-                BlockchainCheckStatus::default().breathing_time_ms,
-            );
+            let sleep_ms = last_status
+                .breathing_time_ms
+                .clamp(BREATHING_TIME_MS_MIN, BREATHING_TIME_MS_MAX);
             let autocorrect_enabled = initial_status.autocorrect_enabled();
             loop {
                 // Add a small tokio sleep to allow other tasks to run more freely - this will push out the check a bit.
@@ -720,10 +719,9 @@ where B: BlockchainBackend
             );
 
             let mut height = start_height;
-            let sleep_ms = max(
-                last_status.breathing_time_ms,
-                BlockchainCheckStatus::default().breathing_time_ms,
-            );
+            let sleep_ms = last_status
+                .breathing_time_ms
+                .clamp(BREATHING_TIME_MS_MIN, BREATHING_TIME_MS_MAX);
             loop {
                 // Add a small tokio sleep to allow other tasks to run more freely - this will push out the check a bit.
                 tokio::time::sleep(Duration::from_millis(sleep_ms)).await;

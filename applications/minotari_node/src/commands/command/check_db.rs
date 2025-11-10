@@ -47,13 +47,13 @@ pub struct Args {
     #[clap(value_enum, short = 'm', long = "mode")]
     pub mode: Mode,
 
-    /// Seconds between status polls.
+    /// Seconds between status polls (default 15s).
     #[clap(long, short = 'p', default_value_t = 15)]
     pub poll_seconds: u64,
 
     /// Milli-seconds 'breathing time' between consecutive checks - very short breathing time may starve other critical
-    /// tasks (minimum is 1 ms).
-    #[clap(long, short = 'b', default_value_t = 10)]
+    /// tasks (minimum 1 ms, maximum 1000ms, default 10ms).
+    #[clap(long, short = 'b', default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..1000))]
     pub breathing_time_ms: u64,
 }
 
