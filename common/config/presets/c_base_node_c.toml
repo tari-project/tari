@@ -58,6 +58,10 @@
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
 #grow_size_bytes = 16_777_216 # 16 *1024 * 1024
 #resize_threshold_bytes = 4_194_304 # 4 *1024 * 1024
+# Turn off readahead. Most operating systems perform readahead on read requests by default. This option turns it
+# off if the OS supports it. Turning it off may help random read performance when the DB is larger than RAM and system
+# RAM is full. The option is not implemented on Windows. (Default: false)
+#no_read_ahread = false
 
 [base_node.storage]
 # The maximum number of orphans that can be stored in the Orphan block pool.
