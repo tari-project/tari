@@ -553,6 +553,7 @@ mod test {
                 CliCommands::SignOneSidedDepositMultisigTransaction(_) => {},
                 CliCommands::SignOneSidedWithdrawMultisigTransaction(_) => {},
                 CliCommands::PrepareWithdrawMultisigTransaction(_) => {},
+                CliCommands::RescanWallet(_) => {},
             }
         }
         assert!(

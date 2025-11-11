@@ -2728,6 +2728,19 @@ pub async fn command_runner(
                         .map_err(|err| CommandError::FileWriteError { file_path: file, err })?;
                 }
             },
+            RescanWallet(args) => {
+                if args.from_height == 0 {
+                    wallet
+                        .db
+                        .clear_scanned_blocks()
+                        .map_err(|e| CommandError::General(format!("{e}")))?;
+                } else {
+                    wallet
+                        .db
+                        .clear_scanned_blocks_from_and_higher(args.from_height)
+                        .map_err(|e| CommandError::General(format!("{e}")))?;
+                }
+            },
         }
     }
 
