@@ -2475,7 +2475,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let output_count = usize::try_from(message.output_count)
             .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?;
         let selection_criteria = UtxoSelectionCriteria::default();
-        let fee = oms
+        let (fee, inputs_selected, change) = oms
             .fee_estimate(
                 amount.into(),
                 selection_criteria,
@@ -2488,6 +2488,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(GetFeeEstimateResponse {
             estimated_fee: fee.as_u64(),
+            input_count: inputs_selected as u64,
+            change_required: change,
         }))
     }
 

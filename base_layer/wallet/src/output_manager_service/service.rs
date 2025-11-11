@@ -382,7 +382,9 @@ where
             } => self
                 .fee_estimate(amount, selection_criteria, fee_per_gram, num_kernels, num_outputs)
                 .await
-                .map(OutputManagerResponse::FeeEstimate),
+                .map(|(fee, input_count_selected, change)| {
+                    OutputManagerResponse::FeeEstimate(fee, input_count_selected, change)
+                }),
             OutputManagerRequest::ConfirmPendingTransaction {
                 tx_id,
                 tx_id_update,
@@ -803,7 +805,7 @@ where
         fee_per_gram: MicroMinotari,
         num_kernels: usize,
         num_outputs: usize,
-    ) -> Result<MicroMinotari, OutputManagerError> {
+    ) -> Result<(MicroMinotari, usize, bool), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {amount}. Fee per gram: {fee_per_gram}. Num kernels: {num_kernels}. Num outputs: {num_outputs}"
@@ -855,7 +857,8 @@ where
                             .get_serialized_size()
                             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
                 );
-                return Ok(fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size));
+                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
+                return Ok((fee, 1, false));
             },
             Err(e) => Err(e),
         }?;
@@ -863,9 +866,11 @@ where
         debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
         let fee = utxo_selection.as_final_fee();
+        let utxo_count = utxo_selection.num_selected();
+        let change_count = utxo_selection.requires_change_output();
 
         debug!(target: LOG_TARGET, "Fee calculated: {fee}");
-        Ok(fee)
+        Ok((fee, utxo_count, change_count))
     }
 
     /// Prepare a Sender Transaction Protocol for the amount and fee_per_gram specified. If required a change output
