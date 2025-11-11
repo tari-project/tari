@@ -199,6 +199,7 @@ pub struct SidechainBlockHeader {
     pub command_merkle_root: FixedHash,
     /// Signature of block by the proposer.
     pub signature: ValidatorBlockSignature,
+    pub accumulated_data: ShardGroupAccumulatedData,
     #[serde(with = "hex_or_bytes")]
     pub metadata_hash: FixedHash,
 }
@@ -214,6 +215,7 @@ impl SidechainBlockHeader {
             proposed_by: self.proposed_by.as_bytes(),
             state_merkle_root: &self.state_merkle_root,
             command_merkle_root: &self.command_merkle_root,
+            accumulated_data: &self.accumulated_data,
             metadata_hash: &self.metadata_hash,
         });
 
@@ -232,6 +234,15 @@ impl SidechainBlockHeader {
     pub fn signature(&self) -> &ValidatorBlockSignature {
         &self.signature
     }
+
+    pub fn accumulated_data(&self) -> &ShardGroupAccumulatedData {
+        &self.accumulated_data
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+pub struct ShardGroupAccumulatedData {
+    pub total_exhaust_burn: u128,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
@@ -358,6 +369,7 @@ pub struct BlockHeaderHashFieldsV1<'a> {
     pub height: u64,
     pub epoch: u64,
     pub shard_group: ShardGroup,
+    pub accumulated_data: &'a ShardGroupAccumulatedData,
     // NOTE this is borsh encoded as variable length bytes - technically should always be 32
     pub proposed_by: &'a [u8],
     pub state_merkle_root: &'a FixedHash,
