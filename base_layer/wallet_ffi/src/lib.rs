@@ -7225,7 +7225,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
             num_kernels as usize,
             num_outputs as usize,
         )) {
-        Ok(fee) => fee.into(),
+        Ok((fee, _, _)) => fee.into(),
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             0
