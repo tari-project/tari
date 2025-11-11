@@ -2,17 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## [](https://github.com/tari-project/tari/compare/v5.1.1-pre.0...v) (2025-11-04)
+### [5.1.3-pre.0](https://github.com/tari-project/tari/compare/v5.1.2-pre.1...v5.1.3-pre.0) (2025-11-11)
 
 
 ### Features
 
-* expand transport channel errors ([#7564](https://github.com/tari-project/tari/issues/7564)) ([b66e4ca](https://github.com/tari-project/tari/commit/b66e4cabcd80484fb795ae176273773c9ab15559))
-
-
-### Bug Fixes
-
-* validation deadlock ([#7563](https://github.com/tari-project/tari/issues/7563)) ([9455031](https://github.com/tari-project/tari/commit/9455031489613ae6c883f06c0f19f8a4a9d1e9df))
+* adds ability rescan wallet ([#7580](https://github.com/tari-project/tari/issues/7580)) ([3b2a8e8](https://github.com/tari-project/tari/commit/3b2a8e8b404642aa026aa7d9a5a42dac986b962b))
+* increase fee estimate details ([#7579](https://github.com/tari-project/tari/issues/7579)) ([c8deacd](https://github.com/tari-project/tari/commit/c8deacdcc3dbb5cd82c8cfce9892f88c60f8cbf9))
 
 ### [5.1.1-pre.0](https://github.com/tari-project/tari/compare/v5.1.0...v5.1.1-pre.0) (2025-10-10)
 
