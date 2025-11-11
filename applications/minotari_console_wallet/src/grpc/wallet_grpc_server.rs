@@ -98,6 +98,8 @@ use minotari_app_grpc::tari_rpc::{
     RegisterValidatorNodeResponse,
     ReplaceByFeeRequest,
     ReplaceByFeeResponse,
+    RescanWalletRequest,
+    RescanWalletResponse,
     RevalidateRequest,
     RevalidateResponse,
     SendShaAtomicSwapRequest,
@@ -2709,6 +2711,32 @@ impl wallet_server::Wallet for WalletGrpcServer {
             encrypted_data: output.encrypted_data().to_byte_vec(),
             value: output.value().as_u64(),
         }))
+    }
+
+    async fn rescan_wallet(
+        &self,
+        request: Request<RescanWalletRequest>,
+    ) -> Result<Response<RescanWalletResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "rescan_wallet: Incoming GRPC request to rescan wallet with from_height: {}",
+            message.from_height
+        );
+
+        if message.from_height == 0 {
+            self.wallet
+                .db
+                .clear_scanned_blocks()
+                .map_err(|e| Status::internal(format!("Failed to rescan wallet: {e}")))?;
+        } else {
+            self.wallet
+                .db
+                .clear_scanned_blocks_from_and_higher(message.from_height)
+                .map_err(|e| Status::internal(format!("Failed to rescan wallet: {e}")))?;
+        }
+
+        Ok(Response::new(RescanWalletResponse {}))
     }
 }
 
