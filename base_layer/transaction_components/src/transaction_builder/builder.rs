@@ -1117,9 +1117,12 @@ impl<KM> Debug for TransactionBuilder<KM> {
 
 #[cfg(test)]
 mod test {
-    use crate::transaction_components::one_sided::{
-        shared_secret_to_output_encryption_key,
-        shared_secret_to_output_spending_key,
+    use tari_common_types::seeds::seed_words::SeedWords;
+    use tari_utilities::Hidden;
+
+    use crate::transaction_components::{
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        EncryptedData,
     };
 
     async fn create_view_key_manager(keys: ProvidedKeysWallet) -> Result<MemoryKeyManager, KeyManagerServiceError> {
@@ -1139,11 +1142,11 @@ mod test {
     };
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
-        seeds::cipher_seed::CipherSeed,
+        seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic},
         wallet_types::{ProvidedKeysWallet, WalletType},
     };
     use tari_crypto::keys::SecretKey;
-    use tari_script::{script, TariScript};
+    use tari_script::{script, Opcode, TariScript};
     use zeroize::Zeroizing;
 
     use super::*;
@@ -1152,6 +1155,7 @@ mod test {
         key_manager::{
             create_memory_key_manager,
             error::KeyManagerServiceError,
+            memory_key_manager::create_memory_key_manager_from_seed,
             MemoryKeyManager,
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerWrapper,
@@ -2231,5 +2235,112 @@ mod test {
         assert_eq!(tx.body.outputs().len(), 101);
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    /// this test will test recovery of a pregenerated transaction alice sent bob, they both need to recover one output
+    /// each
+    #[tokio::test]
+    async fn recover_historic_transaction_data() {
+        let alice_wallet_seeds = "leopard tilt extend file rescue purity day blind office laptop task today stairs \
+                                  now stairs conduct fruit pigeon make urban grace gasp suit drill"
+            .to_string();
+        let alice_seeds = SeedWords::new(
+            alice_wallet_seeds
+                .split(' ')
+                .map(|s| Hidden::hide(s.to_string()))
+                .collect::<Vec<Hidden<String>>>(),
+        );
+
+        let alice_cipher = CipherSeed::from_mnemonic(&alice_seeds, None).unwrap();
+        let alice_key_manager = create_memory_key_manager_from_seed(alice_cipher, 64).await.unwrap();
+        let bob_wallet_seeds = "park bright young fitness twin globe fresh dose gesture inmate already word minimum \
+                                waste shop chair chef quick stairs subway paper brave case vessel"
+            .to_string();
+        let seeds = SeedWords::new(
+            bob_wallet_seeds
+                .split(' ')
+                .map(|s| Hidden::hide(s.to_string()))
+                .collect::<Vec<Hidden<String>>>(),
+        );
+
+        let cipher = CipherSeed::from_mnemonic(&seeds, None).unwrap();
+        let bob_key_manager = create_memory_key_manager_from_seed(cipher, 64).await.unwrap();
+
+        struct RecoverData {
+            pub commitment: CompressedCommitment,
+            pub encrypted_data: EncryptedData,
+            pub sender_offset_public_key: CompressedPublicKey,
+            pub script: TariScript,
+        }
+        let outputs = [
+            RecoverData{
+                commitment: CompressedCommitment::from_hex("006399307893ae875ac7677b564ba068a9bc18eb903f5245a39a78aeebecc87b").unwrap(),
+                encrypted_data: EncryptedData::from_hex("0b52d2d3fc3ee4b1d660effbb925e14adbecbb411ef6a15263977c98a60e28cf0391f7fa462d25550b9dde46f1a918135de15bc2416e07bcc2979daf2913c489c1d7392c893abcda8702b855980beed01b90161b8c6be81e631a5b137c04822edbefc7e2ad176ea6c0a55f12d70878b82575adc3d0cee368fe752d76e2916ec142eecf22bd4d73f4c5c8898ffc62860f06ed89346dec6c8d7e0b464c25e517b7c39d576c4d49eacfd063f09fa576a2e9ba4e73887f7f31a4a1bdcf5f872ffdfade6bddd844bbcedea9ac818112ab7a2266d2").unwrap(),
+                sender_offset_public_key: CompressedPublicKey::from_hex("cefb54097d450a875959dd50d6c6e2e17d0f2d285ac58005bcda7ff1e805c048").unwrap(),
+                script: TariScript::from_hex("7e7cf0a1cefaca6355741d47564a8162b57a735f8c4fd1d3afde0bc9ac44df6f09").unwrap(),
+            },
+            RecoverData{
+                commitment: CompressedCommitment::from_hex("e6b0f7ca79ae1d12fb44ca678f96296b25fefd6da25cde01d4f566f963c9d96e").unwrap(),
+                encrypted_data: EncryptedData::from_hex("5355a9fa27de31511619e22810d41a73b9d0eed8dcfaa1cdd129b7dc4afa9905081e3c631f43b1946d5aef12413fe5f2e64c739d926d8d72883daa2577771776a45e5e6b1da727e0130f6b15c1fcf3ec").unwrap(),
+                sender_offset_public_key: CompressedPublicKey::from_hex("b6de6ce6ca11e5fcbfddadc6277a97ce480ab0ca9ba09714e3cca1a7e8ebe34d").unwrap(),
+                script: TariScript::from_hex("7e722481cc06bb13b6732edd6d19bdea213549f0b51df201a2dc8f04f9ddf7a039").unwrap(),
+            },
+        ];
+
+        let mut alice_count = 0;
+        let mut bob_count = 0;
+        for output in outputs {
+            // alice change output
+            if let Ok(Some((commitment_key, _, _))) = alice_key_manager
+                .try_output_key_recovery(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    &output.sender_offset_public_key,
+                )
+                .await
+            {
+                alice_count += 1;
+                let script_spending_key = alice_key_manager
+                    .stealth_address_script_spending_key(
+                        &commitment_key,
+                        &alice_key_manager.get_spend_key().await.unwrap().pub_key,
+                    )
+                    .await
+                    .unwrap();
+                if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
+                    if script_spending_key != **scanned_pk {
+                        panic!("should have found this");
+                    }
+                } else {
+                    panic!("unexpected script");
+                }
+            }
+            if let Ok(Some((commitment_key, _, _))) = bob_key_manager
+                .try_output_key_recovery(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    &output.sender_offset_public_key,
+                )
+                .await
+            {
+                bob_count += 1;
+                let script_spending_key = bob_key_manager
+                    .stealth_address_script_spending_key(
+                        &commitment_key,
+                        &bob_key_manager.get_spend_key().await.unwrap().pub_key,
+                    )
+                    .await
+                    .unwrap();
+                if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
+                    if script_spending_key != **scanned_pk {
+                        panic!("should have found this");
+                    }
+                } else {
+                    panic!("unexpected script");
+                }
+            }
+        }
+        assert_eq!(alice_count, 1); // alice change output
+        assert_eq!(bob_count, 1); // bob recipient output
     }
 }
