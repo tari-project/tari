@@ -1776,6 +1776,7 @@ service Wallet {
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
   rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
   rpc GetBurnClaimProof(GetBurnClaimProofRequest) returns (GetBurnClaimProofResponse);
+  rpc RescanWallet(RescanWalletRequest) returns (RescanWalletResponse);
 }
 
 
@@ -2426,4 +2427,11 @@ message EncodedMerkleProof {
   bytes block_hash = 1;
   bytes encoded_proof = 2;
   uint64 leaf_index = 3;
+}
+
+message RescanWalletRequest {
+  uint64 from_height = 1;
+}
+
+message RescanWalletResponse {
 }
