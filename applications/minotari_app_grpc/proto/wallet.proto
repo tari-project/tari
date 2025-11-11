@@ -1982,6 +1982,10 @@ message GetFeeEstimateRequest {
 message GetFeeEstimateResponse {
   // Estimated fee for the transaction in microTari
   uint64 estimated_fee = 1;
+  // number of inputs
+  uint64 input_count = 2;
+  // will it have a change output or not
+  bool change_required = 3;
 }
 
 message GetFeePerGramStatsRequest {

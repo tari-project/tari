@@ -250,7 +250,7 @@ async fn fee_estimate() {
         .await
         .unwrap();
     assert_eq!(
-        fee,
+        fee.0,
         fee_calc.calculate(
             fee_per_gram,
             1,
@@ -276,7 +276,7 @@ async fn fee_estimate() {
             .unwrap();
 
         assert_eq!(
-            fee,
+            fee.0,
             fee_calc.calculate(
                 fee_per_gram,
                 1,
@@ -301,7 +301,7 @@ async fn fee_estimate() {
         )
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(375));
+    assert_eq!(fee.0, MicroMinotari::from(375));
 }
 
 #[allow(clippy::identity_op)]
@@ -386,21 +386,21 @@ async fn test_utxo_selection_no_chain_metadata() {
             .expect("Failed to get default features and scripts size byte size") *
             3,
     );
-    assert_eq!(fee, expected_fee);
+    assert_eq!(fee.0, expected_fee);
 
     let spendable_amount = (3..=10).sum::<u64>() * amount;
     let fee = oms
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(256));
+    assert_eq!(fee.0, MicroMinotari::from(256));
 
     let broke_amount = spendable_amount + MicroMinotari::from(2000);
     let fee = oms
         .fee_estimate(broke_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(256));
+    assert_eq!(fee.0, MicroMinotari::from(256));
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -495,14 +495,14 @@ async fn test_utxo_selection_with_chain_metadata() {
             .expect("Failed to get default features and scripts size byte size") *
             3,
     );
-    assert_eq!(fee, expected_fee);
+    assert_eq!(fee.0, expected_fee);
 
     let spendable_amount = (1..=6).sum::<u64>() * amount;
     let fee = oms
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(256));
+    assert_eq!(fee.0, MicroMinotari::from(256));
 
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();

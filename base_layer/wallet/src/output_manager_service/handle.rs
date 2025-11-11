@@ -316,7 +316,7 @@ pub enum OutputManagerResponse<KM> {
     Transaction((TxId, Transaction, MicroMinotari)),
     PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
-    FeeEstimate(MicroMinotari),
+    FeeEstimate(MicroMinotari, usize, bool),
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
@@ -604,7 +604,7 @@ where KM: TransactionKeyManagerInterface
         fee_per_gram: MicroMinotari,
         num_kernels: usize,
         num_outputs: usize,
-    ) -> Result<MicroMinotari, OutputManagerError> {
+    ) -> Result<(MicroMinotari, usize, bool), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::FeeEstimate {
@@ -617,7 +617,7 @@ where KM: TransactionKeyManagerInterface
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::FeeEstimate({e})"))??
         {
-            OutputManagerResponse::FeeEstimate(fee) => Ok(fee),
+            OutputManagerResponse::FeeEstimate(fee, number_selected, change) => Ok((fee, number_selected, change)),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::FeeEstimate".to_string(),
             )),
