@@ -244,8 +244,9 @@ pub struct TariKeyAndId {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn display_simple_variants() {
@@ -260,7 +261,10 @@ mod tests {
         assert_eq!(TariKeyId::from_str("zero").unwrap(), TariKeyId::Zero);
         assert_eq!(TariKeyId::from_str("spend_key").unwrap(), TariKeyId::SpendKey);
         assert_eq!(TariKeyId::from_str("view_key").unwrap(), TariKeyId::ViewKey);
-        assert_eq!(TariKeyId::from_str("code-template-author").unwrap(), TariKeyId::CodeTemplateAuthor);
+        assert_eq!(
+            TariKeyId::from_str("code-template-author").unwrap(),
+            TariKeyId::CodeTemplateAuthor
+        );
     }
 
     #[test]
@@ -275,7 +279,12 @@ mod tests {
     fn roundtrip_dh_commitment_mask() {
         // Use a known-good 32-byte compressed public key hex from repo examples
         let pk = "28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d5c9";
-        let s = format!("{branch}.{pk}.{}", "my.private.key.with.dots", branch = DH_COMMITMENT_MASK_BRANCH, pk = pk);
+        let s = format!(
+            "{branch}.{pk}.{}",
+            "my.private.key.with.dots",
+            branch = DH_COMMITMENT_MASK_BRANCH,
+            pk = pk
+        );
         let parsed = TariKeyId::from_str(&s).unwrap();
         assert!(matches!(parsed, TariKeyId::DHCommitmentMask { .. }));
         assert_eq!(parsed.to_string(), s);
@@ -300,7 +309,12 @@ mod tests {
         // encrypted bytes in hex must be valid; ensure lowercase for to_hex matching
         let enc_hex = "deadbeef00cafebabe";
         let key = "my.derived.path";
-        let s = format!("{branch}.{enc}.{key}", branch = ENCRYPTED_BRANCH, enc = enc_hex, key = key);
+        let s = format!(
+            "{branch}.{enc}.{key}",
+            branch = ENCRYPTED_BRANCH,
+            enc = enc_hex,
+            key = key
+        );
         let parsed = TariKeyId::from_str(&s).unwrap();
         assert!(matches!(parsed, TariKeyId::Encrypted { .. }));
         // Display will use lowercase hex; our enc_hex is already lowercase
@@ -328,7 +342,9 @@ mod tests {
         assert_eq!(k.as_str(), "abc.def");
         assert_eq!(k.to_string(), "abc.def");
 
-        let kid = TariKeyId::Derived { key: SerializedKeyString::from("x.y") };
+        let kid = TariKeyId::Derived {
+            key: SerializedKeyString::from("x.y"),
+        };
         let sks1 = SerializedKeyString::from(kid.clone());
         let sks2 = SerializedKeyString::from(&kid);
         assert_eq!(sks1, sks2);
@@ -340,7 +356,10 @@ mod tests {
         // Empty
         assert_eq!(TariKeyId::from_str("").unwrap_err(), "Out of bounds");
         // Derived must have at least 3 parts
-        assert_eq!(TariKeyId::from_str("derived.onlytwo").unwrap_err(), "Wrong derived format");
+        assert_eq!(
+            TariKeyId::from_str("derived.onlytwo").unwrap_err(),
+            "Wrong derived format"
+        );
         // DHCommitmentMask invalid public key
         assert_eq!(
             TariKeyId::from_str("dh_commitment_mask.nothex.priv").unwrap_err(),
@@ -352,13 +371,19 @@ mod tests {
             "Invalid public key"
         );
         // Encrypted invalid bytes
-        assert_eq!(TariKeyId::from_str("encrypted.zzz.key").unwrap_err(), "Invalid encrypted bytes");
+        assert_eq!(
+            TariKeyId::from_str("encrypted.zzz.key").unwrap_err(),
+            "Invalid encrypted bytes"
+        );
         // Spend/View/CodeTemplate wrong formats
         assert_eq!(
             TariKeyId::from_str("spend_key.extra").unwrap_err(),
             "Wrong spend key format"
         );
-        assert_eq!(TariKeyId::from_str("view_key.extra").unwrap_err(), "Wrong view key format");
+        assert_eq!(
+            TariKeyId::from_str("view_key.extra").unwrap_err(),
+            "Wrong view key format"
+        );
         assert_eq!(
             TariKeyId::from_str("code-template-author.extra").unwrap_err(),
             "Wrong code template format"
@@ -373,6 +398,9 @@ mod tests {
             "Invalid ledger key index"
         );
         // Unknown branch
-        assert_eq!(TariKeyId::from_str("unknown.branch").unwrap_err(), "Wrong generic format");
+        assert_eq!(
+            TariKeyId::from_str("unknown.branch").unwrap_err(),
+            "Wrong generic format"
+        );
     }
 }
