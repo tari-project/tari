@@ -25,8 +25,13 @@ use std::{fmt::Display, time::Instant};
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::{Parser, ValueEnum};
-use tari_core::chain_storage::MetadataKey; // ensure this import path matches your crate layout
-use tari_core::chain_storage::{BlockchainCheckStatus, CheckFailure};
+use tari_core::chain_storage::{
+    async_db::AsyncBlockchainDb,
+    BlockchainCheckStatus,
+    ChainStorageError,
+    CheckFailure,
+    LMDBDatabase,
+};
 use tokio::{
     task,
     time::{sleep, Duration},
@@ -53,8 +58,13 @@ pub struct Args {
 
     /// Milli-seconds 'breathing time' between consecutive checks - very short breathing time may starve other critical
     /// tasks (minimum 1 ms, maximum 1000ms, default 10ms).
-    #[clap(long, short = 'b', default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..1000))]
+    #[clap(long, short = 'b', default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=1000))]
     pub breathing_time_ms: u64,
+
+    /// Option to not clear counters when error detected or user requested a stop (Default: false).
+    /// Note: This is a long-winded-option-to-write intended for expert use.
+    #[clap(long, default_value = "false", action = clap::ArgAction::SetTrue)]
+    pub do_not_clear_counters_on_error_or_stop: bool,
 }
 
 /// What to check
@@ -120,26 +130,32 @@ impl HandleCommand<Args> for CommandContext {
 
         match args.mode {
             Mode::PrintStatus => {
-                let acc_diff_status: Option<BlockchainCheckStatus> = self
-                    .blockchain_db
-                    .fetch_blockchain_check_status(MetadataKey::AccumulatedDataCheckStatus)
-                    .await?;
+                let acc_diff_status = fetch_check_status(CheckType::AccumulatedData, &self.blockchain_db).await?;
                 println!("\n[check-db] acc_diff status:\n  {:?}", acc_diff_status);
-                let consistency_status: Option<BlockchainCheckStatus> = self
-                    .blockchain_db
-                    .fetch_blockchain_check_status(MetadataKey::BlockchainConsistencyCheckStatus)
-                    .await?;
+                let consistency_status = fetch_check_status(CheckType::ChainConsistency, &self.blockchain_db).await?;
                 println!("\n[check-db] chain status:\n  {:?}", consistency_status);
                 println!();
             },
             Mode::ResetCounters => {
                 println!("\n[check-db] Resetting database check counters...");
-                self.blockchain_db.reset_check_db_counters().await?;
+                self.blockchain_db.reset_accumulated_data_check_db_counters().await?;
+                self.blockchain_db
+                    .reset_blockchain_consistency_check_db_counters()
+                    .await?;
                 println!("\n[check-db] Reset complete.\n");
             },
             Mode::Stop => {
                 println!("\n[check-db] Stopping any current database check...");
-                self.blockchain_db.stop_running_check_db_background_tasks().await?;
+                if let Err(e) = self.blockchain_db.stop_running_accumulated_data_check_task().await {
+                    println!("[check-db] {}, error stopping check task: {}", args.mode, e);
+                }
+                if let Err(e) = self
+                    .blockchain_db
+                    .stop_running_blockchain_consistency_check_task()
+                    .await
+                {
+                    println!("[check-db] {}, error stopping check task: {}", args.mode, e);
+                }
                 println!("\n[check-db] Stopped.\n");
             },
             _ => {
@@ -151,9 +167,50 @@ impl HandleCommand<Args> for CommandContext {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum CheckType {
+    AccumulatedData,
+    ChainConsistency,
+}
+
+impl Display for CheckType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            CheckType::AccumulatedData => "AccumulatedData",
+            CheckType::ChainConsistency => "ChainConsistency",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl CheckType {
+    pub fn try_from(mode: Mode) -> Result<Vec<CheckType>, Error> {
+        match mode {
+            Mode::AccDiff | Mode::AccDiffAutocorrect => Ok(vec![CheckType::AccumulatedData]),
+            Mode::LightChain | Mode::LightAutocorrect | Mode::FullChain | Mode::FullAutocorrect => {
+                Ok(vec![CheckType::ChainConsistency])
+            },
+            Mode::AllLight | Mode::AllFull | Mode::AllLightAutocorrect | Mode::AllFullAutocorrect => {
+                Ok(vec![CheckType::ChainConsistency, CheckType::AccumulatedData])
+            },
+            _ => Err(anyhow!(
+                "[check-db] {}, unexpected mode when determining check type.",
+                mode
+            )),
+        }
+    }
+}
+
 impl CommandContext {
     /// Run the requested check and poll status until it finishes or fails.
     pub async fn check_db(&mut self, args: Args) -> Result<(), Error> {
+        // Prompt user to confirm using existing status
+        let check_types = CheckType::try_from(args.mode)?;
+        for check_type in check_types {
+            self.prompt_confirm_initial_status(check_type, args.mode, args.do_not_clear_counters_on_error_or_stop)
+                .await?;
+        }
+
         // Kick off the appropriate background task by setting metadata + running the checker
         let auto_correct = matches!(
             args.mode,
@@ -169,17 +226,23 @@ impl CommandContext {
                 self.blockchain_db
                     .request_accumulated_data_check(auto_correct, args.breathing_time_ms)
                     .await?;
-                self.poll_status(MetadataKey::AccumulatedDataCheckStatus, args.poll_seconds, args.mode)
-                    .await?;
+                self.poll_status(
+                    CheckType::AccumulatedData,
+                    args.poll_seconds,
+                    args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
+                )
+                .await?;
             },
             Mode::LightChain | Mode::LightAutocorrect => {
                 self.blockchain_db
                     .request_blockchain_consistency_check(false, auto_correct, args.breathing_time_ms)
                     .await?;
                 self.poll_status(
-                    MetadataKey::BlockchainConsistencyCheckStatus,
+                    CheckType::ChainConsistency,
                     args.poll_seconds,
                     args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
                 )
                 .await?;
             },
@@ -188,9 +251,10 @@ impl CommandContext {
                     .request_blockchain_consistency_check(true, auto_correct, args.breathing_time_ms)
                     .await?;
                 self.poll_status(
-                    MetadataKey::BlockchainConsistencyCheckStatus,
+                    CheckType::ChainConsistency,
                     args.poll_seconds,
                     args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
                 )
                 .await?;
             },
@@ -200,17 +264,23 @@ impl CommandContext {
                     .request_blockchain_consistency_check(false, auto_correct, args.breathing_time_ms)
                     .await?;
                 self.poll_status(
-                    MetadataKey::BlockchainConsistencyCheckStatus,
+                    CheckType::ChainConsistency,
                     args.poll_seconds,
                     args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
                 )
                 .await?;
                 // Accumulated data
                 self.blockchain_db
                     .request_accumulated_data_check(auto_correct, args.breathing_time_ms)
                     .await?;
-                self.poll_status(MetadataKey::AccumulatedDataCheckStatus, args.poll_seconds, args.mode)
-                    .await?;
+                self.poll_status(
+                    CheckType::AccumulatedData,
+                    args.poll_seconds,
+                    args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
+                )
+                .await?;
             },
             Mode::AllFull | Mode::AllFullAutocorrect => {
                 // Blockchain consistency
@@ -218,17 +288,23 @@ impl CommandContext {
                     .request_blockchain_consistency_check(true, auto_correct, args.breathing_time_ms)
                     .await?;
                 self.poll_status(
-                    MetadataKey::BlockchainConsistencyCheckStatus,
+                    CheckType::ChainConsistency,
                     args.poll_seconds,
                     args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
                 )
                 .await?;
                 // Accumulated data
                 self.blockchain_db
                     .request_accumulated_data_check(auto_correct, args.breathing_time_ms)
                     .await?;
-                self.poll_status(MetadataKey::AccumulatedDataCheckStatus, args.poll_seconds, args.mode)
-                    .await?;
+                self.poll_status(
+                    CheckType::AccumulatedData,
+                    args.poll_seconds,
+                    args.mode,
+                    args.do_not_clear_counters_on_error_or_stop,
+                )
+                .await?;
             },
             _ => {
                 return Err(anyhow!(
@@ -242,22 +318,26 @@ impl CommandContext {
     }
 
     /// Poll the given metadata (in the background) key until the background task reports completion or corruption.
-    async fn poll_status(&mut self, key: MetadataKey, poll_s: u64, mode: Mode) -> Result<(), Error> {
-        let mode = match (mode, key) {
-            (Mode::AllLight, MetadataKey::AccumulatedDataCheckStatus) => Mode::AccDiff,
-            (Mode::AllFull, MetadataKey::AccumulatedDataCheckStatus) => Mode::AccDiff,
-            (Mode::AllLightAutocorrect, MetadataKey::AccumulatedDataCheckStatus) => Mode::AccDiffAutocorrect,
-            (Mode::AllFullAutocorrect, MetadataKey::AccumulatedDataCheckStatus) => Mode::AccDiffAutocorrect,
-            (Mode::AllLight, MetadataKey::BlockchainConsistencyCheckStatus) => Mode::LightChain,
-            (Mode::AllFull, MetadataKey::BlockchainConsistencyCheckStatus) => Mode::FullChain,
-            (Mode::AllLightAutocorrect, MetadataKey::BlockchainConsistencyCheckStatus) => Mode::LightAutocorrect,
-            (Mode::AllFullAutocorrect, MetadataKey::BlockchainConsistencyCheckStatus) => Mode::FullAutocorrect,
+    async fn poll_status(
+        &mut self,
+        check_type: CheckType,
+        poll_s: u64,
+        mode: Mode,
+        do_not_clear_counters: bool,
+    ) -> Result<(), Error> {
+        let mode = match (mode, check_type) {
+            (Mode::AllLight, CheckType::AccumulatedData) => Mode::AccDiff,
+            (Mode::AllFull, CheckType::AccumulatedData) => Mode::AccDiff,
+            (Mode::AllLightAutocorrect, CheckType::AccumulatedData) => Mode::AccDiffAutocorrect,
+            (Mode::AllFullAutocorrect, CheckType::AccumulatedData) => Mode::AccDiffAutocorrect,
+            (Mode::AllLight, CheckType::ChainConsistency) => Mode::LightChain,
+            (Mode::AllFull, CheckType::ChainConsistency) => Mode::FullChain,
+            (Mode::AllLightAutocorrect, CheckType::ChainConsistency) => Mode::LightAutocorrect,
+            (Mode::AllFullAutocorrect, CheckType::ChainConsistency) => Mode::FullAutocorrect,
             _ => mode,
         };
 
-        let status = self
-            .blockchain_db
-            .fetch_blockchain_check_status(key)
+        let status = fetch_check_status(check_type, &self.blockchain_db)
             .await?
             .unwrap_or_default();
         println!(
@@ -270,50 +350,151 @@ impl CommandContext {
 
         // Monitor the status of blockchain check task in the background
         let blockchain_db = self.blockchain_db.clone();
+        let mut shutdown = self.shutdown.to_signal().clone();
         task::spawn(async move {
             let start = Instant::now();
             loop {
-                sleep(Duration::from_secs(poll_s)).await;
+                tokio::select! {
+                    _ = sleep(Duration::from_secs(poll_s)) => {
+                        let status = match fetch_check_status(check_type, &blockchain_db).await {
+                            Ok(Some(status)) => status,
+                            Ok(None) => {
+                                if start.elapsed().as_secs() > Duration::from_secs(60).as_secs() {
+                                    println!("[check-db] {}, no status found after 60s, aborting!", mode);
+                                    stop_and_clear_counters(&blockchain_db, check_type, mode, do_not_clear_counters)
+                                        .await;
+                                    break;
+                                }
+                                continue;
+                            },
+                            Err(e) => {
+                                println!("[check-db] {}, error fetching status, cannot continue! ({})", mode, e);
+                                stop_and_clear_counters(&blockchain_db, check_type, mode, do_not_clear_counters).await;
+                                break;
+                            },
+                        };
 
-                let status = match blockchain_db.fetch_blockchain_check_status(key).await {
-                    Ok(Some(status)) => status,
-                    Ok(None) => {
-                        if start.elapsed().as_secs() > Duration::from_secs(60).as_secs() {
-                            println!("[check-db] {}, no status found after 60s, aborting!", mode);
+                        // Progress
+                        let (has_concluded, last_check_height, current_height) = status.checked_status();
+                        if status.is_running() {
+                            let pct = if current_height > 0 {
+                                (last_check_height as f64 * 100.0 / current_height as f64).clamp(0.0, 100.0)
+                            } else {
+                                0.0
+                            };
+                            println!(
+                                "[check-db] {mode}, progress: height {last_check_height}/{current_height} ~ {pct:.2}%"
+                            );
+                        } else if let Some(last_failure) = status.last_failure.clone() {
+                            print_failure_message(last_check_height, current_height, mode, &last_failure);
+                            stop_and_clear_counters(&blockchain_db, check_type, mode, do_not_clear_counters).await;
+                            break;
+                        } else {
+                            println!(
+                                "[check-db] {mode}, processed up to height {last_check_height}/{current_height} - \
+                                 completed({has_concluded})."
+                            );
+                            let _unused = stop_and_clear_counters(&blockchain_db, check_type, mode, do_not_clear_counters).await;
                             break;
                         }
-                        continue;
+                    }
+                    _ = shutdown.wait() => {
+                        println!("[check-db] {mode}, cancelled by shutdown.");
+                        break
                     },
-                    Err(e) => {
-                        println!("[check-db] {}, error fetching status, cannot continue! ({})", mode, e);
-                        break;
-                    },
-                };
-
-                // Progress
-                let (has_concluded, last_check_height, current_height) = status.checked_status();
-                if status.is_running() {
-                    let pct = if current_height > 0 {
-                        last_check_height as f64 * 100.0 / current_height as f64
-                    } else {
-                        0.0
-                    };
-                    println!("[check-db] {mode}, progress: height {last_check_height}/{current_height} ~ {pct:.2}%");
-                } else if let Some(last_failure) = status.last_failure.clone() {
-                    print_failure_message(last_check_height, current_height, mode, &last_failure);
-                    break;
-                } else {
-                    println!(
-                        "[check-db] {mode}, processed up to height {last_check_height}/{current_height} - \
-                         completed({has_concluded})."
-                    );
-                    break;
                 }
             }
 
             println!("\n[check-db] {mode}, done\n");
         });
         Ok(())
+    }
+
+    async fn prompt_confirm_initial_status(
+        &self,
+        check_type: CheckType,
+        mode: Mode,
+        do_not_clear_counters: bool,
+    ) -> Result<(), ChainStorageError> {
+        let status_res = fetch_check_status(check_type, &self.blockchain_db)
+            .await
+            .inspect_err(|e| {
+                println!("[check-db] {}, error fetching status: {}", mode, e);
+            })?;
+        if let Some(val) = status_res {
+            if val != BlockchainCheckStatus::default() && do_not_clear_counters {
+                // Prompt user to confirm using existing status
+                println!(
+                    "\n[check-db] '{}'/'{}' check: found existing status - height: #{}, running: {}, \
+                     do_not_clear_counters: {}.\n Do you want to resume from this height? (y/n): ",
+                    mode,
+                    check_type,
+                    val.last_check_height.unwrap_or(1),
+                    val.is_running(),
+                    do_not_clear_counters,
+                );
+                // Do not block the async runtime
+                let input = task::spawn_blocking(|| {
+                    use std::io::{stdin, stdout, Write};
+                    let mut input = String::new();
+                    print!("> ");
+                    let _unused = stdout().flush();
+                    let _unused = stdin().read_line(&mut input);
+                    input
+                })
+                .await
+                .unwrap_or_default()
+                .trim()
+                .to_lowercase();
+                if input != "y" && input != "yes" {
+                    // Reset status
+                    println!("\n[check-db] '{}' check: resetting previous counters...", mode);
+                    stop_and_clear_counters(&self.blockchain_db, check_type, mode, false).await;
+                }
+            } else {
+                println!("\n[check-db] '{}' check: resetting previous counters...", mode);
+                stop_and_clear_counters(&self.blockchain_db, check_type, mode, false).await;
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn fetch_check_status(
+    check_type: CheckType,
+    blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
+) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+    match check_type {
+        CheckType::AccumulatedData => blockchain_db.fetch_accumulated_data_check_status().await,
+        CheckType::ChainConsistency => blockchain_db.fetch_blockchain_consistency_check_status().await,
+    }
+}
+
+async fn stop_and_clear_counters(
+    blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
+    check_type: CheckType,
+    mode: Mode,
+    do_not_clear_counters: bool,
+) {
+    let stop_running = match check_type {
+        CheckType::AccumulatedData => blockchain_db.stop_running_accumulated_data_check_task().await,
+        CheckType::ChainConsistency => blockchain_db.stop_running_blockchain_consistency_check_task().await,
+    };
+    if let Err(e) = stop_running {
+        println!("[check-db] {}, error stopping background check task: {}", mode, e);
+    }
+
+    if do_not_clear_counters {
+        return;
+    }
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let clear_counters = match check_type {
+        CheckType::AccumulatedData => blockchain_db.reset_accumulated_data_check_db_counters().await,
+        CheckType::ChainConsistency => blockchain_db.reset_blockchain_consistency_check_db_counters().await,
+    };
+    if let Err(e) = clear_counters {
+        println!("[check-db] {}, error resetting counters: {}", mode, e);
     }
 }
 

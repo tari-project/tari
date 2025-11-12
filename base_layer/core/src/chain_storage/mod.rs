@@ -76,7 +76,6 @@ pub use lmdb_db::{
     CheckFailure,
     DatabaseStats,
     LMDBDatabase,
-    MetadataKey,
     PayrefRebuildStatus,
 };
 mod stats;

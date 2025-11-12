@@ -2959,93 +2959,36 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    // Updates the stored blockchain check status, maintaining currently active values where applicable, or
+    // Updates the stored blockchain consistency check status, maintaining currently active values where applicable, or
     // creating a default set if it does not exist yet.
-    fn update_blockchain_check_status(
+    fn update_accumulated_data_check_status(
         &self,
         request: BlockchainCheckRequest,
-        metadata_key: MetadataKey,
     ) -> Result<BlockchainCheckStatus, ChainStorageError> {
         let write_txn = self.write_transaction()?;
-        let current_status =
-            fetch_blockchain_check_status_inner(&write_txn, &self.metadata_db, metadata_key)?.unwrap_or_default();
-        let status = match request {
-            BlockchainCheckRequest::ResetAllCounters => BlockchainCheckStatus { ..Default::default() },
-            BlockchainCheckRequest::ResumeCheck => BlockchainCheckStatus {
-                has_concluded: Some(false),
-                last_failure: None,
-                stop_if_running: false,
-                ..current_status
-            },
-            BlockchainCheckRequest::SetBreathingTime(breathing_time_ms) => BlockchainCheckStatus {
-                breathing_time_ms,
-                ..current_status
-            },
-            BlockchainCheckRequest::SetRunState(val) => BlockchainCheckStatus {
-                run_state: if val { RunState::Running } else { RunState::Stopped },
-                ..current_status
-            },
-            BlockchainCheckRequest::SetStopIfRunning(val) => BlockchainCheckStatus {
-                stop_if_running: val,
-                ..current_status
-            },
-            BlockchainCheckRequest::SetAutoCorrect(val) => BlockchainCheckStatus {
-                correction_mode: if val {
-                    CorrectionMode::AutoCorrect
-                } else {
-                    CorrectionMode::None
-                },
-                ..current_status
-            },
-            BlockchainCheckRequest::SetFullValidation(val) => BlockchainCheckStatus {
-                validation_mode: if val {
-                    ValidationMode::Full
-                } else {
-                    ValidationMode::Light
-                },
-                ..current_status
-            },
-            BlockchainCheckRequest::ClearRunningFlags {
-                has_concluded,
-                last_failure,
-            } => BlockchainCheckStatus {
-                has_concluded: Some(has_concluded),
-                run_state: RunState::Stopped,
-                stop_if_running: false,
-                last_failure,
-                ..current_status
-            },
-            BlockchainCheckRequest::SetCheckResult {
-                has_concluded,
-                last_check_height,
-                current_height,
-            } => BlockchainCheckStatus {
-                has_concluded: Some(has_concluded),
-                last_check_height: Some(last_check_height),
-                current_height: Some(current_height),
-                last_failure: None,
-                ..current_status
-            },
-        };
-
-        lmdb_replace(
-            &write_txn,
-            &self.metadata_db,
-            &metadata_key.as_u32(),
-            &MetadataValue::BlockchainCheckStatus(status.clone()),
-            None,
-        )?;
-        write_txn.commit()?;
-        Ok(status)
+        update_blockchain_check_status_inner(write_txn, request, DbCheckType::AccumulatedData, &self.metadata_db)
     }
 
-    // Returns the blockchain check status.
-    fn fetch_blockchain_check_status(
+    // Updates the stored accumulated data check status, maintaining currently active values where applicable, or
+    // creating a default set if it does not exist yet.
+    fn update_blockchain_consistency_check_status(
         &self,
-        metadata_key: MetadataKey,
-    ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        update_blockchain_check_status_inner(write_txn, request, DbCheckType::ChainConsistency, &self.metadata_db)
+    }
+
+    // Returns the blockchain consistency check status.
+    fn fetch_accumulated_data_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        fetch_blockchain_check_status_inner(&txn, &self.metadata_db, metadata_key)
+        fetch_blockchain_check_status_inner(&txn, &self.metadata_db, DbCheckType::AccumulatedData)
+    }
+
+    // Returns the accumulated data check status.
+    fn fetch_blockchain_consistency_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        fetch_blockchain_check_status_inner(&txn, &self.metadata_db, DbCheckType::ChainConsistency)
     }
 
     // Builds the payref indexes for a given block height, with stats.
@@ -3728,12 +3671,22 @@ impl BlockchainBackend for LMDBDatabase {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum DbCheckType {
+    ChainConsistency,
+    AccumulatedData,
+}
+
 // Returns the blockchain check status - inner.
 fn fetch_blockchain_check_status_inner(
     txn: &ConstTransaction<'_>,
     db: &Database,
-    metadata_key: MetadataKey,
+    check_type: DbCheckType,
 ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+    let metadata_key = match check_type {
+        DbCheckType::ChainConsistency => MetadataKey::BlockchainConsistencyCheckStatus,
+        DbCheckType::AccumulatedData => MetadataKey::AccumulatedDataCheckStatus,
+    };
     let res: Result<Option<MetadataValue>, ChainStorageError> = lmdb_get(txn, db, &metadata_key.as_u32());
 
     match res {
@@ -3753,6 +3706,89 @@ fn fetch_blockchain_check_status_inner(
             }
         },
     }
+}
+
+// Updates the stored blockchain check status, maintaining currently active values where applicable, or
+// creating a default set if it does not exist yet (either chain consistency or accumulated data).
+fn update_blockchain_check_status_inner(
+    write_txn: WriteTransaction<'_>,
+    request: BlockchainCheckRequest,
+    check_type: DbCheckType,
+    metadata_db: &Database,
+) -> Result<BlockchainCheckStatus, ChainStorageError> {
+    let current_status = fetch_blockchain_check_status_inner(&write_txn, metadata_db, check_type)?.unwrap_or_default();
+    let status = match request {
+        BlockchainCheckRequest::ResetAllCounters => BlockchainCheckStatus { ..Default::default() },
+        BlockchainCheckRequest::ResumeCheck => BlockchainCheckStatus {
+            has_concluded: Some(false),
+            last_failure: None,
+            stop_if_running: false,
+            ..current_status
+        },
+        BlockchainCheckRequest::SetBreathingTime(breathing_time_ms) => BlockchainCheckStatus {
+            breathing_time_ms,
+            ..current_status
+        },
+        BlockchainCheckRequest::SetRunState(val) => BlockchainCheckStatus {
+            run_state: if val { RunState::Running } else { RunState::Stopped },
+            ..current_status
+        },
+        BlockchainCheckRequest::SetStopIfRunning(val) => BlockchainCheckStatus {
+            stop_if_running: val,
+            ..current_status
+        },
+        BlockchainCheckRequest::SetAutoCorrect(val) => BlockchainCheckStatus {
+            correction_mode: if val {
+                CorrectionMode::AutoCorrect
+            } else {
+                CorrectionMode::None
+            },
+            ..current_status
+        },
+        BlockchainCheckRequest::SetFullValidation(val) => BlockchainCheckStatus {
+            validation_mode: if val {
+                ValidationMode::Full
+            } else {
+                ValidationMode::Light
+            },
+            ..current_status
+        },
+        BlockchainCheckRequest::ClearRunningFlags {
+            has_concluded,
+            last_failure,
+        } => BlockchainCheckStatus {
+            has_concluded: Some(has_concluded),
+            run_state: RunState::Stopped,
+            stop_if_running: false,
+            last_failure,
+            ..current_status
+        },
+        BlockchainCheckRequest::SetCheckResult {
+            has_concluded,
+            last_check_height,
+            current_height,
+        } => BlockchainCheckStatus {
+            has_concluded: Some(has_concluded),
+            last_check_height: Some(last_check_height),
+            current_height: Some(current_height),
+            last_failure: None,
+            ..current_status
+        },
+    };
+
+    let metadata_key = match check_type {
+        DbCheckType::ChainConsistency => MetadataKey::BlockchainConsistencyCheckStatus,
+        DbCheckType::AccumulatedData => MetadataKey::AccumulatedDataCheckStatus,
+    };
+    lmdb_replace(
+        &write_txn,
+        metadata_db,
+        &metadata_key.as_u32(),
+        &MetadataValue::BlockchainCheckStatus(status.clone()),
+        None,
+    )?;
+    write_txn.commit()?;
+    Ok(status)
 }
 
 // Fetch the chain metadata
@@ -4660,7 +4696,7 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                         "{:>6} | {:<40} | {:<35} | {}",
                         raw_key_str, key_name, "(DECODE ERROR)", e
                     );
-                    // Save a copy of the raw key to delete later
+                    // Save a copy of the raw key to process later
                     corrupt_keys.push(key_bytes.to_vec());
                 },
             }
@@ -4669,12 +4705,18 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
         }
     }
 
-    // Delete corrupt keys - these will be rebuilt as needed
+    // Report on corrupt keys and auto-delete non-essential ones
     if !corrupt_keys.is_empty() {
         let txn = db.write_transaction()?;
         for key in corrupt_keys {
-            warn!(target: LOG_TARGET, "Removed corrupt metadata entry with key bytes: 0x{}", to_hex(&key));
-            let _unused = lmdb_delete(&txn, &db.metadata_db, key.as_slice(), "metadata_db");
+            error!(target: LOG_TARGET, "Found corrupt metadata entry with key bytes: 0x{}", to_hex(&key));
+
+            if key.as_slice() == MetadataKey::AccumulatedDataRebuildStatus.as_u32().to_be_bytes() ||
+                key.as_slice() == MetadataKey::AccumulatedDataCheckStatus.as_u32().to_be_bytes()
+            {
+                warn!(target: LOG_TARGET, "Removed corrupt metadata entry with key bytes: 0x{}", to_hex(&key));
+                let _unused = lmdb_delete(&txn, &db.metadata_db, key.as_slice(), "metadata_db");
+            }
         }
         txn.commit()?;
     }

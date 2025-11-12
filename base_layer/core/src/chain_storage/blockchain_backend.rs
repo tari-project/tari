@@ -14,7 +14,6 @@ use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
     AccumulatedDataRebuildStatus,
     BlockchainCheckRequest,
-    MetadataKey,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -159,16 +158,19 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Returns the stored accumulated data rebuild status.
     fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
     /// Resets the stored blockchain consistency check status.
-    fn update_blockchain_check_status(
+    fn update_blockchain_consistency_check_status(
         &self,
         request: BlockchainCheckRequest,
-        metadata_key: MetadataKey,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError>;
+    /// Resets the stored accumulated data check status.
+    fn update_accumulated_data_check_status(
+        &self,
+        request: BlockchainCheckRequest,
     ) -> Result<BlockchainCheckStatus, ChainStorageError>;
     /// Returns the stored blockchain consistency check status.
-    fn fetch_blockchain_check_status(
-        &self,
-        metadata_key: MetadataKey,
-    ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
+    fn fetch_blockchain_consistency_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
+    /// Returns the stored accumulated data check status.
+    fn fetch_accumulated_data_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
     /// Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,

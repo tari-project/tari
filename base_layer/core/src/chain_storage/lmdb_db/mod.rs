@@ -46,7 +46,6 @@ pub use lmdb_db::{
     BlockchainCheckRequest,
     BlockchainCheckStatus,
     CheckFailure,
-    MetadataKey,
     PayrefRebuildStatus,
     BREATHING_TIME_MS_MAX,
     BREATHING_TIME_MS_MIN,
