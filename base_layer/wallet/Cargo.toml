@@ -15,7 +15,6 @@ c_integration = []
 bundled_sqlite = ["libsqlite3-sys"]
 ledger = [
     "tari_transaction_components/ledger",
-    "tari_transaction_key_manager/ledger",
 ]
 
 [dependencies]
