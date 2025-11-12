@@ -241,3 +241,138 @@ pub struct TariKeyAndId {
     pub pub_key: CompressedPublicKey,
     pub key_id: TariKeyId,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn display_simple_variants() {
+        assert_eq!(TariKeyId::Zero.to_string(), ZERO_KEY_BRANCH);
+        assert_eq!(TariKeyId::SpendKey.to_string(), SPEND_KEY_BRANCH);
+        assert_eq!(TariKeyId::ViewKey.to_string(), VIEW_KEY_BRANCH);
+        assert_eq!(TariKeyId::CodeTemplateAuthor.to_string(), CODE_TEMPLATE_AUTHOR);
+    }
+
+    #[test]
+    fn parse_simple_variants() {
+        assert_eq!(TariKeyId::from_str("zero").unwrap(), TariKeyId::Zero);
+        assert_eq!(TariKeyId::from_str("spend_key").unwrap(), TariKeyId::SpendKey);
+        assert_eq!(TariKeyId::from_str("view_key").unwrap(), TariKeyId::ViewKey);
+        assert_eq!(TariKeyId::from_str("code-template-author").unwrap(), TariKeyId::CodeTemplateAuthor);
+    }
+
+    #[test]
+    fn roundtrip_derived_with_dots() {
+        let s = "derived.wallet.sub.section";
+        let parsed = TariKeyId::from_str(s).unwrap();
+        assert!(matches!(parsed, TariKeyId::Derived { .. }));
+        assert_eq!(parsed.to_string(), s);
+    }
+
+    #[test]
+    fn roundtrip_dh_commitment_mask() {
+        // Use a known-good 32-byte compressed public key hex from repo examples
+        let pk = "28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d5c9";
+        let s = format!("{branch}.{pk}.{}", "my.private.key.with.dots", branch = DH_COMMITMENT_MASK_BRANCH, pk = pk);
+        let parsed = TariKeyId::from_str(&s).unwrap();
+        assert!(matches!(parsed, TariKeyId::DHCommitmentMask { .. }));
+        assert_eq!(parsed.to_string(), s);
+    }
+
+    #[test]
+    fn roundtrip_dh_encrypted_data() {
+        let pk = "5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee5a2";
+        let s = format!(
+            "{branch}.{pk}.{}",
+            "another.private.key.segment",
+            branch = DH_ENCRYPTED_DATA_BRANCH,
+            pk = pk
+        );
+        let parsed = TariKeyId::from_str(&s).unwrap();
+        assert!(matches!(parsed, TariKeyId::DHEncryptedData { .. }));
+        assert_eq!(parsed.to_string(), s);
+    }
+
+    #[test]
+    fn roundtrip_encrypted() {
+        // encrypted bytes in hex must be valid; ensure lowercase for to_hex matching
+        let enc_hex = "deadbeef00cafebabe";
+        let key = "my.derived.path";
+        let s = format!("{branch}.{enc}.{key}", branch = ENCRYPTED_BRANCH, enc = enc_hex, key = key);
+        let parsed = TariKeyId::from_str(&s).unwrap();
+        assert!(matches!(parsed, TariKeyId::Encrypted { .. }));
+        // Display will use lowercase hex; our enc_hex is already lowercase
+        assert_eq!(parsed.to_string(), s);
+    }
+
+    #[test]
+    fn roundtrip_ledger_key() {
+        // Use a valid branch string as per LedgerKeyBranch::from_str implementation
+        let s = format!("{branch}.{b}.{i}", branch = LEDGER_KEY_BRANCH, b = "Random", i = 42u64);
+        let parsed = TariKeyId::from_str(&s).unwrap();
+        assert_eq!(parsed.to_string(), s);
+        match parsed {
+            TariKeyId::LedgerKey { branch, index } => {
+                assert_eq!(branch.to_string(), "Random");
+                assert_eq!(index, 42);
+            },
+            _ => panic!("Expected LedgerKey"),
+        }
+    }
+
+    #[test]
+    fn serialized_key_string_helpers() {
+        let k = SerializedKeyString::from("abc.def");
+        assert_eq!(k.as_str(), "abc.def");
+        assert_eq!(k.to_string(), "abc.def");
+
+        let kid = TariKeyId::Derived { key: SerializedKeyString::from("x.y") };
+        let sks1 = SerializedKeyString::from(kid.clone());
+        let sks2 = SerializedKeyString::from(&kid);
+        assert_eq!(sks1, sks2);
+        assert_eq!(sks1.to_string(), kid.to_string());
+    }
+
+    #[test]
+    fn parse_error_cases() {
+        // Empty
+        assert_eq!(TariKeyId::from_str("").unwrap_err(), "Out of bounds");
+        // Derived must have at least 3 parts
+        assert_eq!(TariKeyId::from_str("derived.onlytwo").unwrap_err(), "Wrong derived format");
+        // DHCommitmentMask invalid public key
+        assert_eq!(
+            TariKeyId::from_str("dh_commitment_mask.nothex.priv").unwrap_err(),
+            "Invalid public key"
+        );
+        // DHEncryptedData invalid public key
+        assert_eq!(
+            TariKeyId::from_str("dh_encrypted_data.nothex.priv").unwrap_err(),
+            "Invalid public key"
+        );
+        // Encrypted invalid bytes
+        assert_eq!(TariKeyId::from_str("encrypted.zzz.key").unwrap_err(), "Invalid encrypted bytes");
+        // Spend/View/CodeTemplate wrong formats
+        assert_eq!(
+            TariKeyId::from_str("spend_key.extra").unwrap_err(),
+            "Wrong spend key format"
+        );
+        assert_eq!(TariKeyId::from_str("view_key.extra").unwrap_err(), "Wrong view key format");
+        assert_eq!(
+            TariKeyId::from_str("code-template-author.extra").unwrap_err(),
+            "Wrong code template format"
+        );
+        // Ledger wrong formats
+        assert_eq!(
+            TariKeyId::from_str("ledger_key.Random").unwrap_err(),
+            "Wrong ledger key format"
+        );
+        assert_eq!(
+            TariKeyId::from_str("ledger_key.Random.notnumber").unwrap_err(),
+            "Invalid ledger key index"
+        );
+        // Unknown branch
+        assert_eq!(TariKeyId::from_str("unknown.branch").unwrap_err(), "Wrong generic format");
+    }
+}

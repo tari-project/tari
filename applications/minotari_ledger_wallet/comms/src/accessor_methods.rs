@@ -225,40 +225,6 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
     }
 }
 
-/// Get a public key from the ledger device
-pub fn ledger_get_public_key_legacy(
-    account: u64,
-    index: u64,
-    branch: LedgerKeyBranch,
-) -> Result<RistrettoPublicKey, LedgerDeviceError> {
-    debug!(
-        target: LOG_TARGET,
-        "ledger_get_public_key: account '{account}', index '{index}', branch '{branch:?}'"
-    );
-    verify_ledger_application()?;
-
-    let mut data = Vec::new();
-    data.extend_from_slice(&index.to_le_bytes());
-    let branch_u64 = u64::from(branch.as_byte()).to_le_bytes();
-    data.extend_from_slice(&branch_u64);
-
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicKey, data).execute() {
-        Ok(result) => {
-            if result.data().len() < 33 {
-                return Err(LedgerDeviceError::Processing(format!(
-                    "GetPublicKey: expected 1 + 32 bytes, got {} ({:?})",
-                    result.data().len(),
-                    AppSW::try_from(result.retcode())?
-                )));
-            }
-            let public_key =
-                RistrettoPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
-            Ok(public_key)
-        },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {e}"))),
-    }
-}
-
 pub fn ledger_get_public_key(
     account: u64,
     index: u64,
@@ -459,42 +425,6 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
             Ok(view_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {e}"))),
-    }
-}
-
-/// Get the Diffie-Hellman shared secret from the ledger device
-pub fn ledger_get_dh_shared_secret_dhke(
-    account: u64,
-    index: u64,
-    branch: LedgerKeyBranch,
-    public_key: &CompressedPublicKey,
-) -> Result<DiffieHellmanSharedSecret<RistrettoPublicKey>, LedgerDeviceError> {
-    debug!(
-        target: LOG_TARGET,
-        "ledger_get_dh_shared_secret: account '{account}', index '{index}', branch '{branch:?}'"
-    );
-    verify_ledger_application()?;
-
-    let mut data = Vec::new();
-    data.extend_from_slice(&index.to_le_bytes());
-    data.extend_from_slice(&u64::from(branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&public_key.to_vec());
-
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
-        Ok(result) => {
-            if result.data().len() < 33 {
-                return Err(LedgerDeviceError::Processing(format!(
-                    "GetDHSharedSecret: expected 1 + 32 bytes, got {} ({:?})",
-                    result.data().len(),
-                    AppSW::try_from(result.retcode())?
-                )));
-            }
-            let shared_secret = DiffieHellmanSharedSecret::<RistrettoPublicKey>::from_canonical_bytes(
-                result.data().get(1..33).expect("Index should exist"),
-            )?;
-            Ok(shared_secret)
-        },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {e}"))),
     }
 }
 

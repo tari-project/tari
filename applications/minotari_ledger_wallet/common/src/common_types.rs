@@ -155,13 +155,7 @@ impl FromStr for LedgerKeyBranch {
 
 impl fmt::Display for LedgerKeyBranch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            LedgerKeyBranch::OneSidedSenderOffset => write!(f, "OneSidedSenderOffset"),
-            LedgerKeyBranch::Random => write!(f, "Random"),
-            LedgerKeyBranch::PreMine => write!(f, "PreMine"),
-            LedgerKeyBranch::Spend => write!(f, "Spend"),
-            LedgerKeyBranch::MetadataEphemeralNonce => write!(f, "MetadataEphemeralNonce"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 

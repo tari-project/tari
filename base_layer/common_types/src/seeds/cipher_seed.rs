@@ -148,7 +148,7 @@ impl CipherSeed {
 
     #[cfg(target_arch = "wasm32")]
     /// Generate a new seed
-    pub fn new() -> Self {
+    pub fn random() -> Self {
         const MILLISECONDS_PER_DAY: u64 = SECONDS_PER_DAY * 1000;
         let millis = js_sys::Date::now() as u64;
         let days = millis / MILLISECONDS_PER_DAY;
