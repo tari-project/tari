@@ -991,9 +991,16 @@ impl<KM> Debug for TransactionBuilder<KM> {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic, seed_words::SeedWords};
+    use tari_script::Opcode;
+    use tari_utilities::Hidden;
+
     use crate::{
         key_manager::SecretTransactionKeyManagerInterface,
-        transaction_components::one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
+        transaction_components::{
+            one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
+            EncryptedData,
+        },
     };
     fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
         let wallet = WalletType::ViewWallet(view_wallet);
@@ -1008,7 +1015,7 @@ mod test {
         crypto_factories::CryptoFactories,
         key_manager::{
             error::KeyManagerError,
-            wallet_types::{ViewWallet, WalletType},
+            wallet_types::{SeedWordsWallet, ViewWallet, WalletType},
             KeyManager,
         },
         tari_amount::{uT, MicroMinotari},
@@ -1898,7 +1905,8 @@ mod test {
         );
 
         let alice_cipher = CipherSeed::from_mnemonic(&alice_seeds, None).unwrap();
-        let alice_key_manager = create_memory_key_manager_from_seed(alice_cipher, 64).await.unwrap();
+        let alice_wallet = WalletType::SeedWords(SeedWordsWallet::construct_new(alice_cipher).unwrap());
+        let alice_key_manager = KeyManager::new(alice_wallet).unwrap();
         let bob_wallet_seeds = "park bright young fitness twin globe fresh dose gesture inmate already word minimum \
                                 waste shop chair chef quick stairs subway paper brave case vessel"
             .to_string();
@@ -1910,7 +1918,9 @@ mod test {
         );
 
         let cipher = CipherSeed::from_mnemonic(&seeds, None).unwrap();
-        let bob_key_manager = create_memory_key_manager_from_seed(cipher, 64).await.unwrap();
+
+        let bob_wallet = WalletType::SeedWords(SeedWordsWallet::construct_new(cipher).unwrap());
+        let bob_key_manager = KeyManager::new(bob_wallet).unwrap();
 
         struct RecoverData {
             pub commitment: CompressedCommitment,
@@ -1937,21 +1947,14 @@ mod test {
         let mut bob_count = 0;
         for output in outputs {
             // alice change output
-            if let Ok(Some((commitment_key, _, _))) = alice_key_manager
-                .try_output_key_recovery(
-                    &output.commitment,
-                    &output.encrypted_data,
-                    &output.sender_offset_public_key,
-                )
-                .await
-            {
+            if let Ok(Some((commitment_key, _, _))) = alice_key_manager.try_output_key_recovery(
+                &output.commitment,
+                &output.encrypted_data,
+                &output.sender_offset_public_key,
+            ) {
                 alice_count += 1;
                 let script_spending_key = alice_key_manager
-                    .stealth_address_script_spending_key(
-                        &commitment_key,
-                        &alice_key_manager.get_spend_key().await.unwrap().pub_key,
-                    )
-                    .await
+                    .stealth_address_script_spending_key(&commitment_key, &alice_key_manager.get_spend_key().pub_key)
                     .unwrap();
                 if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                     if script_spending_key != **scanned_pk {
@@ -1961,21 +1964,14 @@ mod test {
                     panic!("unexpected script");
                 }
             }
-            if let Ok(Some((commitment_key, _, _))) = bob_key_manager
-                .try_output_key_recovery(
-                    &output.commitment,
-                    &output.encrypted_data,
-                    &output.sender_offset_public_key,
-                )
-                .await
-            {
+            if let Ok(Some((commitment_key, _, _))) = bob_key_manager.try_output_key_recovery(
+                &output.commitment,
+                &output.encrypted_data,
+                &output.sender_offset_public_key,
+            ) {
                 bob_count += 1;
                 let script_spending_key = bob_key_manager
-                    .stealth_address_script_spending_key(
-                        &commitment_key,
-                        &bob_key_manager.get_spend_key().await.unwrap().pub_key,
-                    )
-                    .await
+                    .stealth_address_script_spending_key(&commitment_key, &bob_key_manager.get_spend_key().pub_key)
                     .unwrap();
                 if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                     if script_spending_key != **scanned_pk {

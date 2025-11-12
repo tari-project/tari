@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn parse_error_cases() {
         // Empty
-        assert_eq!(TariKeyId::from_str("").unwrap_err(), "Out of bounds");
+        assert_eq!(TariKeyId::from_str("").unwrap_err(), "Wrong generic format");
         // Derived must have at least 3 parts
         assert_eq!(
             TariKeyId::from_str("derived.onlytwo").unwrap_err(),

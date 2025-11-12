@@ -31,7 +31,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
 };
-use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoPublicKey};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_utilities::{hex::Hex, ByteArray};
 
