@@ -469,6 +469,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
                 .signature
                 .ok_or("SidechainBlockHeader signature not provided")?
                 .try_into()?,
+            accumulated_data: value.accumulated_data.ok_or("missing accumulated_data")?.try_into()?,
             metadata_hash: value.metadata_hash.try_into().map_err(|_| "Invalid metadata hash")?,
         })
     }
@@ -487,6 +488,7 @@ impl From<&SidechainBlockHeader> for proto::types::SidechainBlockHeader {
             state_merkle_root: value.state_merkle_root.to_vec(),
             command_merkle_root: value.command_merkle_root.to_vec(),
             signature: Some(value.signature().into()),
+            accumulated_data: Some(value.accumulated_data.into()),
             metadata_hash: value.metadata_hash.to_vec(),
         }
     }
@@ -665,6 +667,31 @@ impl From<ShardGroup> for proto::types::ShardGroup {
         Self {
             start: value.start,
             end_inclusive: value.end_inclusive,
+        }
+    }
+}
+
+// -------------------------------- AccumulatedData -------------------------------- //
+impl TryFrom<proto::types::ShardGroupAccumulatedData> for tari_sidechain::ShardGroupAccumulatedData {
+    type Error = String;
+
+    fn try_from(value: proto::types::ShardGroupAccumulatedData) -> Result<Self, Self::Error> {
+        let total_exhaust_burn =
+            (u128::from(value.total_exhaust_burn_msb) << 64) | u128::from(value.total_exhaust_burn_lsb);
+
+        Ok(Self { total_exhaust_burn })
+    }
+}
+
+impl From<tari_sidechain::ShardGroupAccumulatedData> for proto::types::ShardGroupAccumulatedData {
+    fn from(value: tari_sidechain::ShardGroupAccumulatedData) -> Self {
+        let total_exhaust_burn_msb = (value.total_exhaust_burn >> 64) as u64;
+        #[allow(clippy::cast_possible_truncation)]
+        let total_exhaust_burn_lsb = (value.total_exhaust_burn & u128::from(u64::MAX)) as u64;
+
+        Self {
+            total_exhaust_burn_msb,
+            total_exhaust_burn_lsb,
         }
     }
 }

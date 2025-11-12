@@ -198,6 +198,7 @@ pub enum CliCommands {
 
     SignMessage(SignMessageArgs),
     SignScriptMessage(SignScriptMessageArgs),
+    RescanWallet(RescanWalletArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -634,4 +635,10 @@ pub struct CreateMultisigUtxoArgs {
     #[clap(long)]
     // The recipient address of the multisig UTXO
     pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RescanWalletArgs {
+    #[clap(short, long, default_value = "0")]
+    pub from_height: u64,
 }

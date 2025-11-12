@@ -4220,6 +4220,8 @@ struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords
  */
 void payment_record_destroy(struct TariPaymentRecord *record);
 
+bool wallet_rescan(struct TariWallet *wallet, unsigned long long from_height, int *error_out);
+
 /**
  * Extracts height of th elongest chain from the `TariBaseNodeState`
  *
