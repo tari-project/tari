@@ -88,6 +88,8 @@ pub enum TransactionServiceError {
     InvalidSourcePublicKey,
     #[error("The transaction does not contain the receivers output")]
     ReceiverOutputNotFound,
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String },
     #[error("Outbound Service send failed")]
     OutboundSendFailure,
     #[error(

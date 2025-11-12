@@ -23,6 +23,7 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
+    ops::Range,
 };
 
 use tari_common_types::types::CompressedCommitment;
@@ -43,6 +44,18 @@ pub struct UtxoSelectionCriteria {
     pub min_dust: u64,
     pub excluding_onesided: bool,
     pub excluding_multisig: bool,
+    pub range_limit: Option<RangeLimit>,
+}
+
+/// Select outputs within the specified amount ranges
+#[derive(Debug, Clone, Default)]
+pub struct RangeLimit {
+    /// The range of amounts to select from
+    pub range: Range<u64>,
+    /// The maximum number of inputs to select
+    pub transaction_input_limit: u64,
+    /// The target minimum amount to select
+    pub target_minimum_amount: u64,
 }
 
 impl UtxoSelectionCriteria {

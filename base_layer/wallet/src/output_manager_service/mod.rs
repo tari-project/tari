@@ -25,7 +25,7 @@ pub mod error;
 pub mod handle;
 
 mod input_selection;
-pub use input_selection::{UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
+pub use input_selection::{RangeLimit, UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
 
 mod recovery;
 pub mod resources;

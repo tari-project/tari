@@ -35,6 +35,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    wallet_types::FeeType,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_max_size::MaxSizeString;
@@ -220,6 +221,12 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
+    },
+    SendRangeLimitedCoinJoinTransaction {
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: Box<OutputFeatures>,
+        fee: FeeType,
+        payment_id: MemoField,
     },
     SendOneSidedToStealthAddressTransaction {
         destination: TariAddress,
@@ -453,6 +460,20 @@ impl fmt::Display for TransactionServiceRequest {
                 payment_id,
                 ..
             } => write!(f, "SendOneSidedTransaction (to {destination}, {amount}, {payment_id})"),
+            Self::SendRangeLimitedCoinJoinTransaction {
+                selection_criteria,
+                payment_id,
+                ..
+            } => write!(
+                f,
+                "SendRangeLimitedCoinJoinTransaction ({}, {})",
+                selection_criteria
+                    .range_limit
+                    .clone()
+                    .unwrap_or_default()
+                    .target_minimum_amount,
+                payment_id,
+            ),
             Self::SendOneSidedToStealthAddressTransaction {
                 destination,
                 amount,
@@ -1267,6 +1288,32 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::FinalizeSentAggregateTransaction".to_string(),
+            )),
+        }
+    }
+
+    pub async fn send_range_limited_coin_join_transaction(
+        &mut self,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee: FeeType,
+        payment_id: MemoField,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendRangeLimitedCoinJoinTransaction {
+                selection_criteria,
+                output_features: Box::new(output_features),
+                fee,
+                payment_id,
+            })
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest:SendRangeLimitedCoinJoinTransaction:({e})"),
+            )?? {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SendRangeLimitedCoinJoinTransaction".to_string(),
             )),
         }
     }
