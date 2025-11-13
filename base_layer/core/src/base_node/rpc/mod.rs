@@ -85,6 +85,8 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
         &self,
         excess_sig: CompressedSignature,
     ) -> Result<GenerateKernelMerkleProofResponse, Self::Error>;
+
+    async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<models::GetUtxoResponse, Self::Error>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
