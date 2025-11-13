@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.3](https://github.com/tari-project/tari/compare/v5.2.0-pre.2...v5.2.0-pre.3) (2025-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sidechain:** adds shard group accumulated data to checkpoint (#7577)
+
+### Features
+
+* add deterministic transaction id ([#7541](https://github.com/tari-project/tari/issues/7541)) ([320e354](https://github.com/tari-project/tari/commit/320e354e858dcb7fb9e71d1a64404f9ebf754064))
+* adds ability rescan wallet ([#7580](https://github.com/tari-project/tari/issues/7580)) ([c3e70eb](https://github.com/tari-project/tari/commit/c3e70eb9a2c6e4fba96d1e60e52e018d5cc8f54e))
+* increase fee estimate details ([#7579](https://github.com/tari-project/tari/issues/7579)) ([a46929a](https://github.com/tari-project/tari/commit/a46929aa19f9804f090937d34420bbf1c7336916))
+
+
+### Bug Fixes
+
+* fetch_utxo command ([#7585](https://github.com/tari-project/tari/issues/7585)) ([42aa6ea](https://github.com/tari-project/tari/commit/42aa6ea5a33752e0777b73020a33d03496fbfeff))
+* proactive dialler not selecting new peers to dial ([#7536](https://github.com/tari-project/tari/issues/7536)) ([820a97e](https://github.com/tari-project/tari/commit/820a97e5a3f1b6a8c113e07bbce286dec4c63a9c))
+* **sidechain:** adds shard group accumulated data to checkpoint ([#7577](https://github.com/tari-project/tari/issues/7577)) ([63e36e6](https://github.com/tari-project/tari/commit/63e36e6308d1ec5ff3f1676a06f87560b423ae4c))
+
 ## [5.2.0-pre.2](https://github.com/tari-project/tari/compare/v5.2.0-pre.1...v5.2.0-pre.2) (2025-11-06)
 
 
