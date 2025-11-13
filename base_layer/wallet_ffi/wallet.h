@@ -4220,6 +4220,11 @@ struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords
  */
 void payment_record_destroy(struct TariPaymentRecord *record);
 
+/**
+ * Rescan the wallet from the specified height. If height is 0, rescan from birthday.
+ * # Safety
+ * None
+ */
 bool wallet_rescan(struct TariWallet *wallet, unsigned long long from_height, int *error_out);
 
 /**
