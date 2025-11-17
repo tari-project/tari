@@ -65,6 +65,7 @@ use tari_crypto::{
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::{ByteArray, Hidden};
+use zeroize::Zeroize;
 
 use crate::{
     crypto_factories::CryptoFactories,
@@ -148,11 +149,10 @@ impl KeyManager {
         private_key: PrivateKey,
         encryption_key: TariKeyId,
     ) -> Result<TariKeyId, KeyManagerError> {
-        let pvt_bytes = private_key.to_vec();
         let private_encryption_key = self.get_private_key(&encryption_key)?.to_vec();
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_encryption_key));
-        let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(pvt_bytes))
+        let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(private_key.to_vec()))
             .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?;
         let encrypted = encrypted_vec.as_slice().to_vec();
         Ok(TariKeyId::Encrypted {
@@ -429,9 +429,10 @@ impl KeyManager {
     }
 
     fn decrypt_encrypted_key(&self, bytes: &[u8], decryption_key: TariKeyId) -> Result<PrivateKey, KeyManagerError> {
-        let private_decryption_key = self.get_private_key(&decryption_key)?.to_vec();
+        let mut private_decryption_key = self.get_private_key(&decryption_key)?.to_vec();
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_decryption_key));
+        private_decryption_key.zeroize();
         let decrypted_bytes = decrypt_bytes_integral_nonce(&cipher, domain, bytes)
             .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?;
         let pvt_key = PrivateKey::from_vec(&decrypted_bytes)?;
