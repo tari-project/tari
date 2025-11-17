@@ -32,3 +32,7 @@ pub use borsh_hasher::*;
 
 pub mod hashers;
 pub mod layer2;
+
+// Re-export blake2 so that dependent crates do not need to depend on it directly.
+pub type Blake2bU32 = blake2::Blake2b<digest::consts::U32>;
+pub type Blake2bU64 = blake2::Blake2b<digest::consts::U64>;
