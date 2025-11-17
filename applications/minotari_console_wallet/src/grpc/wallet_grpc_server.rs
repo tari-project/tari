@@ -1327,7 +1327,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(_) => {
                     break Err(TransactionServiceError::Other(format!(
                         "Transaction {tx_id} not found within timeout of {:.2?}",
-                        self.wallet.config.grpc_db_write_timeout
+                        self.wallet.config.grpc_broadcast_confirmation
                     )))
                 },
             };

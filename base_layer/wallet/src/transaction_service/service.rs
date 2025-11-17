@@ -2462,7 +2462,7 @@ where
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        let amount_without_fee = tx_builder.get_total_input_value()? - fee_estimate;
+        let amount_without_fee = tx_builder.get_total_input_value()?.saturating_sub(fee_estimate);
         let dest_address = self.resources.one_sided_tari_address.clone();
         debug!(
             target: LOG_TARGET,

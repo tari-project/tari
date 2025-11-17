@@ -628,8 +628,8 @@ service Wallet {
   // const request = new RangeLimitedCoinJoinRequest();
   // request.setMaximumInputsPerTransaction(1000);
   // request.setTargetAmount(100000000);  // 100 T
-  // request.setLowerBound(0);            // 0 T
-  // request.setUpperBound(100000);       // 0.1 T
+  // request.setLowerBound(0);            // 0 T (inclusive)
+  // request.setUpperBound(100000);       // 0.1 T (exclusive)
   // request.setTotalFee(100);            // 0.0001 T
   // request.setFeePerGram(1);            // 0.000001 T
   // request.setUserPaymentId("For you"); // 0.000001 T
@@ -1004,7 +1004,7 @@ service Wallet {
   //
   // The `CoinHistogram` call generates a histogram representing the distribution of unspent transaction outputs (UTXOs)
   // in the wallet. The histogram groups UTXOs into bins/buckets based on their amounts, allowing users to analyze the
-  // composition of their wallet's funds.
+  // composition of their wallet's funds. Lower bounds are inclusive, while upper bound are exclusive.
   //
   // ### Request Parameters:
   //
@@ -2151,16 +2151,6 @@ message UserPaymentId {
   bytes u256 = 1;
   string utf8_string = 2;
   bytes user_bytes = 3;
-}
-
-// Optional fee per gram to use for transactions
-message FeePerGrem {
-  uint64 value = 1;
-}
-
-// Optional total fee to use for transactions
-message TotalFee {
-  uint64 value = 1;
 }
 
 message GetStateRequest {}

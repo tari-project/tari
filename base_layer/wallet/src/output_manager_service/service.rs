@@ -1049,7 +1049,7 @@ where
         }
         debug!(
             target: LOG_TARGET,
-            "TxId: {}, input(s) value: {}, amount: {}, fee {}, fee per gram: {}, num inputs: {}.",
+            "TxId: {}, input(s) value: {}, amount: {}, fee {}, final fee: {}, num inputs: {}.",
             tx_id,
             input_selection.total_value(),
             input_selection.total_value() - input_selection.as_final_fee(),
@@ -2021,11 +2021,12 @@ where
             });
         }
 
-        if fee_without_change > total_value {
+        if total_value - fee_without_change < MicroMinotari(range_limit_criteria.target_minimum_amount) {
             return Err(OutputManagerError::RangeLimitError {
                 reason: format!(
-                    "Fee exceeds total value in range: {} vs. {}",
-                    fee_without_change, total_value
+                    "Total available in range less fee exceeds target value: {} vs. {}",
+                    total_value - fee_without_change,
+                    MicroMinotari(range_limit_criteria.target_minimum_amount)
                 ),
                 range_exhausted: false,
             });

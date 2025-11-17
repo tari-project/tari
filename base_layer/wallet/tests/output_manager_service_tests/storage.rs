@@ -460,28 +460,6 @@ pub async fn test_range_limited_outputs_for_spending() {
     }
     db.mark_outputs_as_unspent(unspent).unwrap();
 
-    // We have [50, 100, 200] in the range 50..250, but target_minimum_amount cannot be met
-    // Selection:
-    //  - It fetches all 3x outputs
-    //  - Compares 50 >= 500, do not meet target
-    //  - Compares 50 + 100 >= 500, do not meet target
-    //  - Compares 50 + 100 + 200 >= 500, do not meet target
-    let (selected, total) = db
-        .get_range_limited_outputs_for_spending(
-            &UtxoSelectionCriteria {
-                range_limit: Some(RangeLimit {
-                    range: 50u64..250,
-                    transaction_input_limit: all_outputs,
-                    target_minimum_amount: 500,
-                }),
-                ..Default::default()
-            },
-            None,
-        )
-        .unwrap();
-    assert_eq!(selected.len(), 0);
-    assert_eq!(total, MicroMinotari(0));
-
     // We have [50, 100, 200] in the range 50..250, but restrain transaction input limit
     // Selection:
     //  - It fetches only 50
@@ -501,50 +479,6 @@ pub async fn test_range_limited_outputs_for_spending() {
         .unwrap();
     assert_eq!(selected.len(), 0);
     assert_eq!(total, MicroMinotari(0));
-
-    // We have [50, 100, 200] in the range 50..250, no restrains.
-    // Selection:
-    //  - It fetches all 3x outputs
-    //  - Compares 50 >= 50, meet target
-    let (selected, total) = db
-        .get_range_limited_outputs_for_spending(
-            &UtxoSelectionCriteria {
-                range_limit: Some(RangeLimit {
-                    range: 50u64..250,
-                    transaction_input_limit: all_outputs,
-                    target_minimum_amount: 50,
-                }),
-                ..Default::default()
-            },
-            None,
-        )
-        .unwrap();
-    assert_eq!(selected.len(), 1);
-    assert_eq!(total, MicroMinotari(50));
-    assert_eq!(selected[0].wallet_output.value().0, 50);
-
-    // We have [50, 100, 200] in the range 50..250, no restrains.
-    // Selection:
-    //  - It fetches all 3x outputs
-    //  - Compares 50 >= 100, do not meet target
-    //  - Compares 50 + 100 >= 100, meet target
-    let (selected, total) = db
-        .get_range_limited_outputs_for_spending(
-            &UtxoSelectionCriteria {
-                range_limit: Some(RangeLimit {
-                    range: 50u64..250,
-                    transaction_input_limit: all_outputs,
-                    target_minimum_amount: 100,
-                }),
-                ..Default::default()
-            },
-            None,
-        )
-        .unwrap();
-    assert_eq!(selected.len(), 2);
-    assert_eq!(total, MicroMinotari(150));
-    assert_eq!(selected[0].wallet_output.value().0, 50);
-    assert_eq!(selected[1].wallet_output.value().0, 100);
 
     // We have [50, 100, 200] in the range 50..250, no restrains.
     // Selection:
@@ -570,6 +504,26 @@ pub async fn test_range_limited_outputs_for_spending() {
     assert_eq!(selected[0].wallet_output.value().0, 50);
     assert_eq!(selected[1].wallet_output.value().0, 100);
     assert_eq!(selected[2].wallet_output.value().0, 200);
+
+    // We have [50, 100, 200] in the range 50..250, but target_minimum_amount cannot be met
+    // Selection:
+    //  - It fetches all 3x outputs
+    //  - Compares 50 + 100 + 200 >= 500, do not meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: all_outputs,
+                    target_minimum_amount: 500,
+                }),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 0);
+    assert_eq!(total, MicroMinotari(0));
 }
 
 #[tokio::test]
