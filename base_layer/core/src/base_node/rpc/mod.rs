@@ -16,7 +16,10 @@ use tari_comms::{
     types::CompressedSignature,
 };
 use tari_comms_rpc_macros::tari_rpc;
-use tari_transaction_components::rpc::{models, models::GenerateKernelMerkleProofResponse};
+use tari_transaction_components::{
+    rpc::{models, models::GenerateKernelMerkleProofResponse},
+    transaction_components::TransactionOutput,
+};
 use url::Url;
 
 use crate::{
@@ -86,7 +89,7 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
         excess_sig: CompressedSignature,
     ) -> Result<GenerateKernelMerkleProofResponse, Self::Error>;
 
-    async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<models::GetUtxoResponse, Self::Error>;
+    async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
