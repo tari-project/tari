@@ -6,7 +6,6 @@ use tari_crypto::{hash_domain, hasher};
 // These are the hash domains that are also used in tari-ootle.
 
 hash_domain!(ConfidentialOutputHashDomain, "com.tari.ootle.output", 0);
-hash_domain!(TariEngineHashDomain, "com.tari.ootle.engine", 0);
 
 // Hash domain used to derive the final AEAD encryption key for encrypted data in UTXOs
 hash_domain!(
