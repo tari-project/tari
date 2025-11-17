@@ -1959,8 +1959,8 @@ where
                     1,
                     usize::try_from(range_limit_criteria.transaction_input_limit)
                         .unwrap_or(TRANSACTION_INPUTS_LIMIT as usize),
-                    1,
-                    total_output_features_and_scripts_byte_size,
+                    10, // Assume 10 outputs for estimation
+                    total_output_features_and_scripts_byte_size * 10,
                 )
             },
         }
@@ -1987,6 +1987,11 @@ where
             });
         }
 
+        let number_of_outputs =
+            usize::try_from((total_value.as_u64() - fee_estimate) / range_limit_criteria.target_minimum_amount)
+                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+                .max(1);
+
         let fee_without_change = match fee {
             FeeType::TotalFee(fee) => MicroMinotari(fee),
             FeeType::FeePerGram(fee_per_gram) => {
@@ -1995,15 +2000,15 @@ where
                     MicroMinotari(fee_per_gram),
                     1,
                     utxos.len(),
-                    1,
-                    total_output_features_and_scripts_byte_size,
+                    number_of_outputs,
+                    total_output_features_and_scripts_byte_size * number_of_outputs,
                 )
             },
         };
         trace!(
             target: LOG_TARGET,
-            "select_utxos_for_range_limited_coin_join profile - get_range_limited_outputs_for_spending: {} outputs, {} \
-            ms (at {} ms)",
+            "select_utxos_for_range_limited_coin_join profile - get_range_limited_outputs_for_spending: inputs: {}, \
+            outputs: {}, ms (at {} ms)",
             utxos.len(),
             start_new.elapsed().as_millis(),
             start.elapsed().as_millis(),

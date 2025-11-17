@@ -1191,6 +1191,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<RangeLimitedCoinJoinRequest>,
     ) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
+        debug!(target: LOG_TARGET, "range_limit_coin_join: {:?}", message);
 
         // Simple verification of range and target amount
         let range = message.lower_bound..message.upper_bound;

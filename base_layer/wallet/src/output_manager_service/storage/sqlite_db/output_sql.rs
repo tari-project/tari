@@ -341,22 +341,6 @@ impl OutputSql {
             .min(TRANSACTION_INPUTS_LIMIT);
         let outputs: Vec<OutputSql> = query.limit(i64::from(transaction_input_limit)).load(conn)?;
 
-        // Post processing in Rust vs. all in raw SQL.
-        //
-        // The current version:
-        // - does a single backend query;
-        // - loads at most transaction_input_limit rows;
-        // - runs a cheap O(n) scan.
-        // The raw SQL alternative would conceptually:
-        // - order outputs and compute a running sum;
-        // - give each row a row number in that order;
-        // - find the smallest row number whose running_sum >= target_minimum_amount;
-        // - return all rows with row_number <= that row_number.
-        // The raw SQL alternative:
-        // - is more complex;
-        // - is less type-safe;
-        // - is harder to maintain/debug.
-
         // If all the outputs together don't reach target, we cannot continue
         let total_sum: u64 = outputs.iter().fold(0u64, |acc, o| acc.saturating_add(o.value as u64));
         if total_sum < range_limit.target_minimum_amount {
@@ -368,18 +352,7 @@ impl OutputSql {
             return Ok((Vec::new(), MicroMinotari::zero()));
         }
 
-        // Pick the smallest prefix that reaches the target
-        let mut selected = Vec::new();
-        let mut total = 0u64;
-        for output in outputs {
-            total = total.saturating_add(output.value as u64);
-            selected.push(output);
-            if total >= range_limit.target_minimum_amount {
-                break;
-            }
-        }
-
-        Ok((selected, MicroMinotari::from(total)))
+        Ok((outputs, MicroMinotari::from(total_sum)))
     }
 
     /// Retrieves UTXO counts grouped by the provided ranges

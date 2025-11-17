@@ -2436,6 +2436,14 @@ where
         >,
         payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
+        let range_limit_criteria =
+            selection_criteria
+                .clone()
+                .range_limit
+                .ok_or_else(|| OutputManagerError::RangeLimitError {
+                    reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                    range_exhausted: false,
+                })?;
         let temp_tx_id = TxId::new_random();
 
         // Prepare sender part of the transaction
@@ -2473,14 +2481,21 @@ where
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
-        let _output = tx_builder
-            .add_stealth_recipient(
-                dest_address.clone(),
-                amount_without_fee,
-                output_features.clone(),
-                payment_id.clone(),
-            )
-            .await?;
+        let number_of_outputs =
+            usize::try_from(amount_without_fee.as_u64() / range_limit_criteria.target_minimum_amount)
+                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+                .max(1);
+        let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
+        let residual = amount_without_fee
+            .as_u64()
+            .saturating_sub(range_limit_criteria.target_minimum_amount * number_of_outputs as u64);
+        values.get_mut(0).expect("index exists").0 += residual;
+
+        for value in values {
+            let _output = tx_builder
+                .add_stealth_recipient(dest_address.clone(), value, output_features.clone(), payment_id.clone())
+                .await?;
+        }
         tx_builder.with_memo(payment_id.clone());
 
         // Finalize
