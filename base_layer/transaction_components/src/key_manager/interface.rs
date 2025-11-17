@@ -69,7 +69,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError>;
 
     /// Add a new key to be tracked
-    fn import_key(
+    fn create_encrypted_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<TariKeyId>,

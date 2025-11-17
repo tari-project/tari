@@ -814,7 +814,7 @@ pub fn create_pre_mine_genesis_block_info(
         let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
             .map_err(|e| e.to_string())?;
         let view_key_id = key_manager
-            .import_key(view_key.clone(), None)
+            .create_encrypted_key(view_key.clone(), None)
             .map_err(|e| e.to_string())?;
         let address_len = u8::try_from(public_keys.len()).map_err(|e| e.to_string())?;
 

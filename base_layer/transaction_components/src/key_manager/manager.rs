@@ -177,7 +177,7 @@ impl KeyManager {
         let shared_secret_private_key = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
 
         secret = secret + shared_secret_private_key;
-        let shared_secret_key = self.import_key(secret, None)?;
+        let shared_secret_key = self.create_encrypted_key(secret, None)?;
 
         Ok(shared_secret_key)
     }
@@ -490,7 +490,7 @@ impl TransactionKeyManagerInterface for KeyManager {
             })
         } else {
             let random_private_key = PrivateKey::random(&mut OsRng);
-            let key_id = self.import_key(random_private_key, encryption_key)?;
+            let key_id = self.create_encrypted_key(random_private_key, encryption_key)?;
             let public_key = self.get_public_key_at_key_id(&key_id)?;
             Ok(TariKeyAndId {
                 key_id,
@@ -565,7 +565,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         }
     }
 
-    fn import_key(
+    fn create_encrypted_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<TariKeyId>,
@@ -906,7 +906,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         let (value, private_key, payment_id, key_id) =
             match EncryptedData::decrypt_data(&self.get_private_view_key(), commitment, encrypted_data) {
                 Ok((value, private_key, payment_id)) => {
-                    let key = self.import_key(private_key.clone(), None)?;
+                    let key = self.create_encrypted_key(private_key.clone(), None)?;
                     (value, private_key, payment_id, key)
                 },
                 Err(_) => {
@@ -924,7 +924,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                             if self.get_private_key(&key)? == private_key {
                                 (value, private_key, payment_id, key)
                             } else {
-                                let key = self.import_key(private_key.clone(), None)?;
+                                let key = self.create_encrypted_key(private_key.clone(), None)?;
                                 (value, private_key, payment_id, key)
                             }
                         },

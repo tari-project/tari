@@ -1133,7 +1133,9 @@ mod test {
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
 
-        let script_key_id = key_manager.import_key(wallet_private_spend_key.clone(), None).unwrap();
+        let script_key_id = key_manager
+            .create_encrypted_key(wallet_private_spend_key.clone(), None)
+            .unwrap();
         let payment_id_user_data = b"This is my payment id";
         let wallet_payment_address =
             tari_common_types::tari_address::TariAddress::new_dual_address_with_default_features(

@@ -131,7 +131,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 VIEW_KEY_BRANCH => Ok(TariKeyId::ViewKey),
                 _ => {
                     let private_key = Self::derive_private_key(&self.master_seed, branch.clone(), *index)?;
-                    self.key_manager.import_key(private_key, None)
+                    self.key_manager.create_encrypted_key(private_key, None)
                 },
             },
             LegacyTariKeyId::Derived { key } => Ok(TariKeyId::Derived {
@@ -139,7 +139,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             }),
             LegacyTariKeyId::Imported { .. } => {
                 let private_key = self.get_legacy_private_key(key_id)?;
-                self.key_manager.import_key(private_key, None)
+                self.key_manager.create_encrypted_key(private_key, None)
             },
             LegacyTariKeyId::CodeTemplateAuthor => Ok(TariKeyId::CodeTemplateAuthor),
             LegacyTariKeyId::Zero => Ok(TariKeyId::Zero),
@@ -256,12 +256,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.key_manager.get_next_commitment_mask_and_script_key()
     }
 
-    pub fn import_key(
+    pub fn create_encrypted_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerError> {
-        self.key_manager.import_key(private_key, encryption_key)
+        self.key_manager.create_encrypted_key(private_key, encryption_key)
     }
 
     pub fn get_private_view_key(&self) -> PrivateKey {

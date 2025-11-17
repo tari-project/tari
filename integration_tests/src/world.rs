@@ -306,7 +306,7 @@ impl TariWorld {
 
     pub async fn script_key_id(&mut self) -> TariKeyId {
         self.key_manager
-            .import_key(self.wallet_private_key.clone(), None)
+            .create_encrypted_key(self.wallet_private_key.clone(), None)
             .unwrap()
     }
 }

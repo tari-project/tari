@@ -1115,7 +1115,7 @@ where
                         script_signatures.len()
                     )));
                 }
-                let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask, None)?;
+                let commitment_mask_key_id = self.resources.key_manager.create_encrypted_key(commitment_mask, None)?;
                 (
                     WalletOutput::new_from_transaction_output(
                         amount,
@@ -1203,10 +1203,13 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created dh shared secret");
 
         let spending_key = public_key_to_output_spending_key(&shared_secret)?;
-        let spending_key_id = self.resources.key_manager.import_key(spending_key, None)?;
+        let spending_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
 
         let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key, None)?;
+        let encryption_key_id = self
+            .resources
+            .key_manager
+            .create_encrypted_key(encryption_private_key, None)?;
 
         let sender_offset_public_key_self = self
             .resources
@@ -1385,7 +1388,7 @@ where
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let spending_key_id = self.resources.key_manager.import_key(spending_key, None)?;
+                let spending_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
                 let script_key = self
                     .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
                     .await?;
@@ -1459,10 +1462,16 @@ where
         )?;
 
         let commitment_mask_key = public_key_to_output_spending_key(&shared_secret)?;
-        let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask_key, None)?;
+        let commitment_mask_key_id = self
+            .resources
+            .key_manager
+            .create_encrypted_key(commitment_mask_key, None)?;
 
         let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key, None)?;
+        let encryption_key_id = self
+            .resources
+            .key_manager
+            .create_encrypted_key(encryption_private_key, None)?;
 
         let sender_offset_public_key = self
             .resources
@@ -2528,7 +2537,7 @@ where
             EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key, None)?;
+                let commitment_mask_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
 
                 let recovered_output = WalletOutput::new_from_transaction_output(
                     amount,
@@ -2714,7 +2723,8 @@ where
                             &spending_key,
                             committed_value.into(),
                         )? {
-                            let commitment_mask_key_id = self.resources.key_manager.import_key(spending_key, None)?;
+                            let commitment_mask_key_id =
+                                self.resources.key_manager.create_encrypted_key(spending_key, None)?;
 
                             let rewound_output = WalletOutput::new_from_transaction_output(
                                 committed_value,
@@ -2743,7 +2753,7 @@ where
                         let commitment_mask_key_id = &self
                             .resources
                             .key_manager
-                            .import_key(commitment_mask_private_key.clone(), None)?;
+                            .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
 
                         if output.verify_mask(
                             &self.resources.factories.range_proof,

@@ -179,13 +179,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner.get_public_key_at_key_id(key_id)
     }
 
-    fn import_key(
+    fn create_encrypted_key(
         &self,
         private_key: PrivateKey,
         encryption_key: Option<TariKeyId>,
     ) -> Result<TariKeyId, KeyManagerError> {
         self.transaction_key_manager_inner
-            .import_key(private_key, encryption_key)
+            .create_encrypted_key(private_key, encryption_key)
     }
 
     fn get_commitment(

@@ -99,8 +99,12 @@ pub fn create_orphan_block(
 pub fn default_coinbase_entities(key_manager: &KeyManager) -> (TariKeyId, TariAddress) {
     let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
     let wallet_private_view_key = PrivateKey::random(&mut OsRng);
-    let _key = key_manager.import_key(wallet_private_view_key.clone(), None).unwrap();
-    let script_key_id = key_manager.import_key(wallet_private_spend_key.clone(), None).unwrap();
+    let _key = key_manager
+        .create_encrypted_key(wallet_private_view_key.clone(), None)
+        .unwrap();
+    let script_key_id = key_manager
+        .create_encrypted_key(wallet_private_spend_key.clone(), None)
+        .unwrap();
     let wallet_payment_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&wallet_private_view_key),
         CompressedPublicKey::from_secret_key(&wallet_private_spend_key),

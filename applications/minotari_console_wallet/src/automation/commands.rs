@@ -1464,7 +1464,7 @@ pub async fn command_runner(
                         },
                     };
                     let commitment_mask_key_id =
-                        &key_manager_service.import_key(commitment_mask_private_key.clone(), None)?;
+                        &key_manager_service.create_encrypted_key(commitment_mask_private_key.clone(), None)?;
                     match key_manager_service.verify_mask(
                         &leader_info.output_commitment,
                         commitment_mask_key_id,

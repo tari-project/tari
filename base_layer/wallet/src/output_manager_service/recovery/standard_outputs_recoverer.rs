@@ -194,7 +194,7 @@ where
                 TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());
-                self.master_key_manager.import_key(private_key, None)?
+                self.master_key_manager.create_encrypted_key(private_key, None)?
             };
             let public_key = self.master_key_manager.get_public_key_at_key_id(&key)?;
             (inputs!(public_key), key)

@@ -738,7 +738,9 @@ async fn send_one_sided_transaction_to_other() {
 
     // The payment id should match the finalized and recovered tx fee
     let mut payment_id_verified = false;
-    let bob_view_key_id = key_manager_handle.import_key(random_pvt_key.clone(), None).unwrap();
+    let bob_view_key_id = key_manager_handle
+        .create_encrypted_key(random_pvt_key.clone(), None)
+        .unwrap();
     for output in completed_tx.transaction.body.outputs() {
         let shared_secret = key_manager_handle
             .get_diffie_hellman_shared_secret(&bob_view_key_id, &output.sender_offset_public_key)
@@ -812,7 +814,7 @@ async fn recover_one_sided_transaction() {
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
         script_key_id: bob_key_manager_handle
-            .import_key(bob_node_identity.secret_key().clone(), None)
+            .create_encrypted_key(bob_node_identity.secret_key().clone(), None)
             .unwrap(),
         script,
         input: ExecutionStack::default(),

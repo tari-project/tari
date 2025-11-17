@@ -2113,7 +2113,7 @@ where
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key, None)?;
+            .create_encrypted_key(encryption_private_key, None)?;
 
         let sender_offset_public_key = self
             .resources
@@ -2123,7 +2123,7 @@ where
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(spending_key, None)?;
+            .create_encrypted_key(spending_key, None)?;
 
         let minimum_value_promise = MicroMinotari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
@@ -2369,7 +2369,7 @@ where
         let commitment_mask_key_id = &self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key.clone(), None)?;
+            .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
 
         let script_spending_key = self
             .resources
@@ -2381,12 +2381,12 @@ where
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key, None)?;
+            .create_encrypted_key(encryption_private_key, None)?;
 
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key, None)?;
+            .create_encrypted_key(commitment_mask_private_key, None)?;
 
         let sender_offset_public_key = self
             .resources
