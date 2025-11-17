@@ -1943,6 +1943,15 @@ where
             selection_criteria: {selection_criteria:?}",
             range_limit_criteria.target_minimum_amount
         );
+        if range_limit_criteria.target_minimum_amount <= range_limit_criteria.range.end {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: format!(
+                    "Target minimum amount {} cannot be less or equal than range end {}",
+                    range_limit_criteria.target_minimum_amount, range_limit_criteria.range.end
+                ),
+                range_exhausted: false,
+            });
+        }
 
         // Attempt to get the chain tip height
         let tip_height = self.resources.db.get_last_scanned_height()?;
@@ -1965,6 +1974,15 @@ where
             },
         }
         .as_u64();
+        if range_limit_criteria.target_minimum_amount < fee_estimate {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: format!(
+                    "Target minimum amount {} is less than the estimated fee {}",
+                    range_limit_criteria.target_minimum_amount, fee_estimate
+                ),
+                range_exhausted: false,
+            });
+        }
 
         let selection_criteria = UtxoSelectionCriteria {
             range_limit: Some(RangeLimit {
@@ -1987,10 +2005,11 @@ where
             });
         }
 
-        let number_of_outputs =
-            usize::try_from((total_value.as_u64() - fee_estimate) / range_limit_criteria.target_minimum_amount)
-                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
-                .max(1);
+        let number_of_outputs = usize::try_from(
+            total_value.as_u64().saturating_sub(fee_estimate) / range_limit_criteria.target_minimum_amount,
+        )
+        .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+        .max(1);
 
         let fee_without_change = match fee {
             FeeType::TotalFee(fee) => MicroMinotari(fee),

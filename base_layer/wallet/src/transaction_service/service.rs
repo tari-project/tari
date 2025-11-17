@@ -420,7 +420,7 @@ where
                 async {
                     if selection_criteria.range_limit.is_some() {
                         return Err(TransactionServiceError::RangeLimitError {
-                            reason: "Range limit coin-join cannot be set for ons sided signing transactions"
+                            reason: "Range limit coin-join cannot be set for ons-sided signing transactions"
                                 .to_string(),
                         });
                     }
@@ -2475,17 +2475,20 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_estimate,
-                Some(TxType::PaymentToSelf),
+                Some(TxType::CoinJoin),
             )
             .map_err(TransactionServiceError::InvalidPaymentId)?;
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
+        // Note: Division by zero is checked during 'prepare_range_limited_coin_join_transaction_to_send'
         let number_of_outputs =
             usize::try_from(amount_without_fee.as_u64() / range_limit_criteria.target_minimum_amount)
                 .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
                 .max(1);
         let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
+        // Note: 'amount_without_fee >= target_minimum_amount' is checked during
+        //       'prepare_range_limited_coin_join_transaction_to_send'
         let residual = amount_without_fee
             .as_u64()
             .saturating_sub(range_limit_criteria.target_minimum_amount * number_of_outputs as u64);
@@ -2496,7 +2499,7 @@ where
                 .add_stealth_recipient(dest_address.clone(), value, output_features.clone(), payment_id.clone())
                 .await?;
         }
-        tx_builder.with_memo(payment_id.clone());
+        tx_builder.with_memo(payment_id.clone()).with_tx_type(TxType::CoinJoin);
 
         // Finalize
         let finalized = tx_builder.build().await?;

@@ -632,7 +632,7 @@ service Wallet {
   // request.setUpperBound(100000);       // 0.1 T (exclusive)
   // request.setTotalFee(100);            // 0.0001 T
   // request.setFeePerGram(1);            // 0.000001 T
-  // request.setUserPaymentId("For you"); // 0.000001 T
+  // request.setUserPaymentId("For you");
   //
   // client.rangeLimitCoinJoin(request, (err, response) => {
   //   if (err) console.error(err);
@@ -1009,7 +1009,7 @@ service Wallet {
   // ### Request Parameters:
   //
   // - None
-  //   - This method uses an empty request body (CoinHistogramRequest)..
+  //   - This method uses an empty request body (CoinHistogramRequest).
   //
   // ### Example JavaScript gRPC client usage:
   //
@@ -1953,7 +1953,7 @@ message RangeLimitedCoinJoinRequest {
   // The target coin-joined amount to achieve - the total value of the inputs used will always be >= this amount.
   // Inputs are sorted in ascending order when selected, and the last input selected will either result in the total
   // being equal or greater than this amount.
-  uint64 target_amount = 2;
+  uint64 target_minimum_amount = 2;
   // The lower bound for coin values in this bucket (inclusive).
   uint64 lower_bound = 3;
   // The upper bound for coin values in this bucket (exclusive).

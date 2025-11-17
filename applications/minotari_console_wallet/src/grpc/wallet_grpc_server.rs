@@ -1206,10 +1206,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "The wallet does not have any funds in the specified range: {}..{}",
             message.lower_bound, message.upper_bound
         )))?;
-        if bucket.total_value < message.target_amount {
+        if bucket.total_value < message.target_minimum_amount {
             return Err(Status::internal(format!(
                 "The wallet does not have sufficient funds in the specified range: {} uT < {} uT",
-                bucket.total_value, message.target_amount
+                bucket.total_value, message.target_minimum_amount
             )));
         }
 
@@ -1261,7 +1261,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         range_limit: Some(RangeLimit {
                             range: message.lower_bound..message.upper_bound,
                             transaction_input_limit: message.maximum_inputs_per_transaction,
-                            target_minimum_amount: message.target_amount,
+                            target_minimum_amount: message.target_minimum_amount,
                         }),
                         ..Default::default()
                     },
@@ -1316,6 +1316,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                     continue;
                                 },
                             }
+                        } else {
+                            sleep(Duration::from_millis(10)).await;
                         }
                     }
                 },
@@ -1327,7 +1329,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(_) => {
                     break Err(TransactionServiceError::Other(format!(
                         "Transaction {tx_id} not found within timeout of {:.2?}",
-                        self.wallet.config.grpc_broadcast_confirmation
+                        Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation)
                     )))
                 },
             };
