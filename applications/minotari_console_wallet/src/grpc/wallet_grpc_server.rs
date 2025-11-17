@@ -38,7 +38,6 @@ use log::*;
 use minotari_app_grpc::tari_rpc::{
     self,
     payment_recipient::PaymentType,
-    range_limited_coin_join_request::FeeType as GrpcFeeType,
     wallet_server,
     BroadcastSignedOneSidedTransactionRequest,
     BroadcastSignedOneSidedTransactionResponse,
@@ -151,7 +150,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
-    transaction::TxId,
+    transaction::{LegacyTransactionStatus, TxId},
     types::{
         BlockHash,
         CompressedCommitment,
@@ -1208,15 +1207,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
         )))?;
         if bucket.total_value < message.target_amount {
             return Err(Status::internal(format!(
-                "The wallet does not have sufficient funds in the specified range: {} < {}",
+                "The wallet does not have sufficient funds in the specified range: {} uT < {} uT",
                 bucket.total_value, message.target_amount
             )));
         }
 
         // Extract fee, payment id, and wallet address
-        let fee = match GrpcFeeType::try_from(message.fee_type).unwrap_or(GrpcFeeType::TotalFee) {
-            GrpcFeeType::TotalFee => FeeType::TotalFee(message.total_fee_or_fee_per_gram.max(1)),
-            GrpcFeeType::FeePerGram => FeeType::FeePerGram(message.total_fee_or_fee_per_gram.max(1)),
+        let fee = if let Some(val) = message.fee_per_gram {
+            FeeType::FeePerGram(val.fee_per_gram.max(1))
+        } else if let Some(val) = message.total_fee {
+            FeeType::TotalFee(val.total_fee.max(1))
+        } else {
+            FeeType::FeePerGram(1)
         };
         let payment_id = if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
@@ -1283,22 +1285,48 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             };
 
-            let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
-                loop {
-                    let tx = self.get_transaction_service().get_any_transaction(tx_id).await;
+            let wallet_tx = timeout(
+                Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation),
+                async {
+                    loop {
+                        let tx = self.get_transaction_service().get_any_transaction(tx_id).await;
 
-                    if let Ok(Some(tx)) = tx {
-                        break tx;
+                        if let Ok(Some(tx)) = tx {
+                            match tx.status() {
+                                LegacyTransactionStatus::Broadcast |
+                                LegacyTransactionStatus::MinedUnconfirmed |
+                                LegacyTransactionStatus::MinedConfirmed |
+                                LegacyTransactionStatus::OneSidedUnconfirmed |
+                                LegacyTransactionStatus::OneSidedConfirmed => break Ok(tx),
+                                LegacyTransactionStatus::Rejected => {
+                                    let error = if let Some(reason) = tx.cancelled_reason() {
+                                        TransactionServiceError::MempoolRejection {
+                                            reason: format!("{}", reason),
+                                        }
+                                    } else {
+                                        TransactionServiceError::MempoolRejection {
+                                            reason: "Unknown reason".to_string(),
+                                        }
+                                    };
+                                    break Err(error);
+                                },
+                                _ => {
+                                    sleep(Duration::from_millis(10)).await;
+                                    continue;
+                                },
+                            }
+                        }
                     }
-                    sleep(Duration::from_millis(10)).await;
-                }
-            })
+                },
+            )
             .await;
             let wallet_tx = match wallet_tx {
-                Ok(val) => val,
+                Ok(Ok(val)) => val,
+                Ok(Err(e)) => break Err(e),
                 Err(_) => {
                     break Err(TransactionServiceError::Other(format!(
-                        "Transaction {tx_id} not found within timeout"
+                        "Transaction {tx_id} not found within timeout of {:.2?}",
+                        self.wallet.config.grpc_db_write_timeout
                     )))
                 },
             };

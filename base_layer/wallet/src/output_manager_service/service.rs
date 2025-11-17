@@ -113,6 +113,7 @@ use crate::{
             OutputStatus,
         },
         tasks::TxoValidationTask,
+        RangeLimit,
         TRANSACTION_INPUTS_LIMIT,
     },
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
@@ -1917,7 +1918,8 @@ where
     }
 
     /// Select which unspent transaction outputs to use to send a range limited coin join transaction. Use the specified
-    /// selection strategy to choose the outputs. No change output will be produced.
+    /// selection strategy to choose the outputs. No change output will be produced, and the total value selected will
+    /// be >= the target amount plus fee.
     #[allow(clippy::too_many_lines)]
     async fn select_utxos_for_range_limited_coin_join(
         &mut self,
@@ -1946,18 +1948,35 @@ where
         let tip_height = self.resources.db.get_last_scanned_height()?;
 
         let start_new = Instant::now();
+
+        // Find the UTXOs that satisfy the range limit criteria and actual fee
+        let fee_estimate = match fee {
+            FeeType::TotalFee(fee) => MicroMinotari(fee),
+            FeeType::FeePerGram(fee_per_gram) => {
+                let fee_calc = self.get_fee_calc();
+                fee_calc.calculate(
+                    MicroMinotari(fee_per_gram),
+                    1,
+                    usize::try_from(range_limit_criteria.transaction_input_limit)
+                        .unwrap_or(TRANSACTION_INPUTS_LIMIT as usize),
+                    1,
+                    total_output_features_and_scripts_byte_size,
+                )
+            },
+        }
+        .as_u64();
+
+        let selection_criteria = UtxoSelectionCriteria {
+            range_limit: Some(RangeLimit {
+                target_minimum_amount: range_limit_criteria.target_minimum_amount + fee_estimate,
+                ..range_limit_criteria.clone()
+            }),
+            ..selection_criteria
+        };
         let (utxos, total_value) = self
             .resources
             .db
             .get_range_limited_outputs_for_spending(&selection_criteria, tip_height)?;
-        trace!(
-            target: LOG_TARGET,
-            "select_utxos_for_range_limited_coin_join profile - get_range_limited_outputs_for_spending: {} outputs, {} \
-            ms (at {} ms)",
-            utxos.len(),
-            start_new.elapsed().as_millis(),
-            start.elapsed().as_millis(),
-        );
         if utxos.is_empty() {
             return Err(OutputManagerError::RangeLimitError {
                 reason: format!(
@@ -1965,15 +1984,6 @@ where
                     range_limit_criteria
                 ),
                 range_exhausted: true,
-            });
-        } else {
-            trace!(target: LOG_TARGET, "We found {} UTXOs that match the range limit criteria", utxos.len());
-        }
-
-        // For non-standard queries, we want to ensure that the intended UTXOs are selected
-        if !selection_criteria.filter.is_standard() && utxos.is_empty() {
-            return Err(OutputManagerError::NoUtxosSelected {
-                criteria: selection_criteria,
             });
         }
 
@@ -1990,6 +2000,21 @@ where
                 )
             },
         };
+        trace!(
+            target: LOG_TARGET,
+            "select_utxos_for_range_limited_coin_join profile - get_range_limited_outputs_for_spending: {} outputs, {} \
+            ms (at {} ms)",
+            utxos.len(),
+            start_new.elapsed().as_millis(),
+            start.elapsed().as_millis(),
+        );
+
+        // For non-standard queries, we want to ensure that the intended UTXOs are selected
+        if !selection_criteria.filter.is_standard() && utxos.is_empty() {
+            return Err(OutputManagerError::NoUtxosSelected {
+                criteria: selection_criteria,
+            });
+        }
 
         if fee_without_change > total_value {
             return Err(OutputManagerError::RangeLimitError {

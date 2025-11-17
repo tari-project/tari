@@ -102,6 +102,9 @@
 #before returning an error to the client. This should be long enough to cover the majority of database writes
 #but short enough to avoid blocking the grpc server for too long.
 #grpc_db_write_timeout = 100
+# gRPC broadcast confirmation timeout in ms. This is how long the grpc server will wait for the mempool to
+# respond once the transaction has been submitted, either accepted or rejected. Default = 5000ms
+#pub grpc_broadcast_confirmation = 5000
 # The URL of the HTTP client to use for base node service requests
 #http_server_url="http://127.0.0.1:9000"
 # The fallback url address to use if the base node at http_server_url does not respond

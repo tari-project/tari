@@ -1681,9 +1681,15 @@ where
         // If the individual handlers did not already send the API response then do it here.
         if let Some(rp) = reply_channel {
             let _result = rp
-                .send(response.inspect_err(|e1| warn!(target: LOG_TARGET, "{}", e1)))
+                .send(response.inspect_err(|e1| {
+                    let mut msg = format!("{}", e1);
+                    msg.truncate(100);
+                    warn!(target: LOG_TARGET, "{}", msg);
+                }))
                 .inspect_err(|e2| {
-                    warn!(target: LOG_TARGET, "Failed to send reply: {:?}", e2);
+                    let mut msg = format!("{:?}", e2);
+                    msg.truncate(100);
+                    warn!(target: LOG_TARGET, "Failed to send reply: {}", msg);
                 });
         }
 
