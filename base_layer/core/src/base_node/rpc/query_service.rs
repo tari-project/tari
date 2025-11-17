@@ -525,13 +525,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         })
     }
 
-    async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<models::GetUtxoResponse, Self::Error> {
+    async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error> {
         let hash: FixedHash = request.output_hash.try_into().map_err(Error::general)?;
         let outputs = self.db().fetch_outputs_with_spend_status_at_tip(vec![hash]).await?;
         let output = match outputs.first() {
             Some(Some((output, _spent))) => Some(output.clone()),
             _ => return Err(Error::OutputNotFound),
         };
-        Ok(models::GetUtxoResponse { output })
+        Ok(output)
     }
 }
