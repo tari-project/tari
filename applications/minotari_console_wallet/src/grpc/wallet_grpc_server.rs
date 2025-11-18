@@ -1206,7 +1206,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 "maximum_inputs_per_transaction cannot be zero",
             ));
         }
-        if message.target_minimum_amount < message.upper_bound {
+        if message.target_minimum_amount <= message.upper_bound {
             return Err(Status::invalid_argument(format!(
                 "target_minimum_amount must be > than upper_bound {} vs. {}",
                 message.target_minimum_amount, message.upper_bound
