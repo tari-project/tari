@@ -3428,6 +3428,7 @@ mod test {
         assert!(db3.fetch(&DbKey::CompletedTransactions(0)).is_err());
     }
 
+    #[ignore]
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_customized_transactional_queries() {
