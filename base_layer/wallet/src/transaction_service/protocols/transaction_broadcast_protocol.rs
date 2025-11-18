@@ -220,9 +220,13 @@ where
                     TransactionServiceError::MempoolRejectionTimeLocked,
                     TxCancellationReason::TimeLocked,
                 ),
-                _ => (
-                    TransactionServiceError::UnexpectedBaseNodeResponse,
-                    TxCancellationReason::Unknown,
+                TxSubmissionRejectionReason::FeeTooLow => (
+                    TransactionServiceError::MempoolRejectionFeeTooLow,
+                    TxCancellationReason::FeeTooLow,
+                ),
+                TxSubmissionRejectionReason::AlreadyMined => (
+                    TransactionServiceError::MempoolRejectionAlreadyMined,
+                    TxCancellationReason::AlreadyMined,
                 ),
             };
 
@@ -317,11 +321,10 @@ where
                 self.last_rejection = Some(Instant::now());
                 Ok(false)
             } else {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) has been rejected by the mempool after second submission attempt, \
-                     cancelling transaction",
-                    self.tx_id
+                let reason = "rejected by the mempool after second submission attempt".to_string();
+                error!(target: LOG_TARGET,
+                    "Transaction (TxId: {}) has been {}, cancelling transaction",
+                    self.tx_id, reason,
                 );
                 self.cancel_transaction(TxCancellationReason::InvalidTransaction).await;
 
@@ -340,7 +343,7 @@ where
                     });
                 Err(TransactionServiceProtocolError::new(
                     self.tx_id,
-                    TransactionServiceError::MempoolRejection,
+                    TransactionServiceError::MempoolRejection { reason },
                 ))
             }
         } else {

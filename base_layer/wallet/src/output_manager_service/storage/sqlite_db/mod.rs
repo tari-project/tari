@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, str::FromStr};
+use std::{convert::TryFrom, ops::Range, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use derivative::Derivative;
@@ -38,6 +38,7 @@ use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::TariKeyId,
     transaction_components::{OutputType, TransactionOutput},
+    MicroMinotari,
 };
 use tokio::time::Instant;
 
@@ -1029,6 +1030,29 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         result
     }
 
+    fn count_outputs_in_ranges(
+        &self,
+        ranges: Vec<Range<u64>>,
+        tip_height: Option<u64>,
+    ) -> Result<Vec<CoinBucket>, OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let result =
+            OutputSql::count_outputs_in_ranges(&UtxoSelectionCriteria::default(), &ranges, tip_height, &mut conn);
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - count_outputs_in_ranges: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        result
+    }
+
     fn get_balance_payment_id(
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
@@ -1234,6 +1258,35 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         Ok(())
+    }
+
+    /// Retrieves UTXOs within a specified limited range with minimum target amount for spending
+    fn get_range_limited_outputs_for_spending(
+        &self,
+        selection_criteria: &UtxoSelectionCriteria,
+        tip_height: Option<u64>,
+    ) -> Result<(Vec<DbWalletOutput>, MicroMinotari), OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let (outputs, total) =
+            OutputSql::get_range_limited_outputs_for_spending(selection_criteria, tip_height, &mut conn)?;
+
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - get_range_limited_outputs_for_spending: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
+        Ok((
+            outputs
+                .iter()
+                .map(|o| o.clone().to_db_wallet_output())
+                .collect::<Result<Vec<_>, _>>()?,
+            total,
+        ))
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
@@ -1541,6 +1594,17 @@ impl KnownOneSidedPaymentScriptSql {
 
         Ok(payment_script)
     }
+}
+
+/// A summary of coins in a particular range
+#[derive(Clone, Debug)]
+pub struct CoinBucket {
+    /// The number of outputs in this range
+    pub number_of_outputs: u64,
+    /// The total value of outputs in this range
+    pub total_value: u64,
+    /// The range that this bucket covers
+    pub range: Range<u64>,
 }
 
 #[cfg(test)]
