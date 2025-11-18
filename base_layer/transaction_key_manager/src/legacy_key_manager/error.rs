@@ -20,87 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use diesel::result::Error as DieselError;
-// use tari_common_sqlite::error::{SqliteStorageError, StorageError};
 
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
-// #[derive(Debug, Error, PartialEq)]
-// pub enum CoreKeyManagerError {
-//     // #[error("KeyManagerError: `{0}`")]
-//     // KeyManagerError(#[from] KeyManagerError),
-//     #[error("Error generating Commitment and PublicKey signature: `{0}`")]
-//     CommitmentAndPublicKeySignatureError(String),
-//     #[error("Transaction error: `{0}`")]
-//     TransactionError(#[from] TransactionError),
-// }
-//
-// impl From<CommitmentAndPublicKeySignatureError> for CoreKeyManagerError {
-//     fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
-//         CoreKeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
-//     }
-// }
-//
-// // use crate::error::WalletStorageError;
-// /// Error enum for the [KeyManagerService]
-// #[derive(Debug, thiserror::Error)]
-// pub enum KeyManagerServiceError {
-//     #[error("Key manager branch not supported: `{0}`")]
-//     BranchNotSupported(String),
-//     #[error("Branch does not exist: `{0}`")]
-//     UnknownKeyBranch(String),
-//     #[error("Key ID without an index, most likely `Imported`")]
-//     KeyIdWithoutIndex,
-//     #[error("Key ID without a branch, most likely `Imported`")]
-//     KeyIdWithoutBranch,
-//     #[error("Master seed does not match stored version")]
-//     MasterSeedMismatch,
-//     #[error("Could not find key in key manager")]
-//     KeyNotFoundInKeyChain,
-//     #[error("Storage error: `{0}`")]
-//     KeyManagerStorageError(#[from] KeyManagerStorageError),
-//     #[error("Could not be serialized from string")]
-//     KeySerializationError,
-//     #[error("Byte array error: `{0}`")]
-//     ByteArrayError(String),
-//     #[error("Invalid range proof: `{0}`")]
-//     RangeProofError(String),
-//     #[error("Unknown error: `{0}`")]
-//     UnknownError(String),
-//     #[error("Ledger error: `{0}`")]
-//     LedgerError(String),
-//     #[error("The Ledger private key cannot be accessed or read: `{0}`")]
-//     LedgerPrivateKeyInaccessible(String),
-//     #[error("The Ledger view key cannot be accessed or read: `{0}`")]
-//     LedgerViewKeyInaccessible(String),
-//     #[error("Tari Key Manager storage error: `{0}`")]
-//     StorageError(String),
-//     #[error("The imported private key cannot be accessed or read: `{0}")]
-//     ImportedPrivateKeyInaccessible(String),
-//     #[error("Tari address error: `{0}`")]
-//     TariAddressError(#[from] TariAddressError),
-//     #[error("Failed to encrypt: `{0}`")]
-//     EncryptionFailed(String),
-//     #[error("Failed to decrypt: `{0}`")]
-//     DecryptionFailed(String),
-//     #[error("Initialization error: `{0}`")]
-//     InitializationError(String),
-//
-//     #[error("Key manager does not have storage")]
-//     NoStorage,
-// }
-//
-// impl From<RangeProofError> for KeyManagerServiceError {
-//     fn from(e: RangeProofError) -> Self {
-//         KeyManagerServiceError::RangeProofError(e.to_string())
-//     }
-// }
-//
-// impl From<ByteArrayError> for KeyManagerServiceError {
-//     fn from(e: ByteArrayError) -> Self {
-//         KeyManagerServiceError::ByteArrayError(e.to_string())
-//     }
-// }
+
 
 /// Error enum for the [KeyManagerStorage]
 #[derive(Debug, Error)]
