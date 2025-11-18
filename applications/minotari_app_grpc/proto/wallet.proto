@@ -628,23 +628,21 @@ service Wallet {
   //   - **Description**: The maximum number of inputs to include in each coin-join transaction.
   //   - **Restrictions**:
   //     - Must be greater than 0.
-  // - `target_amount` (required):
+  // - `target_minimum_amount` (required):
   //   - **Type**: `uint64`
   //   - **Description**: The minimum total amount to be coin-joined in each transaction (in MicroTari).
   //   - **Restrictions**:
   //    - Must be greater than 0.
   //    - Must be greater than `upper_bound`
-  // `- `lower_bound` (required):
+  // - `lower_bound` (required):
   //   - **Type**: `uint64`
   //   - **Description**: The inclusive lower bound of the input value range (in MicroTari).
   //   - **Restrictions**:
-  //    - Must be greater than 0.
   //    - Must be less than `upper_bound`.
   // - `upper_bound` (required):
   //   - **Type**: `uint64`
   //   - **Description**: The exclusive upper bound of the input value range (in MicroTari).
   //   - **Restrictions**:
-  //    - Must be greater than 0.
   //    - Must be greater than `lower_bound`.
   // - `total_fee` (optional):
   //   - **Type**: `uint64`
@@ -1049,17 +1047,15 @@ service Wallet {
   // composition of their wallet's funds. Lower bounds are inclusive, while upper bound are exclusive.
   //
   // ### Request Parameters:
-  // `- `lower_bound` (required):
+  // - `lower_bound` (required):
   //   - **Type**: `uint64`
   //   - **Description**: The inclusive lower bound of the input value range (in MicroTari).
   //   - **Restrictions**:
-  //    - Must be greater than 0.
   //    - Must be less than `upper_bound`.
   // - `upper_bound` (required):
   //   - **Type**: `uint64`
   //   - **Description**: The exclusive upper bound of the input value range (in MicroTari).
   //   - **Restrictions**:
-  //    - Must be greater than 0.
   //    - Must be greater than `lower_bound`.
   //
   // - None

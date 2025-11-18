@@ -1195,7 +1195,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         // Simple verification of range and target amount
         let range = message.lower_bound..message.upper_bound;
-        if message.lower_bound * message.upper_bound == 0 || message.lower_bound >= message.upper_bound {
+        if message.lower_bound >= message.upper_bound {
             return Err(Status::invalid_argument(format!(
                 "Invalid range range: lower_bound..upper_bound {}..{}",
                 message.lower_bound, message.upper_bound
@@ -2151,7 +2151,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .buckets
                 .iter()
                 .map(|v| {
-                    if v.lower_bound * v.upper_bound == 0 || v.lower_bound >= v.upper_bound {
+                    if v.lower_bound >= v.upper_bound {
                         Err(Status::invalid_argument(format!(
                             "Invalid range: lower_bound..upper_bound {}..{}",
                             v.lower_bound, v.upper_bound
