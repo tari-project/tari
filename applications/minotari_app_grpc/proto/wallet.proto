@@ -621,7 +621,49 @@ service Wallet {
   // inputs in the range, where the maximum will be determined by the individual input values and the target coin-joined
   // value. Either total fee or fee per gram can be specified, with preference given to the latter if both are
   // specified.
-  //    
+  //
+  // ### Request Parameters:
+  // - `maximum_inputs_per_transaction` (required):
+  //   - **Type**: `uint32`
+  //   - **Description**: The maximum number of inputs to include in each coin-join transaction.
+  //   - **Restrictions**:
+  //     - Must be greater than 0.
+  // - `target_amount` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The minimum total amount to be coin-joined in each transaction (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than 0.
+  //    - Must be greater than `upper_bound`
+  // `- `lower_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The inclusive lower bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than 0.
+  //    - Must be less than `upper_bound`.
+  // - `upper_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The exclusive upper bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than 0.
+  //    - Must be greater than `lower_bound`.
+  // - `total_fee` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: The total fee to be paid for each coin-join transaction (in MicroTari).
+  //   - **Restrictions**:
+  //    - If specified, must be greater than 0.
+  // - `fee_per_gram` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: The fee per gram to be paid for each coin-join transaction (in MicroTari).
+  //   - **Restrictions**:
+  //    - If specified, must be greater than 0.
+  //     - `user_payment_id`:
+  //       - **Type**: `UserPaymentId`
+  //       - **Description**: Flexible payment ID that can be one of the following:
+  //         - `u256`: Hex string representing a 256-bit ID
+  //         - `utf8_string`: A human-readable string
+  //         - `user_bytes`: Custom byte sequence
+  //       - **Restrictions**: Exactly one field must be populated. If multiple or none are provided, the request will fail.
+  //
   // ### Example JavaScript gRPC client usage:
   //
   // ```javascript
@@ -1007,6 +1049,18 @@ service Wallet {
   // composition of their wallet's funds. Lower bounds are inclusive, while upper bound are exclusive.
   //
   // ### Request Parameters:
+  // `- `lower_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The inclusive lower bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than 0.
+  //    - Must be less than `upper_bound`.
+  // - `upper_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The exclusive upper bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than 0.
+  //    - Must be greater than `lower_bound`.
   //
   // - None
   //   - This method uses an empty request body (CoinHistogramRequest).
@@ -2195,7 +2249,18 @@ message CoinSplitRequest {
 }
 
 // Request message for the CoinHistogram RPC.
-message CoinHistogramRequest { }
+message CoinHistogramRequest {
+  // List of coin ranges to get information for.
+  repeated CoinBucket buckets = 1;
+}
+
+// A bucket representing a range of coins.
+message CoinBucket {
+  // The lower bound for coin values in this bucket (inclusive).
+  uint64 lower_bound = 1;
+  // The upper bound for coin values in this bucket (exclusive).
+  uint64 upper_bound = 2;
+}
 
 // Response message containing the transaction ID of the coin split.
 message CoinSplitResponse {
@@ -2206,12 +2271,11 @@ message CoinSplitResponse {
 // Response message for CoinHistogram RPC.
 message CoinHistogramResponse {
   // List of coin buckets representing ranges of coin amounts and their counts.
-  repeated CoinBucket buckets = 1;
+  repeated CoinBucketStats buckets = 1;
 }
 
-// A bucket representing a range of coin amounts and their count. The lower range of the bucket follows on from the
-// previous bucket's upper range.
-message CoinBucket {
+// A bucket representing a range of coin amounts and associated statistics.
+message CoinBucketStats {
   // The number of coins in this bucket.
   uint64 count = 1;
   // The total amount of coins within this bucket.

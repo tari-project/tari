@@ -46,7 +46,7 @@ use minotari_app_grpc::tari_rpc::{
     ClaimHtlcRefundResponse,
     ClaimShaAtomicSwapRequest,
     ClaimShaAtomicSwapResponse,
-    CoinBucket,
+    CoinBucketStats,
     CoinHistogramRequest,
     CoinHistogramResponse,
     CoinSplitRequest,
@@ -1195,6 +1195,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         // Simple verification of range and target amount
         let range = message.lower_bound..message.upper_bound;
+        if message.lower_bound * message.upper_bound == 0 || message.lower_bound >= message.upper_bound {
+            return Err(Status::invalid_argument(format!(
+                "Invalid range range: lower_bound..upper_bound {}..{}",
+                message.lower_bound, message.upper_bound
+            )));
+        }
+        if message.maximum_inputs_per_transaction == 0 {
+            return Err(Status::invalid_argument(
+                "maximum_inputs_per_transaction cannot be zero",
+            ));
+        }
+        if message.target_minimum_amount < message.upper_bound {
+            return Err(Status::invalid_argument(format!(
+                "target_minimum_amount must be > than upper_bound {} vs. {}",
+                message.target_minimum_amount, message.upper_bound
+            )));
+        }
         let mut wallet = self.wallet.clone();
         let mut results = Vec::new();
         let buckets = wallet
@@ -1334,7 +1351,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             };
 
-            let address = wallet_tx.destination_address().expect("cannot fail").to_string();
+            let address = wallet_tx
+                .destination_address()
+                .unwrap_or_else(|| {
+                    error!(target: LOG_TARGET, "range_limit_coin_join: Missing destination address for tx {}", tx_id);
+                    TariAddress::default()
+                })
+                .to_string();
+
             let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
             results.push(minotari_app_grpc::tari_rpc::TransferResult {
                 address,
@@ -2108,29 +2132,41 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn coin_histogram(
         &self,
-        _request: Request<CoinHistogramRequest>,
+        request: Request<CoinHistogramRequest>,
     ) -> Result<Response<CoinHistogramResponse>, Status> {
-        let mut wallet = self.wallet.clone();
+        let message = request.into_inner();
+        debug!(target: LOG_TARGET, "coin_histogram: {:?}", message);
 
-        // These ranges are hard-coded for now - easy enough to change later if needed
-        let bucket_ranges = vec![
-            0..1_000u64,                             // 0 - < 1,000 uT
-            1_000..100_000,                          // 1,000 uT - < 100,000 uT
-            100_000..1_000_000,                      // 100,000 uT - < 1 T
-            1_000_000..1_000_000_000,                // 1 T - < 1,000 T
-            1_000_000_000..100_000_000_000,          // 1,000 T - < 100,000 T
-            100_000_000_000..21_000_000_000_000_000, // 100,000 T - < 21,000,000 T (max supply)
-        ];
+        let bucket_ranges = if message.buckets.is_empty() {
+            vec![
+                0..1_000u64,                             // 0 - < 1,000 uT
+                1_000..100_000,                          // 1,000 uT - < 100,000 uT
+                100_000..10_000_000,                     // 100,000 uT - < 10 T
+                10_000_000..1_000_000_000,               // 10 T - < 1,000 T
+                1_000_000_000..100_000_000_000,          // 1,000 T - < 100,000 T
+                100_000_000_000..21_000_000_000_000_000, // 100,000 T - < 21,000,000 T (max supply)
+            ]
+        } else {
+            message.buckets.iter().map(|v| v.lower_bound..v.upper_bound).collect()
+        };
+
+        let mut wallet = self.wallet.clone();
 
         let buckets = wallet
             .output_manager_service
             .count_outputs_in_ranges(bucket_ranges.clone())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+        if buckets.len() != bucket_ranges.len() {
+            debug!(
+                target: LOG_TARGET,
+                "coin_histogram: Error - The wallet db did not return the requested number of buckets"
+            );
+        }
 
         let mut buckets_response = Vec::with_capacity(buckets.len());
         for bucket in &buckets {
-            buckets_response.push(CoinBucket {
+            buckets_response.push(CoinBucketStats {
                 count: bucket.number_of_outputs,
                 total_amount: bucket.total_value,
                 lower_bound: bucket.range.start,
