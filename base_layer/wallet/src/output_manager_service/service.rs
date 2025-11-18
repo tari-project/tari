@@ -115,6 +115,7 @@ use crate::{
         tasks::TxoValidationTask,
         RangeLimit,
         TRANSACTION_INPUTS_LIMIT,
+        TRANSACTION_OUTPUTS_LIMIT,
     },
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
@@ -1854,7 +1855,7 @@ where
             utxos_total_value += o.wallet_output.value();
 
             trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value}");
-            utxos.push(o.clone());
+            utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = fee_calc.calculate(
                 fee_per_gram,
@@ -1962,14 +1963,35 @@ where
         let fee_estimate = match fee {
             FeeType::TotalFee(fee) => MicroMinotari(fee),
             FeeType::FeePerGram(fee_per_gram) => {
+                #[allow(clippy::single_range_in_vec_init)]
+                let ranges = vec![range_limit_criteria.range.start..range_limit_criteria.range.end];
+                let number_of_outputs =
+                    if let Some(bucket) = self.resources.db.count_outputs_in_ranges(ranges, None)?.first() {
+                        // 'range_limit_criteria.target_minimum_amount' cannot be zero here as checked above
+                        usize::try_from(bucket.total_value / range_limit_criteria.target_minimum_amount)
+                            .unwrap_or(usize::MAX)
+                    } else {
+                        return Err(OutputManagerError::RangeLimitError {
+                            reason: format!(
+                                "No outputs could be selected for the specified range: {:?}",
+                                range_limit_criteria
+                            ),
+                            range_exhausted: true,
+                        });
+                    };
+                if number_of_outputs > TRANSACTION_OUTPUTS_LIMIT {
+                    return Err(OutputManagerError::TooManyOutputsToFulfillTransaction(format!(
+                        "{number_of_outputs} > {TRANSACTION_OUTPUTS_LIMIT}"
+                    )));
+                }
                 let fee_calc = self.get_fee_calc();
                 fee_calc.calculate(
                     MicroMinotari(fee_per_gram),
                     1,
                     usize::try_from(range_limit_criteria.transaction_input_limit)
                         .unwrap_or(TRANSACTION_INPUTS_LIMIT as usize),
-                    10, // Assume 10 outputs for estimation
-                    total_output_features_and_scripts_byte_size * 10,
+                    number_of_outputs,
+                    total_output_features_and_scripts_byte_size * number_of_outputs,
                 )
             },
         }
@@ -2010,6 +2032,12 @@ where
         )
         .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
         .max(1);
+
+        if number_of_outputs > TRANSACTION_OUTPUTS_LIMIT {
+            return Err(OutputManagerError::TooManyOutputsToFulfillTransaction(format!(
+                "{number_of_outputs} > {TRANSACTION_OUTPUTS_LIMIT}"
+            )));
+        }
 
         let fee_without_change = match fee {
             FeeType::TotalFee(fee) => MicroMinotari(fee),

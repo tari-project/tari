@@ -146,8 +146,10 @@ pub enum OutputManagerError {
     ValidationInProgress,
     #[error("Invalid data: `{0}`")]
     RangeProofError(String),
-    #[error("Transaction is over sized: `{0}`")]
+    #[error("Transaction inputs are over sized: `{0}`")]
     TooManyInputsToFulfillTransaction(String),
+    #[error("Transaction outputs are over sized: `{0}`")]
+    TooManyOutputsToFulfillTransaction(String),
     #[error("Std I/O error: {0}")]
     StdIoError(#[from] std::io::Error),
     #[error("Tari address error: `{0}`")]

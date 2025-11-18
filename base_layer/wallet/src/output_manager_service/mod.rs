@@ -67,6 +67,9 @@ use crate::{
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
 /// that a single comms message can hold.
 pub const TRANSACTION_INPUTS_LIMIT: u32 = 4000;
+/// The maximum number of transaction outputs that can be created in a single transaction, which must be comfortably
+/// less than what can fit into one block.
+pub const TRANSACTION_OUTPUTS_LIMIT: usize = 500;
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
 pub struct OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
