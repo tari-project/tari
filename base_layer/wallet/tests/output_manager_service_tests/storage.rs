@@ -33,6 +33,7 @@ use minotari_wallet::output_manager_service::{
         OutputSource,
         OutputStatus,
     },
+    RangeLimit,
     UtxoSelectionCriteria,
 };
 use rand::{rngs::OsRng, RngCore};
@@ -368,6 +369,162 @@ pub async fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
+}
+
+#[tokio::test]
+pub async fn test_count_outputs_in_ranges() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    // Create test outputs with specific values
+    let mut outputs = Vec::new();
+    let mut unspent = Vec::new();
+    let values = vec![300, 400, 100, 500, 200];
+
+    for value in values {
+        let uo = make_input(
+            &mut OsRng,
+            MicroMinotari::from(value),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(output.clone(), &key_manager).unwrap();
+        unspent.push((output.hash, true));
+        outputs.push(output);
+    }
+    db.mark_outputs_as_unspent(unspent).unwrap();
+
+    // Define ranges
+    let ranges = vec![
+        50..250,  // Should match 100, 200
+        200..400, // Should match 200, 300
+        400..600, // Should match 400, 500
+        600..700, // Should match none
+    ];
+
+    // Call the function
+    let result = db.count_outputs_in_ranges(ranges.clone(), None).unwrap();
+
+    // Assert expected counts
+    let bucket = &result[0];
+    assert_eq!(bucket.number_of_outputs, 2);
+    assert_eq!(bucket.total_value, 300);
+    assert_eq!(bucket.range, 50..250);
+
+    let bucket = &result[1];
+    assert_eq!(bucket.number_of_outputs, 2);
+    assert_eq!(bucket.total_value, 500);
+    assert_eq!(bucket.range, 200..400);
+
+    let bucket = &result[2];
+    assert_eq!(bucket.number_of_outputs, 2);
+    assert_eq!(bucket.total_value, 900);
+    assert_eq!(bucket.range, 400..600);
+
+    let bucket = &result[3];
+    assert_eq!(bucket.number_of_outputs, 0);
+    assert_eq!(bucket.total_value, 0);
+    assert_eq!(bucket.range, 600..700);
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+pub async fn test_range_limited_outputs_for_spending() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    // Create test outputs with specific values
+    let mut outputs = Vec::new();
+    let mut unspent = Vec::new();
+    let values = vec![10, 300, 20, 400, 30, 100, 40, 500, 50, 200];
+    let all_outputs = values.len() as u64;
+
+    for value in values {
+        let uo = make_input(
+            &mut OsRng,
+            MicroMinotari::from(value),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(output.clone(), &key_manager).unwrap();
+        unspent.push((output.hash, true));
+        outputs.push(output);
+    }
+    db.mark_outputs_as_unspent(unspent).unwrap();
+
+    // We have [50, 100, 200] in the range 50..250, but restrain transaction input limit
+    // Selection:
+    //  - It fetches only 50
+    //  - Compares 50 >= 100, do not meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: 1,
+                    target_minimum_amount: 100,
+                }),
+                ..Default::default()
+            },
+            None,
+            &key_manager,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 0);
+    assert_eq!(total, MicroMinotari(0));
+
+    // We have [50, 100, 200] in the range 50..250, no restrains.
+    // Selection:
+    //  - It fetches all 3x outputs
+    //  - Compares 50 >= 201, do not meet target
+    //  - Compares 50 + 100 >= 201, do not meet target
+    //  - Compares 50 + 100 + 200 >= 201, meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: all_outputs,
+                    target_minimum_amount: 201,
+                }),
+                ..Default::default()
+            },
+            None,
+            &key_manager,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 3);
+    assert_eq!(total, MicroMinotari(350));
+    assert_eq!(selected[0].wallet_output.value().0, 50);
+    assert_eq!(selected[1].wallet_output.value().0, 100);
+    assert_eq!(selected[2].wallet_output.value().0, 200);
+
+    // We have [50, 100, 200] in the range 50..250, but target_minimum_amount cannot be met
+    // Selection:
+    //  - It fetches all 3x outputs
+    //  - Compares 50 + 100 + 200 >= 500, do not meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: all_outputs,
+                    target_minimum_amount: 500,
+                }),
+                ..Default::default()
+            },
+            None,
+            &key_manager,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 0);
+    assert_eq!(total, MicroMinotari(0));
 }
 
 #[tokio::test]

@@ -102,7 +102,7 @@ use tari_transaction_components::{
     TransactionBuilderError,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
-    wallet_types::LegacyWalletType,
+    wallet_types::{FeeType, LegacyWalletType},
     LegacyTransactionKeyManagerInterface,
 };
 use tari_utilities::hex::Hex;
@@ -411,6 +411,12 @@ where
                 mut payment_id,
             } => {
                 async {
+                    if selection_criteria.range_limit.is_some() {
+                        return Err(TransactionServiceError::RangeLimitError {
+                            reason: "Range limit coin-join cannot be set for ons-sided signing transactions"
+                                .to_string(),
+                        });
+                    }
                     self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
                     debug!(target: LOG_TARGET, "Locking one sided transaction to {destination} with {amount}");
                     let temp_tx_id = TxId::new_random();
@@ -813,6 +819,27 @@ where
                 async {
                     let res = self
                         .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::SendRangeLimitedCoinJoinTransaction {
+                selection_criteria,
+                output_features,
+                fee,
+                payment_id,
+            } => {
+                async {
+                    let res = self
+                        .send_range_limited_coin_join(
+                            selection_criteria,
+                            *output_features,
+                            fee,
+                            transaction_broadcast_join_handles,
+                            payment_id,
+                        )
                         .await?;
                     Ok(TransactionServiceResponse::TransactionSent(res))
                 }
@@ -1627,9 +1654,15 @@ where
         // If the individual handlers did not already send the API response then do it here.
         if let Some(rp) = reply_channel {
             let _result = rp
-                .send(response.inspect_err(|e1| warn!(target: LOG_TARGET, "{}", e1)))
+                .send(response.inspect_err(|e1| {
+                    let mut msg = format!("{}", e1);
+                    msg.truncate(100);
+                    warn!(target: LOG_TARGET, "{}", msg);
+                }))
                 .inspect_err(|e2| {
-                    warn!(target: LOG_TARGET, "Failed to send reply: {:?}", e2);
+                    let mut msg = format!("{:?}", e2);
+                    msg.truncate(100);
+                    warn!(target: LOG_TARGET, "Failed to send reply: {}", msg);
                 });
         }
 
@@ -2042,6 +2075,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for send_sha_atomic_swap_transaction".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
         self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
@@ -2225,6 +2263,11 @@ where
         mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with amount {amount}");
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for send_one_sided_or_stealth".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
@@ -2307,6 +2350,159 @@ where
                 dest_address.clone(),
                 amount,
                 fee,
+                tx.clone(),
+                LegacyTransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
+            )?,
+        )
+        .await?;
+
+        Ok(finalized.tx_id)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn send_range_limited_coin_join(
+        &mut self,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee: FeeType,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        payment_id: MemoField,
+    ) -> Result<TxId, TransactionServiceError> {
+        let range_limit_criteria =
+            selection_criteria
+                .clone()
+                .range_limit
+                .ok_or_else(|| OutputManagerError::RangeLimitError {
+                    reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                    range_exhausted: false,
+                })?;
+        let temp_tx_id = TxId::new_random();
+
+        // Prepare sender part of the transaction
+        let script = push_pubkey_script(&Default::default());
+        let covenant = Covenant::default();
+        let mut tx_builder = self
+            .resources
+            .output_manager_service
+            .prepare_range_limited_coin_join_transaction_to_send(
+                temp_tx_id,
+                selection_criteria,
+                output_features.clone(),
+                fee,
+                script,
+                covenant,
+            )
+            .await?;
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
+        let amount_without_fee = tx_builder.get_total_input_value()?.saturating_sub(fee_estimate);
+        let dest_address = self.resources.one_sided_tari_address.clone();
+        debug!(
+            target: LOG_TARGET,
+            "Sending range_limit_coin_join transaction to {} with amount {amount_without_fee} fee {fee_estimate} total {}",
+            dest_address.to_hex(), tx_builder.get_total_input_value()?
+        );
+
+        let payment_id = payment_id
+            .add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                true,
+                fee_estimate,
+                Some(TxType::CoinJoin),
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
+        trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
+
+        // Note: Division by zero is checked during 'prepare_range_limited_coin_join_transaction_to_send'
+        let number_of_outputs =
+            usize::try_from(amount_without_fee.as_u64() / range_limit_criteria.target_minimum_amount)
+                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+                .max(1);
+        let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
+        // Note: 'amount_without_fee >= target_minimum_amount' is checked during
+        //       'prepare_range_limited_coin_join_transaction_to_send'
+        let residual = amount_without_fee
+            .as_u64()
+            .saturating_sub(range_limit_criteria.target_minimum_amount * number_of_outputs as u64);
+        values.get_mut(0).expect("index exists").0 += residual;
+
+        for value in values {
+            let _output = tx_builder.add_stealth_recipient(
+                dest_address.clone(),
+                value,
+                output_features.clone(),
+                payment_id.clone(),
+            )?;
+        }
+        tx_builder.with_memo(payment_id.clone()).with_tx_type(TxType::CoinJoin);
+
+        // Finalize
+        let finalized = tx_builder.build()?;
+        if let Some(change) = finalized.change {
+            let msg = format!(
+                "One sided range_limit_coin_join transaction cannot have a change output: {}",
+                change.value()
+            );
+            error!(target: LOG_TARGET, "{}", msg);
+            return Err(TransactionServiceError::RangeLimitError { reason: msg });
+        }
+        if amount_without_fee != finalized.amount {
+            let msg = format!(
+                "One sided range_limit_coin_join transaction amount mismatch: expected {}, got {}",
+                amount_without_fee, finalized.amount
+            );
+            error!(target: LOG_TARGET, "{}", msg);
+            return Err(TransactionServiceError::RangeLimitError { reason: msg });
+        }
+        if fee_estimate != finalized.fee {
+            let msg = format!(
+                "One sided range_limit_coin_join transaction fee mismatch: expected {}, got {}",
+                fee_estimate, finalized.fee
+            );
+            error!(target: LOG_TARGET, "{}", msg);
+            return Err(TransactionServiceError::RangeLimitError { reason: msg });
+        }
+
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
+
+        // Broadcast one-sided transaction
+
+        let tx = finalized.transaction.clone();
+        let final_fee = finalized.fee;
+        let change = finalized.change.clone().map(|change| vec![change]);
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
+        let sent_hashes = finalized.sent_output_hashes.clone();
+        let change_hashes = finalized.change_output_hashes.clone();
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new_with_output_hashes(
+                finalized.tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                dest_address.clone(),
+                amount_without_fee,
+                final_fee,
                 tx.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),
@@ -2540,6 +2736,11 @@ where
                 TransactionBuilderError::NoRecipients,
             ));
         }
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for send_many_one_sided_transactions".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         let mut total_send = MicroMinotari::zero();
@@ -2712,6 +2913,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for burn_tari".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
 
         if claim_public_key.is_none() && sidechain_deployment_key.is_some() {

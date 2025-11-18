@@ -22,13 +22,19 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    ops::Range,
     str::FromStr,
 };
 
 use borsh::BorshDeserialize;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use diesel::{prelude::*, sql_query};
+use diesel::{
+    dsl::{count_star, sql},
+    prelude::*,
+    sql_query,
+    sql_types::{BigInt, Nullable},
+};
 use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
@@ -68,7 +74,7 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
-            sqlite_db::{UpdateOutput, UpdateOutputSql},
+            sqlite_db::{CoinBucket, UpdateOutput, UpdateOutputSql},
             OutputSource,
             OutputStatus,
         },
@@ -78,6 +84,7 @@ use crate::{
     },
     schema::outputs,
 };
+
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 #[derive(Clone, Derivative, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
@@ -291,6 +298,105 @@ impl OutputSql {
         };
 
         Ok(query.limit(i64::from(TRANSACTION_INPUTS_LIMIT)).load(conn)?)
+    }
+
+    /// Retrieves UTXOs within a specified limited range with minimum target amount for spending. If not enough UTXOs
+    /// can be found, an empty vector is returned.
+    pub fn get_range_limited_outputs_for_spending(
+        selection_criteria: &UtxoSelectionCriteria,
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<(Vec<OutputSql>, MicroMinotari), OutputManagerStorageError> {
+        let range_limit =
+            selection_criteria
+                .range_limit
+                .as_ref()
+                .ok_or_else(|| OutputManagerStorageError::RangeLimitError {
+                    reason: "Range limit must be specified".to_string(),
+                })?;
+        let amounts_from = i64::try_from(range_limit.range.start).unwrap_or(i64::MAX);
+        let amounts_to = i64::try_from(range_limit.range.end).unwrap_or(i64::MAX);
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.ge(amounts_from))
+            .filter(outputs::value.lt(amounts_to));
+
+        // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            query = query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        };
+
+        for exclude in &selection_criteria.excluding {
+            query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        query = query.then_order_by(outputs::value.asc());
+
+        let transaction_input_limit = u32::try_from(range_limit.transaction_input_limit)
+            .unwrap_or(u32::MAX)
+            .min(TRANSACTION_INPUTS_LIMIT);
+        let outputs: Vec<OutputSql> = query.limit(i64::from(transaction_input_limit)).load(conn)?;
+
+        // If all the outputs together don't reach target, we cannot continue
+        let total_sum: u64 = outputs.iter().fold(0u64, |acc, o| acc.saturating_add(o.value as u64));
+        if total_sum < range_limit.target_minimum_amount {
+            debug!(
+                target: LOG_TARGET,
+                "Total unspent outputs' value in the specified range was less than the target_minimum_amount: {} < {}",
+                total_sum, range_limit.target_minimum_amount
+            );
+            return Ok((Vec::new(), MicroMinotari::zero()));
+        }
+
+        Ok((outputs, MicroMinotari::from(total_sum)))
+    }
+
+    /// Retrieves UTXO counts grouped by the provided ranges
+    pub fn count_outputs_in_ranges(
+        selection_criteria: &UtxoSelectionCriteria,
+        ranges: &[Range<u64>],
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CoinBucket>, OutputManagerStorageError> {
+        let mut result = Vec::with_capacity(ranges.len());
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+
+        for range in ranges {
+            let amounts_from = i64::try_from(range.start).unwrap_or(i64::MAX);
+            let amounts_to = i64::try_from(range.end).unwrap_or(i64::MAX);
+
+            let mut query = outputs::table
+                .into_boxed()
+                .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                .filter(outputs::value.ge(amounts_from))
+                .filter(outputs::value.lt(amounts_to));
+
+            if selection_criteria.mode == UtxoSelectionMode::Safe {
+                query = query
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height));
+            }
+
+            // Rust
+            let (count_res, sum_res) = query
+                .select((count_star(), sql::<Nullable<BigInt>>("SUM(value)")))
+                .first::<(i64, Option<i64>)>(conn)
+                .optional()?
+                .unwrap_or_default();
+
+            result.push(CoinBucket {
+                number_of_outputs: count_res as u64,
+                total_value: sum_res.unwrap_or(0) as u64,
+                range: range.clone(),
+            });
+        }
+
+        Ok(result)
     }
 
     fn handle_must_include_filter(

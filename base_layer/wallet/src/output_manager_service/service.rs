@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt, ops::Range, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
@@ -80,7 +80,7 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
 };
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::{wallet_types::FeeType, LegacyTransactionKeyManagerInterface};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
 
@@ -103,14 +103,18 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            sqlite_db::CoinBucket,
             OutputSource,
             OutputStatus,
         },
         tasks::TxoValidationTask,
+        RangeLimit,
         TRANSACTION_INPUTS_LIMIT,
+        TRANSACTION_OUTPUTS_LIMIT,
     },
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
+
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
@@ -315,6 +319,11 @@ where
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
+            OutputManagerRequest::GetCoinBuckets { ranges } => {
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
+                self.count_outputs_in_ranges(ranges, current_tip_for_time_lock_calculation)
+                    .map(OutputManagerResponse::GetCoinBuckets)
+            },
             OutputManagerRequest::GetBalancePaymentId(payment_id) => {
                 let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
@@ -338,6 +347,24 @@ where
                     script,
                     covenant,
                 )
+                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
+            OutputManagerRequest::GetTransactionBuilderRangeLimitedCoinJoin {
+                tx_id,
+                selection_criteria,
+                output_features,
+                fee,
+                script,
+                covenant,
+            } => self
+                .prepare_range_limited_coin_join_transaction_to_send(
+                    tx_id,
+                    selection_criteria,
+                    fee,
+                    *output_features,
+                    script,
+                    covenant,
+                )
+                .await
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::CreatePayToSelfTransaction {
                 amount,
@@ -762,6 +789,24 @@ where
         Ok(balance)
     }
 
+    fn count_outputs_in_ranges(
+        &self,
+        ranges: Vec<Range<u64>>,
+        tip_height: Option<u64>,
+    ) -> Result<Vec<CoinBucket>, OutputManagerError> {
+        let coin_buckets = self.resources.db.count_outputs_in_ranges(ranges, tip_height)?;
+        trace!(target: LOG_TARGET, "Coin buckets: {:?}", coin_buckets
+            .iter()
+            .map(|v| {
+                format!(
+                    "count: {}, value: {}, range: {}..{}",
+                    v.number_of_outputs, v.total_value, v.range.start, v.range.end
+                )
+            })
+            .collect::<Vec<_>>());
+        Ok(coin_buckets)
+    }
+
     fn get_balance_payment_id(
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
@@ -918,98 +963,80 @@ where
         Ok(builder)
     }
 
-    pub fn create_transaction_with_outputs_internal(
+    /// Prepare a Sender Transaction Protocol for a range limited coin-join and fee_per_gram specified. No change output
+    /// will be produced.
+    pub async fn prepare_range_limited_coin_join_transaction_to_send(
         &mut self,
-        outputs: Vec<WalletOutputBuilder>,
+        tx_id: TxId,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-    ) -> Result<(TxId, Transaction), OutputManagerError> {
-        let total_value = outputs.iter().map(|o| o.value()).sum();
-
-        let nop_script = script![Nop]?;
-        let weighting = self.resources.consensus_constants.transaction_weight_params();
-        let mut features_and_scripts_byte_size = 0;
-
-        for output in &outputs {
-            let (features, covenant, script) = (
-                output
-                    .features()
+        fee: FeeType,
+        recipient_output_features: OutputFeatures,
+        recipient_script: TariScript,
+        recipient_covenant: Covenant,
+    ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
+        let target_minimum_amount = selection_criteria
+            .clone()
+            .range_limit
+            .ok_or_else(|| OutputManagerError::RangeLimitError {
+                reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                range_exhausted: false,
+            })?
+            .target_minimum_amount;
+        debug!(
+            target: LOG_TARGET,
+            "Preparing to send range limited coin join transaction - TxId: {tx_id}, target_minimum_amount: \
+            {target_minimum_amount}, fee: {fee}, selection: {selection_criteria}"
+        );
+        let features_and_scripts_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight_params()
+            .round_up_features_and_scripts_size(
+                recipient_output_features
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
-                output
-                    .covenant()
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
-                output
-                    .script()
-                    .unwrap_or(&nop_script)
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_script
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_covenant
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
-            features_and_scripts_byte_size += weighting.round_up_features_and_scripts_size(features + covenant + script)
-        }
 
-        let input_selection = self.select_utxos(
-            total_value,
-            selection_criteria,
-            fee_per_gram,
-            outputs.len(),
-            features_and_scripts_byte_size,
-        )?;
+        let input_selection = self
+            .select_utxos_for_range_limited_coin_join(selection_criteria, fee, features_and_scripts_byte_size)
+            .await?;
 
-        // Create builder with no recipients (other than ourselves)
         let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
             self.resources.network,
         )?;
         builder
-            .with_lock_height(0)
-            .with_fee_per_gram(fee_per_gram)
-            .with_prevent_fee_gt_amount(false)
-            .with_kernel_features(KernelFeatures::empty())
-            .with_memo(payment_id);
+            .with_fee(input_selection.as_final_fee())
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone())?;
         }
-
-        let mut db_outputs = vec![];
-
-        for mut wallet_output in outputs {
-            let sender_offset_key = self.resources.key_manager.get_random_key(None, true)?;
-            wallet_output =
-                wallet_output.sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key.key_id)?;
-            let ub = wallet_output.try_build(&self.resources.key_manager)?;
-
-            builder
-                .with_output(ub.clone(), sender_offset_key.key_id.clone(), None)
-                .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
-            db_outputs.push(DbWalletOutput::from_wallet_output(
-                ub,
-                None,
-                OutputSource::default(),
-                None,
-                None,
-            ));
-        }
-
-        let finalized = builder.build()?;
-        if let Some(wallet_output) = finalized.change {
-            db_outputs.push(DbWalletOutput::from_wallet_output(
-                wallet_output.clone(),
-                None,
-                OutputSource::default(),
-                Some(finalized.tx_id),
-                None,
-            ));
-        }
+        debug!(
+            target: LOG_TARGET,
+            "TxId: {}, input(s) value: {}, amount: {}, fee {}, final fee: {}, num inputs: {}.",
+            tx_id,
+            input_selection.total_value(),
+            input_selection.total_value() - input_selection.as_final_fee(),
+            fee,
+            input_selection.as_final_fee(),
+            input_selection.num_selected(),
+        );
 
         self.resources
             .db
-            .encumber_outputs(finalized.tx_id, input_selection.into_selected(), db_outputs)?;
-        Ok((finalized.tx_id, finalized.transaction))
+            .encumber_outputs(tx_id, input_selection.into_selected(), vec![])?;
+
+        debug!(target: LOG_TARGET, "Prepared transaction (TxId: {tx_id}) to send");
+
+        Ok(builder)
     }
 
     async fn pre_mine_script_key_from_payment_id(
@@ -1544,6 +1571,12 @@ where
         payment_id: MemoField,
         minimum_value_promise: MicroMinotari,
     ) -> Result<(MicroMinotari, Transaction, TxId), OutputManagerError> {
+        if selection_criteria.range_limit.is_some() {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for create_pay_to_self_transaction".to_string(),
+                range_exhausted: false,
+            });
+        }
         let covenant = Covenant::default();
 
         let features_and_scripts_byte_size = self
@@ -1813,6 +1846,177 @@ where
             total_value: utxos_total_value,
             fee_without_change,
             fee_with_change,
+        })
+    }
+
+    /// Select which unspent transaction outputs to use to send a range limited coin join transaction. Use the specified
+    /// selection strategy to choose the outputs. No change output will be produced, and the total value selected will
+    /// be >= the target amount plus fee.
+    #[allow(clippy::too_many_lines)]
+    async fn select_utxos_for_range_limited_coin_join(
+        &mut self,
+        selection_criteria: UtxoSelectionCriteria,
+        fee: FeeType,
+        total_output_features_and_scripts_byte_size: usize,
+    ) -> Result<UtxoSelection, OutputManagerError> {
+        let start = Instant::now();
+        let range_limit_criteria =
+            selection_criteria
+                .clone()
+                .range_limit
+                .ok_or_else(|| OutputManagerError::RangeLimitError {
+                    reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                    range_exhausted: false,
+                })?;
+        debug!(
+            target: LOG_TARGET,
+            "select_utxos_for_range_limited_coin_join target_minimum_amount: {}, fee: {fee}, \
+            output_features_and_scripts_byte_size:  {total_output_features_and_scripts_byte_size}, \
+            selection_criteria: {selection_criteria:?}",
+            range_limit_criteria.target_minimum_amount
+        );
+        if range_limit_criteria.target_minimum_amount <= range_limit_criteria.range.end {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: format!(
+                    "Target minimum amount {} cannot be less or equal than range end {}",
+                    range_limit_criteria.target_minimum_amount, range_limit_criteria.range.end
+                ),
+                range_exhausted: false,
+            });
+        }
+
+        // Attempt to get the chain tip height
+        let tip_height = self.resources.db.get_last_scanned_height()?;
+
+        let start_new = Instant::now();
+
+        // Find the UTXOs that satisfy the range limit criteria and actual fee
+        let fee_estimate = match fee {
+            FeeType::TotalFee(fee) => MicroMinotari(fee),
+            FeeType::FeePerGram(fee_per_gram) => {
+                #[allow(clippy::single_range_in_vec_init)]
+                let ranges = vec![range_limit_criteria.range.start..range_limit_criteria.range.end];
+                let number_of_outputs =
+                    if let Some(bucket) = self.resources.db.count_outputs_in_ranges(ranges, None)?.first() {
+                        // 'range_limit_criteria.target_minimum_amount' cannot be zero here as checked above
+                        usize::try_from(bucket.total_value / range_limit_criteria.target_minimum_amount)
+                            .unwrap_or(usize::MAX)
+                    } else {
+                        return Err(OutputManagerError::RangeLimitError {
+                            reason: format!(
+                                "No outputs could be selected for the specified range: {:?}",
+                                range_limit_criteria
+                            ),
+                            range_exhausted: true,
+                        });
+                    };
+                if number_of_outputs > TRANSACTION_OUTPUTS_LIMIT {
+                    return Err(OutputManagerError::TooManyOutputsToFulfillTransaction(format!(
+                        "{number_of_outputs} > {TRANSACTION_OUTPUTS_LIMIT}"
+                    )));
+                }
+                let fee_calc = self.get_fee_calc();
+                fee_calc.calculate(
+                    MicroMinotari(fee_per_gram),
+                    1,
+                    usize::try_from(range_limit_criteria.transaction_input_limit)
+                        .unwrap_or(TRANSACTION_INPUTS_LIMIT as usize),
+                    number_of_outputs,
+                    total_output_features_and_scripts_byte_size * number_of_outputs,
+                )
+            },
+        }
+        .as_u64();
+        if range_limit_criteria.target_minimum_amount < fee_estimate {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: format!(
+                    "Target minimum amount {} is less than the estimated fee {}",
+                    range_limit_criteria.target_minimum_amount, fee_estimate
+                ),
+                range_exhausted: false,
+            });
+        }
+
+        let selection_criteria = UtxoSelectionCriteria {
+            range_limit: Some(RangeLimit {
+                target_minimum_amount: range_limit_criteria.target_minimum_amount + fee_estimate,
+                ..range_limit_criteria.clone()
+            }),
+            ..selection_criteria
+        };
+        let (utxos, total_value) = self.resources.db.get_range_limited_outputs_for_spending(
+            &selection_criteria,
+            tip_height,
+            &self.resources.key_manager,
+        )?;
+        if utxos.is_empty() {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: format!(
+                    "No outputs could be selected for the specified range: {:?}",
+                    range_limit_criteria
+                ),
+                range_exhausted: true,
+            });
+        }
+
+        let number_of_outputs = usize::try_from(
+            total_value.as_u64().saturating_sub(fee_estimate) / range_limit_criteria.target_minimum_amount,
+        )
+        .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+        .max(1);
+
+        if number_of_outputs > TRANSACTION_OUTPUTS_LIMIT {
+            return Err(OutputManagerError::TooManyOutputsToFulfillTransaction(format!(
+                "{number_of_outputs} > {TRANSACTION_OUTPUTS_LIMIT}"
+            )));
+        }
+
+        let fee_without_change = match fee {
+            FeeType::TotalFee(fee) => MicroMinotari(fee),
+            FeeType::FeePerGram(fee_per_gram) => {
+                let fee_calc = self.get_fee_calc();
+                fee_calc.calculate(
+                    MicroMinotari(fee_per_gram),
+                    1,
+                    utxos.len(),
+                    number_of_outputs,
+                    total_output_features_and_scripts_byte_size * number_of_outputs,
+                )
+            },
+        };
+        trace!(
+            target: LOG_TARGET,
+            "select_utxos_for_range_limited_coin_join profile - get_range_limited_outputs_for_spending: inputs: {}, \
+            outputs: {}, ms (at {} ms)",
+            utxos.len(),
+            start_new.elapsed().as_millis(),
+            start.elapsed().as_millis(),
+        );
+
+        // For non-standard queries, we want to ensure that the intended UTXOs are selected
+        if !selection_criteria.filter.is_standard() && utxos.is_empty() {
+            return Err(OutputManagerError::NoUtxosSelected {
+                criteria: selection_criteria,
+            });
+        }
+
+        if total_value - fee_without_change < MicroMinotari(range_limit_criteria.target_minimum_amount) {
+            return Err(OutputManagerError::RangeLimitError {
+                reason: format!(
+                    "Total available in range less fee exceeds target value: {} vs. {}",
+                    total_value - fee_without_change,
+                    MicroMinotari(range_limit_criteria.target_minimum_amount)
+                ),
+                range_exhausted: false,
+            });
+        }
+
+        Ok(UtxoSelection {
+            utxos,
+            requires_change_output: false,
+            total_value,
+            fee_without_change,
+            fee_with_change: fee_without_change,
         })
     }
 

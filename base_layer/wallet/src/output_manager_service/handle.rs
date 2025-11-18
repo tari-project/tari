@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
+use std::{collections::HashMap, fmt, fmt::Formatter, ops::Range, sync::Arc};
 
 use log::warn;
 use tari_common_types::{
@@ -42,7 +42,7 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
 };
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::{wallet_types::FeeType, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -53,6 +53,7 @@ use crate::output_manager_service::{
     storage::{
         database::OutputBackendQuery,
         models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
+        sqlite_db::CoinBucket,
     },
     UtxoSelectionCriteria,
 };
@@ -62,6 +63,9 @@ const LOG_TARGET: &str = "wallet::output_manager_service::handle";
 /// API Request enum
 pub enum OutputManagerRequest {
     GetBalance,
+    GetCoinBuckets {
+        ranges: Vec<Range<u64>>,
+    },
     GetBalancePaymentId(Vec<u8>),
     AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
@@ -97,6 +101,14 @@ pub enum OutputManagerRequest {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
+        script: TariScript,
+        covenant: Covenant,
+    },
+    GetTransactionBuilderRangeLimitedCoinJoin {
+        tx_id: TxId,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: Box<OutputFeatures>,
+        fee: FeeType,
         script: TariScript,
         covenant: Covenant,
     },
@@ -164,6 +176,13 @@ impl fmt::Display for OutputManagerRequest {
         use OutputManagerRequest::*;
         match self {
             GetBalance => write!(f, "GetBalance"),
+            GetCoinBuckets { ranges } => {
+                let buckets = ranges
+                    .iter()
+                    .map(|v| format!("range: {}..{}", v.start, v.end))
+                    .collect::<Vec<_>>();
+                write!(f, "GetCoinBuckets: buckets {:?}", buckets)
+            },
             GetBalancePaymentId(_) => write!(f, "GetBalance for user payment id"),
             AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value()),
             AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value()),
@@ -215,7 +234,8 @@ impl fmt::Display for OutputManagerRequest {
             } => {
                 write!(f, "ConfirmPendingTransaction ({tx_id} replace with {:?})", tx_id_update)
             },
-            GetTransactionBuilder { .. } => write!(f, "PrepareToSendTransaction "),
+            GetTransactionBuilder { .. } => write!(f, "GetTransactionBuilder "),
+            GetTransactionBuilderRangeLimitedCoinJoin { .. } => write!(f, "GetTransactionBuilderRangeLimitedCoinJoin "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
@@ -283,6 +303,8 @@ impl fmt::Display for OutputManagerRequest {
 #[derive(Debug, Clone)]
 pub enum OutputManagerResponse<KM> {
     Balance(Balance),
+    GetCoinBuckets(Vec<CoinBucket>),
+    GetRangeLimitedOutputs(Vec<DbWalletOutput>),
     OutputAdded,
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
@@ -514,6 +536,23 @@ where KM: LegacyTransactionKeyManagerInterface
         }
     }
 
+    pub async fn count_outputs_in_ranges(
+        &mut self,
+        ranges: Vec<Range<u64>>,
+    ) -> Result<Vec<CoinBucket>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetCoinBuckets { ranges })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetCoinBuckets({e})"))??
+        {
+            OutputManagerResponse::GetCoinBuckets(b) => Ok(b),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::GetCoinBuckets".to_string(),
+            )),
+        }
+    }
+
     pub async fn get_balance_for_payment_id(&mut self, payment_id: Vec<u8>) -> Result<Balance, OutputManagerError> {
         match self
             .handle
@@ -560,6 +599,35 @@ where KM: LegacyTransactionKeyManagerInterface
                 selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
                 fee_per_gram,
+                script,
+                covenant,
+            })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetTransactionBuilder({e})"))??
+        {
+            OutputManagerResponse::TransactionBuilderToSend(stp) => Ok(*stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::GetTransactionBuilder".to_string(),
+            )),
+        }
+    }
+
+    pub async fn prepare_range_limited_coin_join_transaction_to_send(
+        &mut self,
+        tx_id: TxId,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee: FeeType,
+        script: TariScript,
+        covenant: Covenant,
+    ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetTransactionBuilderRangeLimitedCoinJoin {
+                tx_id,
+                selection_criteria: utxo_selection,
+                output_features: Box::new(output_features),
+                fee,
                 script,
                 covenant,
             })

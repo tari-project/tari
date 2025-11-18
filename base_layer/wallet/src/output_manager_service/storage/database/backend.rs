@@ -1,11 +1,16 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::ops::Range;
+
 use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
+use tari_transaction_components::{
+    transaction_components::{OutputType, TransactionOutput},
+    MicroMinotari,
+};
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 
 use crate::output_manager_service::{
@@ -15,7 +20,7 @@ use crate::output_manager_service::{
     storage::{
         database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
         models::DbWalletOutput,
-        sqlite_db::{ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+        sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
 };
 
@@ -138,6 +143,12 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
     fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
+    /// Count outputs in the specified ranges
+    fn count_outputs_in_ranges(
+        &self,
+        ranges: Vec<Range<u64>>,
+        tip_height: Option<u64>,
+    ) -> Result<Vec<CoinBucket>, OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance only matching the payment id
     fn get_balance_payment_id(
         &self,
@@ -146,6 +157,13 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
     fn add_unvalidated_output(&self, output: DbWalletOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    /// Retrieves UTXOs within a specified limited range with minimum target amount for spending
+    fn get_range_limited_outputs_for_spending<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        selection_criteria: &UtxoSelectionCriteria,
+        tip_height: Option<u64>,
+        key_manager: &KM,
+    ) -> Result<(Vec<DbWalletOutput>, MicroMinotari), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending<KM: LegacyTransactionKeyManagerInterface>(
         &self,
         selection_criteria: &UtxoSelectionCriteria,

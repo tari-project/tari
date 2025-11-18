@@ -23,6 +23,7 @@
 mod backend;
 use std::{
     fmt::{Debug, Display, Error, Formatter},
+    ops::Range,
     sync::Arc,
 };
 
@@ -45,7 +46,7 @@ use crate::output_manager_service::{
     service::Balance,
     storage::{
         models::{DbWalletOutput, KnownOneSidedPaymentScript},
-        sqlite_db::{ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+        sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         OutputStatus,
     },
 };
@@ -202,6 +203,14 @@ where T: OutputManagerBackend + 'static
         self.db.get_balance(current_tip_for_time_lock_calculation)
     }
 
+    pub fn count_outputs_in_ranges(
+        &self,
+        ranges: Vec<Range<u64>>,
+        tip_height: Option<u64>,
+    ) -> Result<Vec<CoinBucket>, OutputManagerStorageError> {
+        self.db.count_outputs_in_ranges(ranges, tip_height)
+    }
+
     pub fn get_balance_payment_id(
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
@@ -277,6 +286,19 @@ where T: OutputManagerBackend + 'static
         key_manager: &KM,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         self.db.fetch_with_features(feature, key_manager)
+    }
+
+    /// Retrieves UTXOs within a specified limited range with minimum target amount for spending
+    pub fn get_range_limited_outputs_for_spending<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        selection_criteria: &UtxoSelectionCriteria,
+        tip_height: Option<u64>,
+        key_manager: &KM,
+    ) -> Result<(Vec<DbWalletOutput>, MicroMinotari), OutputManagerStorageError> {
+        let utxos = self
+            .db
+            .get_range_limited_outputs_for_spending(selection_criteria, tip_height, key_manager)?;
+        Ok(utxos)
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
