@@ -334,10 +334,15 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
 
     let file_lock = acquire_exclusive_file_lock(path.as_ref())?;
 
+    let env_flags = if config.no_read_ahead() {
+        open::NOLOCK | open::NORDAHEAD
+    } else {
+        open::NOLOCK
+    };
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
         // NOLOCK - No lock required because we manage the DB locking using a RwLock
-        .set_env_flags(open::NOLOCK)
+        .set_env_flags(env_flags)
         .set_env_config(config)
         .set_max_number_of_databases(40)
         .add_database(LMDB_DB_METADATA, flags | db::INTEGERKEY)

@@ -140,8 +140,9 @@ message SidechainBlockHeader {
   bytes proposed_by = 7;
   bytes state_merkle_root = 8;
   bytes command_merkle_root = 9;
-  Signature signature = 11;
   bytes metadata_hash = 10;
+  Signature signature = 11;
+  ShardGroupAccumulatedData accumulated_data = 12;
 }
 
 message ShardGroup {
@@ -170,3 +171,7 @@ message ValidatorSignature {
   Signature signature = 2;
 }
 
+message ShardGroupAccumulatedData {
+  uint64 total_exhaust_burn_msb = 1;
+  uint64 total_exhaust_burn_lsb = 2;
+}

@@ -1776,6 +1776,7 @@ service Wallet {
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
   rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
   rpc GetBurnClaimProof(GetBurnClaimProofRequest) returns (GetBurnClaimProofResponse);
+  rpc RescanWallet(RescanWalletRequest) returns (RescanWalletResponse);
 }
 
 
@@ -2323,6 +2324,10 @@ message GetFeeEstimateRequest {
 message GetFeeEstimateResponse {
   // Estimated fee for the transaction in microTari
   uint64 estimated_fee = 1;
+  // number of inputs
+  uint64 input_count = 2;
+  // will it have a change output or not
+  bool change_required = 3;
 }
 
 message GetFeePerGramStatsRequest {
@@ -2426,4 +2431,11 @@ message EncodedMerkleProof {
   bytes block_hash = 1;
   bytes encoded_proof = 2;
   uint64 leaf_index = 3;
+}
+
+message RescanWalletRequest {
+  uint64 from_height = 1;
+}
+
+message RescanWalletResponse {
 }

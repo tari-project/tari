@@ -7225,7 +7225,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
             num_kernels as usize,
             num_outputs as usize,
         )) {
-        Ok(fee) => fee.into(),
+        Ok((fee, _, _)) => fee.into(),
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             0
@@ -9315,6 +9315,38 @@ pub unsafe extern "C" fn payment_records_get_at(
 pub unsafe extern "C" fn payment_record_destroy(record: *mut TariPaymentRecord) {
     if !record.is_null() {
         drop(Box::from_raw(record));
+    }
+}
+/// Rescan the wallet from the specified height. If height is 0, rescan from birthday.
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_rescan(
+    wallet: *mut TariWallet,
+    from_height: c_ulonglong,
+    error_out: *mut c_int,
+) -> bool {
+    if error_out.is_null() {
+        return false;
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return false;
+    }
+    let result = if from_height == 0 {
+        (*wallet).wallet.db.clear_scanned_blocks()
+    } else {
+        (*wallet).wallet.db.clear_scanned_blocks_from_and_higher(from_height)
+    };
+
+    match result {
+        Ok(_) => true,
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            false
+        },
     }
 }
 /// ------------------------------------------------------------------------------------------ ///

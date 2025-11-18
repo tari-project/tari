@@ -124,6 +124,7 @@ message SidechainBlockHeader {
   bytes command_merkle_root = 9;
   Signature signature = 10;
   bytes metadata_hash = 11;
+  ShardGroupAccumulatedData accumulated_data = 12;
 }
 
 message EvictAtom {
@@ -150,4 +151,9 @@ message ValidatorSignature {
 message ShardGroup {
   uint32 start = 1;
   uint32 end_inclusive = 2;
+}
+
+message ShardGroupAccumulatedData {
+  uint64 total_exhaust_burn_msb = 1;
+  uint64 total_exhaust_burn_lsb = 2;
 }
