@@ -34,40 +34,142 @@ use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::CompressedPublicKey;
 use tari_utilities::hex::{from_hex, Hex};
+
+/// String prefix used when serializing and parsing a `TariKeyId::ViewKey`.
+///
+/// Display/parse form: `"view_key"`
+///
+/// See the `TariKeyId` enum docs for full string encoding rules.
 pub const VIEW_KEY_BRANCH: &str = "view_key";
+/// String prefix used when serializing and parsing a `TariKeyId::SpendKey`.
+///
+/// Display/parse form: `"spend_key"`
 pub const SPEND_KEY_BRANCH: &str = "spend_key";
+/// String prefix for `TariKeyId::Derived` entries.
+///
+/// Display/parse form: `"derived.<path>"` where `<path>` is an opaque string that
+/// may contain dots. For example: `derived.wallet.receive`
 pub const DERIVED_KEY_BRANCH: &str = "derived";
+/// String prefix for the default zero key `TariKeyId::Zero`.
+///
+/// Display/parse form: `"zero"`
 pub const ZERO_KEY_BRANCH: &str = "zero";
+/// String prefix for `TariKeyId::DHCommitmentMask` entries.
+///
+/// Display/parse form: `"dh_commitment_mask.<pubkey_hex>.<private_key_path>"` where
+/// `<pubkey_hex>` is a 32-byte compressed public key encoded as lowercase hex and
+/// `<private_key_path>` is an opaque serialized key string (may contain dots).
 pub const DH_COMMITMENT_MASK_BRANCH: &str = "dh_commitment_mask";
+/// String prefix for `TariKeyId::DHEncryptedData` entries.
+///
+/// Display/parse form: `"dh_encrypted_data.<pubkey_hex>.<private_key_path>"` where
+/// `<pubkey_hex>` is a 32-byte compressed public key encoded as lowercase hex and
+/// `<private_key_path>` is an opaque serialized key string (may contain dots).
 pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
+/// String prefix for `TariKeyId::Encrypted` entries.
+///
+/// Display/parse form: `"encrypted.<ciphertext_hex>.<key_path>"` where
+/// `<ciphertext_hex>` is arbitrary bytes encoded as hex and `<key_path>` is the
+/// underlying key path (may contain dots).
 pub const ENCRYPTED_BRANCH: &str = "encrypted";
+/// String prefix for `TariKeyId::LedgerKey` entries.
+///
+/// Display/parse form: `"ledger_key.<branch>.<index>"` where `<branch>` is a
+/// value supported by `minotari_ledger_wallet_common::common_types::LedgerKeyBranch`
+/// and `<index>` is a non-negative integer.
 pub const LEDGER_KEY_BRANCH: &str = "ledger_key";
+/// String prefix for the code template author identity.
+///
+/// Display/parse form: `"code-template-author"`
 pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+/// Identifiers for different logical key types used by Tari components.
+///
+/// A `TariKeyId` is an enum that captures the purpose and derivation context of a
+/// key in the wallet or node. Each variant has a canonical string representation that
+/// is used for persistence, logging and inter-component communication. The `Display`
+/// and `FromStr` implementations perform a lossless round-trip between the enum and
+/// its string form.
+///
+/// General encoding rules:
+/// - Simple variants with no data render as a single token like `"zero"`, `"view_key"`, `"spend_key"`.
+/// - Variants with associated data render as `"<branch>.<arg1>[.<arg2>...]"`.
+/// - When a variant contains an opaque serialized key path, that path may itself contain dots,
+///   and is therefore captured by taking the remainder of the string after the fixed-length prefix.
+/// - Hex-encoded fields use lowercase hex in `Display` and accept case-insensitive hex in `FromStr`.
+///
+/// See individual variants for details and examples.
 pub enum TariKeyId {
+    /// The deterministic view key used to scan for outputs and decrypt view-related data.
+    ///
+    /// String form: `view_key`
     ViewKey,
+    /// The primary spend key used to authorize spending of funds.
+    ///
+    /// String form: `spend_key`
     SpendKey,
+    /// A key derived from the hash of the private key of the TariKeyId listed.
+    ///
+    /// This allows grouping or namespacing of keys beyond the predefined variants.
+    /// The path can include dots and is serialized as-is after the `derived` branch.
+    ///
+    /// String form: `derived.<path>` (e.g. `derived.wallet.receive`)
     Derived {
+        /// The opaque derived key path/label. May contain dots.
         key: SerializedKeyString,
     },
+    /// Identity used to sign or identify code template authors within Tari DAN.
+    ///
+    /// String form: `code-template-author`
     CodeTemplateAuthor,
     #[default]
+    /// The default or zero key identifier. Often used as a placeholder or for
+    /// deterministic base derivations.
+    ///
+    /// String form: `zero`
     Zero,
+    /// A key identifier used for constructing Diffie-Hellman commitment masks using the public key listed the private key of the TariKeyId listed. The corresponding public shared secret is then hashed using a unique hashing domain to produce the commitment mask.
+    ///
+    /// String form: `dh_commitment_mask.<pubkey_hex>.<private_key_path>`
+    /// - `<pubkey_hex>`: 32-byte compressed public key in hex
+    /// - `<private_key_path>`: opaque serialized key string (may contain dots)
     DHCommitmentMask {
+        /// The other party's compressed public key (hex in the string form).
         public_key: CompressedPublicKey,
+        /// The local private key path used in the DH operation (may contain dots).
         private_key: SerializedKeyString,
     },
+    /// A key identifier used for deriving encrypted data keys using Diffie-Hellman using the public key listed the private key of the TariKeyId listed. The corresponding public shared secret is then hashed using a unique hashing domain to produce the private key.
+    ///
+    /// String form: `dh_encrypted_data.<pubkey_hex>.<private_key_path>`
+    /// - `<pubkey_hex>`: 32-byte compressed public key in hex
+    /// - `<private_key_path>`: opaque serialized key string (may contain dots)
     DHEncryptedData {
+        /// The other party's compressed public key (hex in the string form).
         public_key: CompressedPublicKey,
+        /// The local private key path used in the DH operation (may contain dots).
         private_key: SerializedKeyString,
     },
+    /// A key identifier representing data that is first encrypted, and then linked
+    /// to a base key path. This allows the key id to carry encrypted context.
+    ///
+    /// String form: `encrypted.<ciphertext_hex>.<key_path>`
     Encrypted {
+        /// Arbitrary encrypted bytes, hex-encoded in the string form.
         encrypted: Vec<u8>,
+        /// The underlying key path/label (may contain dots).
         key: SerializedKeyString,
     },
+    /// A key derived from a Ledger hardware wallet branch and index.
+    ///
+    /// String form: `ledger_key.<branch>.<index>`
+    /// where `<branch>` is any `LedgerKeyBranch` variant supported by the Ledger
+    /// app and `<index>` is a non-negative integer.
     LedgerKey {
+        /// The Ledger key branch (account/path family) to derive from.
         branch: LedgerKeyBranch,
+        /// Concrete index within the branch.
         index: u64,
     },
 }
