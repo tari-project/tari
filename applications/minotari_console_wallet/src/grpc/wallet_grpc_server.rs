@@ -2137,18 +2137,32 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
         debug!(target: LOG_TARGET, "coin_histogram: {:?}", message);
 
-        let bucket_ranges = if message.buckets.is_empty() {
-            vec![
-                0..1_000u64,                             // 0 - < 1,000 uT
-                1_000..100_000,                          // 1,000 uT - < 100,000 uT
-                100_000..10_000_000,                     // 100,000 uT - < 10 T
-                10_000_000..1_000_000_000,               // 10 T - < 1,000 T
-                1_000_000_000..100_000_000_000,          // 1,000 T - < 100,000 T
-                100_000_000_000..21_000_000_000_000_000, // 100,000 T - < 21,000,000 T (max supply)
-            ]
+        let bucket_ranges: Result<Vec<_>, Status> = if message.buckets.is_empty() {
+            Ok(vec![
+                0..1_000u64,
+                1_000..100_000,
+                100_000..10_000_000,
+                10_000_000..1_000_000_000,
+                1_000_000_000..100_000_000_000,
+                100_000_000_000..21_000_000_000_000_000,
+            ])
         } else {
-            message.buckets.iter().map(|v| v.lower_bound..v.upper_bound).collect()
+            message
+                .buckets
+                .iter()
+                .map(|v| {
+                    if v.lower_bound * v.upper_bound == 0 || v.lower_bound >= v.upper_bound {
+                        Err(Status::invalid_argument(format!(
+                            "Invalid range: lower_bound..upper_bound {}..{}",
+                            v.lower_bound, v.upper_bound
+                        )))
+                    } else {
+                        Ok(v.lower_bound..v.upper_bound)
+                    }
+                })
+                .collect()
         };
+        let bucket_ranges = bucket_ranges?;
 
         let mut wallet = self.wallet.clone();
 
