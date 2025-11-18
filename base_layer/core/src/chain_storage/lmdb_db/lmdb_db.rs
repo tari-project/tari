@@ -4649,7 +4649,9 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
     vec![]
 }
 
-// This function will read and verify all metadata keys in the metadata db can be read, or delete them otherwise.
+// This function scans all metadata keys in the LMDB metadata database, deserializes their values, and logs their
+// status. If a key is corrupt and not essential, it is deleted. The function helps maintain metadata integrity by
+// cleaning up non-critical corrupt entries.
 fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     let mut corrupt_keys: Vec<Vec<u8>> = Vec::new();
 
@@ -4671,18 +4673,7 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
         let mut row = cursor.first::<[u8], [u8]>(&access).to_opt()?;
 
         while let Some((key_bytes, value_bytes)) = row {
-            // Decode u32 key if it is 4 bytes; else show hex
-            let (raw_key_str, key_name) = if key_bytes.len() == 4 {
-                let mut b = [0u8; 4];
-                b.copy_from_slice(key_bytes);
-                let k = u32::from_ne_bytes(b);
-                let name = num_to_key(k)
-                    .map(|kk| format!("{kk:?}"))
-                    .unwrap_or_else(|| "(unknown)".to_string());
-                (k.to_string(), name)
-            } else {
-                (format!("0x{}", to_hex(key_bytes)), "(unknown)".to_string())
-            };
+            let (raw_key_str, key_name, _metadata_key) = decode_metadata_key_bytes(key_bytes);
 
             match deserialize::<MetadataValue>(value_bytes) {
                 Ok(val) => {
@@ -4714,19 +4705,70 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     if !corrupt_keys.is_empty() {
         let txn = db.write_transaction()?;
         for key in corrupt_keys {
-            error!(target: LOG_TARGET, "Found corrupt metadata entry with key bytes: 0x{}", to_hex(&key));
+            let (raw_key_str, key_name, metadata_key) = decode_metadata_key_bytes(&key);
+            let hex_key = to_hex(&key);
+            error!(
+                target: LOG_TARGET,
+                "Found corrupt metadata entry {raw_key_str}/{key_name}/{metadata_key:?} with key bytes: 0x{hex_key}",
+            );
 
-            if key.as_slice() == MetadataKey::AccumulatedDataRebuildStatus.as_u32().to_be_bytes() ||
-                key.as_slice() == MetadataKey::AccumulatedDataCheckStatus.as_u32().to_be_bytes()
-            {
-                warn!(target: LOG_TARGET, "Removed corrupt metadata entry with key bytes: 0x{}", to_hex(&key));
-                let _unused = lmdb_delete(&txn, &db.metadata_db, key.as_slice(), "metadata_db");
+            match metadata_key {
+                // Essential keys
+                Some(MetadataKey::ChainHeight) |
+                Some(MetadataKey::BestBlock) |
+                Some(MetadataKey::AccumulatedWork) |
+                Some(MetadataKey::PruningHorizon) |
+                Some(MetadataKey::PrunedHeight) |
+                Some(MetadataKey::HorizonData) |
+                Some(MetadataKey::BestBlockTimestamp) |
+                Some(MetadataKey::MigrationVersion) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Manual intervention is required to fix the corrupt essential metadata entry {metadata_key:?}.",
+                    );
+                },
+                // Non-essential keys that can be auto-deleted
+                Some(MetadataKey::PayrefRebuildStatus) |
+                Some(MetadataKey::AccumulatedDataRebuildStatus) |
+                Some(MetadataKey::AccumulatedDataCheckStatus) |
+                Some(MetadataKey::BlockchainConsistencyCheckStatus) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",
+                    );
+                    let _unused = lmdb_delete(&txn, &db.metadata_db, key.as_slice(), "metadata_db");
+                },
+                // Unknown keys that can be auto-deleted
+                None => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Removed corrupt metadata entry {raw_key_str}/{key_name} with key bytes: 0x{hex_key}",
+                    );
+                    let _unused = lmdb_delete(&txn, &db.metadata_db, key.as_slice(), "metadata_db");
+                },
             }
         }
         txn.commit()?;
     }
 
     Ok(())
+}
+
+// Decode u32 key if it is 4 bytes; else show hex
+fn decode_metadata_key_bytes(key_bytes: &[u8]) -> (String, String, Option<MetadataKey>) {
+    let (raw_key_str, key_name, metadata_key) = if key_bytes.len() == 4 {
+        let mut b = [0u8; 4];
+        b.copy_from_slice(key_bytes);
+        let k = u32::from_ne_bytes(b);
+        let metadata_key = num_to_key(k);
+        let name = metadata_key
+            .map(|kk| format!("{kk:?}"))
+            .unwrap_or_else(|| "(unknown)".to_string());
+        (k.to_string(), name, metadata_key)
+    } else {
+        (format!("0x{}", to_hex(key_bytes)), "(unknown)".to_string(), None)
+    };
+    (raw_key_str, key_name, metadata_key)
 }
 
 fn num_to_key(n: u32) -> Option<MetadataKey> {

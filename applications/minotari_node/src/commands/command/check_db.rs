@@ -203,6 +203,7 @@ impl CheckType {
 
 impl CommandContext {
     /// Run the requested check and poll status until it finishes or fails.
+    #[allow(clippy::too_many_lines)]
     pub async fn check_db(&mut self, args: Args) -> Result<(), Error> {
         // Prompt user to confirm using existing status
         let check_types = CheckType::try_from(args.mode)?;
