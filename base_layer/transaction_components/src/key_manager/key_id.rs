@@ -95,8 +95,8 @@ pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 /// General encoding rules:
 /// - Simple variants with no data render as a single token like `"zero"`, `"view_key"`, `"spend_key"`.
 /// - Variants with associated data render as `"<branch>.<arg1>[.<arg2>...]"`.
-/// - When a variant contains an opaque serialized key path, that path may itself contain dots,
-///   and is therefore captured by taking the remainder of the string after the fixed-length prefix.
+/// - When a variant contains an opaque serialized key path, that path may itself contain dots, and is therefore
+///   captured by taking the remainder of the string after the fixed-length prefix.
 /// - Hex-encoded fields use lowercase hex in `Display` and accept case-insensitive hex in `FromStr`.
 ///
 /// See individual variants for details and examples.
@@ -129,7 +129,9 @@ pub enum TariKeyId {
     ///
     /// String form: `zero`
     Zero,
-    /// A key identifier used for constructing Diffie-Hellman commitment masks using the public key listed the private key of the TariKeyId listed. The corresponding public shared secret is then hashed using a unique hashing domain to produce the commitment mask.
+    /// A key identifier used for constructing Diffie-Hellman commitment masks using the public key listed the private
+    /// key of the TariKeyId listed. The corresponding public shared secret is then hashed using a unique hashing
+    /// domain to produce the commitment mask.
     ///
     /// String form: `dh_commitment_mask.<pubkey_hex>.<private_key_path>`
     /// - `<pubkey_hex>`: 32-byte compressed public key in hex
@@ -140,7 +142,9 @@ pub enum TariKeyId {
         /// The local private key path used in the DH operation (may contain dots).
         private_key: SerializedKeyString,
     },
-    /// A key identifier used for deriving encrypted data keys using Diffie-Hellman using the public key listed the private key of the TariKeyId listed. The corresponding public shared secret is then hashed using a unique hashing domain to produce the private key.
+    /// A key identifier used for deriving encrypted data keys using Diffie-Hellman using the public key listed the
+    /// private key of the TariKeyId listed. The corresponding public shared secret is then hashed using a unique
+    /// hashing domain to produce the private key.
     ///
     /// String form: `dh_encrypted_data.<pubkey_hex>.<private_key_path>`
     /// - `<pubkey_hex>`: 32-byte compressed public key in hex

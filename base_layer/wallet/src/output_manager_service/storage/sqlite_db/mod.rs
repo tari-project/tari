@@ -39,7 +39,7 @@ use tari_transaction_components::{
     key_manager::TariKeyId,
     transaction_components::{OutputType, TransactionOutput},
 };
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tokio::time::Instant;
 
 use crate::{
@@ -228,7 +228,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::KnownOneSidedPaymentScripts(
                     known_one_sided_payment_scripts
                         .iter()
-                        .map(|script| script.clone().to_known_one_sided_payment_script())
+                        .map(|script| script.clone().to_known_one_sided_payment_script(key_manager))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -1542,12 +1542,30 @@ impl KnownOneSidedPaymentScriptSql {
     }
 
     /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
-    pub fn to_known_one_sided_payment_script(self) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
+    pub fn to_known_one_sided_payment_script<KM: LegacyTransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
         let script_hash = self.script_hash.clone();
-        let private_key =
-            TariKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: "Could not convert private key to TariKeyId".to_string(),
-            })?;
+
+        let private_key = match TariKeyId::from_str(&self.private_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.private_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create spending key id({}) from stored string ({e})",self.private_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Spending key id({}) could not be converted from string ({e})",
+                            self.private_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
+        };
 
         let script = TariScript::from_bytes(&self.script).map_err(|_| {
             error!(target: LOG_TARGET, "Could not create tari script from stored bytes");
