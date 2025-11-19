@@ -122,7 +122,6 @@ use crate::{
         storage::{database::OutputBackendQuery, models::SpendingPriority, OutputStatus},
         UtxoSelectionCriteria,
     },
-    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
@@ -134,7 +133,6 @@ use crate::{
             TransactionServiceResponse,
         },
         protocols::{
-            check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_validation_protocol::TransactionValidationProtocol,
@@ -167,7 +165,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// recipient
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
-pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface> {
+pub struct TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     request_stream: Option<
@@ -181,23 +179,20 @@ pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKe
     receiver_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
-    wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
-impl<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
-    TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
-    TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
     TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: TransactionServiceConfig,
         db: TransactionDatabase<TBackend>,
-        wallet_db: WalletDatabase<TWalletBackend>,
         request_stream: Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
@@ -261,7 +256,6 @@ where
             active_transaction_broadcast_protocols: HashSet::new(),
             timeout_update_watch,
             base_node_service,
-            wallet_db,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
@@ -302,7 +296,7 @@ where
             tokio::select! {
                 event = output_manager_event_stream.recv() => {
                     match event {
-                        Ok(msg) => self.handle_output_manager_service_event(msg).await,
+                        Ok(msg) => self.handle_output_manager_service_event(msg, &mut transaction_validation_protocol_handles).await,
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {e}"),
                     };
                 }
@@ -1711,23 +1705,22 @@ where
         }
     }
 
-    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
-            let db = self.db.clone();
-            let output_manager_handle = self.resources.output_manager_service.clone();
-            let tip_height = self
-                .wallet_db
-                .get_last_scanned_height()
-                .unwrap_or_default()
-                .unwrap_or_default();
-            let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_detected_transactions(
-                output_manager_handle,
-                db,
-                event_publisher,
-                self.config.clone(),
-                tip_height,
-            ));
+    async fn handle_output_manager_service_event(
+        &mut self,
+        event: Arc<OutputManagerEvent>,
+        transaction_validation_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) {
+        if let OutputManagerEvent::TxoValidationSuccess(tx) = (*event).clone() {
+            debug!(target: LOG_TARGET, "Received txo validation success event for oms: {}, starting output detection", tx);
+            let _operation_id = self
+                .start_transaction_validation_protocol(transaction_validation_join_handles)
+                .await
+                .map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {e:?}");
+                    e
+                });
         }
     }
 
