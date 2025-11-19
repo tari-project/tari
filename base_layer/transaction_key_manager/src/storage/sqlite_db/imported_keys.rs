@@ -26,11 +26,11 @@ use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_transaction_components::key_manager::error::KeyManagerStorageError;
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use zeroize::Zeroize;
 
 use crate::{
+    legacy_key_manager::error::KeyManagerStorageError,
     schema::imported_keys::{private_key, public_key, table, timestamp},
     storage::{
         database::ImportedKey,

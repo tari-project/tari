@@ -34,7 +34,6 @@ pub mod transactions_tab;
 pub use self::component::*;
 pub mod burn_tab;
 pub mod events_component;
-pub mod register_template_tab;
 
 #[derive(PartialEq, Eq)]
 pub enum KeyHandled {

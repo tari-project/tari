@@ -52,12 +52,16 @@ use tari_common::{
 use tari_common_types::{
     seeds::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage},
     types::{CompressedPublicKey, PrivateKey},
-    wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    crypto_factories::CryptoFactories,
+    key_manager::wallet_types::LedgerWallet,
+};
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::{LegacyWalletType, ProvidedKeysWallet};
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
@@ -270,7 +274,7 @@ pub async fn init_wallet(
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
     _non_interactive_mode: bool,
-    wallet_type: Option<WalletType>,
+    wallet_type: Option<LegacyWalletType>,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         config
@@ -336,7 +340,7 @@ pub async fn init_wallet(
     );
 
     if let Some(file_name) = seed_words_file_name {
-        if wallet.db.get_wallet_type()? != Some(WalletType::DerivedKeys) {
+        if wallet.db.get_wallet_type()? != Some(LegacyWalletType::DerivedKeys) {
             return Err(ExitError::new(
                 ExitCode::WalletError,
                 "Cannot export seed words from a Hardware/View_only wallet",
@@ -636,9 +640,9 @@ pub fn prompt_wallet_type(
     non_interactive: bool,
     view_private_key: Option<String>,
     spend_key: Option<String>,
-) -> Option<WalletType> {
+) -> Option<LegacyWalletType> {
     if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey { .. }) {
-        return Some(WalletType::default());
+        return Some(LegacyWalletType::default());
     }
 
     match boot_mode {
@@ -666,7 +670,7 @@ pub fn prompt_wallet_type(
                 prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid")
             };
 
-            Some(WalletType::ProvidedKeys(ProvidedKeysWallet {
+            Some(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
                 view_key,
                 public_spend_key: spend_key,
                 private_spend_key: None,
@@ -692,20 +696,15 @@ pub fn prompt_wallet_type(
                     match ledger_get_public_spend_key(account) {
                         Ok(public_alpha) => match ledger_get_view_key(account) {
                             Ok(view_key) => {
-                                let ledger = LedgerWallet::new(
-                                    account,
-                                    wallet_config.network,
-                                    Some(public_alpha),
-                                    Some(view_key),
-                                );
-                                Some(WalletType::Ledger(ledger))
+                                let ledger = LedgerWallet::new(account, wallet_config.network, public_alpha, view_key);
+                                Some(LegacyWalletType::Ledger(ledger))
                             },
                             Err(e) => panic!("{}", e),
                         },
                         Err(e) => panic!("{}", e),
                     }
                 } else {
-                    Some(WalletType::default())
+                    Some(LegacyWalletType::default())
                 }
             }
         },

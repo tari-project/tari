@@ -599,14 +599,14 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 }
 
 #[when(expr = "I create a transaction {word} spending {word} to {word}")]
-pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
+pub fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos, &mut world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -625,26 +625,20 @@ async fn create_tx_custom_fee_per_gram(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &mut world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
 #[when(expr = "I create a custom locked transaction {word} spending {word} to {word} with lockheight {word}")]
-async fn create_tx_custom_lock(
-    world: &mut TariWorld,
-    transaction: String,
-    inputs: String,
-    output: String,
-    lockheight: u64,
-) {
+fn create_tx_custom_lock(world: &mut TariWorld, transaction: String, inputs: String, output: String, lockheight: u64) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &mut world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -790,7 +784,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         amount,
         fee_per_gram: fee,
         payment_type: 1, // one sided transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -799,6 +793,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -856,7 +851,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         amount,
         fee_per_gram: fee,
         payment_type: 1, // one sided transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "One sided transfer amount {} from {} to {}",
                 amount,
@@ -865,6 +860,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -969,7 +965,7 @@ async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // mimblewimble transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "Transfer amount {} from {} to {} as fee {}",
                 amount,
@@ -979,6 +975,7 @@ async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -1086,7 +1083,7 @@ async fn send_many_interactive_amount_from_wallet_to_wallet_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // mimblewimble transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "Transfer amount {} from {} to {} as fee {}",
                 amount,
@@ -1096,6 +1093,7 @@ async fn send_many_interactive_amount_from_wallet_to_wallet_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -1630,7 +1628,7 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
             amount,
             fee_per_gram,
             payment_type: 1, // one sided transaction
-            raw_payment_id: MemoField::open_from_string(
+            raw_payment_id: MemoField::new_open_from_string(
                 &format!(
                     "transfer amount {} from {} to {}",
                     amount,
@@ -1639,6 +1637,7 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
                 ),
                 TxType::PaymentToOther,
             )
+            .unwrap()
             .to_bytes(),
             user_payment_id: None,
         };
@@ -1810,7 +1809,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
         fee_per_gram: 10,               // as in the js cucumber tests
         payment_type: 1,                // one sided transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1819,6 +1818,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -2024,7 +2024,7 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
         amount,
         fee_per_gram,
         payment_type: 1, // one sided transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -2033,6 +2033,7 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -2042,7 +2043,7 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
         amount,
         fee_per_gram,
         payment_type: 1, // one sided transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -2051,6 +2052,7 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -2174,10 +2176,11 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!("transfer amount {} from {} to self", amount, sender.as_str()),
             TxType::PaymentToSelf,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -2267,7 +2270,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "Atomic Swap from {} to {} with amount {} at fee {}",
                 sender.as_str(),
@@ -2277,6 +2280,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -2540,7 +2544,7 @@ async fn send_one_sided_stealth_transaction(
         amount,
         fee_per_gram,
         payment_type: 2, // one sided stealth transaction
-        raw_payment_id: MemoField::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "One sided stealth transfer amount {} from {} to {}",
                 amount,
@@ -2549,6 +2553,7 @@ async fn send_one_sided_stealth_transaction(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
         user_payment_id: None,
     };
@@ -2751,10 +2756,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: MemoField::open_from_string(
+        payment_id: MemoField::new_open_from_string(
             &format!("I import {wallet_a} unspent outputs to {wallet_b}"),
             TxType::ImportedUtxoNoneRewindable,
         )
+        .unwrap()
         .to_bytes(),
     };
 
@@ -2880,10 +2886,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: MemoField::open_from_string(
+        payment_id: MemoField::new_open_from_string(
             &format!("I import {wallet_a} spent outputs to {wallet_b}"),
             TxType::ImportedUtxoNoneRewindable,
         )
+        .unwrap()
         .to_bytes(),
     };
 
@@ -3008,10 +3015,11 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: MemoField::open_from_string(
+        payment_id: MemoField::new_open_from_string(
             &format!("I import {wallet_a} unspent outputs as pre_mine outputs to {wallet_b}"),
             TxType::ImportedUtxoNoneRewindable,
         )
+        .unwrap()
         .to_bytes(),
     };
 
@@ -3074,7 +3082,7 @@ async fn multi_send_txs_from_wallet(
             amount,
             fee_per_gram,
             payment_type: 1, // one sided transaction
-            raw_payment_id: MemoField::open_from_string(
+            raw_payment_id: MemoField::new_open_from_string(
                 &format!(
                     "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
                     amount,
@@ -3084,6 +3092,7 @@ async fn multi_send_txs_from_wallet(
                 ),
                 TxType::PaymentToOther,
             )
+            .unwrap()
             .to_bytes(),
             user_payment_id: None,
         };
@@ -3262,7 +3271,9 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
         fee_per_gram: fee,
         claim_public_key: identity.public_key,
         sidechain_deployment_key: vec![],
-        payment_id: MemoField::open_from_string("Burning some tari", TxType::Burn).to_bytes(),
+        payment_id: MemoField::new_open_from_string("Burning some tari", TxType::Burn)
+            .unwrap()
+            .to_bytes(),
     };
 
     let result = client.create_burn_transaction(req).await.unwrap();

@@ -35,6 +35,7 @@ use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_wallet::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
@@ -57,7 +58,6 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     emoji::EmojiId,
     epoch::VnEpoch,
-    key_branches::TransactionKeyManagerBranch,
     seeds::{cipher_seed::CipherSeed, seed_words::SeedWords},
     tari_address::TariAddress,
     transaction::TxId,
@@ -68,18 +68,16 @@ use tari_common_types::{
         FixedHash,
         HashOutput,
         PrivateKey,
-        UncompressedPublicKey,
         UncompressedSignature,
     },
-    wallet_types::WalletType,
 };
 use tari_core::blocks::pre_mine::get_pre_mine_items;
-use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{wallet_types::WalletType, TariKeyId, TransactionKeyManagerInterface},
     multisig::script::is_multisig_utxo,
     offline_signing::models::{
         PrepareDepositMultisigTransactionResult,
@@ -92,7 +90,7 @@ use tari_transaction_components::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::shared_secret_to_output_encryption_key,
+        one_sided::public_key_to_output_encryption_key,
         EncryptedData,
         OutputFeatures,
         Transaction,
@@ -105,6 +103,7 @@ use tari_transaction_components::{
         WalletOutput,
     },
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -823,17 +822,24 @@ pub async fn command_runner(
                 };
                 let commitment = embedded_output.commitment.clone();
                 let output_hash = embedded_output.hash();
+                let memo = match MemoField::new_open_from_string(
+                    &args.payment_id,
+                    detect_tx_metadata(&wallet, &args.recipient_address).await,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("\nError: Could not create memo field from payment id string: {e}\n");
+                        break;
+                    },
+                };
 
                 match spend_backup_pre_mine_utxo(
                     transaction_service.clone(),
                     args.fee_per_gram,
                     output_hash,
                     commitment.clone(),
-                    args.recipient_address.clone(),
-                    MemoField::open_from_string(
-                        &args.payment_id,
-                        detect_tx_metadata(&wallet, args.recipient_address).await,
-                    ),
+                    args.recipient_address,
+                    memo,
                 )
                 .await
                 {
@@ -922,38 +928,33 @@ pub async fn command_runner(
                         };
                     let commitment = embedded_output.commitment.clone();
 
-                    let script_nonce_key = key_manager_service.get_random_key().await?;
-                    let sender_offset_key = key_manager_service.get_random_key().await?;
-                    let sender_offset_nonce = key_manager_service.get_random_key().await?;
-                    let shared_secret = key_manager_service
-                        .get_diffie_hellman_shared_secret(
-                            &sender_offset_key.key_id,
-                            recipient_info
-                                .recipient_address
-                                .public_view_key()
-                                .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
-                        )
-                        .await?;
+                    let script_nonce_key = key_manager_service.get_random_key(None, true)?;
+                    let sender_offset_key = key_manager_service.get_random_key(None, true)?;
+                    let sender_offset_nonce = key_manager_service.get_random_key(None, true)?;
+                    let shared_secret = key_manager_service.get_diffie_hellman_shared_secret(
+                        &sender_offset_key.key_id,
+                        recipient_info
+                            .recipient_address
+                            .public_view_key()
+                            .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
+                    )?;
                     let shared_secret_public_key = CompressedPublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
 
-                    let pre_mine_script_key_id = TariKeyId::Managed {
-                        branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+                    let pre_mine_script_key_id = TariKeyId::LedgerKey {
+                        branch: LedgerKeyBranch::PreMine,
                         index: output_index as u64,
                     };
-                    let pre_mine_public_script_key = match key_manager_service
-                        .get_public_key_at_key_id(&pre_mine_script_key_id)
-                        .await
-                    {
-                        Ok(key) => key,
-                        Err(e) => {
-                            eprintln!("\nError: Could not retrieve script key for output {output_index}: {e}\n");
-                            error = true;
-                            break;
-                        },
-                    };
-                    let script_input_signature = key_manager_service
-                        .sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())
-                        .await?;
+                    let pre_mine_public_script_key =
+                        match key_manager_service.get_public_key_at_key_id(&pre_mine_script_key_id) {
+                            Ok(key) => key,
+                            Err(e) => {
+                                eprintln!("\nError: Could not retrieve script key for output {output_index}: {e}\n");
+                                error = true;
+                                break;
+                            },
+                        };
+                    let script_input_signature =
+                        key_manager_service.sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())?;
 
                     outputs_for_leader.push(Step2OutputsForLeader {
                         output_index,
@@ -1173,6 +1174,16 @@ pub async fn command_runner(
                                 break;
                             },
                         };
+                    let memo = match MemoField::new_open_from_string(
+                        &args.payment_id,
+                        detect_tx_metadata(&wallet, &current_recipient_address).await,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("\nError: Could not create memo field from payment id string: {e}\n");
+                            break;
+                        },
+                    };
 
                     match encumber_aggregate_utxo(
                         transaction_service.clone(),
@@ -1187,17 +1198,14 @@ pub async fn command_runner(
                         sender_offset_public_key_shares,
                         metadata_ephemeral_public_key_shares,
                         dh_shared_secret_shares,
-                        current_recipient_address.clone(),
+                        current_recipient_address,
                         original_maturity,
                         if pre_mine_from_file.is_some() {
                             UseOutput::AsProvided(Box::new(embedded_output))
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
-                        MemoField::open_from_string(
-                            &args.payment_id,
-                            detect_tx_metadata(&wallet, current_recipient_address).await,
-                        ),
+                        memo,
                     )
                     .await
                     {
@@ -1409,7 +1417,7 @@ pub async fn command_runner(
 
                     // Script signature
                     let challenge = TransactionInput::build_script_signature_challenge(
-                        &TransactionInputVersion::get_current_version(),
+                        TransactionInputVersion::get_current_version(),
                         &leader_info.script_signature_ephemeral_commitment,
                         &leader_info.script_signature_ephemeral_pubkey,
                         &leader_info.input_script,
@@ -1418,14 +1426,11 @@ pub async fn command_runner(
                         &embedded_output.commitment,
                     );
 
-                    let script_signature = match key_manager_service
-                        .sign_with_nonce_and_challenge(
-                            &party_info.pre_mine_script_key_id,
-                            &party_info.script_nonce_key_id,
-                            &challenge,
-                        )
-                        .await
-                    {
+                    let script_signature = match key_manager_service.sign_with_nonce_and_challenge(
+                        &party_info.pre_mine_script_key_id,
+                        &party_info.script_nonce_key_id,
+                        &challenge,
+                    ) {
                         Ok(signature) => signature,
                         Err(e) => {
                             eprintln!("\nError: Script signature SignMessage error! {e}\n");
@@ -1435,18 +1440,17 @@ pub async fn command_runner(
                     };
 
                     // lets verify the script
-                    let shared_secret = match DiffieHellmanSharedSecret::<UncompressedPublicKey>::from_canonical_bytes(
-                        leader_info.shared_secret.as_bytes(),
-                    ) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("\nError: Could not create shared secret from canonical bytes! {e}\n");
-                            error = true;
-                            break;
-                        },
-                    };
+                    let shared_secret =
+                        match CompressedPublicKey::from_canonical_bytes(leader_info.shared_secret.as_bytes()) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("\nError: Could not create public key from canonical bytes! {e}\n");
+                                error = true;
+                                break;
+                            },
+                        };
 
-                    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                    let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     let (committed_value, commitment_mask_private_key, _payment_id) = match EncryptedData::decrypt_data(
                         &encryption_key,
                         &leader_info.output_commitment,
@@ -1459,17 +1463,13 @@ pub async fn command_runner(
                             break;
                         },
                     };
-                    let commitment_mask_key_id = &key_manager_service
-                        .import_key(commitment_mask_private_key.clone(), None)
-                        .await?;
-                    match key_manager_service
-                        .verify_mask(
-                            &leader_info.output_commitment,
-                            commitment_mask_key_id,
-                            committed_value.as_u64(),
-                        )
-                        .await
-                    {
+                    let commitment_mask_key_id =
+                        &key_manager_service.create_encrypted_key(commitment_mask_private_key.clone(), None)?;
+                    match key_manager_service.verify_mask(
+                        &leader_info.output_commitment,
+                        commitment_mask_key_id,
+                        committed_value.as_u64(),
+                    ) {
                         Ok(_) => {},
                         Err(e) => {
                             eprintln!("\nError: Could not verify mask! {e}\n");
@@ -1478,23 +1478,19 @@ pub async fn command_runner(
                         },
                     }
                     // now lets calculate the script with stealth key
-                    let script_spending_key = key_manager_service
-                        .stealth_address_script_spending_key(
-                            commitment_mask_key_id,
-                            party_info.recipient_address.public_spend_key(),
-                        )
-                        .await?;
+                    let script_spending_key = key_manager_service.stealth_address_script_spending_key(
+                        commitment_mask_key_id,
+                        party_info.recipient_address.public_spend_key(),
+                    )?;
                     let script = push_pubkey_script(&script_spending_key);
 
                     // Metadata signature
-                    let script_offset = key_manager_service
-                        .get_script_offset(
-                            std::slice::from_ref(&party_info.pre_mine_script_key_id),
-                            std::slice::from_ref(&party_info.sender_offset_key_id),
-                        )
-                        .await?;
+                    let script_offset = key_manager_service.get_script_offset(
+                        std::slice::from_ref(&party_info.pre_mine_script_key_id),
+                        std::slice::from_ref(&party_info.sender_offset_key_id),
+                    )?;
                     let challenge = TransactionOutput::build_metadata_signature_challenge(
-                        &TransactionOutputVersion::get_current_version(),
+                        TransactionOutputVersion::get_current_version(),
                         &script,
                         &leader_info.output_features,
                         &leader_info.sender_offset_pubkey,
@@ -1506,14 +1502,11 @@ pub async fn command_runner(
                         MicroMinotari::zero(),
                     );
 
-                    let metadata_signature = match key_manager_service
-                        .sign_with_nonce_and_challenge(
-                            &party_info.sender_offset_key_id,
-                            &party_info.sender_offset_nonce_key_id,
-                            &challenge,
-                        )
-                        .await
-                    {
+                    let metadata_signature = match key_manager_service.sign_with_nonce_and_challenge(
+                        &party_info.sender_offset_key_id,
+                        &party_info.sender_offset_nonce_key_id,
+                        &challenge,
+                    ) {
                         Ok(signature) => signature,
                         Err(e) => {
                             eprintln!("\nError: Metadata signature SignMessage error! {e}\n");
@@ -1714,13 +1707,26 @@ pub async fn command_runner(
                 println!();
             },
             SendOneSidedToStealthAddress(args) => {
+                let memo = match MemoField::new_open_from_string(
+                    &args.payment_id,
+                    detect_tx_metadata(&wallet, &args.destination).await,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "SendOneSidedToStealthAddress error! Could not create memo field from payment id string: \
+                             {e}"
+                        );
+                        continue;
+                    },
+                };
                 match send_one_sided_to_stealth_address(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
-                    args.destination.clone(),
-                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    args.destination,
+                    memo,
                 )
                 .await
                 {
@@ -1737,6 +1743,16 @@ pub async fn command_runner(
             },
             MakeItRain(args) => {
                 let transaction_type = args.transaction_type();
+                let memo = match MemoField::new_open_from_string(
+                    &args.payment_id,
+                    detect_tx_metadata(&wallet, &args.destination).await,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("MakeItRain error! Could not create memo field from payment id string: {e}");
+                        continue;
+                    },
+                };
                 if let Err(e) = make_it_rain(
                     transaction_service.clone(),
                     config.fee_per_gram,
@@ -1745,9 +1761,9 @@ pub async fn command_runner(
                     args.start_amount,
                     args.increase_amount,
                     args.start_time.unwrap_or_else(Utc::now),
-                    args.destination.clone(),
+                    args.destination,
                     transaction_type,
-                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    memo,
                 )
                 .await
                 {
@@ -1755,11 +1771,18 @@ pub async fn command_runner(
                 }
             },
             CoinSplit(args) => {
+                let memo = match MemoField::new_open_from_string(&args.payment_id, TxType::CoinSplit) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("CoinSplit error! Could not create memo field from payment id string: {e}");
+                        continue;
+                    },
+                };
                 match coin_split(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    MemoField::open_from_string(&args.payment_id, TxType::CoinSplit),
+                    memo,
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -1786,8 +1809,7 @@ pub async fn command_runner(
                         Vec::with_capacity(utxos.len());
                     for output in utxos {
                         let unblinded =
-                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
-                                .await?;
+                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)?;
                         unblinded_utxos.push((unblinded, output.commitment));
                     }
                     let count = unblinded_utxos.len();
@@ -1858,8 +1880,7 @@ pub async fn command_runner(
                         Vec::with_capacity(utxos.len());
                     for output in utxos {
                         let unblinded =
-                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
-                                .await?;
+                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)?;
                         unblinded_utxos.push((unblinded, output.commitment));
                     }
                     let count = unblinded_utxos.len();
@@ -1916,13 +1937,20 @@ pub async fn command_runner(
                 Err(e) => eprintln!("CountUtxos error! {e}"),
             },
             InitShaAtomicSwap(args) => {
+                let memo = match MemoField::new_open_from_string(&args.payment_id, TxType::ClaimAtomicSwap) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("CoinSplit error! Could not create memo field from payment id string: {e}");
+                        continue;
+                    },
+                };
                 match init_sha_atomic_swap(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    MemoField::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
+                    memo,
                 )
                 .await
                 {
@@ -1938,6 +1966,15 @@ pub async fn command_runner(
                 }
             },
             FinaliseShaAtomicSwap(args) => {
+                let memo = match MemoField::new_open_from_string(&args.payment_id, TxType::ClaimAtomicSwap) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "FinaliseShaAtomicSwap error! Could not create memo field from payment id string: {e}"
+                        );
+                        continue;
+                    },
+                };
                 match args.output_hash.first().expect("Already checked").clone().try_into() {
                     Ok(hash) => {
                         match finalise_sha_atomic_swap(
@@ -1946,7 +1983,7 @@ pub async fn command_runner(
                             hash,
                             args.pre_image.into(),
                             config.fee_per_gram.into(),
-                            MemoField::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
+                            memo,
                         )
                         .await
                         {
@@ -1961,6 +1998,15 @@ pub async fn command_runner(
                 }
             },
             ClaimShaAtomicSwapRefund(args) => {
+                let memo = match MemoField::new_open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "ClaimShaAtomicSwapRefund error! Could not create memo field from payment id string: {e}"
+                        );
+                        continue;
+                    },
+                };
                 match args.output_hash.first().expect("Already checked").clone().try_into() {
                     Ok(hash) => {
                         match claim_htlc_refund(
@@ -1968,7 +2014,7 @@ pub async fn command_runner(
                             transaction_service.clone(),
                             hash,
                             config.fee_per_gram.into(),
-                            MemoField::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
+                            memo,
                         )
                         .await
                         {
@@ -1983,6 +2029,15 @@ pub async fn command_runner(
                 }
             },
             RegisterValidatorNode(args) => {
+                let memo = match MemoField::new_open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "RegisterValidatorNode error! Could not create memo field from payment id string: {e}"
+                        );
+                        continue;
+                    },
+                };
                 let tx_id = register_validator_node(
                     args.amount,
                     transaction_service.clone(),
@@ -2002,7 +2057,7 @@ pub async fn command_runner(
                     args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    MemoField::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
+                    memo,
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {tx_id}");
@@ -2111,10 +2166,10 @@ pub async fn command_runner(
                 }
             },
             ExportViewKeyAndSpendKey(args) => {
-                let view_key = wallet.key_manager_service.get_view_key().await?;
-                let spend_key = wallet.key_manager_service.get_spend_key().await?;
+                let view_key = wallet.key_manager_service.get_view_key();
+                let spend_key = wallet.key_manager_service.get_spend_key();
                 let view_key_hex = view_key.pub_key.to_hex();
-                let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
+                let private_view_key_hex = wallet.key_manager_service.get_private_view_key().to_hex();
                 let spend_key_hex = spend_key.pub_key.to_hex();
                 let output_file = args.output_file;
                 let birthday = wallet.db.get_wallet_birthday()?;
@@ -2177,7 +2232,7 @@ pub async fn command_runner(
                         },
                     };
 
-                    let wallet_type = WalletType::DerivedKeys;
+                    let wallet_type = LegacyWalletType::DerivedKeys;
                     let password = SafePassword::from("password".to_string());
                     let shutdown = Shutdown::new();
                     let shutdown_signal = shutdown.to_signal();
@@ -2240,7 +2295,6 @@ pub async fn command_runner(
                         .scrape_wallet(
                             wallet
                                 .get_wallet_one_sided_address()
-                                .await
                                 .map_err(|e| CommandError::General(e.to_string()))?,
                             config.fee_per_gram * uT,
                         )
@@ -2469,18 +2523,29 @@ pub async fn command_runner(
                 }
             },
             PrepareOneSidedTransactionForSigning(args) => {
-                let destination = args.destination.clone();
-                let payment_id =
-                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await);
+                let memo = match MemoField::new_open_from_string(
+                    &args.payment_id,
+                    detect_tx_metadata(&wallet, &args.destination).await,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "PrepareOneSidedTransactionForSigning error! Could not create memo field from payment id \
+                             string: {e}"
+                        );
+                        continue;
+                    },
+                };
+
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
                     .prepare_one_sided_transaction_for_signing(
-                        destination,
+                        args.destination,
                         args.amount,
                         UtxoSelectionCriteria::default(),
                         OutputFeatures::default(),
                         config.fee_per_gram * uT,
-                        payment_id,
+                        memo,
                     )
                     .await
                     .map_err(CommandError::TransactionServiceError);
@@ -2682,9 +2747,7 @@ pub async fn command_runner(
                 commitment_bytes.clone_from_slice(&msg_bytes);
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
 
-                let signature = key_manager_service
-                    .sign_message_with_spend_key(&commitment_bytes, sender_offset)
-                    .await?;
+                let signature = key_manager_service.sign_message_with_spend_key(&commitment_bytes, sender_offset)?;
 
                 if let Some(file) = args.output_file {
                     if let Some(parent) = file.parent() {
@@ -2710,9 +2773,8 @@ pub async fn command_runner(
                 commitment_bytes.clone_from_slice(&msg_bytes);
 
                 let sender_offset = args.sender_offset_key.as_ref().map(|pk| &pk.0);
-                let signature = key_manager_service
-                    .sign_script_message_with_spend_key(&commitment_bytes, sender_offset)
-                    .await?;
+                let signature =
+                    key_manager_service.sign_script_message_with_spend_key(&commitment_bytes, sender_offset)?;
 
                 if let Some(file) = args.output_file {
                     if let Some(parent) = file.parent() {
@@ -2782,15 +2844,15 @@ pub async fn command_runner(
     Ok(unban_peer_manager_peers)
 }
 
-async fn detect_tx_metadata(wallet: &WalletSqlite, destination: TariAddress) -> TxType {
-    if let Ok(interactive_address) = wallet.get_wallet_interactive_address().await {
-        if let Ok(one_sided_address) = wallet.get_wallet_one_sided_address().await {
-            if destination == interactive_address || destination == one_sided_address {
+async fn detect_tx_metadata(wallet: &WalletSqlite, destination: &TariAddress) -> TxType {
+    if let Ok(interactive_address) = wallet.get_wallet_interactive_address() {
+        if let Ok(one_sided_address) = wallet.get_wallet_one_sided_address() {
+            if *destination == interactive_address || *destination == one_sided_address {
                 TxType::PaymentToSelf
             } else {
                 TxType::PaymentToOther
             }
-        } else if destination == interactive_address {
+        } else if *destination == interactive_address {
             TxType::PaymentToSelf
         } else {
             TxType::PaymentToOther

@@ -9,3 +9,4 @@ license.workspace = true
 
 [dependencies]
 bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }
+serde = { version = "1",  default-features = false, features = ["derive"] }

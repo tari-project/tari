@@ -26,16 +26,12 @@ use std::{
 };
 
 use log::*;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    seeds::cipher_seed::CipherSeed,
-    types::CompressedCommitment,
-    wallet_types::WalletType,
-};
+use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::CipherSeed, types::CompressedCommitment};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::SafePassword;
 
 use crate::{
@@ -132,7 +128,7 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
-    WalletType(Box<WalletType>),
+    WalletType(Box<LegacyWalletType>),
 }
 
 #[derive(Clone)]
@@ -144,7 +140,7 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
-    WalletType(Box<WalletType>),
+    WalletType(Box<LegacyWalletType>),
 }
 
 pub enum WriteOperation {
@@ -356,7 +352,7 @@ where T: WalletBackend + 'static
         self.db.delete_burn_proof(id)
     }
 
-    pub fn get_wallet_type(&self) -> Result<Option<WalletType>, WalletStorageError> {
+    pub fn get_wallet_type(&self) -> Result<Option<LegacyWalletType>, WalletStorageError> {
         match self.db.fetch(&DbKey::WalletType) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::WalletType(k))) => Ok(Some(*k)),
@@ -365,7 +361,7 @@ where T: WalletBackend + 'static
         }
     }
 
-    pub fn set_wallet_type(&self, wallet_type: WalletType) -> Result<(), WalletStorageError> {
+    pub fn set_wallet_type(&self, wallet_type: LegacyWalletType) -> Result<(), WalletStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::WalletType(Box::new(
                 wallet_type,
@@ -441,7 +437,7 @@ mod test {
 
         // Test wallet settings
         assert!(db.get_master_seed().unwrap().is_none());
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         db.set_master_seed(seed.clone()).unwrap();
         let stored_seed = db.get_master_seed().unwrap().unwrap();
         assert_eq!(seed, stored_seed);

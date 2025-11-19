@@ -25,7 +25,7 @@ pub mod error;
 pub mod handle;
 
 mod input_selection;
-pub use input_selection::{UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
+pub use input_selection::{RangeLimit, UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
 
 mod recovery;
 pub mod resources;
@@ -47,8 +47,9 @@ use tari_service_framework::{
 use tari_transaction_components::{
     consensus::NetworkConsensus,
     crypto_factories::CryptoFactories,
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    key_manager::SecretTransactionKeyManagerInterface,
 };
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -67,6 +68,9 @@ use crate::{
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
 /// that a single comms message can hold.
 pub const TRANSACTION_INPUTS_LIMIT: u32 = 4000;
+/// The maximum number of transaction outputs that can be created in a single transaction, which must be comfortably
+/// less than what can fit into one block.
+pub const TRANSACTION_OUTPUTS_LIMIT: usize = 500;
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
 pub struct OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
@@ -108,7 +112,7 @@ impl<T, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
     for OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {

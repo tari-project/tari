@@ -30,7 +30,6 @@ use tari_common_types::{
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
-    key_manager::TariKeyId,
     tari_amount::*,
     transaction_components::{
         covenants::Covenant,
@@ -43,6 +42,7 @@ use tari_transaction_components::{
         WalletOutput,
     },
 };
+use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
 
 use crate::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
 
@@ -50,8 +50,8 @@ use crate::legacy_transaction_protocol::{TransactionMetadata, TransactionProtoco
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LegacyOutputPair {
     pub output: WalletOutput,
-    pub kernel_nonce: TariKeyId,
-    pub sender_offset_key_id: Option<TariKeyId>,
+    pub kernel_nonce: LegacyTariKeyId,
+    pub sender_offset_key_id: Option<LegacyTariKeyId>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -59,10 +59,10 @@ pub(super) struct RecipientDetails {
     pub amount: MicroMinotari,
     pub recipient_output_features: OutputFeatures,
     pub recipient_script: TariScript,
-    pub recipient_sender_offset_key_id: TariKeyId,
+    pub recipient_sender_offset_key_id: LegacyTariKeyId,
     pub recipient_covenant: Covenant,
     pub recipient_minimum_value_promise: MicroMinotari,
-    pub recipient_ephemeral_public_key_nonce: TariKeyId,
+    pub recipient_ephemeral_public_key_nonce: LegacyTariKeyId,
     pub recipient_address: TariAddress,
 }
 
@@ -373,7 +373,7 @@ impl SenderTransactionProtocol {
     }
 
     /// This function will return the script offset private keys for a single recipient
-    pub fn get_recipient_sender_offset_private_key(&self) -> Result<Option<TariKeyId>, TPE> {
+    pub fn get_recipient_sender_offset_private_key(&self) -> Result<Option<LegacyTariKeyId>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
@@ -388,7 +388,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn change_recipient_sender_offset_private_key(&mut self, key_id: TariKeyId) -> Result<(), TPE> {
+    pub fn change_recipient_sender_offset_private_key(&mut self, key_id: LegacyTariKeyId) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::Initializing(ref mut info) |
             SenderState::Finalizing(ref mut info) |

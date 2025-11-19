@@ -38,7 +38,6 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     burn_proof::BurnClaimProof,
     epoch::VnEpoch,
-    key_branches::TransactionKeyManagerBranch,
     payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
@@ -53,7 +52,6 @@ use tari_common_types::{
         PrivateKey,
         UncompressedPublicKey,
     },
-    wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_crypto::{
@@ -78,13 +76,13 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
         BuildInfo,
         CodeTemplateRegistration,
         EncryptedData,
@@ -103,6 +101,10 @@ use tari_transaction_components::{
     TransactionBuilder,
     TransactionBuilderError,
 };
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::{FeeType, LegacyWalletType},
+    LegacyTransactionKeyManagerInterface,
+};
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc::Sender, oneshot, Mutex},
@@ -120,7 +122,6 @@ use crate::{
         storage::{database::OutputBackendQuery, models::SpendingPriority, OutputStatus},
         UtxoSelectionCriteria,
     },
-    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
@@ -132,7 +133,6 @@ use crate::{
             TransactionServiceResponse,
         },
         protocols::{
-            check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_validation_protocol::TransactionValidationProtocol,
@@ -165,7 +165,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// recipient
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
-pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface> {
+pub struct TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     request_stream: Option<
@@ -179,23 +179,20 @@ pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKe
     receiver_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
-    wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
-impl<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
-    TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
-    TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: TransactionServiceConfig,
         db: TransactionDatabase<TBackend>,
-        wallet_db: WalletDatabase<TWalletBackend>,
         request_stream: Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
@@ -210,19 +207,13 @@ where
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
-        wallet_type: Arc<WalletType>,
+        wallet_type: Arc<LegacyWalletType>,
         utxo_scanner_handle: UtxoScannerHandle,
     ) -> Result<Self, TransactionServiceError> {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
-        let view_key = core_key_manager_service.get_view_key().await?;
-        let spend_key = core_key_manager_service.get_spend_key().await?;
-        let comms_key = core_key_manager_service.get_comms_key().await?;
-        let interactive_features = if spend_key == comms_key {
-            TariAddressFeatures::create_interactive_and_one_sided()
-        } else {
-            TariAddressFeatures::create_one_sided_only()
-        };
+        let view_key = core_key_manager_service.get_view_key();
+        let spend_key = core_key_manager_service.get_spend_key();
         let one_sided_tari_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
             spend_key.pub_key.clone(),
@@ -230,15 +221,12 @@ where
             TariAddressFeatures::create_one_sided_only(),
             None,
         )?;
-        let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)?;
         let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service,
             transaction_key_manager_service: core_key_manager_service,
             connectivity,
             event_publisher: event_publisher.clone(),
-            interactive_tari_address,
             one_sided_tari_address,
             node_identity: node_identity.clone(),
             factories,
@@ -268,7 +256,6 @@ where
             active_transaction_broadcast_protocols: HashSet::new(),
             timeout_update_watch,
             base_node_service,
-            wallet_db,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
@@ -309,7 +296,7 @@ where
             tokio::select! {
                 event = output_manager_event_stream.recv() => {
                     match event {
-                        Ok(msg) => self.handle_output_manager_service_event(msg).await,
+                        Ok(msg) => self.handle_output_manager_service_event(msg, &mut transaction_validation_protocol_handles).await,
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {e}"),
                     };
                 }
@@ -418,6 +405,12 @@ where
                 mut payment_id,
             } => {
                 async {
+                    if selection_criteria.range_limit.is_some() {
+                        return Err(TransactionServiceError::RangeLimitError {
+                            reason: "Range limit coin-join cannot be set for ons-sided signing transactions"
+                                .to_string(),
+                        });
+                    }
                     self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
                     debug!(target: LOG_TARGET, "Locking one sided transaction to {destination} with {amount}");
                     let temp_tx_id = TxId::new_random();
@@ -430,7 +423,8 @@ where
                             payment_id, destination.get_memo_field_payment_id_bytes()
                         );
                         payment_id =
-                            MemoField::open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+                            MemoField::new_open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
                     }
 
                     // Prepare sender part of the transaction
@@ -457,9 +451,7 @@ where
                             self.resources.one_sided_tari_address.clone(),
                             true,
                             fee,
-                            if destination == self.resources.one_sided_tari_address ||
-                                destination == self.resources.interactive_tari_address
-                            {
+                            if destination == self.resources.one_sided_tari_address {
                                 Some(TxType::PaymentToSelf)
                             } else {
                                 Some(TxType::PaymentToOther)
@@ -469,16 +461,14 @@ where
 
                     let mut offline_signing =
                         OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                    let res = offline_signing
-                        .prepare_one_sided_transaction_for_signing(
-                            tx_builder,
-                            destination,
-                            amount,
-                            *output_features,
-                            payment_id,
-                            self.resources.one_sided_tari_address.clone(),
-                        )
-                        .await?;
+                    let res = offline_signing.prepare_one_sided_transaction_for_signing(
+                        tx_builder,
+                        destination,
+                        amount,
+                        *output_features,
+                        payment_id,
+                        self.resources.one_sided_tari_address.clone(),
+                    )?;
 
                     self.resources
                         .output_manager_service
@@ -529,18 +519,16 @@ where
                     )
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
 
-                    let response = offline_signing
-                        .prepare_deposit_multisig_transaction(
-                            tx_builder,
-                            request.amount,
-                            payment_id,
-                            output_features,
-                            request.party_number,
-                            request.public_keys,
-                            self.resources.one_sided_tari_address.clone(),
-                            request.recipient_address,
-                        )
-                        .await?;
+                    let response = offline_signing.prepare_deposit_multisig_transaction(
+                        tx_builder,
+                        request.amount,
+                        payment_id,
+                        output_features,
+                        request.party_number,
+                        request.public_keys,
+                        self.resources.one_sided_tari_address.clone(),
+                        request.recipient_address,
+                    )?;
 
                     self.resources
                         .output_manager_service
@@ -612,8 +600,7 @@ where
                         consensus_constants.clone(),
                         self.resources.transaction_key_manager_service.clone(),
                         self.resources.network,
-                    )
-                    .await?;
+                    )?;
 
                     let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
                     let script = push_pubkey_script(&Default::default());
@@ -646,7 +633,7 @@ where
                         .checked_sub(fee)
                         .ok_or(TransactionServiceError::Other("Amount too small to cover fee".into()))?;
 
-                    tx_builder.with_input(input_wallet_output).await?;
+                    tx_builder.with_input(input_wallet_output)?;
                     tx_builder.with_fee_per_gram(fee_per_gram);
                     tx_builder.with_lock_height(0);
 
@@ -659,16 +646,14 @@ where
                     )
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
 
-                    let response = offline_signing
-                        .prepare_withdraw_multisig_transaction(
-                            tx_builder,
-                            total_amount,
-                            payment_id,
-                            output_features,
-                            self.resources.one_sided_tari_address.clone(),
-                            request.recipient_address,
-                        )
-                        .await?;
+                    let response = offline_signing.prepare_withdraw_multisig_transaction(
+                        tx_builder,
+                        total_amount,
+                        payment_id,
+                        output_features,
+                        self.resources.one_sided_tari_address.clone(),
+                        request.recipient_address,
+                    )?;
 
                     self.resources
                         .output_manager_service
@@ -687,7 +672,7 @@ where
                 async {
                     let mut offline_signing =
                         OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                    let res = offline_signing.sign_locked_transaction(request).await?;
+                    let res = offline_signing.sign_locked_transaction(request)?;
                     Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
                 }
                 .await
@@ -697,9 +682,7 @@ where
                 async {
                     let mut offline_signing =
                         OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                    let res = offline_signing
-                        .sign_locked_deposit_multisig_transaction(request)
-                        .await?;
+                    let res = offline_signing.sign_locked_deposit_multisig_transaction(request)?;
                     Ok(TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(
                         Box::new(res),
                     ))
@@ -715,16 +698,15 @@ where
 
                     for pair_output in &mut request.info.inputs.iter_mut() {
                         let input_wallet_output = &mut pair_output.output_pair.output;
-                        let view_key = key_manager.get_view_key().await?;
-                        let spend_key = key_manager.get_spend_key().await?;
+                        let view_key = key_manager.get_view_key();
+                        let spend_key = key_manager.get_spend_key();
 
                         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
                             private_key: view_key.key_id.clone().into(),
                             public_key: input_wallet_output.sender_offset_public_key().clone(),
                         };
                         let script_pubkey = key_manager
-                            .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)
-                            .await?;
+                            .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)?;
                         let script_key = TariKeyId::Derived {
                             key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                         };
@@ -759,9 +741,7 @@ where
                         // 5) Attach k' so signer uses the correct key
                         input_wallet_output.set_script_key_id(script_key);
                     }
-                    let res = offline_signing
-                        .sign_locked_withdraw_multisig_transaction(request)
-                        .await?;
+                    let res = offline_signing.sign_locked_withdraw_multisig_transaction(request)?;
 
                     Ok(TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(
                         Box::new(res),
@@ -833,6 +813,27 @@ where
                 async {
                     let res = self
                         .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::TransactionSent(res))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::SendRangeLimitedCoinJoinTransaction {
+                selection_criteria,
+                output_features,
+                fee,
+                payment_id,
+            } => {
+                async {
+                    let res = self
+                        .send_range_limited_coin_join(
+                            selection_criteria,
+                            *output_features,
+                            fee,
+                            transaction_broadcast_join_handles,
+                            payment_id,
+                        )
                         .await?;
                     Ok(TransactionServiceResponse::TransactionSent(res))
                 }
@@ -1581,20 +1582,13 @@ where
                     let multisig_session = MultisigSession::new(self.resources.transaction_key_manager_service.clone());
                     let current_height = self.db.get_last_scanned_height()?.unwrap_or(0);
                     let consensus_constants = self.resources.consensus_manager.consensus_constants(current_height);
-                    let (finalized_transaction, payment_id, amount) = multisig_session
-                        .spend_multisig_utxo(
-                            signatures,
-                            recipient_address.clone(),
-                            selected_utxo.clone().into(),
-                            consensus_constants,
-                        )
-                        .await?;
-                    let view_key = self
-                        .resources
-                        .transaction_key_manager_service
-                        .get_view_key()
-                        .await?
-                        .pub_key;
+                    let (finalized_transaction, payment_id, amount) = multisig_session.spend_multisig_utxo(
+                        signatures,
+                        recipient_address.clone(),
+                        selected_utxo.clone().into(),
+                        consensus_constants,
+                    )?;
+                    let view_key = self.resources.transaction_key_manager_service.get_view_key().pub_key;
                     let (change_hashes, change, tx_id) = match finalized_transaction.change {
                         Some(change_output) => (
                             vec![change_output.output_hash()],
@@ -1654,9 +1648,15 @@ where
         // If the individual handlers did not already send the API response then do it here.
         if let Some(rp) = reply_channel {
             let _result = rp
-                .send(response.inspect_err(|e1| warn!(target: LOG_TARGET, "{}", e1)))
+                .send(response.inspect_err(|e1| {
+                    let mut msg = format!("{}", e1);
+                    msg.truncate(100);
+                    warn!(target: LOG_TARGET, "{}", msg);
+                }))
                 .inspect_err(|e2| {
-                    warn!(target: LOG_TARGET, "Failed to send reply: {:?}", e2);
+                    let mut msg = format!("{:?}", e2);
+                    msg.truncate(100);
+                    warn!(target: LOG_TARGET, "Failed to send reply: {}", msg);
                 });
         }
 
@@ -1705,23 +1705,22 @@ where
         }
     }
 
-    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
-            let db = self.db.clone();
-            let output_manager_handle = self.resources.output_manager_service.clone();
-            let tip_height = self
-                .wallet_db
-                .get_last_scanned_height()
-                .unwrap_or_default()
-                .unwrap_or_default();
-            let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_detected_transactions(
-                output_manager_handle,
-                db,
-                event_publisher,
-                self.config.clone(),
-                tip_height,
-            ));
+    async fn handle_output_manager_service_event(
+        &mut self,
+        event: Arc<OutputManagerEvent>,
+        transaction_validation_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) {
+        if let OutputManagerEvent::TxoValidationSuccess(tx) = (*event).clone() {
+            debug!(target: LOG_TARGET, "Received txo validation success event for oms: {}, starting output detection", tx);
+            let _operation_id = self
+                .start_transaction_validation_protocol(transaction_validation_join_handles)
+                .await
+                .map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {e:?}");
+                    e
+                });
         }
     }
 
@@ -2069,6 +2068,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for send_sha_atomic_swap_transaction".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
         self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
@@ -2119,8 +2123,7 @@ where
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
+            .get_random_key(None, true)?;
 
         let shared_secret = self
             .resources
@@ -2133,29 +2136,25 @@ where
                         temp_tx_id,
                         TransactionServiceError::InvalidAddress("Missing public view key".to_string()),
                     ))?,
-            )
-            .await?;
-        let spending_key = shared_secret_to_output_spending_key(&shared_secret)
+            )?;
+        let spending_key = public_key_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
 
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key, None)
-            .await?;
+            .create_encrypted_key(encryption_private_key, None)?;
 
         let sender_offset_public_key = self
             .resources
             .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)
-            .await?;
+            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
 
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(spending_key, None)
-            .await?;
+            .create_encrypted_key(spending_key, None)?;
 
         let minimum_value_promise = MicroMinotari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
@@ -2165,40 +2164,29 @@ where
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
                 payment_id.clone(),
-            )
-            .await?
+            )?
             .with_input_data(ExecutionStack::default())
             .with_covenant(covenant)
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(
-                self.resources
-                    .transaction_key_manager_service
-                    .get_spend_key()
-                    .await?
-                    .key_id,
-            )
+            .with_script_key(self.resources.transaction_key_manager_service.get_spend_key().key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver(
-                &mut self.resources.transaction_key_manager_service,
+                &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )
-            .await
             .unwrap()
             .try_build(&self.resources.transaction_key_manager_service)
-            .await
             .unwrap();
 
-        tx_builder
-            .add_recipient(
-                destination.clone(),
-                output.clone(),
-                Some(sender_offset_private_key.key_id),
-                Some(encryption_key),
-            )
-            .await?;
+        tx_builder.add_recipient(
+            destination.clone(),
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(encryption_key),
+        )?;
 
         // Finalize
-        let finalized = tx_builder.build().await?;
+        let finalized = tx_builder.build()?;
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
@@ -2265,15 +2253,20 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        use_stealth_one_sided: bool,
         mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with amount {amount}");
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for send_one_sided_or_stealth".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
             debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
-            payment_id = MemoField::open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+            payment_id = MemoField::new_open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         }
 
         // Prepare sender part of the transaction
@@ -2299,9 +2292,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_estimate,
-                if dest_address == self.resources.one_sided_tari_address ||
-                    dest_address == self.resources.interactive_tari_address
-                {
+                if dest_address == self.resources.one_sided_tari_address {
                     Some(TxType::PaymentToSelf)
                 } else {
                     Some(TxType::PaymentToOther)
@@ -2311,27 +2302,14 @@ where
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
-        let _output = if use_stealth_one_sided {
-            tx_builder
-                .add_stealth_recipient(
-                    dest_address.clone(),
-                    amount,
-                    output_features.clone(),
-                    payment_id.clone(),
-                )
-                .await?
-        } else {
-            tx_builder
-                .add_depricated_one_sided_recipient(
-                    dest_address.clone(),
-                    amount,
-                    output_features.clone(),
-                    payment_id.clone(),
-                )
-                .await?
-        };
+        tx_builder.add_stealth_recipient(
+            dest_address.clone(),
+            amount,
+            output_features.clone(),
+            payment_id.clone(),
+        )?;
         tx_builder.with_memo(payment_id.clone());
-        let finalized = tx_builder.build().await?;
+        let finalized = tx_builder.build()?;
 
         // Finalize
 
@@ -2383,6 +2361,159 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
+    async fn send_range_limited_coin_join(
+        &mut self,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee: FeeType,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        payment_id: MemoField,
+    ) -> Result<TxId, TransactionServiceError> {
+        let range_limit_criteria =
+            selection_criteria
+                .clone()
+                .range_limit
+                .ok_or_else(|| OutputManagerError::RangeLimitError {
+                    reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                    range_exhausted: false,
+                })?;
+        let temp_tx_id = TxId::new_random();
+
+        // Prepare sender part of the transaction
+        let script = push_pubkey_script(&Default::default());
+        let covenant = Covenant::default();
+        let mut tx_builder = self
+            .resources
+            .output_manager_service
+            .prepare_range_limited_coin_join_transaction_to_send(
+                temp_tx_id,
+                selection_criteria,
+                output_features.clone(),
+                fee,
+                script,
+                covenant,
+            )
+            .await?;
+        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
+        let amount_without_fee = tx_builder.get_total_input_value()?.saturating_sub(fee_estimate);
+        let dest_address = self.resources.one_sided_tari_address.clone();
+        debug!(
+            target: LOG_TARGET,
+            "Sending range_limit_coin_join transaction to {} with amount {amount_without_fee} fee {fee_estimate} total {}",
+            dest_address.to_hex(), tx_builder.get_total_input_value()?
+        );
+
+        let payment_id = payment_id
+            .add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                true,
+                fee_estimate,
+                Some(TxType::CoinJoin),
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
+        trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
+
+        // Note: Division by zero is checked during 'prepare_range_limited_coin_join_transaction_to_send'
+        let number_of_outputs =
+            usize::try_from(amount_without_fee.as_u64() / range_limit_criteria.target_minimum_amount)
+                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+                .max(1);
+        let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
+        // Note: 'amount_without_fee >= target_minimum_amount' is checked during
+        //       'prepare_range_limited_coin_join_transaction_to_send'
+        let residual = amount_without_fee
+            .as_u64()
+            .saturating_sub(range_limit_criteria.target_minimum_amount * number_of_outputs as u64);
+        values.get_mut(0).expect("index exists").0 += residual;
+
+        for value in values {
+            let _output = tx_builder.add_stealth_recipient(
+                dest_address.clone(),
+                value,
+                output_features.clone(),
+                payment_id.clone(),
+            )?;
+        }
+        tx_builder.with_memo(payment_id.clone()).with_tx_type(TxType::CoinJoin);
+
+        // Finalize
+        let finalized = tx_builder.build()?;
+        if let Some(change) = finalized.change {
+            let msg = format!(
+                "One sided range_limit_coin_join transaction cannot have a change output: {}",
+                change.value()
+            );
+            error!(target: LOG_TARGET, "{}", msg);
+            return Err(TransactionServiceError::RangeLimitError { reason: msg });
+        }
+        if amount_without_fee != finalized.amount {
+            let msg = format!(
+                "One sided range_limit_coin_join transaction amount mismatch: expected {}, got {}",
+                amount_without_fee, finalized.amount
+            );
+            error!(target: LOG_TARGET, "{}", msg);
+            return Err(TransactionServiceError::RangeLimitError { reason: msg });
+        }
+        if fee_estimate != finalized.fee {
+            let msg = format!(
+                "One sided range_limit_coin_join transaction fee mismatch: expected {}, got {}",
+                fee_estimate, finalized.fee
+            );
+            error!(target: LOG_TARGET, "{}", msg);
+            return Err(TransactionServiceError::RangeLimitError { reason: msg });
+        }
+
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
+
+        // Broadcast one-sided transaction
+
+        let tx = finalized.transaction.clone();
+        let final_fee = finalized.fee;
+        let change = finalized.change.clone().map(|change| vec![change]);
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
+        let sent_hashes = finalized.sent_output_hashes.clone();
+        let change_hashes = finalized.change_output_hashes.clone();
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new_with_output_hashes(
+                finalized.tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                dest_address.clone(),
+                amount_without_fee,
+                final_fee,
+                tx.clone(),
+                LegacyTransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
+            )?,
+        )
+        .await?;
+
+        Ok(finalized.tx_id)
+    }
+
+    #[allow(clippy::too_many_lines)]
     async fn scrape_wallet(
         &mut self,
         dest_address: TariAddress,
@@ -2408,8 +2539,7 @@ where
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-            .await?;
+            .get_random_key(None, true)?;
 
         let shared_secret = self
             .resources
@@ -2422,41 +2552,35 @@ where
                         temp_tx_id,
                         TransactionServiceError::OneSidedTransactionError("Missing public view key".to_string()),
                     ))?,
-            )
-            .await?;
-        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)
+            )?;
+        let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
         let commitment_mask_key_id = &self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key.clone(), None)
-            .await?;
+            .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
 
         let script_spending_key = self
             .resources
             .transaction_key_manager_service
-            .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())
-            .await?;
+            .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())?;
         let script = push_pubkey_script(&script_spending_key);
 
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
         let encryption_key = self
             .resources
             .transaction_key_manager_service
-            .import_key(encryption_private_key, None)
-            .await?;
+            .create_encrypted_key(encryption_private_key, None)?;
 
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key, None)
-            .await?;
+            .create_encrypted_key(commitment_mask_private_key, None)?;
 
         let sender_offset_public_key = self
             .resources
             .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)
-            .await?;
+            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
         let amount = tx_builder.get_total_input_value()?;
         let fee = tx_builder.get_fee_estimate_without_change()?;
         let minimum_value_promise = MicroMinotari::zero();
@@ -2475,31 +2599,26 @@ where
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
                 payment_id.clone(),
-            )
-            .await?
+            )?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
-                &mut self.resources.transaction_key_manager_service,
+                &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
                 &dest_address,
-            )
-            .await?
-            .try_build(&self.resources.transaction_key_manager_service)
-            .await?;
+            )?
+            .try_build(&self.resources.transaction_key_manager_service)?;
 
-        tx_builder
-            .add_recipient(
-                dest_address.clone(),
-                output.clone(),
-                Some(sender_offset_private_key.key_id),
-                Some(encryption_key),
-            )
-            .await?;
+        tx_builder.add_recipient(
+            dest_address.clone(),
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(encryption_key),
+        )?;
 
-        let finalized = tx_builder.build().await?;
+        let finalized = tx_builder.build()?;
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
@@ -2577,7 +2696,6 @@ where
             output_features,
             fee_per_gram,
             transaction_broadcast_join_handles,
-            false,
             payment_id,
         )
         .await
@@ -2611,6 +2729,11 @@ where
                 TransactionBuilderError::NoRecipients,
             ));
         }
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for send_many_one_sided_transactions".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         let mut total_send = MicroMinotari::zero();
@@ -2641,7 +2764,8 @@ where
             // Let's override the payment_id if the address says we should
             if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
                 debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo = MemoField::open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
+                *memo = MemoField::new_open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
             }
             *memo = memo
                 .clone()
@@ -2649,9 +2773,7 @@ where
                     self.resources.one_sided_tari_address.clone(),
                     true,
                     fee_estimate,
-                    if *address == self.resources.one_sided_tari_address ||
-                        *address == self.resources.interactive_tari_address
-                    {
+                    if *address == self.resources.one_sided_tari_address {
                         Some(TxType::PaymentToSelf)
                     } else {
                         Some(TxType::PaymentToOther)
@@ -2659,12 +2781,10 @@ where
                 )
                 .map_err(TransactionServiceError::InvalidPaymentId)?;
 
-            tx_builder
-                .add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())
-                .await?;
+            tx_builder.add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())?;
         }
 
-        let finalized = tx_builder.build().await?;
+        let finalized = tx_builder.build()?;
 
         // Finalize
 
@@ -2726,12 +2846,7 @@ where
 
         // Save the other transactions with zero fee and random tx_id to the database
         let mut tx_ids = vec![finalized.tx_id];
-        let view_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_view_key()
-            .await?
-            .pub_key;
+        let view_key = self.resources.transaction_key_manager_service.get_view_key().pub_key;
         for (address, amount, memo) in destinations {
             let new_tx_id = if let Some(pos) = outputs.iter().position(|o| o.value() == amount) {
                 let tx_id = outputs
@@ -2791,6 +2906,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
+        if selection_criteria.range_limit.is_some() {
+            return Err(TransactionServiceError::RangeLimitError {
+                reason: "Range limit coin-join cannot be set for burn_tari".to_string(),
+            });
+        }
         let temp_tx_id = TxId::new_random();
 
         if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
@@ -2844,21 +2964,14 @@ where
         let (commitment_mask_key, _) = self
             .resources
             .transaction_key_manager_service
-            .get_next_commitment_mask_and_script_key()
-            .await?;
+            .get_next_commitment_mask_and_script_key()?;
 
-        let recovery_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .get_view_key()
-            .await?
-            .key_id;
+        let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
 
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
+            .get_random_key(None, true)?;
         let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
@@ -2866,30 +2979,25 @@ where
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
                 payment_id.clone(),
-            )
-            .await?
+            )?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero())
             .sign_as_sender_and_receiver(
-                &mut self.resources.transaction_key_manager_service,
+                &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
-            )
-            .await?
-            .try_build(&self.resources.transaction_key_manager_service)
-            .await?;
+            )?
+            .try_build(&self.resources.transaction_key_manager_service)?;
 
-        tx_builder
-            .add_recipient(
-                Default::default(),
-                output.clone(),
-                Some(sender_offset_private_key.key_id),
-                Some(recovery_key_id),
-            )
-            .await?;
+        tx_builder.add_recipient(
+            Default::default(),
+            output.clone(),
+            Some(sender_offset_private_key.key_id),
+            Some(recovery_key_id),
+        )?;
 
-        let finalized = tx_builder.build().await?;
+        let finalized = tx_builder.build()?;
 
         self.resources
             .output_manager_service
@@ -2959,8 +3067,7 @@ where
             let ownership_proof = self
                 .resources
                 .transaction_key_manager_service
-                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)
-                .await?;
+                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
             let proof = BurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 reciprocal_claim_public_key: commitment_mask_key.pub_key,
@@ -3218,22 +3325,15 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        let author_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .get_static_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
-            .await?;
+        let author_key_id = TariKeyId::CodeTemplateAuthor;
         let author_key = self
             .resources
             .transaction_key_manager_service
-            .get_public_key_at_key_id(&author_key_id)
-            .await?;
-        let (nonce_secret, nonce_pub) = CompressedPublicKey::random_keypair(&mut OsRng);
-        let nonce_id = self
+            .get_public_key_at_key_id(&author_key_id)?;
+        let nonce = self
             .resources
             .transaction_key_manager_service
-            .import_key(nonce_secret, None)
-            .await?;
+            .get_random_key(None, false)?;
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),
             author_signature: CompressedSignature::default(),
@@ -3245,13 +3345,12 @@ where
             binary_url,
         };
 
-        let signature_message = template_registration.create_signature_message(&nonce_pub);
+        let signature_message = template_registration.create_signature_message(&nonce.pub_key);
 
         let author_sig = self
             .resources
             .transaction_key_manager_service
-            .sign_with_nonce_and_challenge(&author_key_id, &nonce_id, &signature_message)
-            .await
+            .sign_with_nonce_and_challenge(&author_key_id, &nonce.key_id, &signature_message)
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 
         template_registration.author_signature = author_sig;
@@ -3319,7 +3418,6 @@ where
             output_features,
             fee_per_gram,
             transaction_broadcast_join_handles,
-            true,
             payment_id,
         )
         .await
@@ -3777,7 +3875,6 @@ where
             self.resources
                 .transaction_key_manager_service
                 .get_view_key()
-                .await?
                 .pub_key
                 .as_bytes(),
             &scanned_output.hash(),
@@ -3967,11 +4064,7 @@ where
             .collect::<Vec<_>>();
         let mut spendable_outputs = Vec::new();
         let mut total_amount = MicroMinotari::zero();
-        let view_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_private_view_key()
-            .await?;
+        let view_key = self.resources.transaction_key_manager_service.get_private_view_key();
 
         // only those outputs that can be decrypted are spendable and can be used as inputs
         for output in all_outputs {
@@ -4092,7 +4185,7 @@ where
         address: &TariAddress,
         sending_method: TariAddressFeatures,
     ) -> Result<(), TransactionServiceError> {
-        if address.network() != self.resources.interactive_tari_address.network() {
+        if address.network() != self.resources.one_sided_tari_address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }
         if !address.features().contains(sending_method) {
@@ -4101,7 +4194,7 @@ where
             )));
         }
         if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
-            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+            matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_))
         {
             return Err(TransactionServiceError::NotSupported(
                 "Interactive transactions are not supported on Ledger wallets".to_string(),
@@ -4212,12 +4305,10 @@ where
         ) {
             (Some(change), Some(original)) => {
                 let mut change = change.clone();
-                change
-                    .set_commitment_mask_key_id(
-                        original.output_pair.output.commitment_mask_key_id().clone(),
-                        &self.resources.transaction_key_manager_service,
-                    )
-                    .await?;
+                change.set_commitment_mask_key_id(
+                    original.output_pair.output.commitment_mask_key_id().clone(),
+                    &self.resources.transaction_key_manager_service,
+                )?;
                 Some(vec![change])
             },
             _ => None,
@@ -4269,14 +4360,13 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub transaction_key_manager_service: TKeyManagerInterface,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
-    pub interactive_tari_address: TariAddress,
     pub one_sided_tari_address: TariAddress,
     pub node_identity: Arc<NodeIdentity>,
     pub consensus_manager: ConsensusManager,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,
-    pub wallet_type: Arc<WalletType>,
+    pub wallet_type: Arc<LegacyWalletType>,
     pub utxo_scanner_handle: UtxoScannerHandle,
     pub network: Network,
 }

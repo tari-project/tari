@@ -37,7 +37,7 @@ use tari_crypto::{
 use tari_hashing::KeyManagerDomain;
 use zeroize::Zeroize;
 
-use crate::key_manager::HASHER_LABEL_DERIVE_KEY;
+use crate::legacy_key_manager::HASHER_LABEL_DERIVE_KEY;
 
 #[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
@@ -74,9 +74,9 @@ where
     D::OutputSize: IsEqual<U64>,
 {
     /// Creates a new KeyManager with a new randomly selected entropy
-    pub fn new() -> TariKeyManager<D> {
+    pub fn random() -> TariKeyManager<D> {
         TariKeyManager {
-            seed: CipherSeed::new(),
+            seed: CipherSeed::random(),
             branch_seed: "".to_string(),
             primary_key_index: 0,
             digest_type: PhantomData,
@@ -153,16 +153,6 @@ where
     }
 }
 
-impl<D> Default for TariKeyManager<D>
-where
-    D: Digest + LengthExtensionAttackResistant,
-    D::OutputSize: IsEqual<U64>,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
@@ -171,14 +161,14 @@ mod test {
 
     #[test]
     fn test_new_keymanager() {
-        let km1 = TariKeyManager::<Blake2b<U64>>::new();
-        let km2 = TariKeyManager::<Blake2b<U64>>::new();
+        let km1 = TariKeyManager::<Blake2b<U64>>::random();
+        let km2 = TariKeyManager::<Blake2b<U64>>::random();
         assert_ne!(km1.seed, km2.seed);
     }
 
     #[test]
     fn test_derive_and_next_key() {
-        let mut km = TariKeyManager::<Blake2b<U64>>::new();
+        let mut km = TariKeyManager::<Blake2b<U64>>::random();
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -198,7 +188,7 @@ mod test {
 
     #[test]
     fn test_derive_and_next_key_with_branch_seed() {
-        let mut km = TariKeyManager::<Blake2b<U64>>::from(CipherSeed::new(), "Test".to_string(), 0);
+        let mut km = TariKeyManager::<Blake2b<U64>>::from(CipherSeed::random(), "Test".to_string(), 0);
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -218,7 +208,7 @@ mod test {
 
     #[test]
     fn test_use_of_branch_seed() {
-        let x = CipherSeed::new();
+        let x = CipherSeed::random();
         let mut km1 = TariKeyManager::<Blake2b<U64>>::from(x.clone(), "some".to_string(), 0);
         let mut km2 = TariKeyManager::<Blake2b<U64>>::from(x, "other".to_string(), 0);
         let next_key1 = km1.next_key().unwrap();

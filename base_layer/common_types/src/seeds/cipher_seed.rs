@@ -134,7 +134,7 @@ type DerivedCipherSeedKeys = Result<(CipherSeedEncryptionKey, CipherSeedMacKey),
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     /// Generate a new seed
-    pub fn new() -> Self {
+    pub fn random() -> Self {
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
         let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
         let days = SystemTime::now()
@@ -148,7 +148,7 @@ impl CipherSeed {
 
     #[cfg(target_arch = "wasm32")]
     /// Generate a new seed
-    pub fn new() -> Self {
+    pub fn random() -> Self {
         const MILLISECONDS_PER_DAY: u64 = SECONDS_PER_DAY * 1000;
         let millis = js_sys::Date::now() as u64;
         let days = millis / MILLISECONDS_PER_DAY;
@@ -414,7 +414,7 @@ impl CipherSeed {
 
 impl Default for CipherSeed {
     fn default() -> Self {
-        Self::new()
+        Self::random()
     }
 }
 
@@ -475,7 +475,7 @@ mod test {
         let passphrase = "Passphrase";
 
         // Generate a new encrypted cipher seed
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         let enciphered_seed = seed
             .encipher(Some(SafePassword::from_str(passphrase).unwrap()))
             .unwrap();
@@ -582,7 +582,7 @@ mod test {
     #[test]
     fn test_cipher_seed_to_mnemonic_and_from_mnemonic() {
         // Valid Mnemonic sequence
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         let mnemonic_seq = seed
             .to_mnemonic(MnemonicLanguage::Japanese, None)
             .expect("Couldn't convert CipherSeed to Mnemonic");
@@ -617,7 +617,7 @@ mod test {
 
     #[test]
     fn cipher_seed_to_and_from_mnemonic_with_passphrase() {
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         let mnemonic_seq = seed
             .to_mnemonic(
                 MnemonicLanguage::Spanish,

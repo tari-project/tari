@@ -42,7 +42,6 @@ use crate::{
             menu::Menu,
             notification_tab::NotificationTab,
             receive_tab::ReceiveTab,
-            register_template_tab::RegisterTemplateTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
             transactions_tab::TransactionsTab,
@@ -77,12 +76,10 @@ impl<B: Backend> App<B> {
     ) -> Result<Self, ExitError> {
         let wallet_address_interactive = wallet
             .get_wallet_interactive_address()
-            .await
-            .map_err(WalletError::KeyManagerServiceError)?;
+            .map_err(WalletError::AddressError)?;
         let wallet_address_one_sided = wallet
             .get_wallet_one_sided_address()
-            .await
-            .map_err(WalletError::KeyManagerServiceError)?;
+            .map_err(WalletError::AddressError)?;
         let wallet_id = WalletIdentity::new(
             wallet.node_identity.clone(),
             wallet_address_interactive,
@@ -104,7 +101,6 @@ impl<B: Backend> App<B> {
             )
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
-            .add("Templates".into(), Box::new(RegisterTemplateTab::new(&app_state)))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));

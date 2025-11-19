@@ -30,7 +30,7 @@ use tari_crypto::errors::RangeProofError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
+    key_manager::error::KeyManagerError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };
@@ -61,6 +61,8 @@ pub enum OutputManagerError {
     TransactionError(#[from] TransactionError),
     #[error("DHT outbound error: `{0}`")]
     DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String, range_exhausted: bool },
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
@@ -133,7 +135,7 @@ pub enum OutputManagerError {
     #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
     #[error("Key manager service error: {0}")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptedDataError),
     #[error("No commitments were provided")]
@@ -144,8 +146,10 @@ pub enum OutputManagerError {
     ValidationInProgress,
     #[error("Invalid data: `{0}`")]
     RangeProofError(String),
-    #[error("Transaction is over sized: `{0}`")]
+    #[error("Transaction inputs are over sized: `{0}`")]
     TooManyInputsToFulfillTransaction(String),
+    #[error("Transaction outputs are over sized: `{0}`")]
+    TooManyOutputsToFulfillTransaction(String),
     #[error("Std I/O error: {0}")]
     StdIoError(#[from] std::io::Error),
     #[error("Tari address error: `{0}`")]
@@ -188,6 +192,8 @@ pub enum OutputManagerStorageError {
     ValuesNotFound,
     #[error("Error converting a type: {reason}")]
     ConversionError { reason: String },
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String },
     #[error("Output has already been spent")]
     OutputAlreadySpent,
     #[error("Output is already encumbered")]
@@ -217,7 +223,7 @@ pub enum OutputManagerStorageError {
     #[error("Binary not stored as valid hex:{0}")]
     HexError(String),
     #[error("Key Manager Service Error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
     #[error("Error: `{0}`")]

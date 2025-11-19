@@ -26,7 +26,7 @@ use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::{sync::broadcast, task};
 
 use crate::{
@@ -65,7 +65,7 @@ impl<TBackend, TKeyManagerInterface: Clone, TWalletClientFactory>
     UtxoScannerService<TBackend, TKeyManagerInterface, TWalletClientFactory>
 where
     TBackend: WalletBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface + Clone + Send + Sync + 'static,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + Clone + Send + Sync + 'static,
     TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 {
     pub fn new(

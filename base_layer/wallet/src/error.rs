@@ -32,10 +32,7 @@ use tari_comms::{
 };
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
-use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
-    transaction_components::TransactionError,
-};
+use tari_transaction_components::{key_manager::error::KeyManagerError, transaction_components::TransactionError};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -92,7 +89,7 @@ pub enum WalletError {
     #[error("Cipher error: `{0}`")]
     CipherError(#[from] tari_common_types::seeds::error::CipherError),
     #[error("Key manager service error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
     UnexpectedApiResponse { method: String, api: String },
     #[error("Public address not set for this wallet")]
@@ -101,6 +98,8 @@ pub enum WalletError {
     WalletConnectivityError(#[from] WalletConnectivityError),
     #[error("Invalid http node url: `{0}`")]
     InvalidHttpNodeUrl(String),
+    #[error("Tari address error: `{0}`")]
+    AddressError(#[from] tari_common_types::tari_address::TariAddressError),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";

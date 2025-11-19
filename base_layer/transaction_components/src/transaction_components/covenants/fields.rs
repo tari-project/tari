@@ -375,13 +375,13 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
-
     use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
     use tari_script::script;
 
     use super::*;
     use crate::{
         covenant,
+        key_manager::KeyManager,
         test_helpers::UtxoTestParams,
         transaction_components::{
             covenants::test::{create_input, create_outputs, make_sample_sidechain_feature},
@@ -396,15 +396,11 @@ mod test {
 
         mod is_eq {
             use super::*;
-            use crate::{
-                key_manager::create_memory_key_manager,
-                transaction_components::RangeProofType,
-                MicroMinotari,
-            };
+            use crate::{transaction_components::RangeProofType, MicroMinotari};
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
-                let mut key_manager = create_memory_key_manager().await.unwrap();
+                let key_manager = KeyManager::new_random().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -416,9 +412,8 @@ mod test {
                         script: script![Drop Nop].unwrap(),
                         ..Default::default()
                     },
-                    &mut key_manager,
+                    &key_manager,
                 )
-                .await
                 .remove(0);
 
                 assert!(OutputField::Commitment.is_eq(&output, &output.commitment).unwrap());
@@ -447,7 +442,7 @@ mod test {
 
             #[tokio::test]
             async fn it_returns_false_if_not_eq() {
-                let mut key_manager = create_memory_key_manager().await.unwrap();
+                let key_manager = KeyManager::new_random().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -463,9 +458,8 @@ mod test {
                         value: MicroMinotari(123456),
                         ..Default::default()
                     },
-                    &mut key_manager,
+                    &key_manager,
                 )
-                .await
                 .remove(0);
 
                 assert!(!OutputField::Commitment
@@ -497,11 +491,10 @@ mod test {
         mod is_eq_input {
 
             use super::*;
-            use crate::key_manager::create_memory_key_manager;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
-                let mut key_manager = create_memory_key_manager().await.unwrap();
+                let key_manager = KeyManager::new_random().unwrap();
                 let output = create_outputs(
                     1,
                     UtxoTestParams {
@@ -512,11 +505,10 @@ mod test {
                         script: script![Drop Nop].unwrap(),
                         ..Default::default()
                     },
-                    &mut key_manager,
+                    &key_manager,
                 )
-                .await
                 .remove(0);
-                let mut input = create_input(&mut key_manager).await;
+                let mut input = create_input(&key_manager);
                 if let SpentOutput::OutputData {
                     features,
                     commitment,
@@ -568,7 +560,6 @@ mod test {
 
     mod output_fields {
         use super::*;
-        use crate::key_manager::create_memory_key_manager;
 
         mod construct_challenge_from {
             use digest::Update;
@@ -578,7 +569,7 @@ mod test {
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
-                let mut key_manager = create_memory_key_manager().await.unwrap();
+                let key_manager = KeyManager::new_random().unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
                     output_type: OutputType::Coinbase,
@@ -594,9 +585,8 @@ mod test {
                         value: MicroMinotari(123456),
                         ..Default::default()
                     },
-                    &mut key_manager,
+                    &key_manager,
                 )
-                .await
                 .remove(0);
 
                 let mut fields = OutputFields::new();
@@ -626,7 +616,7 @@ mod test {
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {
-                let mut key_manager = create_memory_key_manager().await.unwrap();
+                let key_manager = KeyManager::new_random().unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
                     range_proof_type: RangeProofType::RevealedValue,
@@ -640,9 +630,8 @@ mod test {
                         value: MicroMinotari(123456),
                         ..Default::default()
                     },
-                    &mut key_manager,
+                    &key_manager,
                 )
-                .await
                 .pop()
                 .unwrap();
                 let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);

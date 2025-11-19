@@ -9,17 +9,20 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-ledger = ["tari_transaction_components/ledger"]
 
 [dependencies]
 tari_common_types = { workspace = true}
 tari_common_sqlite = { workspace = true }
 tari_transaction_components = { workspace = true}
 tari_utilities = { workspace = true, features = ["borsh"] }
-
+tari_service_framework = { workspace = true }
+tari_hashing = { workspace = true }
+tari_script = { workspace = true }
 async-trait = { version = "0.1.50" }
+blake2 = "0.10"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
+derivative = "2.2.0"
 diesel = { version = "2.2.10", features = [
     "sqlite",
     "serde_json",
@@ -27,10 +30,17 @@ diesel = { version = "2.2.10", features = [
     "64-column-tables",
 ] }
 diesel_migrations = { version = "2.2" }
+digest = "0.10"
+futures = "^0.3.1"
 log = { workspace = true }
+strum = "0.22"
+strum_macros = "0.22"
+serde = { workspace = true, features = ["derive"] }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 zeroize = "1"
+tari_crypto = { workspace = true, features = ["borsh"] }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
@@ -45,3 +55,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tari_target_network_nextnet)',
     'cfg(tari_target_network_testnet)',
 ] }
+
+
+[package.metadata.cargo-machete]
+ignored = ["strum"
+] # this is so we can run cargo machete without getting false positive about macro dependancies

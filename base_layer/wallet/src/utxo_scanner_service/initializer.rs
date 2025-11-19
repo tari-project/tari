@@ -27,7 +27,7 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 use url::Url;
 
@@ -83,7 +83,7 @@ where T: WalletBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where
     T: WalletBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(target: LOG_TARGET, "Utxo scanner initialization");
@@ -113,14 +113,8 @@ where
             let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
-            let view_key = key_manager
-                .get_view_key()
-                .await
-                .expect("Could not initialize UTXO scanner Service");
-            let spend_key = key_manager
-                .get_spend_key()
-                .await
-                .expect("Could not initialize UTXO scanner Service");
+            let view_key = key_manager.get_view_key();
+            let spend_key = key_manager.get_spend_key();
             let one_sided_tari_address = TariAddress::new_dual_address(
                 view_key.pub_key,
                 spend_key.pub_key,

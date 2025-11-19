@@ -4,7 +4,7 @@
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -22,7 +22,7 @@ pub async fn execute<TBackend, KM, TConnectivity>(
     confirmed_burns: Vec<FixedHash>,
 ) where
     TBackend: TransactionBackend + 'static,
-    KM: TransactionKeyManagerInterface,
+    KM: LegacyTransactionKeyManagerInterface,
     TConnectivity: WalletConnectivityInterface,
 {
     debug!(
@@ -44,7 +44,7 @@ async fn execute_inner<TBackend, KM, TConnectivity>(
 ) -> anyhow::Result<()>
 where
     TBackend: TransactionBackend + 'static,
-    KM: TransactionKeyManagerInterface,
+    KM: LegacyTransactionKeyManagerInterface,
     TConnectivity: WalletConnectivityInterface,
 {
     let timer = std::time::Instant::now();

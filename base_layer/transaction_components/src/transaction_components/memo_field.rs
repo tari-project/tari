@@ -1025,32 +1025,6 @@ impl MemoField {
         }
     }
 
-    /// Helper function to create a `MemoField::Open` from a string and the transaction type
-    ///
-    /// # Deprecated
-    /// Use `new_open_from_string` instead for proper validation
-    pub fn open_from_string(s: &str, tx_type: TxType) -> Self {
-        MemoField {
-            inner: InnerMemoField::Open {
-                payment_id: s.as_bytes().to_vec(),
-                tx_type,
-            },
-        }
-    }
-
-    /// Helper function to create a `MemoField::Open` from a bytes and the transaction type
-    ///
-    /// # Deprecated
-    /// Use `new_open` instead for proper validation
-    pub fn open(bytes: Vec<u8>, tx_type: TxType) -> Self {
-        MemoField {
-            inner: InnerMemoField::Open {
-                payment_id: bytes,
-                tx_type,
-            },
-        }
-    }
-
     /// Convenience method for pattern matching - checks if this is an Empty payment ID
     pub fn is_empty(&self) -> bool {
         matches!(self.inner, InnerMemoField::Empty)

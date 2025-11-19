@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
-
 use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 
 use crate::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::TransactionKeyManagerInterface,
     offline_signing::{
         marshal_output_pair::MarshalOutputPair,
         models::{
@@ -43,7 +41,7 @@ use crate::{
         },
         one_sided_signer::OneSidedSigner,
     },
-    transaction_components::{MemoField, OutputFeatures, TransactionError},
+    transaction_components::{MemoField, OutputFeatures},
     MicroMinotari,
     TransactionBuilder,
     TransactionBuilderError,
@@ -60,7 +58,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         OfflineSigner { key_manager }
     }
 
-    pub async fn prepare_one_sided_transaction_for_signing(
+    pub fn prepare_one_sided_transaction_for_signing(
         &mut self,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         dest_address: TariAddress,
@@ -71,49 +69,33 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionBuilderError> {
         tx_builder.with_memo(payment_id.clone());
         // we do this to ensure the fee is calculated correctly
-        tx_builder
-            .add_stealth_recipient(
-                dest_address.clone(),
-                amount,
-                output_features.clone(),
-                payment_id.clone(),
-            )
-            .await?;
+        tx_builder.add_stealth_recipient(
+            dest_address.clone(),
+            amount,
+            output_features.clone(),
+            payment_id.clone(),
+        )?;
 
         let mut inputs = Vec::new();
         for input_pair in tx_builder.inputs() {
             let mut input = input_pair.clone();
-            input.output.set_script_key_id(
-                self.make_key_id_export_safe(input.output.script_key_id())
-                    .await
-                    .map_err(TransactionError::BuilderError)?,
-            );
-            inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
+            input.output.set_script_key_id(input.output.script_key_id().clone());
+            inputs.push(MarshalOutputPair::marshal(input)?);
         }
 
         let mut outputs = Vec::new();
         for output_pair in tx_builder.custom_outputs() {
             let mut output = output_pair.clone();
-            output.output.set_script_key_id(
-                self.make_key_id_export_safe(output.output.script_key_id())
-                    .await
-                    .map_err(TransactionError::BuilderError)?,
-            );
-            outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
+            output.output.set_script_key_id(output.output.script_key_id().clone());
+            outputs.push(MarshalOutputPair::marshal(output)?);
         }
 
-        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
             (fee, Some(mut change_output), tx_id) => {
-                change_output.output.set_script_key_id(
-                    self.make_key_id_export_safe(change_output.output.script_key_id())
-                        .await
-                        .map_err(TransactionError::BuilderError)?,
-                );
-                (
-                    fee,
-                    Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
-                    tx_id,
-                )
+                change_output
+                    .output
+                    .set_script_key_id(change_output.output.script_key_id().clone());
+                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
             },
             (fee, None, tx_id) => (fee, None, tx_id),
         };
@@ -142,7 +124,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         })
     }
 
-    pub async fn prepare_deposit_multisig_transaction(
+    pub fn prepare_deposit_multisig_transaction(
         &self,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         amount: MicroMinotari,
@@ -155,34 +137,22 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
         tx_builder.with_memo(payment_id.clone());
         // we do this to ensure the fee is calculated correctly
-        tx_builder
-            .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
-            .await?;
+        tx_builder.add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())?;
 
         let mut inputs = Vec::new();
         for input_ref in tx_builder.inputs() {
             let mut input = input_ref.clone();
-            input.output.set_script_key_id(
-                self.make_key_id_export_safe(input.output.script_key_id())
-                    .await
-                    .map_err(TransactionError::BuilderError)?,
-            );
-            inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
+            input.output.set_script_key_id(input.output.script_key_id().clone());
+            inputs.push(MarshalOutputPair::marshal(input)?);
         }
         let outputs = Vec::new();
 
-        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
             (fee, Some(mut change_output), tx_id) => {
-                change_output.output.set_script_key_id(
-                    self.make_key_id_export_safe(change_output.output.script_key_id())
-                        .await
-                        .map_err(TransactionError::BuilderError)?,
-                );
-                (
-                    fee,
-                    Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
-                    tx_id,
-                )
+                change_output
+                    .output
+                    .set_script_key_id(change_output.output.script_key_id().clone());
+                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
             },
             (fee, None, tx_id) => (fee, None, tx_id),
         };
@@ -217,7 +187,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         })
     }
 
-    pub async fn prepare_withdraw_multisig_transaction(
+    pub fn prepare_withdraw_multisig_transaction(
         &self,
         mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
         amount: MicroMinotari,
@@ -227,43 +197,27 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         recipient: TariAddress,
     ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
         tx_builder.with_memo(payment_id.clone());
-        tx_builder
-            .add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())
-            .await?;
+        tx_builder.add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())?;
 
         let mut inputs = Vec::new();
         for input_ref in tx_builder.inputs() {
             let mut input = input_ref.clone();
-            input.output.set_script_key_id(
-                self.make_key_id_export_safe(input.output.script_key_id())
-                    .await
-                    .map_err(TransactionError::BuilderError)?,
-            );
-            inputs.push(MarshalOutputPair::marshal(&self.key_manager, input).await?);
+            input.output.set_script_key_id(input.output.script_key_id().clone());
+            inputs.push(MarshalOutputPair::marshal(input)?);
         }
         let mut outputs = Vec::new();
         for output_pair in tx_builder.custom_outputs() {
             let mut output = output_pair.clone();
-            output.output.set_script_key_id(
-                self.make_key_id_export_safe(output.output.script_key_id())
-                    .await
-                    .map_err(TransactionError::BuilderError)?,
-            );
-            outputs.push(MarshalOutputPair::marshal(&self.key_manager, output).await?);
+            output.output.set_script_key_id(output.output.script_key_id().clone());
+            outputs.push(MarshalOutputPair::marshal(output)?);
         }
 
-        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output().await? {
+        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
             (fee, Some(mut change_output), tx_id) => {
-                change_output.output.set_script_key_id(
-                    self.make_key_id_export_safe(change_output.output.script_key_id())
-                        .await
-                        .map_err(TransactionError::BuilderError)?,
-                );
-                (
-                    fee,
-                    Some(MarshalOutputPair::marshal(&self.key_manager, change_output).await?),
-                    tx_id,
-                )
+                change_output
+                    .output
+                    .set_script_key_id(change_output.output.script_key_id().clone());
+                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
             },
             (fee, None, tx_id) => (fee, None, tx_id),
         };
@@ -294,12 +248,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         })
     }
 
-    pub async fn sign_locked_transaction(
+    pub fn sign_locked_transaction(
         &mut self,
         request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
         let mut signer = OneSidedSigner::new(&mut self.key_manager);
-        let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
+        let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone())?;
 
         Ok(SignedOneSidedTransactionResult {
             version: get_latest_version(),
@@ -308,14 +262,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         })
     }
 
-    pub async fn sign_locked_deposit_multisig_transaction(
+    pub fn sign_locked_deposit_multisig_transaction(
         &mut self,
         request: PrepareDepositMultisigTransactionResult,
     ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
         let mut signer = OneSidedSigner::new(&mut self.key_manager);
-        let signed_transaction = signer
-            .sign_multisig_transaction(request.tx_id, request.info.clone())
-            .await?;
+        let signed_transaction = signer.sign_multisig_transaction(request.tx_id, request.info.clone())?;
 
         Ok(SignedOneSidedDepositMultisigTransactionResult {
             version: get_latest_version(),
@@ -324,77 +276,18 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         })
     }
 
-    pub async fn sign_locked_withdraw_multisig_transaction(
+    pub fn sign_locked_withdraw_multisig_transaction(
         &mut self,
         request: PrepareWithdrawMultisigTransactionResult,
     ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
         let mut signer = OneSidedSigner::new(&mut self.key_manager);
 
-        let signed_transaction = signer
-            .sign_multisig_withdraw_transaction(request.tx_id, request.info.clone())
-            .await?;
+        let signed_transaction = signer.sign_multisig_withdraw_transaction(request.tx_id, request.info.clone())?;
 
         Ok(SignedOneSidedWithdrawMultisigTransactionResult {
             version: get_latest_version(),
             request,
             signed_transaction,
         })
-    }
-
-    async fn make_key_id_export_safe(&self, key_id: &TariKeyId) -> Result<TariKeyId, String> {
-        if *key_id ==
-            self.key_manager
-                .get_spend_key()
-                .await
-                .map_err(|err| err.to_string())?
-                .key_id
-        {
-            return Ok(key_id.clone());
-        }
-        if *key_id ==
-            self.key_manager
-                .get_view_key()
-                .await
-                .map_err(|err| err.to_string())?
-                .key_id
-        {
-            return Ok(key_id.clone());
-        }
-
-        match key_id {
-            TariKeyId::Zero => Ok(TariKeyId::Zero),
-            TariKeyId::Imported { .. } => {
-                // This is an imported key, so we can safely export it
-                Ok(key_id.clone())
-            },
-            TariKeyId::Derived { key } => {
-                let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
-                let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
-                let key = TariKeyId::Derived {
-                    key: modified_key.into(),
-                };
-                Ok(key)
-            },
-            TariKeyId::DHCommitmentMask { .. } => Ok(key_id.clone()),
-            TariKeyId::DHEncryptedData { .. } => Ok(key_id.clone()),
-            TariKeyId::Encrypted { encrypted, key } => {
-                let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
-                let modified_key = Box::pin(self.make_key_id_export_safe(&inner_key)).await?;
-                let key = TariKeyId::Encrypted {
-                    encrypted: encrypted.clone(),
-                    key: modified_key.into(),
-                };
-                Ok(key)
-            },
-            TariKeyId::Managed { .. } => {
-                let key = self
-                    .key_manager
-                    .create_encrypted_key_from_existing_key(key_id, None)
-                    .await
-                    .map_err(|err| err.to_string())?;
-
-                Ok(key)
-            },
-        }
     }
 }

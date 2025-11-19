@@ -35,20 +35,22 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::LegacyImportStatus,
     types::{BlockHash, FixedHash, HashOutput},
-    wallet_types::WalletType,
 };
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
-    key_manager::TransactionKeyManagerInterface,
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
-        one_sided::shared_secret_to_output_encryption_key,
+        one_sided::public_key_to_output_encryption_key,
         EncryptedData,
         TransactionOutput,
         WalletOutput,
     },
     MicroMinotari,
+};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
@@ -98,7 +100,7 @@ pub struct UtxoScannerTask<
 impl<TBackend, TKeyManager, TWalletClientFactory> UtxoScannerTask<TBackend, TKeyManager, TWalletClientFactory>
 where
     TBackend: WalletBackend + 'static,
-    TKeyManager: TransactionKeyManagerInterface,
+    TKeyManager: LegacyTransactionKeyManagerInterface,
     TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 {
     pub async fn run(mut self) -> Result<(), anyhow::Error> {
@@ -219,8 +221,8 @@ where
             // wallet birthday
             self.resources.db.clear_scanned_blocks()?;
             let wallet_birthday = match self.resources.db.get_wallet_type()? {
-                Some(WalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
-                Some(WalletType::Ledger(_)) => Some(0), // Ledger wallets have no birthday, so start from genesis
+                Some(LegacyWalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
+                Some(LegacyWalletType::Ledger(_)) => Some(0), // Ledger wallets have no birthday, so start from genesis
                 _ => None,
             };
             let scanning_start_height_hash = self
@@ -455,7 +457,7 @@ where
                     let outputs = response.outputs;
                     total_scanned += outputs.len();
 
-                    let found_outputs = self.search_for_owned_outputs(outputs).await?;
+                    let found_outputs = self.search_for_owned_outputs(outputs)?;
 
                     if found_outputs.is_empty() {
                         trace!(
@@ -558,13 +560,13 @@ where
         Ok(result)
     }
 
-    async fn search_for_owned_outputs(
+    fn search_for_owned_outputs(
         &mut self,
         outputs: Vec<MinimalUtxoSyncInfo>,
     ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
         let mut found_outputs: Vec<MinimalUtxoSyncInfo> = Vec::new();
         let start = Instant::now();
-        let view_key = self.key_manager.get_view_key().await?;
+        let view_key = self.key_manager.get_view_key();
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
                 .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
@@ -576,9 +578,8 @@ where
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
             let shared_secret = self
                 .key_manager
-                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)
-                .await?;
-            let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
+                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)?;
+            let recovery_key = public_key_to_output_encryption_key(&shared_secret)
                 .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
                 .ok()
@@ -592,7 +593,6 @@ where
             if self
                 .key_manager
                 .is_this_output_ours(&commitment, &encrypted, None)
-                .await
                 .ok()
                 .is_some()
             {
@@ -709,7 +709,7 @@ where
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
-        let view_key = self.key_manager.get_view_key().await?.pub_key;
+        let view_key = self.key_manager.get_view_key().pub_key;
         for (wo, import_status, to) in utxos {
             let source_address = if wo.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
