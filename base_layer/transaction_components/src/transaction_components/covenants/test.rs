@@ -37,24 +37,24 @@ use crate::{
     },
 };
 
-pub async fn create_outputs<KM: TransactionKeyManagerInterface>(
+pub fn create_outputs<KM: TransactionKeyManagerInterface>(
     n: usize,
     utxo_params: UtxoTestParams,
-    key_manager: &mut KM,
+    key_manager: &KM,
 ) -> Vec<TransactionOutput> {
     let mut outputs = Vec::new();
     for _i in 0..n {
-        let params = TestParams::new(key_manager).await;
-        let output = params.create_output(utxo_params.clone(), key_manager).await.unwrap();
+        let params = TestParams::new(key_manager);
+        let output = params.create_output(utxo_params.clone(), key_manager).unwrap();
         outputs.push(output.to_transaction_output().unwrap());
     }
     outputs
 }
 
-pub async fn create_input<KM: TransactionKeyManagerInterface>(key_manager: &mut KM) -> TransactionInput {
-    let params = TestParams::new(key_manager).await;
-    let output = params.create_output(Default::default(), key_manager).await.unwrap();
-    output.to_transaction_input(key_manager).await.unwrap()
+pub fn create_input<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TransactionInput {
+    let params = TestParams::new(key_manager);
+    let output = params.create_output(Default::default(), key_manager).unwrap();
+    output.to_transaction_input(key_manager).unwrap()
 }
 
 pub fn create_context<'a>(covenant: &Covenant, input: &'a TransactionInput, block_height: u64) -> CovenantContext<'a> {

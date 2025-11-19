@@ -63,6 +63,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -1034,7 +1035,10 @@ impl OutputSql {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn to_db_wallet_output(self) -> Result<DbWalletOutput, OutputManagerStorageError> {
+    pub fn to_db_wallet_output<KM: LegacyTransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{s}"),
@@ -1065,30 +1069,51 @@ impl OutputSql {
                 });
             },
         };
+        let commitment_mask_key_id = match TariKeyId::from_str(&self.spending_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.spending_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create spending key id({}) from stored string ({e})",self.spending_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Spending key id({}) could not be converted from string ({e})",
+                            self.spending_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
+        };
+
+        let script_key_id = match TariKeyId::from_str(&self.script_private_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.script_private_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create script private key id({}) from stored string ({e})",self.script_private_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Could not create script private key id({}) from stored string ({e})",
+                            self.script_private_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
+        };
         let wallet_output = WalletOutput::new_from_parts(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
-            TariKeyId::from_str(&self.spending_key).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create spending key id from stored string ({e})"
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: format!("Spending key id could not be converted from string ({e})"),
-                }
-            })?,
+            commitment_mask_key_id,
             features,
             TariScript::from_bytes(self.script.as_slice())?,
             ExecutionStack::from_bytes(self.input_data.as_slice())?,
-            TariKeyId::from_str(&self.script_private_key).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create script private key id from stored string ({e})"
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: format!("Script private key id could not be converted from string ({e})"),
-                }
-            })?,
+            script_key_id,
             CompressedPublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,

@@ -142,16 +142,14 @@ impl UnblindedOutput {
         )
     }
 
-    pub async fn to_wallet_output<KM: TransactionKeyManagerInterface>(
+    pub fn to_wallet_output<KM: TransactionKeyManagerInterface>(
         self,
         key_manager: &KM,
         payment_id: MemoField,
     ) -> Result<WalletOutput, TransactionError> {
-        let commitment_mask_key_id = key_manager.import_key(self.commitment_mask_key, None).await?;
-        let spending_key = key_manager.get_spend_key().await?;
-        let script_key_id = key_manager
-            .import_key(self.script_private_key, Some(spending_key.key_id))
-            .await?;
+        let commitment_mask_key_id = key_manager.create_encrypted_key(self.commitment_mask_key, None)?;
+        let spending_key = key_manager.get_spend_key();
+        let script_key_id = key_manager.create_encrypted_key(self.script_private_key, Some(spending_key.key_id))?;
         let wallet_output = WalletOutput::new_with_rangeproof(
             self.version,
             self.value,
@@ -169,17 +167,16 @@ impl UnblindedOutput {
             self.range_proof,
             payment_id,
             key_manager,
-        )
-        .await?;
+        )?;
         Ok(wallet_output)
     }
 
-    pub async fn from_wallet_output<KM: SecretTransactionKeyManagerInterface>(
+    pub fn from_wallet_output<KM: SecretTransactionKeyManagerInterface>(
         output: WalletOutput,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let commitment_mask_key = key_manager.get_private_key(output.commitment_mask_key_id()).await?;
-        let script_private_key = key_manager.get_private_key(output.script_key_id()).await?;
+        let commitment_mask_key = key_manager.get_private_key(output.commitment_mask_key_id())?;
+        let script_private_key = key_manager.get_private_key(output.script_key_id())?;
         let range_proof = if output.features().range_proof_type == RangeProofType::BulletProofPlus {
             output.range_proof().clone()
         } else {

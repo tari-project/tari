@@ -27,44 +27,42 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
-    wallet_types::WalletType,
 };
+use tari_transaction_components::{crypto_factories::CryptoFactories, key_manager::error::KeyManagerError};
 use zeroize::Zeroizing;
 
-use crate::{
-    crypto_factories::CryptoFactories,
-    key_manager::{
-        error::{KeyManagerServiceError, KeyManagerStorageError},
-        KeyManagerState,
-        TransactionKeyManagerBackend,
-        TransactionKeyManagerWrapper,
-    },
+use crate::legacy_key_manager::{
+    error::KeyManagerStorageError,
+    wallet_types::LegacyWalletType,
+    KeyManagerState,
+    LegacyTransactionKeyManagerWrapper,
+    TransactionKeyManagerBackend,
 };
-pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
+pub type MemoryKeyManager = LegacyTransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 
-pub async fn create_memory_key_manager_with_range_proof_size(
+pub async fn create_new_random_key_manager_with_range_proof_size(
     size: usize,
-) -> Result<MemoryKeyManager, KeyManagerServiceError> {
-    let cipher = CipherSeed::new();
+) -> Result<MemoryKeyManager, KeyManagerError> {
+    let cipher = CipherSeed::random();
 
-    create_memory_key_manager_from_seed(cipher, size).await
+    create_new_random_key_manager_from_seed(cipher, size).await
 }
 
-pub async fn create_memory_key_manager_from_seed(
+pub async fn create_new_random_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
-) -> Result<MemoryKeyManager, KeyManagerServiceError> {
+) -> Result<MemoryKeyManager, KeyManagerError> {
     let cipher = seed;
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
     OsRng.fill_bytes(key.as_mut());
     let factory = CryptoFactories::new(rangeproof_size);
 
-    TransactionKeyManagerWrapper::new(cipher, factory, Arc::new(WalletType::default())).await
+    LegacyTransactionKeyManagerWrapper::new(cipher, factory, Arc::new(LegacyWalletType::default())).await
 }
 
-pub async fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerServiceError> {
-    create_memory_key_manager_with_range_proof_size(64).await
+pub async fn create_new_random_key_manager() -> Result<MemoryKeyManager, KeyManagerError> {
+    create_new_random_key_manager_with_range_proof_size(64).await
 }
 
 #[derive(Clone, Debug, Default)]

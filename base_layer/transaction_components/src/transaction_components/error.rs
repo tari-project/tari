@@ -34,7 +34,7 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::{key_manager::error::KeyManagerServiceError, transaction_components::EncryptedDataError};
+use crate::{key_manager::error::KeyManagerError, transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
@@ -90,8 +90,8 @@ pub enum TransactionError {
     UnsupportedTariKeyId(String),
 }
 
-impl From<KeyManagerServiceError> for TransactionError {
-    fn from(err: KeyManagerServiceError) -> Self {
+impl From<KeyManagerError> for TransactionError {
+    fn from(err: KeyManagerError) -> Self {
         TransactionError::KeyManagerError(err.to_string())
     }
 }

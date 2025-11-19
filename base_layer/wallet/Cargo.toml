@@ -15,7 +15,6 @@ c_integration = []
 bundled_sqlite = ["libsqlite3-sys"]
 ledger = [
     "tari_transaction_components/ledger",
-    "tari_transaction_key_manager/ledger",
 ]
 
 [dependencies]
@@ -36,7 +35,7 @@ tari_sidechain = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
 minotari_node_wallet_client = { workspace = true }
-
+minotari_ledger_wallet_common = { workspace = true}
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.4"
 #tokio = { workspace = true, features = ["sync", "macros", "tracing"] }

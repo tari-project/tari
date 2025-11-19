@@ -26,12 +26,10 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput},
-    wallet_types::FeeType,
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
-    key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         covenants::Covenant,
         MemoField,
@@ -44,6 +42,7 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
 };
+use tari_transaction_key_manager::legacy_key_manager::{wallet_types::FeeType, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -405,7 +404,7 @@ pub struct OutputManagerHandle<KM> {
 }
 
 impl<KM> OutputManagerHandle<KM>
-where KM: TransactionKeyManagerInterface
+where KM: LegacyTransactionKeyManagerInterface
 {
     pub fn new(
         handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,

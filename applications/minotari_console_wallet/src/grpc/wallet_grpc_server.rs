@@ -159,7 +159,6 @@ use tari_common_types::{
         PrivateKey,
         SignatureWithDomain,
     },
-    wallet_types::FeeType,
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_hashing::WalletMessageSigningDomain;
@@ -174,6 +173,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::FeeType;
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
@@ -305,7 +305,6 @@ impl WalletGrpcServer {
             let wallet_address = self
                 .wallet
                 .get_wallet_one_sided_address()
-                .await
                 .map_err(|e| Status::internal(format!("{e:?}")))?;
             let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                 loop {
@@ -394,12 +393,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         Ok(Response::new(GetAddressResponse {
             interactive_address: interactive_address.to_vec(),
@@ -421,7 +418,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: interactive:      '{}'", interactive_address.to_base58());
         let interactive_address = interactive_address
@@ -431,7 +427,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: one_sided:        '{}'", one_sided_address.to_base58());
         let one_sided_address = one_sided_address
@@ -455,12 +450,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         Ok(Response::new(GetCompleteAddressResponse {
@@ -671,10 +664,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        MemoField::open_from_string(
+                        MemoField::new_open_from_string(
                             "Claiming HTLC transaction with pre-image",
                             TxType::ClaimAtomicSwap,
-                        ),
+                        )
+                        .map_err(Status::internal)?,
                     )
                     .await
                 {
@@ -682,7 +676,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         let wallet_address = self
                             .wallet
                             .get_wallet_one_sided_address()
-                            .await
                             .map_err(|e| Status::internal(format!("{e:?}")))?;
                         let wallet_tx = self
                             .get_transaction_service()
@@ -746,7 +739,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        MemoField::open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
+                        MemoField::new_open_from_string(
+                            "Creating HTLC refund transaction",
+                            TxType::HtlcAtomicSwapRefund,
+                        )
+                        .map_err(Status::internal)?,
                     )
                     .await
                 {
@@ -754,7 +751,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         let wallet_address = self
                             .wallet
                             .get_wallet_one_sided_address()
-                            .await
                             .map_err(|e| Status::internal(format!("{e:?}")))?;
                         let wallet_tx = self
                             .get_transaction_service()
@@ -1136,7 +1132,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     let wallet_address = self
                         .wallet
                         .get_wallet_one_sided_address()
-                        .await
                         .map_err(|e| Status::internal(format!("{e:?}")))?;
                     let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                         loop {
@@ -1263,7 +1258,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let wallet_address = self
             .wallet
             .get_wallet_one_sided_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         // Start sending coin join transactions until we exhaust the range or reach the target amount
@@ -1463,7 +1457,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let wallet_address = self
             .wallet
             .get_wallet_interactive_address()
-            .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut transactions = Vec::new();
         for (tx_id, tx) in all_transactions {
@@ -2122,7 +2115,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                MemoField::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
+                MemoField::new_open_from_string("Creating coin-split transaction", TxType::CoinSplit)
+                    .map_err(Status::internal)?,
             )
             .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
@@ -2826,7 +2820,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     let wallet_address = self
                         .wallet
                         .get_wallet_one_sided_address()
-                        .await
                         .map_err(|e| Status::internal(format!("{e:?}")))?;
                     let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                         loop {

@@ -36,7 +36,7 @@ use tari_core::{
 use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
     generate_coinbase,
-    key_manager::{create_memory_key_manager, MemoryKeyManager},
+    key_manager::KeyManager,
     tari_proof_of_work::Difficulty,
     transaction_components::{CoinBaseExtra, MemoField, TransactionKernel, TransactionOutput},
 };
@@ -56,20 +56,20 @@ pub(crate) struct BlockTemplateManager<'a> {
     config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeGrpcClient,
     p2pool_client: Option<ShaP2PoolGrpcClient>,
-    key_manager: MemoryKeyManager,
+    key_manager: KeyManager,
     wallet_payment_address: TariAddress,
     consensus_manager: BaseNodeConsensusManager,
 }
 
 impl<'a> BlockTemplateManager<'a> {
-    pub async fn try_create(
+    pub fn try_create(
         base_node_client: &'a mut BaseNodeGrpcClient,
         p2pool_client: Option<ShaP2PoolGrpcClient>,
         config: Arc<MergeMiningProxyConfig>,
         consensus_manager: BaseNodeConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateManager<'a>, MmProxyError> {
-        let key_manager = create_memory_key_manager().await?;
+        let key_manager = KeyManager::new_random()?;
         Ok(Self {
             config,
             base_node_client,
@@ -173,7 +173,7 @@ impl BlockTemplateManager<'_> {
                 .map(|h| h.height)
                 .unwrap_or_default();
             debug!(target: LOG_TARGET, "Requested new block template at height: #{height} (try {loop_count})");
-            let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
+            let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template)?;
 
             let template_with_coinbase =
                 merge_mining::add_coinbase(&coinbase_output, &coinbase_kernel, new_template.template.clone())?;
@@ -228,7 +228,7 @@ impl BlockTemplateManager<'_> {
     }
 
     /// Get coinbase transaction for the [template](NewBlockTemplateData).
-    async fn get_coinbase(
+    fn get_coinbase(
         &mut self,
         template: &NewBlockTemplateData,
     ) -> Result<(TransactionOutput, TransactionKernel), MmProxyError> {
@@ -242,14 +242,13 @@ impl BlockTemplateManager<'_> {
             block_reward.into(),
             tari_height,
             &CoinBaseExtra::try_from(self.config.coinbase_extra.as_bytes().to_vec())?,
-            &mut self.key_manager,
+            &self.key_manager,
             &self.wallet_payment_address,
             true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
             MemoField::open_unchecked(vec![], TxType::Coinbase),
-        )
-        .await?;
+        )?;
         Ok((coinbase_output, coinbase_kernel))
     }
 }

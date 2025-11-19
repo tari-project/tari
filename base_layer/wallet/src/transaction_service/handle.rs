@@ -35,7 +35,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
-    wallet_types::FeeType,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_max_size::MaxSizeString;
@@ -64,6 +63,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::FeeType;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;

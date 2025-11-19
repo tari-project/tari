@@ -27,10 +27,11 @@ use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::TariKeyId,
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::output_manager_service::{
@@ -53,7 +54,7 @@ pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(master_key_manager: TKeyManagerInterface, db: OutputManagerDatabase<TBackend>) -> Self {
         Self { master_key_manager, db }
@@ -69,7 +70,9 @@ where
         let start = Instant::now();
         let outputs_length = outputs.len();
 
-        let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
+        let known_scripts = self
+            .db
+            .get_all_known_one_sided_payment_scripts(&self.master_key_manager)?;
 
         let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
@@ -82,17 +85,15 @@ where
                 continue;
             }
 
-            let (commitment_mask, committed_value, payment_id) = match self.attempt_output_recovery(&output).await? {
+            let (commitment_mask, committed_value, payment_id) = match self.attempt_output_recovery(&output)? {
                 Some(recovered) => recovered,
                 None => continue,
             };
-            let (input_data, script_key) = match self
-                .find_script_key(&output.script, &commitment_mask, known_script_index, &known_scripts)
-                .await?
-            {
-                Some((input_data, script_key)) => (input_data, script_key),
-                None => continue,
-            };
+            let (input_data, script_key) =
+                match self.find_script_key(&output.script, &commitment_mask, known_script_index, &known_scripts)? {
+                    Some((input_data, script_key)) => (input_data, script_key),
+                    None => continue,
+                };
 
             let hash = output.hash();
             let uo = WalletOutput::new_from_transaction_output(
@@ -125,11 +126,12 @@ where
                 None,
             );
             let output_hex = db_output.commitment.to_hex();
-            let view_key = self.master_key_manager.get_view_key().await?.pub_key;
-            if let Err(e) = self
-                .db
-                .add_unspent_output_with_tx_id(output.calculate_tx_id(view_key.as_bytes()), db_output)
-            {
+            let view_key = self.master_key_manager.get_view_key().pub_key;
+            if let Err(e) = self.db.add_unspent_output_with_tx_id(
+                output.calculate_tx_id(view_key.as_bytes()),
+                db_output,
+                &self.master_key_manager,
+            ) {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         continue;
@@ -179,7 +181,7 @@ where
         }
     }
 
-    async fn find_script_key(
+    fn find_script_key(
         &self,
         script: &TariScript,
         spending_key: &TariKeyId,
@@ -192,9 +194,9 @@ where
                 TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());
-                self.master_key_manager.import_key(private_key, None).await?
+                self.master_key_manager.create_encrypted_key(private_key, None)?
             };
-            let public_key = self.master_key_manager.get_public_key_at_key_id(&key).await?;
+            let public_key = self.master_key_manager.get_public_key_at_key_id(&key)?;
             (inputs!(public_key), key)
         } else {
             // This is a known script so lets fill in the details
@@ -208,8 +210,7 @@ where
                 if let Some(Opcode::PushPubKey(public_key)) = script.opcode(0) {
                     let result = self
                         .master_key_manager
-                        .find_script_key_id_from_commitment_mask_key_id(spending_key, Some(public_key))
-                        .await?;
+                        .find_script_key_id_from_commitment_mask_key_id(spending_key, Some(public_key))?;
                     if let Some(script_key_id) = result {
                         (ExecutionStack::default(), script_key_id)
                     } else {
@@ -226,26 +227,25 @@ where
         Ok(Some((input_data, script_key)))
     }
 
-    async fn attempt_output_recovery(
+    fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
-        match self.db.fetch_by_commitment(output.commitment().clone()) {
+        match self
+            .db
+            .fetch_by_commitment(output.commitment().clone(), &self.master_key_manager)
+        {
             Ok(_) => return Ok(None),
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value, payment_id) = match self
-            .master_key_manager
-            .try_output_key_recovery(
-                output.commitment(),
-                output.encrypted_data(),
-                &output.sender_offset_public_key,
-            )
-            .await?
-        {
+        let (key, committed_value, payment_id) = match self.master_key_manager.try_output_key_recovery(
+            output.commitment(),
+            output.encrypted_data(),
+            &output.sender_offset_public_key,
+        )? {
             Some(value) => value,
             _ => return Ok(None),
         };

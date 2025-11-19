@@ -32,6 +32,7 @@ pub mod consensus_constants;
 pub mod historical_block;
 pub mod new_block_template;
 pub mod output_features;
+#[cfg(feature = "base_node")]
 pub mod peer;
 pub mod proof_of_work;
 pub mod sidechain_feature;

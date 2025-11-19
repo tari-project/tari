@@ -75,7 +75,7 @@ mod sync_blocks {
     async fn it_sends_bad_request_on_bad_response() {
         let (service, db, rpc_request_mock) = setup();
 
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"]));
 
         let block = chain.get("A").unwrap();
         let msg = SyncBlocksRequest {
@@ -90,7 +90,7 @@ mod sync_blocks {
     async fn it_streams_blocks_until_end() {
         let (service, db, rpc_request_mock) = setup();
 
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"])).await;
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
 
         let first_block = chain.get("A").unwrap();
         let last_block = chain.get("E").unwrap();
@@ -132,7 +132,7 @@ mod sync_utxos {
     #[tokio::test]
     async fn it_returns_not_found_if_start_not_found() {
         let (service, db, rpc_request_mock) = setup();
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"]));
         let gb = chain.get("GB").unwrap();
         let msg = SyncUtxosRequest {
             start_header_hash: vec![0; 32],

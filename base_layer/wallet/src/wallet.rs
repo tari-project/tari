@@ -33,7 +33,7 @@ use tari_common_types::{
         mnemonic::{Mnemonic, MnemonicLanguage},
         seed_words::SeedWords,
     },
-    tari_address::{TariAddress, TariAddressFeatures},
+    tari_address::{TariAddress, TariAddressError, TariAddressFeatures},
     transaction::{LegacyImportStatus, TxId},
     types::{
         ComAndPubSignature,
@@ -43,7 +43,6 @@ use tari_common_types::{
         RangeProof,
         SignatureWithDomain,
     },
-    wallet_types::WalletType,
 };
 use tari_comms::{types::CommsSecretKey, NodeIdentity};
 use tari_crypto::signatures::SchnorrSignatureError;
@@ -55,17 +54,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{
-        error::KeyManagerServiceError,
-        tari_key_manager::TariKeyManager,
-        KeyDigest,
-        KeyManagerBranch,
-        SecretTransactionKeyManagerInterface,
-        TariKeyId,
-        TransactionKeyManagerBackend,
-        TransactionKeyManagerInitializer,
-        TransactionKeyManagerInterface,
-    },
+    key_manager::{wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -74,6 +63,13 @@ use tari_transaction_components::{
         UnblindedOutput,
     },
     MicroMinotari,
+};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    KeyManagerBranch,
+    LegacyTransactionKeyManagerInitializer,
+    LegacyTransactionKeyManagerInterface,
+    TransactionKeyManagerBackend,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use url::Url;
@@ -123,7 +119,7 @@ where THttpClientFactory: HttpClientFactory
     pub db: WalletDatabase<T>,
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
-    wallet_type: Arc<WalletType>,
+    wallet_type: Arc<LegacyWalletType>,
     pub config: WalletConfig,
     pub shutdown_signal: ShutdownSignal,
     pub node_identity: Arc<NodeIdentity>,
@@ -136,7 +132,7 @@ where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
-    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface + LegacyTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     #[allow(clippy::too_many_lines)]
@@ -153,7 +149,7 @@ where
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
-        wallet_type: Option<WalletType>,
+        wallet_type: Option<LegacyWalletType>,
     ) -> Result<Self, WalletError> {
         let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
 
@@ -174,7 +170,7 @@ where
                 factories.clone(),
                 config.network.into(),
             ))
-            .add_initializer(TransactionKeyManagerInitializer::new_with_legacy_storage(
+            .add_initializer(LegacyTransactionKeyManagerInitializer::new_with_legacy_storage(
                 key_manager_backend,
                 master_seed,
                 factories.clone(),
@@ -246,7 +242,7 @@ where
         } else {
             None
         };
-        let spend_key = key_manager_handle.get_spend_key().await?;
+        let spend_key = key_manager_handle.get_spend_key();
 
         persist_one_sided_payment_script_for_node_identity(
             &mut output_manager_handle,
@@ -324,37 +320,39 @@ where
         }
     }
 
-    pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
-        let view_key = self.key_manager_service.get_view_key().await?;
-        let comms_key = self.key_manager_service.get_comms_key().await?;
+    pub fn get_wallet_interactive_address(&self) -> Result<TariAddress, TariAddressError> {
+        let view_key = self.key_manager_service.get_view_key();
+        let comms_key = self.key_manager_service.get_spend_key();
         let features = match *self.wallet_type {
-            WalletType::DerivedKeys => TariAddressFeatures::default(),
-            WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
+            LegacyWalletType::DerivedKeys => TariAddressFeatures::default(),
+            LegacyWalletType::Ledger(_) | LegacyWalletType::ProvidedKeys(_) => {
+                TariAddressFeatures::create_interactive_only()
+            },
         };
-        Ok(TariAddress::new_dual_address(
+        TariAddress::new_dual_address(
             view_key.pub_key,
             comms_key.pub_key,
             self.network.as_network(),
             features,
             None,
-        )?)
+        )
     }
 
-    pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
-        let view_key = self.key_manager_service.get_view_key().await?;
-        let spend_key = self.key_manager_service.get_spend_key().await?;
-        Ok(TariAddress::new_dual_address(
+    pub fn get_wallet_one_sided_address(&self) -> Result<TariAddress, TariAddressError> {
+        let view_key = self.key_manager_service.get_view_key();
+        let spend_key = self.key_manager_service.get_spend_key();
+        TariAddress::new_dual_address(
             view_key.pub_key,
             spend_key.pub_key,
             self.network.as_network(),
             TariAddressFeatures::create_one_sided_only(),
             None,
-        )?)
+        )
     }
 
-    pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
-        let address_interactive = self.get_wallet_interactive_address().await?;
-        let address_one_sided = self.get_wallet_one_sided_address().await?;
+    pub fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
+        let address_interactive = self.get_wallet_interactive_address()?;
+        let address_one_sided = self.get_wallet_one_sided_address()?;
         Ok(WalletIdentity::new(
             self.node_identity.clone(),
             address_interactive,
@@ -416,9 +414,7 @@ where
         payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
-        let wallet_output = unblinded_output
-            .to_wallet_output(&self.key_manager_service, MemoField::new_empty())
-            .await?;
+        let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service, MemoField::new_empty())?;
 
         let tx_id = self
             .transaction_service
@@ -584,10 +580,10 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: Option<MemoField>,
     ) -> Result<TxId, WalletError> {
-        let payment_id = payment_id.unwrap_or(MemoField::open_from_string(
-            &format!("Coin join {} outputs", commitments.len()),
-            TxType::CoinJoin,
-        ));
+        let payment_id = payment_id.unwrap_or(
+            MemoField::new_open_from_string(&format!("Coin join {} outputs", commitments.len()), TxType::CoinJoin)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+        );
         let coin_join_tx = self
             .output_manager_service
             .create_coin_join(commitments, fee_per_gram, payment_id.clone())
@@ -636,7 +632,7 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
     let master_seed = match recovery_seed {
         None => match db_master_seed {
             None => {
-                let seed = CipherSeed::new();
+                let seed = CipherSeed::random();
                 db.set_master_seed(seed.clone())?;
                 seed
             },
@@ -661,15 +657,15 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
 }
 
 pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
-    wallet_type: Option<WalletType>,
+    wallet_type: Option<LegacyWalletType>,
     db: &WalletDatabase<T>,
-) -> Result<WalletType, WalletError> {
+) -> Result<LegacyWalletType, WalletError> {
     let db_wallet_type = db.get_wallet_type()?;
 
     match (db_wallet_type, wallet_type) {
         (None, None) => {
             // this is most likely an older wallet pre ledger support, lets put it in software
-            let wallet_type = WalletType::default();
+            let wallet_type = LegacyWalletType::default();
             db.set_wallet_type(wallet_type.clone())?;
             Ok(wallet_type)
         },
@@ -682,6 +678,7 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
 }
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
+    use tari_transaction_key_manager::legacy_key_manager::tari_key_manager::TariKeyManager;
     let comms_key_manager =
         TariKeyManager::<KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
     Ok(comms_key_manager.derive_key(0)?.key)
@@ -690,7 +687,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
-async fn persist_one_sided_payment_script_for_node_identity<KM: TransactionKeyManagerInterface>(
+async fn persist_one_sided_payment_script_for_node_identity<KM: LegacyTransactionKeyManagerInterface>(
     output_manager_service: &mut OutputManagerHandle<KM>,
     spend_key: &CompressedPublicKey,
     spend_key_id: TariKeyId,

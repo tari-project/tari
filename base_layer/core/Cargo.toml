@@ -35,7 +35,6 @@ tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }
 tari_transaction_components = { workspace = true }
-tari_transaction_key_manager = { workspace = true }
 tari_test_utils = { workspace = true }
 tari_utilities = { workspace = true, features = ["borsh"] }
 

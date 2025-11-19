@@ -30,7 +30,7 @@ use tari_crypto::errors::RangeProofError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
+    key_manager::error::KeyManagerError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };
@@ -135,7 +135,7 @@ pub enum OutputManagerError {
     #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
     #[error("Key manager service error: {0}")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptedDataError),
     #[error("No commitments were provided")]
@@ -223,7 +223,7 @@ pub enum OutputManagerStorageError {
     #[error("Binary not stored as valid hex:{0}")]
     HexError(String),
     #[error("Key Manager Service Error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
     #[error("Error: `{0}`")]

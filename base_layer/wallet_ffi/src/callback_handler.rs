@@ -64,7 +64,7 @@ use minotari_wallet::{
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 
 use crate::ffi_basenode_state::TariBaseNodeState;
@@ -109,7 +109,7 @@ where TBackend: TransactionBackend + 'static
 impl<TBackend, TKeyManagerInterface> CallbackHandler<TBackend, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]

@@ -38,7 +38,7 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
+    key_manager::error::KeyManagerError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };
@@ -193,7 +193,7 @@ pub enum TransactionServiceError {
     #[error("Key manager error: `{0}`")]
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Serialization error: `{0}`")]
     SerializationError(String),
     #[error("Transaction exceed maximum byte size. Expected < {expected} but got {got}.")]
