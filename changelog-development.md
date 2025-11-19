@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.3-pre.1](https://github.com/tari-project/tari/compare/v5.1.3-pre.0...v5.1.3-pre.1) (2025-11-19)
+
+
+### Features
+
+* coin defrag ([8b577e4](https://github.com/tari-project/tari/commit/8b577e47398f0bd7fa044d9db97f92aa18b6c9bc))
+
 ### [5.1.3-pre.0](https://github.com/tari-project/tari/compare/v5.1.2-pre.1...v5.1.3-pre.0) (2025-11-11)
 
 
