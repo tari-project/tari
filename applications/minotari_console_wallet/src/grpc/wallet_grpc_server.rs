@@ -46,6 +46,9 @@ use minotari_app_grpc::tari_rpc::{
     ClaimHtlcRefundResponse,
     ClaimShaAtomicSwapRequest,
     ClaimShaAtomicSwapResponse,
+    CoinBucketStats,
+    CoinHistogramRequest,
+    CoinHistogramResponse,
     CoinSplitRequest,
     CoinSplitResponse,
     CreateBurnTransactionRequest,
@@ -94,6 +97,7 @@ use minotari_app_grpc::tari_rpc::{
     PrepareOneSidedTransactionForSigningResponse,
     PrepareWithdrawMultisigTransactionRequest,
     PrepareWithdrawMultisigTransactionResponse,
+    RangeLimitedCoinJoinRequest,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     ReplaceByFeeRequest,
@@ -128,7 +132,12 @@ use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
     error::WalletStorageError,
     legacy_transaction_protocol::recipient::RecipientState,
-    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::OutputManagerHandle,
+        RangeLimit,
+        UtxoSelectionCriteria,
+    },
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
@@ -141,7 +150,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
-    transaction::TxId,
+    transaction::{LegacyTransactionStatus, TxId},
     types::{
         BlockHash,
         CompressedCommitment,
@@ -150,6 +159,7 @@ use tari_common_types::{
         PrivateKey,
         SignatureWithDomain,
     },
+    wallet_types::FeeType,
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_hashing::WalletMessageSigningDomain;
@@ -1175,6 +1185,199 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(TransferResponse { results }))
     }
 
+    #[allow(clippy::too_many_lines)]
+    async fn range_limited_coin_join(
+        &self,
+        request: Request<RangeLimitedCoinJoinRequest>,
+    ) -> Result<Response<TransferResponse>, Status> {
+        let message = request.into_inner();
+        debug!(target: LOG_TARGET, "range_limit_coin_join: {:?}", message);
+
+        // Simple verification of range and target amount
+        let range = message.lower_bound..message.upper_bound;
+        if message.lower_bound >= message.upper_bound {
+            return Err(Status::invalid_argument(format!(
+                "Invalid range range: lower_bound..upper_bound {}..{}",
+                message.lower_bound, message.upper_bound
+            )));
+        }
+        if message.maximum_inputs_per_transaction == 0 {
+            return Err(Status::invalid_argument(
+                "maximum_inputs_per_transaction cannot be zero",
+            ));
+        }
+        if message.target_minimum_amount <= message.upper_bound {
+            return Err(Status::invalid_argument(format!(
+                "target_minimum_amount must be > than upper_bound {} vs. {}",
+                message.target_minimum_amount, message.upper_bound
+            )));
+        }
+        let mut wallet = self.wallet.clone();
+        let mut results = Vec::new();
+        let buckets = wallet
+            .output_manager_service
+            .count_outputs_in_ranges(vec![range])
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let bucket = buckets.first().ok_or(Status::internal(format!(
+            "The wallet does not have any funds in the specified range: {}..{}",
+            message.lower_bound, message.upper_bound
+        )))?;
+        if bucket.total_value < message.target_minimum_amount {
+            return Err(Status::internal(format!(
+                "The wallet does not have sufficient funds in the specified range: {} uT < {} uT",
+                bucket.total_value, message.target_minimum_amount
+            )));
+        }
+
+        // Extract fee, payment id, and wallet address
+        let fee = if let Some(val) = message.fee_per_gram {
+            FeeType::FeePerGram(val.fee_per_gram.max(1))
+        } else if let Some(val) = message.total_fee {
+            FeeType::TotalFee(val.total_fee.max(1))
+        } else {
+            FeeType::FeePerGram(1)
+        };
+        let payment_id = if let Some(user_pay_id) = message.user_payment_id {
+            let bytes = match (
+                user_pay_id.u256.is_empty(),
+                user_pay_id.utf8_string.is_empty(),
+                user_pay_id.user_bytes.is_empty(),
+            ) {
+                (false, true, true) => user_pay_id.u256,
+                (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                (true, true, false) => user_pay_id.user_bytes,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                    ))
+                },
+            };
+            MemoField::new_open(bytes, TxType::PaymentToSelf).map_err(|e| {
+                error!(target: LOG_TARGET, "range_limit_coin_join: {}", e);
+                Status::invalid_argument(format!("range_limit_coin_join: {}", e))
+            })?
+        } else {
+            MemoField::new_empty()
+        };
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
+
+        // Start sending coin join transactions until we exhaust the range or reach the target amount
+        // Note:
+        //   This is done synchronously to ensure each transaction can be successfully processed and submitted to a base
+        //   node before the next is created.
+        let mut transaction_service = self.get_transaction_service();
+        let batch_result = loop {
+            let tx_result = transaction_service
+                .send_range_limited_coin_join_transaction(
+                    UtxoSelectionCriteria {
+                        range_limit: Some(RangeLimit {
+                            range: message.lower_bound..message.upper_bound,
+                            transaction_input_limit: message.maximum_inputs_per_transaction,
+                            target_minimum_amount: message.target_minimum_amount,
+                        }),
+                        ..Default::default()
+                    },
+                    OutputFeatures::default(),
+                    fee,
+                    payment_id.clone(),
+                )
+                .await;
+            let tx_id = match tx_result {
+                Ok(val) => val,
+                Err(err) => {
+                    if let TransactionServiceError::OutputManagerError(OutputManagerError::RangeLimitError {
+                        range_exhausted,
+                        ..
+                    }) = err
+                    {
+                        if range_exhausted && !results.is_empty() {
+                            break Ok(());
+                        }
+                    }
+                    break Err(err);
+                },
+            };
+
+            let wallet_tx = timeout(
+                Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation),
+                async {
+                    loop {
+                        let tx = self.get_transaction_service().get_any_transaction(tx_id).await;
+
+                        if let Ok(Some(tx)) = tx {
+                            match tx.status() {
+                                LegacyTransactionStatus::Broadcast |
+                                LegacyTransactionStatus::MinedUnconfirmed |
+                                LegacyTransactionStatus::MinedConfirmed |
+                                LegacyTransactionStatus::OneSidedUnconfirmed |
+                                LegacyTransactionStatus::OneSidedConfirmed => break Ok(tx),
+                                LegacyTransactionStatus::Rejected => {
+                                    let error = if let Some(reason) = tx.cancelled_reason() {
+                                        TransactionServiceError::MempoolRejection {
+                                            reason: format!("{}", reason),
+                                        }
+                                    } else {
+                                        TransactionServiceError::MempoolRejection {
+                                            reason: "Unknown reason".to_string(),
+                                        }
+                                    };
+                                    break Err(error);
+                                },
+                                _ => {
+                                    sleep(Duration::from_millis(10)).await;
+                                    continue;
+                                },
+                            }
+                        } else {
+                            sleep(Duration::from_millis(10)).await;
+                        }
+                    }
+                },
+            )
+            .await;
+            let wallet_tx = match wallet_tx {
+                Ok(Ok(val)) => val,
+                Ok(Err(e)) => break Err(e),
+                Err(_) => {
+                    break Err(TransactionServiceError::Other(format!(
+                        "Transaction {tx_id} not found within timeout of {:.2?}",
+                        Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation)
+                    )))
+                },
+            };
+
+            let address = wallet_tx
+                .destination_address()
+                .unwrap_or_else(|| {
+                    error!(target: LOG_TARGET, "range_limit_coin_join: Missing destination address for tx {}", tx_id);
+                    TariAddress::default()
+                })
+                .to_string();
+
+            let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
+            results.push(minotari_app_grpc::tari_rpc::TransferResult {
+                address,
+                transaction_id: tx_id.into(),
+                is_success: true,
+                failure_message: Default::default(),
+                transaction_info: Some(final_tx),
+            });
+        };
+
+        match batch_result {
+            Ok(_) => Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results })),
+            Err(err) => {
+                error!(target: LOG_TARGET, "range_limit_coin_join: {}", err);
+                Err(Status::internal(format!("range_limit_coin_join: {}", err)))
+            },
+        }
+    }
+
     async fn create_burn_transaction(
         &self,
         request: Request<CreateBurnTransactionRequest>,
@@ -1925,6 +2128,69 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
+    }
+
+    async fn coin_histogram(
+        &self,
+        request: Request<CoinHistogramRequest>,
+    ) -> Result<Response<CoinHistogramResponse>, Status> {
+        let message = request.into_inner();
+        debug!(target: LOG_TARGET, "coin_histogram: {:?}", message);
+
+        let bucket_ranges: Result<Vec<_>, Status> = if message.buckets.is_empty() {
+            Ok(vec![
+                0..1_000u64,
+                1_000..100_000,
+                100_000..10_000_000,
+                10_000_000..1_000_000_000,
+                1_000_000_000..100_000_000_000,
+                100_000_000_000..21_000_000_000_000_000,
+            ])
+        } else {
+            message
+                .buckets
+                .iter()
+                .map(|v| {
+                    if v.lower_bound >= v.upper_bound {
+                        Err(Status::invalid_argument(format!(
+                            "Invalid range: lower_bound..upper_bound {}..{}",
+                            v.lower_bound, v.upper_bound
+                        )))
+                    } else {
+                        Ok(v.lower_bound..v.upper_bound)
+                    }
+                })
+                .collect()
+        };
+        let bucket_ranges = bucket_ranges?;
+
+        let mut wallet = self.wallet.clone();
+
+        let buckets = wallet
+            .output_manager_service
+            .count_outputs_in_ranges(bucket_ranges.clone())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        if buckets.len() != bucket_ranges.len() {
+            debug!(
+                target: LOG_TARGET,
+                "coin_histogram: Error - The wallet db did not return the requested number of buckets"
+            );
+        }
+
+        let mut buckets_response = Vec::with_capacity(buckets.len());
+        for bucket in &buckets {
+            buckets_response.push(CoinBucketStats {
+                count: bucket.number_of_outputs,
+                total_amount: bucket.total_value,
+                lower_bound: bucket.range.start,
+                upper_bound: bucket.range.end,
+            });
+        }
+
+        Ok(Response::new(CoinHistogramResponse {
+            buckets: buckets_response,
+        }))
     }
 
     async fn import_utxos(

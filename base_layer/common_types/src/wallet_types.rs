@@ -97,3 +97,21 @@ impl LedgerWallet {
         }
     }
 }
+
+/// Specifies either a total fee for a transaction or a fee per gram
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum FeeType {
+    /// A total fee for the transaction (in MicroMinotari units)
+    TotalFee(u64),
+    /// A fee per gram for the transaction (in MicroMinotari units)
+    FeePerGram(u64),
+}
+
+impl Display for FeeType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TotalFee(fee) => write!(f, "TotalFee({fee})"),
+            Self::FeePerGram(fee_per_gram) => write!(f, "FeePerGram({fee_per_gram})"),
+        }
+    }
+}
