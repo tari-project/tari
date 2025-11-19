@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.5](https://github.com/tari-project/tari/compare/v5.2.0-pre.4...v5.2.0-pre.5) (2025-11-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* update hash domain dan->ootle (#7586)
+
+### Features
+
+* add coin selection and spending via bins or buckets ([#7584](https://github.com/tari-project/tari/issues/7584)) ([2ac8910](https://github.com/tari-project/tari/commit/2ac8910152d845c6ab55ad210f4a4e19d1cf8b76))
+* make key manager stateless ([#7550](https://github.com/tari-project/tari/issues/7550)) ([d177274](https://github.com/tari-project/tari/commit/d1772745dec8d231b54c689fcaf7470ab5ed455c))
+
+
+### Bug Fixes
+
+* update hash domain dan->ootle ([#7586](https://github.com/tari-project/tari/issues/7586)) ([823def1](https://github.com/tari-project/tari/commit/823def10116fcd5596da899df8a7a9e8f728c765))
+* validation trigger ([#7590](https://github.com/tari-project/tari/issues/7590)) ([c3e101e](https://github.com/tari-project/tari/commit/c3e101e207dd490d2a050d810b45e292cbe45848))
+
 ## [5.2.0-pre.4](https://github.com/tari-project/tari/compare/v5.2.0-pre.3...v5.2.0-pre.4) (2025-11-17)
 
 

@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.2.0-pre.4"
+version = "5.2.0-pre.5"
 edition = "2021"
 rust-version = "1.90.0"
 authors = ["The Tari Development Community"]
