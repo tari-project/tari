@@ -45,7 +45,6 @@ use crate::{
     client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::handle::OutputManagerHandle,
-    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -65,10 +64,9 @@ mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 
-pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
+pub struct TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
-    W: WalletBackend,
     TKeyManagerInterface: TransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
@@ -78,17 +76,15 @@ where
     network: Network,
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
-    wallet_database: Option<WalletDatabase<W>>,
     wallet_type: Arc<WalletType>,
     _phantom_data_key_manager: PhantomData<TKeyManagerInterface>,
     _phantom_data_http_interface: PhantomData<THttpClientFactory>,
 }
 
-impl<T, W, TKeyManagerInterface, THttpClientFactory>
-    TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
+impl<T, TKeyManagerInterface, THttpClientFactory>
+    TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
-    W: WalletBackend,
     TKeyManagerInterface: TransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
@@ -99,7 +95,6 @@ where
         network: Network,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
-        wallet_database: WalletDatabase<W>,
         wallet_type: Arc<WalletType>,
     ) -> Self {
         Self {
@@ -109,7 +104,6 @@ where
             network,
             consensus_manager,
             factories,
-            wallet_database: Some(wallet_database),
             wallet_type,
             _phantom_data_key_manager: Default::default(),
             _phantom_data_http_interface: Default::default(),
@@ -118,11 +112,10 @@ where
 }
 
 #[async_trait]
-impl<T, W, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
-    for TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
+impl<T, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
+    for TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend + 'static,
-    W: WalletBackend + 'static,
     TKeyManagerInterface: TransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
@@ -141,11 +134,6 @@ where
             .take()
             .expect("Cannot start Transaction Service without providing a backend");
 
-        let wallet_database = self
-            .wallet_database
-            .take()
-            .expect("Cannot start Transaction Service without providing a wallet database");
-
         let node_identity = self.node_identity.clone();
         let consensus_manager = self.consensus_manager.clone();
         let factories = self.factories.clone();
@@ -163,7 +151,6 @@ where
             let result = TransactionService::new(
                 config,
                 TransactionDatabase::new(tx_backend),
-                wallet_database,
                 receiver,
                 output_manager_service,
                 core_key_manager_service,

@@ -182,7 +182,6 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::<
                 U,
-                T,
                 TKeyManagerInterface,
                 THttpClientFactory,
             >::new(
@@ -192,7 +191,6 @@ where
                 config.network,
                 consensus_manager,
                 factories.clone(),
-                wallet_database.clone(),
                 wallet_type.clone(),
             ))
             .add_initializer(BaseNodeServiceInitializer::<THttpClientFactory>::new())

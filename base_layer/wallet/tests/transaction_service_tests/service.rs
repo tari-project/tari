@@ -69,6 +69,7 @@ use minotari_wallet::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
+    chain_metadata::ChainMetadata,
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
@@ -95,6 +96,7 @@ use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
     key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
+    rpc::models::TipInfoResponse,
     tari_amount::*,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -111,7 +113,7 @@ use tari_transaction_key_manager::{
     storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
     MemoryDbKeyManager,
 };
-use tari_utilities::{ByteArray, SafePassword};
+use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, broadcast::channel},
@@ -121,7 +123,7 @@ use tokio::{
 use url::Url;
 
 use crate::support::{
-    base_node_http_service_mock::MockHttpClientFactory,
+    base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::make_input,
 };
@@ -188,7 +190,6 @@ async fn setup_transaction_service(
         )
         .add_initializer(TransactionServiceInitializer::<
             _,
-            _,
             MemoryDbKeyManager,
             MockHttpClientFactory,
         >::new(
@@ -204,7 +205,6 @@ async fn setup_transaction_service(
             Network::LocalNet,
             consensus_manager,
             factories.clone(),
-            db.clone(),
             wallet_type,
         ))
         .add_initializer(BaseNodeServiceInitializer::<MockHttpClientFactory>::new())
@@ -253,6 +253,7 @@ pub struct TransactionServiceNoCommsInterface {
     ts_db: TransactionServiceSqliteDatabase,
     oms_db: OutputManagerDatabase<OutputManagerSqliteDatabase>,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
+    base_node_mock: HttpBaseNodeMock,
 }
 
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
@@ -312,8 +313,10 @@ async fn setup_transaction_service_no_comms(
     let one_sided_message_watch = Watch::new("unset".to_string());
 
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
+    let mock_http = MockHttpClientFactory::default();
+    let mock_https_server = mock_http.get_client();
 
-    let wallet_connectivity_service_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
+    let wallet_connectivity_service_mock = WalletConnectivityHandle::new(mock_http);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver,
@@ -356,7 +359,6 @@ async fn setup_transaction_service_no_comms(
     let ts_service = TransactionService::new(
         test_config,
         ts_db.clone(),
-        wallet_db.clone(),
         ts_request_receiver,
         output_manager_service_handle.clone(),
         key_manager.clone(),
@@ -388,6 +390,7 @@ async fn setup_transaction_service_no_comms(
         ts_db: ts_service_db,
         oms_db,
         wallet_db,
+        base_node_mock: mock_https_server,
     }
 }
 
@@ -1970,6 +1973,15 @@ async fn test_update_faux_tx_on_oms_validation() {
         height: 10,
         timestamp: Utc::now().naive_utc(),
     };
+    let chain_metadata = ChainMetadata::new(10, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap();
+    alice_ts_interface
+        .base_node_mock
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(chain_metadata),
+            is_synced: false,
+        })
+        .await
+        .unwrap();
     alice_ts_interface.wallet_db.save_scanned_block(scanned_block).unwrap();
 
     for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
@@ -2160,6 +2172,15 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         height: 10,
         timestamp: Utc::now().naive_utc(),
     };
+    let chain_metadata = ChainMetadata::new(10, HashOutput::zero(), 0, 0, 1.into(), EpochTime::now().as_u64()).unwrap();
+    alice_ts_interface
+        .base_node_mock
+        .set_tip_info(TipInfoResponse {
+            metadata: Some(chain_metadata),
+            is_synced: false,
+        })
+        .await
+        .unwrap();
     alice_ts_interface.wallet_db.save_scanned_block(scanned_block).unwrap();
 
     for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
@@ -2196,7 +2217,6 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         .output_manager_service_event_publisher
         .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
         .unwrap();
-
     let mut coinbase_confirmed = false;
     let mut coinbase_unconfirmed = false;
     let mut coinbase_unmined = false;
