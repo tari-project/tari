@@ -3,10 +3,9 @@
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_crypto::{hash_domain, hasher};
-// These are the hash domains that are also used in tari-dan.
+// These are the hash domains that are also used in tari-ootle.
 
-hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);
-hash_domain!(TariEngineHashDomain, "com.tari.dan.engine", 0);
+hash_domain!(ConfidentialOutputHashDomain, "com.tari.ootle.output", 0);
 
 // Hash domain used to derive the final AEAD encryption key for encrypted data in UTXOs
 hash_domain!(

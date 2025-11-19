@@ -26,7 +26,7 @@
 use core::marker::PhantomData;
 
 use borsh::{io, io::Write, BorshSerialize};
-use digest::Digest;
+use digest::{Digest, Output};
 use tari_crypto::hashing::DomainSeparation;
 
 /// A domain-separated hasher that uses Borsh internally to ensure hashing is canonical.
@@ -56,6 +56,10 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
     pub fn finalize_into_array<const I: usize>(self) -> [u8; I]
     where [u8; I]: From<digest::Output<D>> {
         self.writer.0.finalize().into()
+    }
+
+    pub fn finalize_into(self, out: &mut Output<D>) {
+        self.writer.0.finalize_into(out);
     }
 
     /// Update the hasher using the Borsh encoding of the input, which is assumed to be canonical.
@@ -98,6 +102,7 @@ mod tests {
     use tari_crypto::hash_domain;
 
     use super::*;
+    use crate::Blake2bU64;
 
     #[derive(Debug, BorshSerialize)]
     pub struct TestStruct {
@@ -170,5 +175,21 @@ mod tests {
         let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();
 
         assert_ne!(blake_hash.as_slice(), default_consensus_hash.as_slice());
+    }
+
+    #[test]
+    fn it_finalizes_into_a_buffer() {
+        let data = b"Some test data";
+
+        let mut out = [0u8; 64].into();
+        DomainSeparatedBorshHasher::<TestHashDomain, Blake2bU64>::new_with_label("test")
+            .chain(data)
+            .finalize_into(&mut out);
+
+        let expected_hash = DomainSeparatedBorshHasher::<TestHashDomain, Blake2bU64>::new_with_label("test")
+            .chain(data)
+            .finalize();
+
+        assert_eq!(out.as_slice(), expected_hash.as_slice());
     }
 }

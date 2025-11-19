@@ -4251,7 +4251,6 @@ dependencies = [
 name = "minotari_console_wallet"
 version = "5.2.0-pre.4"
 dependencies = [
- "blake2",
  "chrono",
  "clap 3.2.25",
  "config",
@@ -4272,7 +4271,6 @@ dependencies = [
  "qrcode",
  "rand 0.8.5",
  "regex",
- "reqwest 0.11.27",
  "rpassword",
  "rustyline",
  "serde",
@@ -4287,7 +4285,6 @@ dependencies = [
  "tari_features",
  "tari_hashing",
  "tari_libtor",
- "tari_max_size",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",

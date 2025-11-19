@@ -57,7 +57,6 @@ use tari_transaction_components::{
     transaction_components::{
         memo_field::{MemoField, TxType},
         OutputFeatures,
-        TemplateType,
         TransactionError,
     },
     weight::TransactionWeight,
@@ -72,7 +71,7 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_burn_transaction_task, send_register_template_transaction_task},
+            tasks::send_burn_transaction_task,
             wallet_event_monitor::WalletEventMonitor,
         },
         ui_burnt_proof::UiBurnProof,
@@ -278,44 +277,6 @@ impl AppState {
             fee_per_gram,
             sidechain_deploy_key,
             tx_service_handle,
-            result_tx,
-        )
-        .await;
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn register_code_template(
-        &mut self,
-        template_name: String,
-        template_version: u16,
-        template_type: TemplateType,
-        binary_url: String,
-        binary_sha: String,
-        repository_url: String,
-        repository_commit_hash: String,
-        fee_per_gram: MicroMinotari,
-        sidechain_id_key: Option<&PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let tx_service_handle = inner.wallet.transaction_service.clone();
-
-        send_register_template_transaction_task(
-            template_name,
-            template_version,
-            template_type,
-            repository_url,
-            repository_commit_hash,
-            binary_url,
-            binary_sha,
-            fee_per_gram,
-            sidechain_id_key,
-            selection_criteria,
-            tx_service_handle,
-            inner.wallet.db.clone(),
             result_tx,
         )
         .await;
