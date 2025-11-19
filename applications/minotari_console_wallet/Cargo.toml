@@ -18,7 +18,6 @@ tari_comms = { workspace = true }
 tari_core = { workspace = true }
 tari_crypto = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
-tari_max_size = { workspace = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_script = { workspace = true }
 tari_shutdown = { workspace = true }

@@ -4284,7 +4284,6 @@ dependencies = [
  "tari_features",
  "tari_hashing",
  "tari_libtor",
- "tari_max_size",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",
