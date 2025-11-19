@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.3-pre.2](https://github.com/tari-project/tari/compare/v5.1.3-pre.1...v5.1.3-pre.2) (2025-11-19)
+
+
+### Bug Fixes
+
+* validation trigger ([6709dbb](https://github.com/tari-project/tari/commit/6709dbb1d517c4db57f213a8c5e4c9e00b9b1f75))
+
 ### [5.1.3-pre.1](https://github.com/tari-project/tari/compare/v5.1.3-pre.0...v5.1.3-pre.1) (2025-11-19)
 
 
