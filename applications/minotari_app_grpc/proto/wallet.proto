@@ -611,7 +611,91 @@ service Wallet {
   //   ]
   // }
   rpc Transfer (TransferRequest)  returns (TransferResponse);
-
+  
+  // This call creates a CoinJoin transaction spending the output(s) to the owner wallet, ensuring that the inputs
+  // (currently unspent outputs) falls within a specified range and that the minimum coin-joined target amount is met.
+  // If the specified range does not allow for sufficient inputs to meet the target amount, the transaction will not be
+  // created. The process will continue until all unspent outputs in the specified range has been evaluated and used in
+  // coin-join transactions. As an example, if the wallet has 10_000 inputs in a specified range, and the maximum inputs
+  // per coin-join transaction is set to 1_000, then a minimum of 10 coin-join transactions will be created to cover all
+  // inputs in the range, where the maximum will be determined by the individual input values and the target coin-joined
+  // value. Either total fee or fee per gram can be specified, with preference given to the latter if both are
+  // specified.
+  //
+  // ### Request Parameters:
+  // - `maximum_inputs_per_transaction` (required):
+  //   - **Type**: `uint32`
+  //   - **Description**: The maximum number of inputs to include in each coin-join transaction.
+  //   - **Restrictions**:
+  //     - Must be greater than 0.
+  // - `target_minimum_amount` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The minimum total amount to be coin-joined in each transaction (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than 0.
+  //    - Must be greater than `upper_bound`
+  // - `lower_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The inclusive lower bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be less than `upper_bound`.
+  // - `upper_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The exclusive upper bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than `lower_bound`.
+  // - `total_fee` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: The total fee to be paid for each coin-join transaction (in MicroTari).
+  //   - **Restrictions**:
+  //    - If specified, must be greater than 0.
+  // - `fee_per_gram` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: The fee per gram to be paid for each coin-join transaction (in MicroTari).
+  //   - **Restrictions**:
+  //    - If specified, must be greater than 0.
+  //     - `user_payment_id`:
+  //       - **Type**: `UserPaymentId`
+  //       - **Description**: Flexible payment ID that can be one of the following:
+  //         - `u256`: Hex string representing a 256-bit ID
+  //         - `utf8_string`: A human-readable string
+  //         - `user_bytes`: Custom byte sequence
+  //       - **Restrictions**: Exactly one field must be populated. If multiple or none are provided, the request will fail.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = new RangeLimitedCoinJoinRequest();
+  // request.setMaximumInputsPerTransaction(1000);
+  // request.setTargetAmount(100000000);  // 100 T
+  // request.setLowerBound(0);            // 0 T (inclusive)
+  // request.setUpperBound(100000);       // 0.1 T (exclusive)
+  // request.setTotalFee(100);            // 0.0001 T
+  // request.setFeePerGram(1);            // 0.000001 T
+  // request.setUserPaymentId("For you");
+  //
+  // client.rangeLimitCoinJoin(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response.toObject());
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "results": [
+  //     {
+  //       "address": "14HVCEeZ...",
+  //       "transaction_id": 12345,
+  //       "is_success": true,
+  //       "failure_message": ""
+  //     }
+  //   ]
+  // }
+  // ```
+  rpc RangeLimitedCoinJoin (RangeLimitedCoinJoinRequest)  returns (TransferResponse);
+  
   // Returns the transaction details for the given transaction IDs.
   //
   // The GetTransactionInfo RPC retrieves detailed information about specific transactions based on their IDs.
@@ -955,6 +1039,51 @@ service Wallet {
   // }
   // ```
   rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
+
+  // Creates a histogram of coin (UTXO) sizes in the wallet.
+  //
+  // The `CoinHistogram` call generates a histogram representing the distribution of unspent transaction outputs (UTXOs)
+  // in the wallet. The histogram groups UTXOs into bins/buckets based on their amounts, allowing users to analyze the
+  // composition of their wallet's funds. Lower bounds are inclusive, while upper bound are exclusive.
+  //
+  // ### Request Parameters:
+  // - `lower_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The inclusive lower bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be less than `upper_bound`.
+  // - `upper_bound` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The exclusive upper bound of the input value range (in MicroTari).
+  //   - **Restrictions**:
+  //    - Must be greater than `lower_bound`.
+  //
+  // - None
+  //   - This method uses an empty request body (CoinHistogramRequest).
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // client.coinHistogram({}, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Coin Histogram:", response.buckets);
+  // });
+  // ```
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "buckets": [
+  //     { "count": 212, "total_amount": 1234,         "lower_bound": 0,          "upper_bound": 10000 },
+  //     { "count": 5,   "total_amount": 56789,        "lower_bound": 10000,      "upper_bound": 100000 },
+  //     { "count": 0,   "total_amount": 0,            "lower_bound": 100000,     "upper_bound": 1000000 },
+  //     { "count": 0,   "total_amount": 0,            "lower_bound": 1000000,    "upper_bound": 1000000000 },
+  //     { "count": 1,   "total_amount": 111222333000, "lower_bound": 1000000000, "upper_bound": 1000000000000 }
+  //   ]
+  // }
+  // ```
+
+  rpc CoinHistogram (CoinHistogramRequest) returns (CoinHistogramResponse);
 
   // Imports UTXOs into the wallet as spendable outputs.
   //
@@ -1866,6 +1995,33 @@ message TransferRequest {
   bool single_tx = 2;
 }
 
+// A request to perform a range-limited coin-join to self operation.
+message RangeLimitedCoinJoinRequest {
+  // The maximum number of coins to use in any coin-join transaction (only limited by maximum transaction size limits
+  // of 4000 inputs).
+  uint64 maximum_inputs_per_transaction = 1;
+  // The target coin-joined amount to achieve - the total value of the inputs used will always be >= this amount.
+  // Inputs are sorted in ascending order when selected, and the last input selected will either result in the total
+  // being equal or greater than this amount.
+  uint64 target_minimum_amount = 2;
+  // The lower bound for coin values in this bucket (inclusive).
+  uint64 lower_bound = 3;
+  // The upper bound for coin values in this bucket (exclusive).
+  uint64 upper_bound = 4;
+  // Optional total fee to use - if not specified, fee per gram will be used instead.
+  message TotalFee {
+    uint64 total_fee = 1;
+  }
+  TotalFee total_fee = 5;
+  // Optional fee per gram to use - if not specified the lowest value will be selected.
+  message FeePerGram {
+    uint64 fee_per_gram = 1;
+  }
+  FeePerGram fee_per_gram = 6;
+  // Optional user encrypted payment ID for reference (max 256 bytes).
+  UserPaymentId user_payment_id = 7;
+}
+
 message SendShaAtomicSwapRequest {
   PaymentRecipient recipient = 1;
 }
@@ -2088,10 +2244,42 @@ message CoinSplitRequest {
   bytes payment_id = 6;
 }
 
+// Request message for the CoinHistogram RPC.
+message CoinHistogramRequest {
+  // List of coin ranges to get information for.
+  repeated CoinBucket buckets = 1;
+}
+
+// A bucket representing a range of coins.
+message CoinBucket {
+  // The lower bound for coin values in this bucket (inclusive).
+  uint64 lower_bound = 1;
+  // The upper bound for coin values in this bucket (exclusive).
+  uint64 upper_bound = 2;
+}
+
 // Response message containing the transaction ID of the coin split.
 message CoinSplitResponse {
   // The unique ID of the transaction created.
   uint64 tx_id = 1;
+}
+
+// Response message for CoinHistogram RPC.
+message CoinHistogramResponse {
+  // List of coin buckets representing ranges of coin amounts and their counts.
+  repeated CoinBucketStats buckets = 1;
+}
+
+// A bucket representing a range of coin amounts and associated statistics.
+message CoinBucketStats {
+  // The number of coins in this bucket.
+  uint64 count = 1;
+  // The total amount of coins within this bucket.
+  uint64 total_amount = 2;
+  // The lower bound for coin values in this bucket (inclusive).
+  uint64 lower_bound = 3;
+  // The upper bound for coin values in this bucket (exclusive).
+  uint64 upper_bound = 4;
 }
 
 // Request message for importing UTXOs into the wallet.

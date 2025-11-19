@@ -22,7 +22,7 @@
 
 // non-64-bit not supported
 minotari_app_utilities::deny_non_64_bit_archs!();
-
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 mod automation;
 mod cli;
 mod config;
@@ -53,7 +53,7 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
+use tari_common_types::seeds::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
@@ -177,7 +177,7 @@ pub fn run_wallet_with_cli(
 
     let on_init = matches!(boot_mode, WalletBoot::New);
     let not_recovery = recovery_seed.is_none();
-    let hardware_wallet = matches!(wallet_type, Some(WalletType::Ledger(_)));
+    let hardware_wallet = matches!(wallet_type, Some(LegacyWalletType::Ledger(_)));
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
@@ -267,9 +267,9 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
 fn get_recovery_seed(
     boot_mode: WalletBoot,
     cli: &Cli,
-    wallet_type: &Option<WalletType>,
+    wallet_type: &Option<LegacyWalletType>,
 ) -> Result<Option<CipherSeed>, ExitError> {
-    if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(WalletType::Ledger(_))) {
+    if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(LegacyWalletType::Ledger(_))) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words, None)?
         } else {

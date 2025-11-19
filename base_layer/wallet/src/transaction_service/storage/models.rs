@@ -617,6 +617,26 @@ impl WalletTransaction {
             WalletTransaction::Completed(tx) => tx.status,
         }
     }
+
+    pub fn cancelled_reason(&self) -> Option<TxCancellationReason> {
+        match self {
+            WalletTransaction::PendingInbound(tx) => {
+                if tx.cancelled {
+                    Some(TxCancellationReason::Unknown)
+                } else {
+                    None
+                }
+            },
+            WalletTransaction::PendingOutbound(tx) => {
+                if tx.cancelled {
+                    Some(TxCancellationReason::Unknown)
+                } else {
+                    None
+                }
+            },
+            WalletTransaction::Completed(tx) => tx.cancelled,
+        }
+    }
 }
 
 impl From<WalletTransaction> for CompletedTransaction {
@@ -639,6 +659,8 @@ pub enum TxCancellationReason {
     TimeLocked,         // 5
     InvalidTransaction, // 6
     Oversized,          // 7
+    FeeTooLow,          // 8
+    AlreadyMined,       // 9
 }
 
 impl TryFrom<u32> for TxCancellationReason {
@@ -672,6 +694,8 @@ impl Display for TxCancellationReason {
             TimeLocked => "TimeLocked",
             InvalidTransaction => "Invalid Transaction",
             Oversized => "Oversized",
+            FeeTooLow => "Fee Too Low",
+            AlreadyMined => "Already Mined",
         };
         fmt.write_str(response)
     }

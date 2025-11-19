@@ -33,6 +33,7 @@ use minotari_wallet::output_manager_service::{
         OutputSource,
         OutputStatus,
     },
+    RangeLimit,
     UtxoSelectionCriteria,
 };
 use rand::{rngs::OsRng, RngCore};
@@ -42,7 +43,10 @@ use tari_common_types::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_transaction_components::{transaction_components::OutputFeatures, MicroMinotari};
-use tari_transaction_key_manager::create_memory_db_key_manager;
+use tari_transaction_key_manager::legacy_key_manager::{
+    create_new_random_key_manager,
+    LegacyTransactionKeyManagerInterface,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
@@ -53,30 +57,29 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &mut key_manager,
-        )
-        .await;
+            key_manager.key_manager(),
+        );
         let mut kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
         let mut features = kmo.wallet_output.features().clone();
         features.maturity = i;
         kmo.wallet_output.set_features(features);
-        db.add_unspent_output(kmo.clone()).unwrap();
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
         unspent.push((kmo.hash, true));
         unspent_outputs.push(kmo);
     }
     db.mark_outputs_as_unspent(unspent).unwrap();
 
-    let time_locked_outputs = db.get_timelocked_outputs(3).unwrap();
+    let time_locked_outputs = db.get_timelocked_outputs(3, &key_manager).unwrap();
     assert_eq!(time_locked_outputs.len(), 1);
     assert_eq!(unspent_outputs[4], time_locked_outputs[0]);
-    let time_locked_outputs = db.get_timelocked_outputs(4).unwrap();
+    let time_locked_outputs = db.get_timelocked_outputs(4, &key_manager).unwrap();
     assert_eq!(time_locked_outputs.len(), 0);
     let time_locked_balance = unspent_outputs[4].wallet_output.value();
 
@@ -91,7 +94,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     unspent_outputs.sort();
 
-    let outputs = db.fetch_sorted_unspent_outputs().unwrap();
+    let outputs = db.fetch_sorted_unspent_outputs(&key_manager).unwrap();
     assert_eq!(unspent_outputs, outputs);
 
     // Add some sent transactions with outputs to be spent and received
@@ -113,11 +116,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &mut key_manager,
-            )
-            .await;
+                key_manager.key_manager(),
+            );
             let kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
-            db.add_unspent_output(kmo.clone()).unwrap();
+            db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
             db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
@@ -126,9 +128,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &mut key_manager,
-            )
-            .await;
+                key_manager.key_manager(),
+            );
             let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             pending_tx.outputs_to_be_received.push(kmo);
         }
@@ -288,11 +289,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         &mut OsRng,
         MicroMinotari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
-        &mut key_manager,
-    )
-    .await;
+        key_manager.key_manager(),
+    );
     let output_to_be_received = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
-    db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone())
+    db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), &key_manager)
         .unwrap();
     pending_incoming_balance += output_to_be_received.wallet_output.value();
 
@@ -308,13 +308,13 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         "Balance should reflect new output to be received"
     );
 
-    let spent_outputs = db.fetch_spent_outputs().unwrap();
+    let spent_outputs = db.fetch_spent_outputs(&key_manager).unwrap();
     assert_eq!(spent_outputs.len(), 4);
 
-    let unconfirmed_outputs = db.fetch_unconfirmed_outputs().unwrap();
+    let unconfirmed_outputs = db.fetch_unconfirmed_outputs(&key_manager).unwrap();
     assert_eq!(unconfirmed_outputs.len(), 22);
 
-    let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let mined_unspent_outputs = db.fetch_mined_unspent_outputs(&key_manager).unwrap();
     assert_eq!(mined_unspent_outputs.len(), 4);
 
     // Spend a received and confirmed output
@@ -326,26 +326,27 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     }])
     .unwrap();
 
-    let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let mined_unspent_outputs = db.fetch_mined_unspent_outputs(&key_manager).unwrap();
     assert_eq!(mined_unspent_outputs.len(), 3);
 
-    let unspent_outputs = db.fetch_sorted_unspent_outputs().unwrap();
+    let unspent_outputs = db.fetch_sorted_unspent_outputs(&key_manager).unwrap();
     assert_eq!(unspent_outputs.len(), 6);
 
-    let last_mined_output = db.get_last_mined_output().unwrap().unwrap();
+    let last_mined_output = db.get_last_mined_output(&key_manager).unwrap().unwrap();
     assert!(pending_txs[1]
         .outputs_to_be_received
         .iter()
         .any(|o| o.commitment == last_mined_output.commitment));
 
-    let last_spent_output = db.get_last_spent_output().unwrap().unwrap();
+    let last_spent_output = db.get_last_spent_output(&key_manager).unwrap().unwrap();
     assert_eq!(
         last_spent_output.commitment,
         pending_txs[1].outputs_to_be_received[0].commitment
     );
 
-    db.remove_output_by_commitment(last_spent_output.commitment).unwrap();
-    let last_spent_output = db.get_last_spent_output().unwrap().unwrap();
+    db.remove_output_by_commitment(last_spent_output.commitment, &key_manager)
+        .unwrap();
+    let last_spent_output = db.get_last_spent_output(&key_manager).unwrap().unwrap();
     assert_ne!(
         last_spent_output.commitment,
         pending_txs[1].outputs_to_be_received[0].commitment
@@ -354,7 +355,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Test cancelling a pending transaction
     db.cancel_pending_transaction_outputs(pending_txs[2].tx_id).unwrap();
 
-    let unspent_outputs = db.fetch_sorted_unspent_outputs().unwrap();
+    let unspent_outputs = db.fetch_sorted_unspent_outputs(&key_manager).unwrap();
     assert_eq!(unspent_outputs.len(), 10);
 }
 
@@ -371,11 +372,167 @@ pub async fn test_output_manager_sqlite_db() {
 }
 
 #[tokio::test]
+pub async fn test_count_outputs_in_ranges() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    // Create test outputs with specific values
+    let mut outputs = Vec::new();
+    let mut unspent = Vec::new();
+    let values = vec![300, 400, 100, 500, 200];
+
+    for value in values {
+        let uo = make_input(
+            &mut OsRng,
+            MicroMinotari::from(value),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(output.clone(), &key_manager).unwrap();
+        unspent.push((output.hash, true));
+        outputs.push(output);
+    }
+    db.mark_outputs_as_unspent(unspent).unwrap();
+
+    // Define ranges
+    let ranges = vec![
+        50..250,  // Should match 100, 200
+        200..400, // Should match 200, 300
+        400..600, // Should match 400, 500
+        600..700, // Should match none
+    ];
+
+    // Call the function
+    let result = db.count_outputs_in_ranges(ranges.clone(), None).unwrap();
+
+    // Assert expected counts
+    let bucket = &result[0];
+    assert_eq!(bucket.number_of_outputs, 2);
+    assert_eq!(bucket.total_value, 300);
+    assert_eq!(bucket.range, 50..250);
+
+    let bucket = &result[1];
+    assert_eq!(bucket.number_of_outputs, 2);
+    assert_eq!(bucket.total_value, 500);
+    assert_eq!(bucket.range, 200..400);
+
+    let bucket = &result[2];
+    assert_eq!(bucket.number_of_outputs, 2);
+    assert_eq!(bucket.total_value, 900);
+    assert_eq!(bucket.range, 400..600);
+
+    let bucket = &result[3];
+    assert_eq!(bucket.number_of_outputs, 0);
+    assert_eq!(bucket.total_value, 0);
+    assert_eq!(bucket.range, 600..700);
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+pub async fn test_range_limited_outputs_for_spending() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    // Create test outputs with specific values
+    let mut outputs = Vec::new();
+    let mut unspent = Vec::new();
+    let values = vec![10, 300, 20, 400, 30, 100, 40, 500, 50, 200];
+    let all_outputs = values.len() as u64;
+
+    for value in values {
+        let uo = make_input(
+            &mut OsRng,
+            MicroMinotari::from(value),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(output.clone(), &key_manager).unwrap();
+        unspent.push((output.hash, true));
+        outputs.push(output);
+    }
+    db.mark_outputs_as_unspent(unspent).unwrap();
+
+    // We have [50, 100, 200] in the range 50..250, but restrain transaction input limit
+    // Selection:
+    //  - It fetches only 50
+    //  - Compares 50 >= 100, do not meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: 1,
+                    target_minimum_amount: 100,
+                }),
+                ..Default::default()
+            },
+            None,
+            &key_manager,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 0);
+    assert_eq!(total, MicroMinotari(0));
+
+    // We have [50, 100, 200] in the range 50..250, no restrains.
+    // Selection:
+    //  - It fetches all 3x outputs
+    //  - Compares 50 >= 201, do not meet target
+    //  - Compares 50 + 100 >= 201, do not meet target
+    //  - Compares 50 + 100 + 200 >= 201, meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: all_outputs,
+                    target_minimum_amount: 201,
+                }),
+                ..Default::default()
+            },
+            None,
+            &key_manager,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 3);
+    assert_eq!(total, MicroMinotari(350));
+    assert_eq!(selected[0].wallet_output.value().0, 50);
+    assert_eq!(selected[1].wallet_output.value().0, 100);
+    assert_eq!(selected[2].wallet_output.value().0, 200);
+
+    // We have [50, 100, 200] in the range 50..250, but target_minimum_amount cannot be met
+    // Selection:
+    //  - It fetches all 3x outputs
+    //  - Compares 50 + 100 + 200 >= 500, do not meet target
+    let (selected, total) = db
+        .get_range_limited_outputs_for_spending(
+            &UtxoSelectionCriteria {
+                range_limit: Some(RangeLimit {
+                    range: 50u64..250,
+                    transaction_input_limit: all_outputs,
+                    target_minimum_amount: 500,
+                }),
+                ..Default::default()
+            },
+            None,
+            &key_manager,
+        )
+        .unwrap();
+    assert_eq!(selected.len(), 0);
+    assert_eq!(total, MicroMinotari(0));
+}
+
+#[tokio::test]
 pub async fn test_must_include_filter() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);
     let db = OutputManagerDatabase::new(backend);
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
 
     // Create test outputs with specific values
     let mut outputs = Vec::new();
@@ -387,11 +544,10 @@ pub async fn test_must_include_filter() {
             &mut OsRng,
             MicroMinotari::from(value),
             &OutputFeatures::default(),
-            &mut key_manager,
-        )
-        .await;
+            key_manager.key_manager(),
+        );
         let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
-        db.add_unspent_output(output.clone()).unwrap();
+        db.add_unspent_output(output.clone(), &key_manager).unwrap();
         unspent.push((output.hash, true));
         outputs.push(output);
     }
@@ -401,7 +557,7 @@ pub async fn test_must_include_filter() {
     let must_include_commitments = vec![outputs[3].commitment.clone()]; // 500 value
     let selection_criteria = UtxoSelectionCriteria::must_include(must_include_commitments.clone());
     let selected = db
-        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(400), None)
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(400), None, &key_manager)
         .unwrap();
 
     // Should return only the must-include output since 500 >= 400
@@ -413,7 +569,7 @@ pub async fn test_must_include_filter() {
     let must_include_commitments = vec![outputs[0].commitment.clone()]; // 100 value
     let selection_criteria = UtxoSelectionCriteria::must_include(must_include_commitments.clone());
     let selected = db
-        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(800), None)
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(800), None, &key_manager)
         .unwrap();
 
     // Should return the must-include output plus additional outputs to meet the requirement
@@ -426,7 +582,7 @@ pub async fn test_must_include_filter() {
     let must_include_commitments = vec![outputs[0].commitment.clone(), outputs[1].commitment.clone()]; // 100 + 200 = 300
     let selection_criteria = UtxoSelectionCriteria::must_include(must_include_commitments.clone());
     let selected = db
-        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(250), None)
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(250), None, &key_manager)
         .unwrap();
 
     // Should return both must-include outputs since 300 >= 250
@@ -437,7 +593,7 @@ pub async fn test_must_include_filter() {
     // Test 4: MustInclude with empty commitments (should behave like Standard)
     let selection_criteria = UtxoSelectionCriteria::must_include(vec![]);
     let selected = db
-        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(500), None)
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(500), None, &key_manager)
         .unwrap();
 
     // Should return outputs using standard selection logic
@@ -455,21 +611,20 @@ pub async fn test_raw_custom_queries_regression() {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &mut key_manager,
-        )
-        .await;
+            key_manager.key_manager(),
+        );
         let mut kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
         let mut features = kmo.wallet_output.features().clone();
         features.maturity = i;
         kmo.wallet_output.set_features(features);
-        db.add_unspent_output(kmo.clone()).unwrap();
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
         unspent.push((kmo.hash, true));
         unspent_outputs.push(kmo);
     }
@@ -500,11 +655,10 @@ pub async fn test_raw_custom_queries_regression() {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &mut key_manager,
-            )
-            .await;
+                key_manager.key_manager(),
+            );
             let kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
-            db.add_unspent_output(kmo.clone()).unwrap();
+            db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
             db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
@@ -513,9 +667,8 @@ pub async fn test_raw_custom_queries_regression() {
                 &mut OsRng,
                 MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &mut key_manager,
-            )
-            .await;
+                key_manager.key_manager(),
+            );
             let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             pending_tx.outputs_to_be_received.push(kmo);
         }
@@ -553,9 +706,8 @@ pub async fn test_raw_custom_queries_regression() {
         &mut OsRng,
         MicroMinotari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
-        &mut key_manager,
-    )
-    .await;
+        key_manager.key_manager(),
+    );
     let unknown = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
     let mut updates_info_with_unknown = updates_info.clone();
     updates_info_with_unknown.push(ReceivedOutputInfoForBatch {
@@ -572,7 +724,9 @@ pub async fn test_raw_custom_queries_regression() {
     db.set_received_outputs_mined_height_and_statuses(updates_info).unwrap();
 
     for (i, to_be_received) in pending_txs[0].outputs_to_be_received.iter().enumerate() {
-        let unspent_output = db.fetch_by_commitment(to_be_received.commitment.clone()).unwrap();
+        let unspent_output = db
+            .fetch_by_commitment(to_be_received.commitment.clone(), &key_manager)
+            .unwrap();
         assert_eq!(unspent_output.mined_height.unwrap(), (i + 2) as u64);
         assert_eq!(unspent_output.mined_in_block.unwrap(), block_hashes[i]);
         assert_eq!(
@@ -613,7 +767,9 @@ pub async fn test_raw_custom_queries_regression() {
     db.mark_outputs_as_spent(updates_info).unwrap();
 
     for (i, to_be_spent) in pending_txs[0].outputs_to_be_spent.iter().enumerate() {
-        let spent_output = db.fetch_by_commitment(to_be_spent.commitment.clone()).unwrap();
+        let spent_output = db
+            .fetch_by_commitment(to_be_spent.commitment.clone(), &key_manager)
+            .unwrap();
         assert_eq!(spent_output.marked_deleted_at_height.unwrap(), (i + 3) as u64);
         assert_eq!(spent_output.marked_deleted_in_block.unwrap(), block_hashes[i]);
         assert_eq!(
@@ -634,20 +790,19 @@ pub async fn test_short_term_encumberance() {
     let db = OutputManagerDatabase::new(backend);
 
     let mut unspent_outputs = Vec::new();
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     for i in 0..5 {
         let kmo = make_input(
             &mut OsRng,
             MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
-            &mut key_manager,
-        )
-        .await;
+            key_manager.key_manager(),
+        );
         let mut kmo = DbWalletOutput::from_wallet_output(kmo, None, OutputSource::Standard, None, None);
         let mut features = kmo.wallet_output.features().clone();
         features.maturity = i;
         kmo.wallet_output.set_features(features);
-        db.add_unspent_output(kmo.clone()).unwrap();
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
         db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
         unspent_outputs.push(kmo);
     }
@@ -696,18 +851,17 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
         &OutputFeatures::default(),
-        &mut key_manager,
-    )
-    .await;
+        key_manager.key_manager(),
+    );
     let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
 
     // add it to the database
-    let result = db.add_unspent_output(kmo.clone());
+    let result = db.add_unspent_output(kmo.clone(), &key_manager);
     assert!(result.is_ok());
     let result = db.set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
         commitment: kmo.commitment.clone(),
@@ -717,13 +871,13 @@ pub async fn test_no_duplicate_outputs() {
         mined_timestamp: 0,
     }]);
     assert!(result.is_ok());
-    let outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let outputs = db.fetch_mined_unspent_outputs(&key_manager).unwrap();
     assert_eq!(outputs.len(), 1);
 
     // adding it again should be an error
-    let err = db.add_unspent_output(kmo.clone()).unwrap_err();
+    let err = db.add_unspent_output(kmo.clone(), &key_manager).unwrap_err();
     assert!(matches!(err, OutputManagerStorageError::DuplicateOutput));
-    let outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let outputs = db.fetch_mined_unspent_outputs(&key_manager).unwrap();
     assert_eq!(outputs.len(), 1);
 
     // add a pending transaction with the same duplicate output
@@ -731,7 +885,7 @@ pub async fn test_no_duplicate_outputs() {
     assert!(db.encumber_outputs(2u64.into(), vec![], vec![kmo]).is_err());
 
     // we should still only have 1 unspent output
-    let outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let outputs = db.fetch_mined_unspent_outputs(&key_manager).unwrap();
     assert_eq!(outputs.len(), 1);
 }
 
@@ -742,18 +896,17 @@ pub async fn test_mark_as_unmined() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = create_new_random_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
         &OutputFeatures::default(),
-        &mut key_manager,
-    )
-    .await;
+        key_manager.key_manager(),
+    );
     let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
 
     // add it to the database
-    db.add_unspent_output(kmo.clone()).unwrap();
+    db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
     db.set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
         commitment: kmo.commitment.clone(),
         mined_height: 1,
@@ -762,11 +915,11 @@ pub async fn test_mark_as_unmined() {
         mined_timestamp: 0,
     }])
     .unwrap();
-    let o = db.get_last_mined_output().unwrap().unwrap();
+    let o = db.get_last_mined_output(&key_manager).unwrap().unwrap();
     assert_eq!(o.hash, kmo.hash);
     db.set_outputs_to_unmined_and_invalid(vec![kmo.hash]).unwrap();
-    assert!(db.get_last_mined_output().unwrap().is_none());
-    let o = db.get_invalid_outputs().unwrap().pop().unwrap();
+    assert!(db.get_last_mined_output(&key_manager).unwrap().is_none());
+    let o = db.get_invalid_outputs(&key_manager).unwrap().pop().unwrap();
     assert_eq!(o.hash, kmo.hash);
     assert!(o.mined_height.is_none());
     assert!(o.mined_in_block.is_none());
@@ -782,11 +935,10 @@ pub async fn test_mark_as_unmined() {
             &mut OsRng,
             MicroMinotari::from(1000),
             &OutputFeatures::default(),
-            &mut key_manager,
-        )
-        .await;
+            key_manager.key_manager(),
+        );
         let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
-        db.add_unspent_output(kmo.clone()).unwrap();
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
         batch_hashes.push(kmo.hash);
         batch_info.push(ReceivedOutputInfoForBatch {
             commitment: kmo.commitment.clone(),
@@ -801,13 +953,13 @@ pub async fn test_mark_as_unmined() {
     // - Perform batch mode operations
     db.set_received_outputs_mined_height_and_statuses(batch_info).unwrap();
 
-    let last = db.get_last_mined_output().unwrap().unwrap();
+    let last = db.get_last_mined_output(&key_manager).unwrap().unwrap();
     assert_eq!(last.hash, batch_outputs.last().unwrap().hash);
 
     db.set_outputs_to_unmined_and_invalid(batch_hashes).unwrap();
-    assert!(db.get_last_mined_output().unwrap().is_none());
+    assert!(db.get_last_mined_output(&key_manager).unwrap().is_none());
 
-    let invalid_outputs = db.get_invalid_outputs().unwrap();
+    let invalid_outputs = db.get_invalid_outputs(&key_manager).unwrap();
     let mut batch_invalid_count = 0;
     for invalid in invalid_outputs {
         if let Some(kmo) = batch_outputs.iter().find(|wo| wo.hash == invalid.hash) {

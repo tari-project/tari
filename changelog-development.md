@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.4](https://github.com/tari-project/tari/compare/v5.2.0-pre.3...v5.2.0-pre.4) (2025-11-17)
+
+
+### Features
+
+* add noreadahead to lmdb as config option  ([#7581](https://github.com/tari-project/tari/issues/7581)) ([0d75790](https://github.com/tari-project/tari/commit/0d757902a80866efd2c91e1a96fadd09fa635285))
+
+
+### Bug Fixes
+
+* utxo retrieval for wallet ([#7587](https://github.com/tari-project/tari/issues/7587)) ([d640c72](https://github.com/tari-project/tari/commit/d640c72afc570213ef4f5e078f49d34b4242ef77))
+
 ## [5.2.0-pre.3](https://github.com/tari-project/tari/compare/v5.2.0-pre.2...v5.2.0-pre.3) (2025-11-13)
 
 

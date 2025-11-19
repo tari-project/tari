@@ -24,21 +24,18 @@ use std::{convert::TryFrom, iter::once};
 
 use rand::{prelude::SliceRandom, rngs::OsRng, thread_rng};
 use tari_common::configuration::Network;
-use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
-    types::{
-        CompressedCommitment,
-        CompressedPublicKey,
-        CompressedSignature,
-        PrivateKey,
-        UncompressedPublicKey,
-        UncompressedSignature,
-    },
+use tari_common_types::types::{
+    CompressedCommitment,
+    CompressedPublicKey,
+    CompressedSignature,
+    PrivateKey,
+    UncompressedPublicKey,
+    UncompressedSignature,
 };
 use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
 use tari_transaction_components::{
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
         one_sided::public_key_to_output_encryption_key,
@@ -56,8 +53,8 @@ use tari_transaction_components::{
         WalletOutputBuilder,
     },
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
+
 /// The average amount of blocks per day based on the target block time
 pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
 
@@ -795,7 +792,7 @@ pub fn verify_script_keys_for_index(
 
 /// Create pre-mine genesis block info with the given pre-mine items and party public keys
 #[allow(clippy::too_many_lines)]
-pub async fn create_pre_mine_genesis_block_info(
+pub fn create_pre_mine_genesis_block_info(
     pre_mine_items: &[PreMineItem],
     threshold_spend_keys: &[Vec<CompressedPublicKey>],
     backup_spend_keys: &[CompressedPublicKey],
@@ -813,35 +810,28 @@ pub async fn create_pre_mine_genesis_block_info(
         for key in public_keys {
             total_script_key = total_script_key + key.to_public_key().map_err(|e| e.to_string())?;
         }
-        let mut key_manager = create_memory_db_key_manager().await.map_err(|e| e.to_string())?;
+        let key_manager = KeyManager::new_random().map_err(|e| e.to_string())?;
         let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
             .map_err(|e| e.to_string())?;
         let view_key_id = key_manager
-            .import_key(view_key.clone(), None)
-            .await
+            .create_encrypted_key(view_key.clone(), None)
             .map_err(|e| e.to_string())?;
         let address_len = u8::try_from(public_keys.len()).map_err(|e| e.to_string())?;
 
         let (commitment_mask, script_key) = key_manager
             .get_next_commitment_mask_and_script_key()
-            .await
             .map_err(|e| e.to_string())?;
         total_private_key = total_private_key +
             &key_manager
                 .get_private_key(&commitment_mask.key_id)
-                .await
                 .map_err(|e| e.to_string())?;
         let commitment = key_manager
             .get_commitment(&commitment_mask.key_id, &item.value.into())
-            .await
             .map_err(|e| e.to_string())?;
         let mut commitment_bytes = [0u8; 32];
         commitment_bytes.clone_from_slice(commitment.as_bytes());
 
-        let sender_offset = key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await
-            .map_err(|e| e.to_string())?;
+        let sender_offset = key_manager.get_random_key(None, true).map_err(|e| e.to_string())?;
         let mut public_keys = public_keys.clone();
         public_keys.shuffle(&mut thread_rng());
         let script = script!(
@@ -863,18 +853,15 @@ pub async fn create_pre_mine_genesis_block_info(
             ))
             .with_script(script)
             .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), MemoField::new_u256(i.into()))
-            .await
             .map_err(|e| e.to_string())?
             .with_input_data(ExecutionStack::default())
             .with_version(TransactionOutputVersion::get_current_version())
             .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key.key_id)
             .with_minimum_value_promise(item.value)
-            .sign_as_sender_and_receiver(&mut key_manager, &sender_offset.key_id)
-            .await
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
             .map_err(|e| e.to_string())?
             .try_build(&key_manager)
-            .await
             .map_err(|e| e.to_string())?;
         outputs.push(output.to_transaction_output().map_err(|e| e.to_string())?);
     }
@@ -882,7 +869,7 @@ pub async fn create_pre_mine_genesis_block_info(
     let r = PrivateKey::random(&mut OsRng);
     let total_public_key = CompressedPublicKey::from_secret_key(&total_private_key);
     let e = TransactionKernel::build_kernel_signature_challenge(
-        &TransactionKernelVersion::get_current_version(),
+        TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
         0.into(),
@@ -980,9 +967,7 @@ mod test {
         }
 
         let (outputs, kernel) =
-            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys)
-                .await
-                .unwrap();
+            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys).unwrap();
         (outputs, kernel, threshold_spend_keys, backup_spend_keys)
     }
 

@@ -24,7 +24,6 @@ use std::{marker::PhantomData, sync::Arc};
 
 use log::*;
 use tari_common::configuration::Network;
-use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
 use tari_service_framework::{
     async_trait,
@@ -33,10 +32,10 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tari_transaction_components::{
-    consensus::ConsensusManager,
-    crypto_factories::CryptoFactories,
-    key_manager::TransactionKeyManagerInterface,
+use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
 };
 use tokio::sync::broadcast;
 
@@ -69,7 +68,7 @@ pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClient
 where
     T: TransactionBackend,
     W: WalletBackend,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     config: TransactionServiceConfig,
@@ -79,7 +78,7 @@ where
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
-    wallet_type: Arc<WalletType>,
+    wallet_type: Arc<LegacyWalletType>,
     _phantom_data_key_manager: PhantomData<TKeyManagerInterface>,
     _phantom_data_http_interface: PhantomData<THttpClientFactory>,
 }
@@ -89,7 +88,7 @@ impl<T, W, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
     W: WalletBackend,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     pub fn new(
@@ -100,7 +99,7 @@ where
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<W>,
-        wallet_type: Arc<WalletType>,
+        wallet_type: Arc<LegacyWalletType>,
     ) -> Self {
         Self {
             config,
@@ -123,7 +122,7 @@ impl<T, W, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
 where
     T: TransactionBackend + 'static,
     W: WalletBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
     THttpClientFactory: HttpClientFactory,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {

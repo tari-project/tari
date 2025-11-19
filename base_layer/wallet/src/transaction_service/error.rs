@@ -38,7 +38,7 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
-    key_manager::error::KeyManagerServiceError,
+    key_manager::error::KeyManagerError,
     transaction_components::{EncryptedDataError, TransactionError},
     TransactionBuilderError,
 };
@@ -88,6 +88,8 @@ pub enum TransactionServiceError {
     InvalidSourcePublicKey,
     #[error("The transaction does not contain the receivers output")]
     ReceiverOutputNotFound,
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String },
     #[error("Outbound Service send failed")]
     OutboundSendFailure,
     #[error(
@@ -105,10 +107,6 @@ pub enum TransactionServiceError {
     BaseNodeChanged { task_name: &'static str },
     #[error("Error sending data to Protocol via registered channels")]
     ProtocolChannelError,
-    #[error("Transaction detected as rejected by mempool")]
-    MempoolRejection,
-    #[error("Mempool response key does not match on that is expected")]
-    UnexpectedMempoolResponse,
     #[error("Base Node response key does not match on that is expected")]
     UnexpectedBaseNodeResponse,
     #[error("The current transaction has been cancelled")]
@@ -147,12 +145,20 @@ pub enum TransactionServiceError {
     Shutdown,
     #[error("Transaction detected as rejected by mempool due to containing time-locked input")]
     MempoolRejectionTimeLocked,
-    #[error("Transaction detected as rejected by mempool due to containing  orphan input")]
+    #[error("Transaction detected as rejected by mempool due to containing orphan input")]
     MempoolRejectionOrphan,
     #[error("Transaction detected as rejected by mempool due to containing double spend")]
     MempoolRejectionDoubleSpend,
     #[error("Transaction detected as rejected by mempool due to invalid transaction")]
     MempoolRejectionInvalidTransaction,
+    #[error("Transaction detected as rejected by mempool due to fee too low")]
+    MempoolRejectionFeeTooLow,
+    #[error("Transaction detected as rejected by mempool due to already mined")]
+    MempoolRejectionAlreadyMined,
+    #[error("Transaction detected as rejected by mempool")]
+    MempoolRejection { reason: String },
+    #[error("Mempool response key does not match on that is expected")]
+    UnexpectedMempoolResponse,
     #[error("Transaction is malformed")]
     InvalidTransaction,
     #[error("RpcError: `{0}`")]
@@ -187,7 +193,7 @@ pub enum TransactionServiceError {
     #[error("Key manager error: `{0}`")]
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Serialization error: `{0}`")]
     SerializationError(String),
     #[error("Transaction exceed maximum byte size. Expected < {expected} but got {got}.")]

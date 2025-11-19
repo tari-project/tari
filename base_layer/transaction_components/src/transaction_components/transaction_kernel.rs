@@ -129,7 +129,7 @@ impl TransactionKernel {
         let excess = self.excess.to_compressed_key();
         let r = self.excess_sig.get_compressed_public_nonce();
         let c = TransactionKernel::build_kernel_signature_challenge(
-            &self.version,
+            self.version,
             r,
             &excess,
             self.fee,
@@ -167,7 +167,7 @@ impl TransactionKernel {
     ///  Features of the kernel
     ///  Burn commitment if present
     pub fn build_kernel_signature_challenge(
-        version: &TransactionKernelVersion,
+        version: TransactionKernelVersion,
         sum_public_nonces: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
         fee: MicroMinotari,
@@ -184,7 +184,7 @@ impl TransactionKernel {
 
     /// Helper function to finalize the kernel excess signature challenge.
     pub fn finalize_kernel_signature_challenge(
-        version: &TransactionKernelVersion,
+        version: TransactionKernelVersion,
         sum_public_nonces: &CompressedPublicKey,
         total_excess: &CompressedPublicKey,
         message: &[u8; 32],
@@ -201,14 +201,14 @@ impl TransactionKernel {
     /// Convenience function to create the entire kernel signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
     pub fn build_kernel_signature_message(
-        version: &TransactionKernelVersion,
+        version: TransactionKernelVersion,
         fee: MicroMinotari,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<CompressedCommitment>,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("kernel_message")
-            .chain(version)
+            .chain(&version)
             .chain(&fee)
             .chain(&lock_height)
             .chain(features)

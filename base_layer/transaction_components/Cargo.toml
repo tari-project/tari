@@ -20,11 +20,10 @@ tari_hashing = { workspace = true }
 tari_max_size = { workspace = true }
 tari_sidechain = { workspace = true }
 tari_script = { workspace = true }
-tari_service_framework = { workspace = true }
 tari_utilities = { workspace = true }
+minotari_ledger_wallet_common = { workspace = true }
 
 anyhow = { workspace = true }
-async-trait = { version = "0.1.50" }
 bitflags = { version = "2.4", features = ["serde"] }
 borsh = { workspace = true, features = ["derive"] }
 
@@ -48,7 +47,6 @@ log = { workspace = true }
 rand = { workspace = true }
 serde_repr = "0.1.8"
 serde_valid = "1.0.5"
-strum = "0.22"
 strum_macros = "0.22"
 tari_crypto = { workspace = true, features = ["borsh"] }
 

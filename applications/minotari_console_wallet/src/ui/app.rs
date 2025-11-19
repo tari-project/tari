@@ -76,12 +76,10 @@ impl<B: Backend> App<B> {
     ) -> Result<Self, ExitError> {
         let wallet_address_interactive = wallet
             .get_wallet_interactive_address()
-            .await
-            .map_err(WalletError::KeyManagerServiceError)?;
+            .map_err(WalletError::AddressError)?;
         let wallet_address_one_sided = wallet
             .get_wallet_one_sided_address()
-            .await
-            .map_err(WalletError::KeyManagerServiceError)?;
+            .map_err(WalletError::AddressError)?;
         let wallet_id = WalletIdentity::new(
             wallet.node_identity.clone(),
             wallet_address_interactive,

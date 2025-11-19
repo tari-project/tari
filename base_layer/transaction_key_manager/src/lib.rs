@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod memory_db_key_manager;
-pub use memory_db_key_manager::{
-    create_memory_db_key_manager,
-    create_memory_db_key_manager_from_seed,
-    create_memory_db_key_manager_with_range_proof_size,
-    MemoryDbKeyManager,
-};
+// mod memory_db_key_manager;
+// pub use memory_db_key_manager::{
+//     create_memory_db_key_manager,
+//     create_memory_db_key_manager_from_seed,
+//     create_memory_db_key_manager_with_range_proof_size,
+//     MemoryDbKeyManager,
+// };
+
+pub mod legacy_key_manager;
 
 pub mod storage;
 

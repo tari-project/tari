@@ -48,7 +48,7 @@ mod test {
             Transaction,
         },
     };
-    use tari_transaction_key_manager::MemoryDbKeyManager;
+    use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
 
     use crate::{
@@ -290,7 +290,7 @@ mod test {
             22 * uT,
             rtp,
             LegacyTransactionStatus::Pending,
-            MemoField::open_from_string("1", TxType::PaymentToOther),
+            MemoField::new_open_from_string("1", TxType::PaymentToOther).unwrap(),
             Utc::now(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
@@ -326,7 +326,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
-            MemoField::open_from_string("2", TxType::PaymentToOther),
+            MemoField::new_open_from_string("2", TxType::PaymentToOther).unwrap(),
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -346,7 +346,7 @@ mod test {
             23 * uT,
             stp,
             LegacyTransactionStatus::Pending,
-            MemoField::open_from_string("3", TxType::PaymentToOther),
+            MemoField::new_open_from_string("3", TxType::PaymentToOther).unwrap(),
             Utc::now(),
             false,
         );
@@ -400,7 +400,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(2),
             Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
-            MemoField::open_from_string("6", TxType::PaymentToOther),
+            MemoField::new_open_from_string("6", TxType::PaymentToOther).unwrap(),
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -436,7 +436,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),
-            MemoField::open_from_string("7", TxType::PaymentToOther),
+            MemoField::new_open_from_string("7", TxType::PaymentToOther).unwrap(),
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
@@ -446,8 +446,7 @@ mod test {
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-        let mut oms_handle =
-            OutputManagerHandle::<MemoryDbKeyManager>::new(oms_request_sender, oms_event_sender.clone());
+        let mut oms_handle = OutputManagerHandle::<MemoryKeyManager>::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();
         let mut mock_output_manager_service =

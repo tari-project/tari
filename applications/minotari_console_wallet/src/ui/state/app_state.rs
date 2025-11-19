@@ -50,7 +50,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedPublicKey, PrivateKey},
-    wallet_types::WalletType,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
@@ -62,6 +61,7 @@ use tari_transaction_components::{
     },
     weight::TransactionWeight,
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
 use tokio::sync::{watch, RwLock};
 
@@ -411,7 +411,7 @@ impl AppState {
         self.inner.read().await.get_network()
     }
 
-    pub async fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+    pub async fn get_wallet_type(&self) -> Result<LegacyWalletType, UiError> {
         let inner = self.inner.write().await;
         inner.get_wallet_type()
     }
@@ -440,7 +440,7 @@ impl AppStateInner {
         }
     }
 
-    pub fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+    pub fn get_wallet_type(&self) -> Result<LegacyWalletType, UiError> {
         self.wallet
             .db
             .get_wallet_type()

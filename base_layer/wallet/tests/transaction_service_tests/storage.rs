@@ -44,7 +44,6 @@ use minotari_wallet::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
@@ -53,7 +52,7 @@ use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_builder::TransactionBuilder,
     transaction_components::{
@@ -66,47 +65,35 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
-        &TestParams::new(&mut key_manager).await,
+        &TestParams::new(&key_manager),
         MicroMinotari::from(100_000),
-        &mut key_manager,
+        &key_manager,
     )
-    .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let mut key_manager = create_memory_db_key_manager().await.unwrap();
-    let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet)
-        .await
-        .unwrap();
+    let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
     let amount = MicroMinotari::from(10_000);
     builder
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_memo(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
+        .with_memo(MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap())
         .with_input(input)
-        .await
         .unwrap();
 
-    let commitment_mask_key = key_manager
-        .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-        .await
-        .unwrap();
+    let commitment_mask_key = key_manager.get_random_key(None, false).unwrap();
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask_key.key_id).into(),
     };
-    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
+    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
 
-    let sender_offset = key_manager
-        .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-        .await
-        .unwrap();
+    let sender_offset = key_manager.get_random_key(None, false).unwrap();
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(
             &commitment_mask_key.key_id,
@@ -114,7 +101,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount.as_u64(),
             MemoField::new_empty(),
         )
-        .await
         .unwrap();
     let output = WalletOutput::new(
         TransactionOutputVersion::get_current_version(),
@@ -133,13 +119,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         MemoField::new_empty(),
         &key_manager,
     )
-    .await
     .unwrap();
-    builder
-        .with_output(output.clone(), sender_offset.key_id, None)
-        .await
-        .unwrap();
-    let finalized = builder.build().await.unwrap();
+    builder.with_output(output.clone(), sender_offset.key_id, None).unwrap();
+    let finalized = builder.build().unwrap();
 
     let messages = ["Hey!", "Yo!", "Sup!"];
     let amounts = [
@@ -165,7 +147,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             fee: finalized.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
-            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::new_open_from_string(messages[i], TxType::PaymentToOther).unwrap(),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -225,7 +207,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i],
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
-            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::new_open_from_string(messages[i], TxType::PaymentToOther).unwrap(),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -321,7 +303,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::new_open_from_string(messages[i], TxType::PaymentToOther).unwrap(),
             sent_output_hashes: vec![],
             change_output_hashes: vec![],
             received_output_hashes: vec![],
@@ -469,7 +451,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        MemoField::open_from_string("message", TxType::PaymentToOther),
+        MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
     )
     .unwrap();
 
@@ -498,7 +480,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        MemoField::open_from_string("message", TxType::PaymentToOther),
+        MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
     )
     .unwrap();
 
@@ -527,7 +509,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        MemoField::open_from_string("message", TxType::PaymentToOther),
+        MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
     )
     .unwrap();
 

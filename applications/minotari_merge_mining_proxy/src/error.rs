@@ -32,7 +32,7 @@ use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{consensus::BaseConsensusBuilderError, proof_of_work::monero_rx::MergeMineError};
 use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
 use tari_transaction_components::{
-    key_manager::{error::KeyManagerServiceError, CoreKeyManagerError},
+    key_manager::error::KeyManagerError,
     tari_proof_of_work::DifficultyError,
     CoinbaseBuildError,
 };
@@ -104,10 +104,8 @@ pub enum MmProxyError {
     DifficultyError(#[from] DifficultyError),
     #[error("TLS connection error: {0}")]
     TlsConnectionError(String),
-    #[error("Key manager service error: `{0}`")]
-    KeyManagerServiceError(String),
     #[error("Key manager error: {0}")]
-    CoreKeyManagerError(#[from] CoreKeyManagerError),
+    CoreKeyManagerError(#[from] KeyManagerError),
     #[error("Consensus build error: {0}")]
     ConsensusBuilderError(#[from] BaseConsensusBuilderError),
     #[error("Consensus build error: {0}")]
@@ -134,12 +132,6 @@ impl From<tonic::Status> for MmProxyError {
             details: String::from_utf8_lossy(status.details()).to_string(),
             status: Box::new(status),
         }
-    }
-}
-
-impl From<KeyManagerServiceError> for MmProxyError {
-    fn from(err: KeyManagerServiceError) -> Self {
-        MmProxyError::KeyManagerServiceError(err.to_string())
     }
 }
 

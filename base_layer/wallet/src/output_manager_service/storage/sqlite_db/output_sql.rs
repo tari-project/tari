@@ -22,13 +22,19 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    ops::Range,
     str::FromStr,
 };
 
 use borsh::BorshDeserialize;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use diesel::{prelude::*, sql_query};
+use diesel::{
+    dsl::{count_star, sql},
+    prelude::*,
+    sql_query,
+    sql_types::{BigInt, Nullable},
+};
 use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
@@ -57,6 +63,7 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -67,7 +74,7 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
-            sqlite_db::{UpdateOutput, UpdateOutputSql},
+            sqlite_db::{CoinBucket, UpdateOutput, UpdateOutputSql},
             OutputSource,
             OutputStatus,
         },
@@ -77,6 +84,7 @@ use crate::{
     },
     schema::outputs,
 };
+
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 #[derive(Clone, Derivative, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
@@ -290,6 +298,105 @@ impl OutputSql {
         };
 
         Ok(query.limit(i64::from(TRANSACTION_INPUTS_LIMIT)).load(conn)?)
+    }
+
+    /// Retrieves UTXOs within a specified limited range with minimum target amount for spending. If not enough UTXOs
+    /// can be found, an empty vector is returned.
+    pub fn get_range_limited_outputs_for_spending(
+        selection_criteria: &UtxoSelectionCriteria,
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<(Vec<OutputSql>, MicroMinotari), OutputManagerStorageError> {
+        let range_limit =
+            selection_criteria
+                .range_limit
+                .as_ref()
+                .ok_or_else(|| OutputManagerStorageError::RangeLimitError {
+                    reason: "Range limit must be specified".to_string(),
+                })?;
+        let amounts_from = i64::try_from(range_limit.range.start).unwrap_or(i64::MAX);
+        let amounts_to = i64::try_from(range_limit.range.end).unwrap_or(i64::MAX);
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.ge(amounts_from))
+            .filter(outputs::value.lt(amounts_to));
+
+        // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            query = query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        };
+
+        for exclude in &selection_criteria.excluding {
+            query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        query = query.then_order_by(outputs::value.asc());
+
+        let transaction_input_limit = u32::try_from(range_limit.transaction_input_limit)
+            .unwrap_or(u32::MAX)
+            .min(TRANSACTION_INPUTS_LIMIT);
+        let outputs: Vec<OutputSql> = query.limit(i64::from(transaction_input_limit)).load(conn)?;
+
+        // If all the outputs together don't reach target, we cannot continue
+        let total_sum: u64 = outputs.iter().fold(0u64, |acc, o| acc.saturating_add(o.value as u64));
+        if total_sum < range_limit.target_minimum_amount {
+            debug!(
+                target: LOG_TARGET,
+                "Total unspent outputs' value in the specified range was less than the target_minimum_amount: {} < {}",
+                total_sum, range_limit.target_minimum_amount
+            );
+            return Ok((Vec::new(), MicroMinotari::zero()));
+        }
+
+        Ok((outputs, MicroMinotari::from(total_sum)))
+    }
+
+    /// Retrieves UTXO counts grouped by the provided ranges
+    pub fn count_outputs_in_ranges(
+        selection_criteria: &UtxoSelectionCriteria,
+        ranges: &[Range<u64>],
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CoinBucket>, OutputManagerStorageError> {
+        let mut result = Vec::with_capacity(ranges.len());
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+
+        for range in ranges {
+            let amounts_from = i64::try_from(range.start).unwrap_or(i64::MAX);
+            let amounts_to = i64::try_from(range.end).unwrap_or(i64::MAX);
+
+            let mut query = outputs::table
+                .into_boxed()
+                .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                .filter(outputs::value.ge(amounts_from))
+                .filter(outputs::value.lt(amounts_to));
+
+            if selection_criteria.mode == UtxoSelectionMode::Safe {
+                query = query
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height));
+            }
+
+            // Rust
+            let (count_res, sum_res) = query
+                .select((count_star(), sql::<Nullable<BigInt>>("SUM(value)")))
+                .first::<(i64, Option<i64>)>(conn)
+                .optional()?
+                .unwrap_or_default();
+
+            result.push(CoinBucket {
+                number_of_outputs: count_res as u64,
+                total_value: sum_res.unwrap_or(0) as u64,
+                range: range.clone(),
+            });
+        }
+
+        Ok(result)
     }
 
     fn handle_must_include_filter(
@@ -928,7 +1035,10 @@ impl OutputSql {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn to_db_wallet_output(self) -> Result<DbWalletOutput, OutputManagerStorageError> {
+    pub fn to_db_wallet_output<KM: LegacyTransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{s}"),
@@ -959,30 +1069,51 @@ impl OutputSql {
                 });
             },
         };
+        let commitment_mask_key_id = match TariKeyId::from_str(&self.spending_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.spending_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create spending key id({}) from stored string ({e})",self.spending_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Spending key id({}) could not be converted from string ({e})",
+                            self.spending_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
+        };
+
+        let script_key_id = match TariKeyId::from_str(&self.script_private_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.script_private_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create script private key id({}) from stored string ({e})",self.script_private_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Could not create script private key id({}) from stored string ({e})",
+                            self.script_private_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
+        };
         let wallet_output = WalletOutput::new_from_parts(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
-            TariKeyId::from_str(&self.spending_key).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create spending key id from stored string ({e})"
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: format!("Spending key id could not be converted from string ({e})"),
-                }
-            })?,
+            commitment_mask_key_id,
             features,
             TariScript::from_bytes(self.script.as_slice())?,
             ExecutionStack::from_bytes(self.input_data.as_slice())?,
-            TariKeyId::from_str(&self.script_private_key).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create script private key id from stored string ({e})"
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: format!("Script private key id could not be converted from string ({e})"),
-                }
-            })?,
+            script_key_id,
             CompressedPublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,

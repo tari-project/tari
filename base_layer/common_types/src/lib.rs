@@ -30,7 +30,6 @@ pub mod emoji;
 pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
-pub mod key_branches;
 pub mod payment_reference;
 pub mod seeds;
 pub mod serializers;
@@ -38,6 +37,5 @@ pub mod tari_address;
 pub mod transaction;
 mod tx_id;
 pub mod types;
-pub mod wallet_types;
 #[cfg(feature = "wasm")]
 mod wasm;

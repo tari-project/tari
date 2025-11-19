@@ -1015,7 +1015,7 @@ mod test {
         let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         let passphrase = "a very very secret key example.".to_string().into();
         let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
         let cipher = db.cipher();
@@ -1153,7 +1153,7 @@ mod test {
 
         let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
 
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
 
         let mut conn = connection.get_pooled_connection().unwrap();
         wallet.set_master_seed(&seed, &mut conn).unwrap();

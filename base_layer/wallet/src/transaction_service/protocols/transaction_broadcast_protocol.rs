@@ -32,10 +32,10 @@ use tari_common_types::{
     types::CompressedSignature,
 };
 use tari_transaction_components::{
-    key_manager::TransactionKeyManagerInterface,
     rpc::models::{TxLocation, TxSubmissionRejectionReason},
     transaction_components::Transaction,
 };
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
 
@@ -68,7 +68,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(
         tx_id: TxId,
@@ -220,9 +220,13 @@ where
                     TransactionServiceError::MempoolRejectionTimeLocked,
                     TxCancellationReason::TimeLocked,
                 ),
-                _ => (
-                    TransactionServiceError::UnexpectedBaseNodeResponse,
-                    TxCancellationReason::Unknown,
+                TxSubmissionRejectionReason::FeeTooLow => (
+                    TransactionServiceError::MempoolRejectionFeeTooLow,
+                    TxCancellationReason::FeeTooLow,
+                ),
+                TxSubmissionRejectionReason::AlreadyMined => (
+                    TransactionServiceError::MempoolRejectionAlreadyMined,
+                    TxCancellationReason::AlreadyMined,
                 ),
             };
 
@@ -317,11 +321,10 @@ where
                 self.last_rejection = Some(Instant::now());
                 Ok(false)
             } else {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) has been rejected by the mempool after second submission attempt, \
-                     cancelling transaction",
-                    self.tx_id
+                let reason = "rejected by the mempool after second submission attempt".to_string();
+                error!(target: LOG_TARGET,
+                    "Transaction (TxId: {}) has been {}, cancelling transaction",
+                    self.tx_id, reason,
                 );
                 self.cancel_transaction(TxCancellationReason::InvalidTransaction).await;
 
@@ -340,7 +343,7 @@ where
                     });
                 Err(TransactionServiceProtocolError::new(
                     self.tx_id,
-                    TransactionServiceError::MempoolRejection,
+                    TransactionServiceError::MempoolRejection { reason },
                 ))
             }
         } else {

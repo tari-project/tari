@@ -23,128 +23,58 @@
 // use diesel::result::Error as DieselError;
 // use tari_common_sqlite::error::{SqliteStorageError, StorageError};
 
-use tari_common_types::tari_address::TariAddressError;
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
-use tari_utilities::{hex::HexError, ByteArrayError};
+use tari_crypto::{
+    errors::RangeProofError,
+    signatures::{CommitmentAndPublicKeySignatureError, SchnorrSignatureError},
+};
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::transaction_components::TransactionError;
-#[derive(Debug, Error, PartialEq)]
-pub enum CoreKeyManagerError {
-    // #[error("KeyManagerError: `{0}`")]
-    // KeyManagerError(#[from] KeyManagerError),
+use crate::transaction_components::{EncryptedDataError, TransactionError};
+#[derive(Debug, Error, PartialEq, Clone)]
+pub enum KeyManagerError {
     #[error("Error generating Commitment and PublicKey signature: `{0}`")]
     CommitmentAndPublicKeySignatureError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
-}
-
-impl From<CommitmentAndPublicKeySignatureError> for CoreKeyManagerError {
-    fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
-        CoreKeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
-    }
-}
-
-// use crate::error::WalletStorageError;
-/// Error enum for the [KeyManagerService]
-#[derive(Debug, thiserror::Error)]
-pub enum KeyManagerServiceError {
-    #[error("Key manager branch not supported: `{0}`")]
-    BranchNotSupported(String),
-    #[error("Branch does not exist: `{0}`")]
-    UnknownKeyBranch(String),
-    #[error("Key ID without an index, most likely `Imported`")]
-    KeyIdWithoutIndex,
-    #[error("Key ID without a branch, most likely `Imported`")]
-    KeyIdWithoutBranch,
-    #[error("Master seed does not match stored version")]
-    MasterSeedMismatch,
-    #[error("Could not find key in key manager")]
-    KeyNotFoundInKeyChain,
-    #[error("Storage error: `{0}`")]
-    KeyManagerStorageError(#[from] KeyManagerStorageError),
-    #[error("Could not be serialized from string")]
-    KeySerializationError,
+    #[error("Ledger error: `{0}`")]
+    LedgerError(String),
+    #[error("Invalid wallet type: `{0}`")]
+    InvalidWalletType(String),
+    #[error("Failed to encrypt: `{0}`")]
+    EncryptionFailed(String),
+    #[error("Invalid key id string: `{0}`")]
+    InvalidKeyId(String),
+    #[error("Unexpected error: `{0}`")]
+    UnexpectedError(String),
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]
     RangeProofError(String),
-    #[error("Unknown error: `{0}`")]
-    UnknownError(String),
-    #[error("Ledger error: `{0}`")]
-    LedgerError(String),
-    #[error("The Ledger private key cannot be accessed or read: `{0}`")]
-    LedgerPrivateKeyInaccessible(String),
-    #[error("The Ledger view key cannot be accessed or read: `{0}`")]
-    LedgerViewKeyInaccessible(String),
-    #[error("Tari Key Manager storage error: `{0}`")]
-    StorageError(String),
-    #[error("The imported private key cannot be accessed or read: `{0}")]
-    ImportedPrivateKeyInaccessible(String),
-    #[error("Tari address error: `{0}`")]
-    TariAddressError(#[from] TariAddressError),
-    #[error("Failed to encrypt: `{0}`")]
-    EncryptionFailed(String),
-    #[error("Failed to decrypt: `{0}`")]
-    DecryptionFailed(String),
-
-    #[error("Key manager does not have storage")]
-    NoStorage,
+    #[error("EncryptedData error: `{0}`")]
+    EncryptedDataError(#[from] EncryptedDataError),
 }
 
-impl From<RangeProofError> for KeyManagerServiceError {
+impl From<RangeProofError> for KeyManagerError {
     fn from(e: RangeProofError) -> Self {
-        KeyManagerServiceError::RangeProofError(e.to_string())
+        KeyManagerError::RangeProofError(e.to_string())
     }
 }
 
-impl From<ByteArrayError> for KeyManagerServiceError {
+impl From<CommitmentAndPublicKeySignatureError> for KeyManagerError {
+    fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
+        KeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for KeyManagerError {
     fn from(e: ByteArrayError) -> Self {
-        KeyManagerServiceError::ByteArrayError(e.to_string())
+        KeyManagerError::ByteArrayError(e.to_string())
     }
 }
 
-/// Error enum for the [KeyManagerStorage]
-#[derive(Debug, Error)]
-pub enum KeyManagerStorageError {
-    #[error("Value not found")]
-    ValueNotFound,
-    #[error("Unexpected result: `{0}`")]
-    UnexpectedResult(String),
-    #[error("Pending transaction does not exist to be confirmed")]
-    PendingTransactionNotFound,
-    #[error("This write operation is not supported for provided DbKey")]
-    OperationNotSupported,
-    #[error("Could not find all values specified for batch operation")]
-    ValuesNotFound,
-    #[error("Error converting a type: {reason}")]
-    ConversionError { reason: String },
-    #[error("Key Manager not initialized")]
-    KeyManagerNotInitialized,
-    #[error("Storage error: `{0}`")]
-    StorageError(String),
-    #[error("Database migration error: `{0}`")]
-    DatabaseMigrationError(String),
-    #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
-    AlreadyEncrypted,
-    #[error("Wallet db is currently encrypted, decrypt before use")]
-    ValueEncrypted,
-    #[error("Byte array error: `{0}`")]
-    ByteArrayError(String),
-    #[error("Aead error: `{0}`")]
-    AeadError(String),
-    #[error("Binary not stored as valid hex:{0}")]
-    HexError(String),
-}
-
-impl From<HexError> for KeyManagerStorageError {
-    fn from(e: HexError) -> Self {
-        KeyManagerStorageError::HexError(e.to_string())
-    }
-}
-
-impl From<ByteArrayError> for KeyManagerStorageError {
-    fn from(e: ByteArrayError) -> Self {
-        KeyManagerStorageError::ByteArrayError(e.to_string())
+impl From<SchnorrSignatureError> for KeyManagerError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        KeyManagerError::TransactionError(TransactionError::InvalidSignatureError(e.to_string()))
     }
 }

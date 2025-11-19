@@ -52,7 +52,7 @@ use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedDat
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     tari_proof_of_work::Difficulty,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -63,7 +63,6 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
-use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -97,16 +96,14 @@ pub fn create_orphan_block(
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
+pub fn default_coinbase_entities(key_manager: &KeyManager) -> (TariKeyId, TariAddress) {
     let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
     let wallet_private_view_key = PrivateKey::random(&mut OsRng);
     let _key = key_manager
-        .import_key(wallet_private_view_key.clone(), None)
-        .await
+        .create_encrypted_key(wallet_private_view_key.clone(), None)
         .unwrap();
     let script_key_id = key_manager
-        .import_key(wallet_private_spend_key.clone(), None)
-        .await
+        .create_encrypted_key(wallet_private_spend_key.clone(), None)
         .unwrap();
     let wallet_payment_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&wallet_private_view_key),
@@ -117,12 +114,12 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
     (script_key_id, wallet_payment_address)
 }
 
-pub async fn create_block<TDB: BlockchainBackend>(
+pub fn create_block<TDB: BlockchainBackend>(
     db: &BlockchainDatabase<TDB>,
     rules: &BaseNodeConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
-    km: &mut MemoryDbKeyManager,
+    km: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     range_proof_type: Option<RangeProofType>,
@@ -157,7 +154,6 @@ pub async fn create_block<TDB: BlockchainBackend>(
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
         MemoField::new_open(vec![], TxType::Coinbase).expect("Should never fail since the vector is empty"),
     )
-    .await
     .unwrap();
 
     let mut block = header
