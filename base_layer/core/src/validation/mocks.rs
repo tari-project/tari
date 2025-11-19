@@ -95,7 +95,7 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
         }
     }
 
-    fn validate_body_in_isolation(&self, _: &ChainBlock) -> Result<(), ValidationError> {
+    fn validate_body_at_height(&self, _: &B, _: &ChainBlock) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

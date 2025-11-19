@@ -3747,6 +3747,9 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
     // Full validation of block body and internal consistency if requested
     if full_validation {
         if let Some((block, accumulated_data)) = block_data {
+            let read_lock = db
+                .read()
+                .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
             let block_hash = block.hash();
             let accumulated_data_hash = accumulated_data.hash;
             let chain_block = ChainBlock::try_construct(Arc::new(block), accumulated_data).ok_or_else(|| {
@@ -3756,9 +3759,13 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
                 ))
             })?;
             let block_validator = validators.block.clone();
-            block_validator.validate_body_in_isolation(&chain_block).map_err(|e| {
-                ChainStorageError::CorruptedDatabase(format!("Block body validation failed for height {height}: {e}"))
-            })?;
+            block_validator
+                .validate_body_at_height(&read_lock, &chain_block)
+                .map_err(|e| {
+                    ChainStorageError::CorruptedDatabase(format!(
+                        "Block body validation failed for height {height}: {e}"
+                    ))
+                })?;
 
             let orphan_validator = validators.orphan.clone();
             orphan_validator

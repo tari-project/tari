@@ -90,8 +90,12 @@ pub enum ValidationError {
     BadBlockFound { hash: String, reason: String },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
-    #[error("Duplicate kernel Error: {0}")]
+    #[error("Duplicate kernel error: {0}")]
     DuplicateKernelError(String),
+    #[error("Missing kernel error: {0}")]
+    MissingKernelError(String),
+    #[error("Missing output error: {0}")]
+    MissingOutputError(String),
     #[error("Covenant failed to validate: {0}")]
     CovenantError(#[from] CovenantError),
     #[error("Invalid or unsupported blockchain version {version}")]
@@ -191,7 +195,10 @@ impl ValidationError {
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
-            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
+            ValidationError::FatalStorageError(_) |
+            ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
+            ValidationError::MissingKernelError(_) |
+            ValidationError::MissingOutputError(_) => None,
         }
     }
 }

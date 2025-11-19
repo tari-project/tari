@@ -51,7 +51,7 @@ pub trait CandidateBlockValidator<B>: Send + Sync {
     // This body-in-isolation validation is intended to validate the block body without any knowledge of consecutive
     // blocks that may exist. For example, it cannot validate that kernels are unique or that outputs have not been
     // spent already.
-    fn validate_body_in_isolation(&self, block: &ChainBlock) -> Result<(), ValidationError>;
+    fn validate_body_at_height(&self, backend: &B, block: &ChainBlock) -> Result<(), ValidationError>;
 }
 
 pub trait TransactionValidator: Send + Sync {
