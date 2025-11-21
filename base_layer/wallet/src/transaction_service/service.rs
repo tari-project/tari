@@ -93,7 +93,6 @@ use tari_transaction_components::{
         TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
-        WalletOutput,
         WalletOutputBuilder,
     },
     tx_outputs_to_tx_id,
@@ -2801,69 +2800,48 @@ where
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
-
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
             .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
-        let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
-        let mut outputs = finalized
-            .sent_outputs
-            .iter()
-            .map(|o| o.output.clone())
-            .collect::<Vec<WalletOutput>>();
-
         check_transaction_size(&tx, finalized.tx_id)?;
-        let (first_address, first_amount, first_memo) = destinations.remove(0);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                finalized.tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                first_address,
-                first_amount,
-                finalized.fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                first_memo,
-                sent_hashes.clone(),
-                vec![],
-                change_hashes.clone(),
-            )?,
-        )
-        .await?;
-        if let Some(pos) = outputs.iter().position(|o| o.value() == first_amount) {
-            outputs.swap_remove(pos);
-        }
 
-        // Save the other transactions with zero fee and random tx_id to the database
-        let mut tx_ids = vec![finalized.tx_id];
+        let mut tx_ids = Vec::new();
+        let mut completed_txs = Vec::new();
         let view_key = self.resources.transaction_key_manager_service.get_view_key().pub_key;
-        for (address, amount, memo) in destinations {
-            let new_tx_id = if let Some(pos) = outputs.iter().position(|o| o.value() == amount) {
-                let tx_id = outputs
-                    .get(pos)
-                    .expect("pos exists")
-                    .calculate_tx_id(view_key.as_bytes());
-                outputs.swap_remove(pos);
-                tx_id
+
+        for (i, (address, amount, memo)) in destinations.into_iter().enumerate() {
+            let tx_id = if i == 0 {
+                finalized.tx_id
             } else {
-                TxId::new_random()
+                finalized
+                    .sent_outputs
+                    .get(i)
+                    .ok_or(TransactionServiceError::Other(
+                        "sent_outputs index out of bounds".to_string(),
+                    ))?
+                    .output
+                    .calculate_tx_id(view_key.as_bytes())
             };
 
-            tx_ids.push(new_tx_id);
+            let sent_hash = finalized
+                .sent_output_hashes
+                .get(i)
+                .copied()
+                .ok_or(TransactionServiceError::Other(
+                    "sent_output_hashes index out of bounds".to_string(),
+                ))?;
+
+            tx_ids.push(tx_id);
+
             let completed_tx = CompletedTransaction::new_with_output_hashes(
-                new_tx_id,
+                tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                address.clone(),
+                address,
                 amount,
                 finalized.fee,
                 tx.clone(),
@@ -2873,11 +2851,19 @@ where
                 None,
                 None,
                 memo,
-                sent_hashes.clone(),
+                vec![sent_hash],
                 vec![],
                 change_hashes.clone(),
             )?;
-            self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
+            completed_txs.push(completed_tx);
+        }
+
+        let first_completed_tx = completed_txs.remove(0);
+        self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
+            .await?;
+
+        for completed_tx in completed_txs {
+            self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
             trace!(
                 target: LOG_TARGET,
                 "Created transaction for ({}).", finalized.tx_id
