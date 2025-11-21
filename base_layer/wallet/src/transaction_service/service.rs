@@ -2821,7 +2821,9 @@ where
                 finalized
                     .sent_outputs
                     .get(i)
-                    .expect("recipient index must exist")
+                    .ok_or(TransactionServiceError::Other(
+                        "sent_outputs index out of bounds".to_string(),
+                    ))?
                     .output
                     .calculate_tx_id(view_key.as_bytes())
             };
@@ -2861,8 +2863,7 @@ where
             .await?;
 
         for completed_tx in completed_txs {
-            self.db
-                .insert_completed_transaction(completed_tx.tx_id, completed_tx.clone())?;
+            self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
             trace!(
                 target: LOG_TARGET,
                 "Created transaction for ({}).", finalized.tx_id
