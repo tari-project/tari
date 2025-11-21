@@ -19,13 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
+use tari_common::configuration::Network;
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 
 use crate::{
+    consensus::ConsensusConstants,
     key_manager::TransactionKeyManagerInterface,
     offline_signing::{
-        marshal_output_pair::MarshalOutputPair,
         models::{
             get_latest_version,
             OneSidedMultisigTransactionInfo,
@@ -37,257 +37,190 @@ use crate::{
             SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
             SignedOneSidedWithdrawMultisigTransactionResult,
-            TransactionMetadata,
         },
-        one_sided_signer::OneSidedSigner,
+        one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
     },
-    transaction_components::{MemoField, OutputFeatures},
+    transaction_components::{MemoField, OutputFeatures, WalletOutput},
     MicroMinotari,
     TransactionBuilder,
     TransactionBuilderError,
 };
 
-pub struct OfflineSigner<TKeyManagerInterface> {
-    key_manager: TKeyManagerInterface,
+pub fn prepare_one_sided_transaction_for_signing<TKeyManagerInterface: TransactionKeyManagerInterface>(
+    tx_id: TxId,
+    tx_builder: TransactionBuilder<TKeyManagerInterface>,
+    recipients: &[PaymentRecipient],
+    payment_id: MemoField,
+    sender_address: TariAddress,
+) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionBuilderError> {
+    let fee = tx_builder.fee();
+    let fee_per_gram = tx_builder.fee_per_gram().unwrap_or_default();
+    let outputs = tx_builder
+        .custom_outputs()
+        .iter()
+        .map(|output_pair| output_pair.output.clone())
+        .collect::<Vec<WalletOutput>>();
+    let inputs = tx_builder
+        .inputs()
+        .iter()
+        .map(|output_pair| output_pair.output.clone())
+        .collect::<Vec<WalletOutput>>();
+    let info = OneSidedTransactionInfo {
+        payment_id,
+        recipients: recipients.to_vec(),
+        inputs,
+        outputs,
+        fee,
+        fee_per_gram,
+        sender_address,
+    };
+
+    Ok(PrepareOneSidedTransactionForSigningResult {
+        version: get_latest_version(),
+        tx_id,
+        info,
+    })
 }
 
-impl<TKeyManagerInterface> OfflineSigner<TKeyManagerInterface>
-where TKeyManagerInterface: TransactionKeyManagerInterface
-{
-    pub fn new(key_manager: TKeyManagerInterface) -> Self {
-        OfflineSigner { key_manager }
-    }
-
-    pub fn prepare_one_sided_transaction_for_signing(
-        &mut self,
-        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
-        dest_address: TariAddress,
-        amount: MicroMinotari,
-        output_features: OutputFeatures,
-        payment_id: MemoField,
-        sender_address: TariAddress,
-    ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionBuilderError> {
-        tx_builder.with_memo(payment_id.clone());
-        // we do this to ensure the fee is calculated correctly
-        tx_builder.add_stealth_recipient(
-            dest_address.clone(),
+pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKeyManagerInterface>(
+    tx_id: TxId,
+    tx_builder: TransactionBuilder<TKeyManagerInterface>,
+    amount: MicroMinotari,
+    payment_id: MemoField,
+    output_features: OutputFeatures,
+    party_number: u8,
+    public_keys: Vec<CompressedPublicKey>,
+    sender: TariAddress,
+    recipient: TariAddress,
+) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
+    let fee = tx_builder.fee();
+    let fee_per_gram = tx_builder.fee_per_gram().unwrap_or_default();
+    let outputs = tx_builder
+        .custom_outputs()
+        .iter()
+        .map(|output_pair| output_pair.output.clone())
+        .collect::<Vec<WalletOutput>>();
+    let inputs = tx_builder
+        .inputs()
+        .iter()
+        .map(|output_pair| output_pair.output.clone())
+        .collect::<Vec<WalletOutput>>();
+    let base = OneSidedTransactionInfo {
+        payment_id: payment_id.clone(),
+        recipients: vec![PaymentRecipient {
             amount,
-            output_features.clone(),
-            payment_id.clone(),
-        )?;
-
-        let mut inputs = Vec::new();
-        for input_pair in tx_builder.inputs() {
-            let mut input = input_pair.clone();
-            input.output.set_script_key_id(input.output.script_key_id().clone());
-            inputs.push(MarshalOutputPair::marshal(input)?);
-        }
-
-        let mut outputs = Vec::new();
-        for output_pair in tx_builder.custom_outputs() {
-            let mut output = output_pair.clone();
-            output.output.set_script_key_id(output.output.script_key_id().clone());
-            outputs.push(MarshalOutputPair::marshal(output)?);
-        }
-
-        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
-            (fee, Some(mut change_output), tx_id) => {
-                change_output
-                    .output
-                    .set_script_key_id(change_output.output.script_key_id().clone());
-                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
-            },
-            (fee, None, tx_id) => (fee, None, tx_id),
-        };
-        let metadata = TransactionMetadata {
-            fee,
-            ..Default::default()
-        };
-        let info = OneSidedTransactionInfo {
+            output_features,
+            address: recipient,
             payment_id,
-            recipient: PaymentRecipient {
-                amount,
-                output_features,
-                address: dest_address,
-            },
-            change_output,
-            inputs,
-            outputs,
-            metadata,
-            sender_address,
-        };
+        }],
+        inputs,
+        outputs,
+        fee,
+        fee_per_gram,
+        sender_address: sender,
+    };
 
-        Ok(PrepareOneSidedTransactionForSigningResult {
-            version: get_latest_version(),
-            tx_id,
-            info,
-        })
-    }
+    let info = OneSidedMultisigTransactionInfo {
+        base,
+        party_number,
+        public_keys,
+    };
 
-    pub fn prepare_deposit_multisig_transaction(
-        &self,
-        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
-        amount: MicroMinotari,
-        payment_id: MemoField,
-        output_features: OutputFeatures,
-        party_number: u8,
-        public_keys: Vec<CompressedPublicKey>,
-        sender: TariAddress,
-        recipient: TariAddress,
-    ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
-        tx_builder.with_memo(payment_id.clone());
-        // we do this to ensure the fee is calculated correctly
-        tx_builder.add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())?;
+    Ok(PrepareDepositMultisigTransactionResult {
+        version: get_latest_version(),
+        tx_id,
+        info,
+    })
+}
 
-        let mut inputs = Vec::new();
-        for input_ref in tx_builder.inputs() {
-            let mut input = input_ref.clone();
-            input.output.set_script_key_id(input.output.script_key_id().clone());
-            inputs.push(MarshalOutputPair::marshal(input)?);
-        }
-        let outputs = Vec::new();
+pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKeyManagerInterface>(
+    tx_id: TxId,
+    tx_builder: TransactionBuilder<TKeyManagerInterface>,
+    amount: MicroMinotari,
+    payment_id: MemoField,
+    output_features: OutputFeatures,
+    sender: TariAddress,
+    recipient: TariAddress,
+) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
+    let fee = tx_builder.fee();
+    let fee_per_gram = tx_builder.fee_per_gram().unwrap_or_default();
+    let outputs = tx_builder
+        .custom_outputs()
+        .iter()
+        .map(|output_pair| output_pair.output.clone())
+        .collect::<Vec<WalletOutput>>();
+    let inputs = tx_builder
+        .inputs()
+        .iter()
+        .map(|output_pair| output_pair.output.clone())
+        .collect::<Vec<WalletOutput>>();
 
-        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
-            (fee, Some(mut change_output), tx_id) => {
-                change_output
-                    .output
-                    .set_script_key_id(change_output.output.script_key_id().clone());
-                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
-            },
-            (fee, None, tx_id) => (fee, None, tx_id),
-        };
-
-        let metadata = TransactionMetadata {
-            fee,
-            ..Default::default()
-        };
-
-        let info = OneSidedMultisigTransactionInfo {
-            base: OneSidedTransactionInfo {
-                payment_id,
-                recipient: PaymentRecipient {
-                    amount,
-                    output_features,
-                    address: recipient,
-                },
-                change_output,
-                inputs,
-                outputs,
-                metadata,
-                sender_address: sender,
-            },
-            party_number,
-            public_keys,
-        };
-
-        Ok(PrepareDepositMultisigTransactionResult {
-            version: get_latest_version(),
-            tx_id,
-            info,
-        })
-    }
-
-    pub fn prepare_withdraw_multisig_transaction(
-        &self,
-        mut tx_builder: TransactionBuilder<TKeyManagerInterface>,
-        amount: MicroMinotari,
-        payment_id: MemoField,
-        output_features: OutputFeatures,
-        sender: TariAddress,
-        recipient: TariAddress,
-    ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
-        tx_builder.with_memo(payment_id.clone());
-        tx_builder.add_stealth_recipient(recipient.clone(), amount, output_features.clone(), payment_id.clone())?;
-
-        let mut inputs = Vec::new();
-        for input_ref in tx_builder.inputs() {
-            let mut input = input_ref.clone();
-            input.output.set_script_key_id(input.output.script_key_id().clone());
-            inputs.push(MarshalOutputPair::marshal(input)?);
-        }
-        let mut outputs = Vec::new();
-        for output_pair in tx_builder.custom_outputs() {
-            let mut output = output_pair.clone();
-            output.output.set_script_key_id(output.output.script_key_id().clone());
-            outputs.push(MarshalOutputPair::marshal(output)?);
-        }
-
-        let (fee, change_output, tx_id) = match tx_builder.get_pre_build_change_output()? {
-            (fee, Some(mut change_output), tx_id) => {
-                change_output
-                    .output
-                    .set_script_key_id(change_output.output.script_key_id().clone());
-                (fee, Some(MarshalOutputPair::marshal(change_output)?), tx_id)
-            },
-            (fee, None, tx_id) => (fee, None, tx_id),
-        };
-
-        let metadata = TransactionMetadata {
-            fee,
-            ..Default::default()
-        };
-
-        let info = OneSidedTransactionInfo {
+    let info = OneSidedTransactionInfo {
+        payment_id: payment_id.clone(),
+        recipients: vec![PaymentRecipient {
+            amount,
+            output_features,
+            address: recipient,
             payment_id,
-            recipient: PaymentRecipient {
-                amount,
-                output_features,
-                address: recipient,
-            },
-            change_output,
-            inputs,
-            outputs,
-            metadata,
-            sender_address: sender,
-        };
+        }],
+        fee,
+        fee_per_gram,
+        inputs,
+        outputs,
+        sender_address: sender,
+    };
 
-        Ok(PrepareWithdrawMultisigTransactionResult {
-            version: get_latest_version(),
-            tx_id,
-            info,
-        })
-    }
+    Ok(PrepareWithdrawMultisigTransactionResult {
+        version: get_latest_version(),
+        tx_id,
+        info,
+    })
+}
 
-    pub fn sign_locked_transaction(
-        &mut self,
-        request: PrepareOneSidedTransactionForSigningResult,
-    ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
-        let mut signer = OneSidedSigner::new(&mut self.key_manager);
-        let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone())?;
+pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    request: PrepareOneSidedTransactionForSigningResult,
+) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
+    let signed_transaction =
+        build_and_sign_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
-        Ok(SignedOneSidedTransactionResult {
-            version: get_latest_version(),
-            request,
-            signed_transaction,
-        })
-    }
+    Ok(SignedOneSidedTransactionResult {
+        version: get_latest_version(),
+        request,
+        signed_transaction,
+    })
+}
 
-    pub fn sign_locked_deposit_multisig_transaction(
-        &mut self,
-        request: PrepareDepositMultisigTransactionResult,
-    ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
-        let mut signer = OneSidedSigner::new(&mut self.key_manager);
-        let signed_transaction = signer.sign_multisig_transaction(request.tx_id, request.info.clone())?;
+pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    request: PrepareDepositMultisigTransactionResult,
+) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
+    let signed_transaction =
+        sign_multisig_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
-        Ok(SignedOneSidedDepositMultisigTransactionResult {
-            version: get_latest_version(),
-            request,
-            signed_transaction,
-        })
-    }
+    Ok(SignedOneSidedDepositMultisigTransactionResult {
+        version: get_latest_version(),
+        request,
+        signed_transaction,
+    })
+}
 
-    pub fn sign_locked_withdraw_multisig_transaction(
-        &mut self,
-        request: PrepareWithdrawMultisigTransactionResult,
-    ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
-        let mut signer = OneSidedSigner::new(&mut self.key_manager);
+pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    request: PrepareWithdrawMultisigTransactionResult,
+) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
+    let signed_transaction =
+        sign_multisig_withdraw_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
-        let signed_transaction = signer.sign_multisig_withdraw_transaction(request.tx_id, request.info.clone())?;
-
-        Ok(SignedOneSidedWithdrawMultisigTransactionResult {
-            version: get_latest_version(),
-            request,
-            signed_transaction,
-        })
-    }
+    Ok(SignedOneSidedWithdrawMultisigTransactionResult {
+        version: get_latest_version(),
+        request,
+        signed_transaction,
+    })
 }

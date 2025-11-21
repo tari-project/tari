@@ -113,6 +113,14 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
+    pub fn fee(&self) -> MicroMinotari {
+        self.fee
+    }
+
+    pub fn fee_per_gram(&self) -> Option<MicroMinotari> {
+        self.fee_per_gram
+    }
+
     pub fn with_lock_height(&mut self, lock_height: u64) -> &mut Self {
         self.lock_height = lock_height;
         self

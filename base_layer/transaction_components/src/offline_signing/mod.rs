@@ -53,7 +53,6 @@ mod test {
             TransactionKeyManagerInterface,
         },
         multisig::script::derive_multisig_ephemeral_pubkeys,
-        offline_signing::offline_signer::OfflineSigner,
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
             covenants::Covenant,

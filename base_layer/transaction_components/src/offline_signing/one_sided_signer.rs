@@ -21,21 +21,16 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
-    types::{
-        CompressedCommitment,
-        CompressedPublicKey,
-        CompressedSignature,
-        FixedHash,
-        PrivateKey,
-        UncompressedPublicKey,
-    },
+    types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
 
 use crate::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    consensus::ConsensusConstants,
+    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
     multisig::script::derive_multisig_ephemeral_pubkeys,
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
@@ -43,19 +38,10 @@ use crate::{
         SignedTransaction,
         TransactionMetadata,
     },
-    transaction_builder::OutputPair,
-    transaction_components::{
-        CoreTransactionBuilder,
-        KernelBuilder,
-        Transaction,
-        TransactionError,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        WalletOutput,
-        WalletOutputBuilder,
-    },
+    transaction_builder::FinalizedTransaction,
+    transaction_components::{TransactionError, TransactionOutput, WalletOutput, WalletOutputBuilder},
     MicroMinotari,
+    TransactionBuilder,
     TransactionBuilderError,
 };
 
@@ -70,655 +56,251 @@ pub struct RecipientSignedMessage {
     pub offset: PrivateKey,
 }
 
-struct SignedMessage {
-    pub signed_data: RecipientSignedMessage,
-    pub sender_public_nonce: CompressedPublicKey,
-    pub sender_public_excess: CompressedPublicKey,
-    pub sender_offset_key_id: TariKeyId,
-    pub sent_hashes: Vec<FixedHash>,
-    pub change_hashes: Vec<FixedHash>,
+pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    info: OneSidedTransactionInfo,
+) -> Result<SignedTransaction, TransactionBuilderError> {
+    let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
+    if info.fee_per_gram > MicroMinotari::zero() {
+        tx_builder.with_fee_per_gram(info.fee_per_gram);
+    } else {
+        tx_builder.with_fee(info.fee);
+    }
+
+    for uo in info.inputs {
+        tx_builder.with_input(uo)?;
+    }
+
+    for mut uo in info.outputs {
+        let sender_offset_key = key_manager.get_random_key(None, true)?;
+        uo.set_sender_offset_public_key(sender_offset_key.pub_key);
+        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
+    }
+    for recipient in info.recipients {
+        tx_builder.add_stealth_recipient(
+            recipient.address.clone(),
+            recipient.amount,
+            recipient.output_features.clone(),
+            info.payment_id.clone(),
+        )?;
+    }
+    tx_builder.with_memo(info.payment_id.clone());
+    let finalized_tx = tx_builder.build()?;
+    let FinalizedTransaction {
+        transaction,
+        sent_output_hashes,
+        change_output_hashes,
+        change,
+        tx_id,
+        ..
+    } = finalized_tx;
+
+
+    Ok(SignedTransaction {
+        transaction,
+        sent_hashes: sent_output_hashes,
+        change_hashes: change_output_hashes,
+        change_output: change,
+        tx_id,
+    })
 }
 
-pub struct OneSidedSigner<'a, KM: TransactionKeyManagerInterface> {
-    key_manager: &'a mut KM,
+pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    info: OneSidedMultisigTransactionInfo,
+) -> Result<SignedTransaction, TransactionBuilderError> {
+    let (output, sender_offset) = build_multisig_output(key_manager, &info)?;
+    let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
+    if info.base.fee_per_gram > MicroMinotari::zero() {
+        tx_builder.with_fee_per_gram(info.base.fee_per_gram);
+    } else {
+        tx_builder.with_fee(info.base.fee);
+    }
+
+    for uo in info.base.inputs {
+        tx_builder.with_input(uo)?;
+    }
+
+    for mut uo in info.base.outputs {
+        let sender_offset_key = key_manager.get_random_key(None, true)?;
+        uo.set_sender_offset_public_key(sender_offset_key.pub_key);
+        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
+    }
+
+    let recipient = info
+        .base
+        .recipients
+        .first()
+        .ok_or(TransactionBuilderError::NoRecipients)?;
+    tx_builder.add_recipient(recipient.address.clone(), output, Some(sender_offset.key_id), None)?;
+
+    tx_builder.with_memo(info.base.payment_id.clone());
+    let finalized_tx = tx_builder.build()?;
+    let FinalizedTransaction {
+        transaction,
+        sent_output_hashes,
+        change_output_hashes,
+        change,
+        tx_id,
+        ..
+    } = finalized_tx;
+
+    Ok(SignedTransaction {
+        transaction,
+        sent_hashes: sent_output_hashes,
+        change_hashes: change_output_hashes,
+        change_output: change,
+        tx_id
+    })
 }
 
-impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
-    pub fn new(key_manager: &'a mut KM) -> Self {
-        Self { key_manager }
+fn build_multisig_output<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    info: &OneSidedMultisigTransactionInfo,
+) -> Result<(WalletOutput, TariKeyAndId), TransactionBuilderError> {
+    let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
+
+    let sender_offset_key = key_manager.get_random_key(None, true)?;
+    let (_commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
+
+    let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
+
+    let recipient_view_key = recipient.address.public_spend_key();
+    let recipient_spend_key = recipient.address.public_spend_key();
+    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+        private_key: sender_offset_key.key_id.clone().into(),
+        public_key: recipient_view_key.clone(),
+    };
+
+    let encryption_key = TariKeyId::DHEncryptedData {
+        private_key: sender_offset_key.key_id.clone().into(),
+        public_key: recipient_view_key.clone(),
+    };
+    let script_pubkey =
+        key_manager.stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)?;
+
+    let mut message = Box::new([0u8; 32]);
+    OsRng.fill_bytes(message.as_mut());
+
+    let ephemeral_pubkeys =
+        derive_multisig_ephemeral_pubkeys(key_manager, &info.public_keys, &sender_offset_key.key_id)?;
+
+    let mut script_opcodes = vec![Opcode::CheckMultiSigVerify(
+        info.party_number,
+        u8::try_from(ephemeral_pubkeys.len()).expect("Is checked"),
+        ephemeral_pubkeys.clone(),
+        message,
+    )];
+
+    script_opcodes.push(Opcode::PushPubKey(script_pubkey.into()));
+
+    let full_script = TariScript::new(script_opcodes)?;
+
+    let output = WalletOutputBuilder::new(recipient.amount, commitment_mask_key_id.clone())
+        .with_script(full_script.clone())
+        .with_features(recipient.output_features.clone())
+        .with_input_data(Default::default())
+        .encrypt_data_for_recovery(key_manager, Some(&encryption_key), info.payment_id.clone())?
+        .with_script_key(script_key.key_id)
+        .with_sender_offset_public_key(sender_offset_public_key.clone())
+        .sign_as_sender_and_receiver(key_manager, &sender_offset_key.key_id)?
+        .try_build(key_manager)?;
+    Ok((output, sender_offset_key))
+}
+
+pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    info: OneSidedTransactionInfo,
+) -> Result<SignedTransaction, TransactionBuilderError> {
+    let (output, sender_offset) = build_multisig_withdraw_output(key_manager, &info)?;
+    let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
+    if info.fee_per_gram > MicroMinotari::zero() {
+        tx_builder.with_fee_per_gram(info.fee_per_gram);
+    } else {
+        tx_builder.with_fee(info.fee);
     }
 
-    pub fn sign_transaction(
-        &mut self,
-        tx_id: TxId,
-        info: OneSidedTransactionInfo,
-    ) -> Result<SignedTransaction, TransactionBuilderError> {
-        let signed_message = self.sign_message(tx_id, &info)?;
-        let (transaction, change_output) = self.build_transaction(
-            info,
-            signed_message.signed_data,
-            signed_message.sender_offset_key_id,
-            signed_message.sender_public_nonce,
-            signed_message.sender_public_excess,
-        )?;
-        Ok(SignedTransaction {
-            transaction,
-            sent_hashes: signed_message.sent_hashes,
-            change_hashes: signed_message.change_hashes,
-            change_output,
-        })
+    for uo in info.inputs {
+        tx_builder.with_input(uo)?;
     }
 
-    pub fn sign_multisig_transaction(
-        &mut self,
-        tx_id: TxId,
-        info: OneSidedMultisigTransactionInfo,
-    ) -> Result<SignedTransaction, TransactionBuilderError> {
-        let signed_message = self.sign_multisig_message(tx_id, &info)?;
-        let (transaction, change_output) = self.build_transaction(
-            info.base,
-            signed_message.signed_data,
-            signed_message.sender_offset_key_id,
-            signed_message.sender_public_nonce,
-            signed_message.sender_public_excess,
-        )?;
-        Ok(SignedTransaction {
-            transaction,
-            sent_hashes: signed_message.sent_hashes,
-            change_hashes: signed_message.change_hashes,
-            change_output,
-        })
+    for mut uo in info.outputs {
+        let sender_offset_key = key_manager.get_random_key(None, true)?;
+        uo.set_sender_offset_public_key(sender_offset_key.pub_key);
+        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
 
-    pub fn sign_multisig_withdraw_transaction(
-        &mut self,
-        tx_id: TxId,
-        info: OneSidedTransactionInfo,
-    ) -> Result<SignedTransaction, TransactionBuilderError> {
-        let signed_message = self.sign_multisig_withdraw_message(tx_id, &info)?;
-        let (transaction, change_output) = self.build_transaction(
-            info,
-            signed_message.signed_data,
-            signed_message.sender_offset_key_id,
-            signed_message.sender_public_nonce,
-            signed_message.sender_public_excess,
-        )?;
-        Ok(SignedTransaction {
-            transaction,
-            sent_hashes: signed_message.sent_hashes,
-            change_hashes: signed_message.change_hashes,
-            change_output,
-        })
-    }
+    let recipient = info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
+    tx_builder.add_recipient(recipient.address.clone(), output, Some(sender_offset.key_id), None)?;
 
-    fn calculate_total_nonce_and_total_public_excess(
-        &self,
-        info: &OneSidedTransactionInfo,
-    ) -> Result<(CompressedPublicKey, CompressedPublicKey), TransactionError> {
-        let mut public_nonce = UncompressedPublicKey::default();
-        let mut public_excess = UncompressedPublicKey::default();
-        for input in &info.inputs {
-            public_nonce = public_nonce +
-                self.key_manager
-                    .get_public_key_at_key_id(&input.output_pair.kernel_nonce)?
-                    .to_public_key()?;
-            public_excess = public_excess -
-                self.key_manager
-                    .get_txo_kernel_signature_excess_with_offset(
-                        input.output_pair.output.commitment_mask_key_id(),
-                        &input.output_pair.kernel_nonce,
-                    )?
-                    .to_public_key()?;
-        }
-        for output in &info.outputs {
-            public_nonce = public_nonce +
-                self.key_manager
-                    .get_public_key_at_key_id(&output.output_pair.kernel_nonce)?
-                    .to_public_key()?;
-            public_excess = public_excess +
-                self.key_manager
-                    .get_txo_kernel_signature_excess_with_offset(
-                        output.output_pair.output.commitment_mask_key_id(),
-                        &output.output_pair.kernel_nonce,
-                    )?
-                    .to_public_key()?;
-        }
+    tx_builder.with_memo(info.payment_id.clone());
+    let finalized_tx = tx_builder.build()?;
+    let FinalizedTransaction {
+        transaction,
+        sent_output_hashes,
+        change_output_hashes,
+        change,
+        tx_id,
+        ..
+    } = finalized_tx;
+    Ok(SignedTransaction {
+        transaction,
+        sent_hashes: sent_output_hashes,
+        change_hashes: change_output_hashes,
+        change_output: change,tx_id,
+    })
+}
 
-        if let Some(change) = &info.change_output {
-            public_nonce = public_nonce +
-                self.key_manager
-                    .get_public_key_at_key_id(&change.output_pair.kernel_nonce)?
-                    .to_public_key()?;
-            public_excess = public_excess +
-                self.key_manager
-                    .get_txo_kernel_signature_excess_with_offset(
-                        change.output_pair.output.commitment_mask_key_id(),
-                        &change.output_pair.kernel_nonce,
-                    )?
-                    .to_public_key()?;
-        }
-        Ok((
-            CompressedPublicKey::new_from_pk(public_nonce),
-            CompressedPublicKey::new_from_pk(public_excess),
-        ))
-    }
+fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    info: &OneSidedTransactionInfo,
+) -> Result<(WalletOutput, TariKeyAndId), TransactionBuilderError> {
+    let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
 
-    #[allow(clippy::too_many_lines)]
-    fn sign_message(
-        &mut self,
-        tx_id: TxId,
-        info: &OneSidedTransactionInfo,
-    ) -> Result<SignedMessage, TransactionBuilderError> {
-        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
-        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-            private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info
-                .recipient
-                .address
-                .public_view_key()
-                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                .clone(),
-        };
+    let (_commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
 
-        let encryption_key = TariKeyId::DHEncryptedData {
-            private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info
-                .recipient
-                .address
-                .public_view_key()
-                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                .clone(),
-        };
+    let sender_offset_key = key_manager.get_random_key(None, true)?;
 
-        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
+    let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
-        let minimum_value_promise = MicroMinotari::zero();
-        let script_spending_key = self
-            .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())?;
-        let script = push_pubkey_script(&script_spending_key);
+    let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
+        private_key: sender_offset_key.key_id.clone().into(),
+        public_key: recipient
+            .address
+            .public_view_key()
+            .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
+            .clone(),
+    };
 
-        let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key_id.clone())
-            .with_features(info.recipient.output_features.clone())
-            .with_script(script.clone())
-            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())?
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(self.key_manager, &sender_offset_key.key_id, &info.recipient.address)?
-            .try_build(self.key_manager)?;
+    let encryption_key = TariKeyId::DHEncryptedData {
+        private_key: sender_offset_key.key_id.clone().into(),
+        public_key: recipient
+            .address
+            .public_view_key()
+            .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
+            .clone(),
+    };
 
-        let sent_hashes = vec![output.output_hash()];
-        let change_hashes = match &info.change_output {
-            Some(change_output) => vec![change_output.output_pair.output.output_hash()],
-            None => vec![],
-        };
+    let script_spending_key = key_manager
+        .clone()
+        .stealth_address_script_spending_key(&commitment_mask_key_id, recipient.address.public_spend_key())?;
 
-        let (sender_public_nonce, sender_public_excess) = self.calculate_total_nonce_and_total_public_excess(info)?;
-        let kernel_version = TransactionKernelVersion::get_current_version();
+    let script = push_pubkey_script(&script_spending_key);
 
-        let transaction_output = output.to_transaction_output()?;
-        let public_nonce = self.key_manager.get_random_key(None, false)?;
-        let tx_meta = if output.is_burned() {
-            let mut meta = info.metadata.clone();
-            meta.burn_commitment = Some(transaction_output.commitment().clone());
-            meta
-        } else {
-            info.metadata.clone()
-        };
-        let public_excess = self
-            .key_manager
-            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
-
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            kernel_version,
-            tx_meta.fee,
-            tx_meta.lock_height,
-            &tx_meta.kernel_features,
-            &tx_meta.burn_commitment,
-        );
-        let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
-        let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
-        let signature = self.key_manager.get_partial_txo_kernel_signature(
-            output.commitment_mask_key_id(),
-            &public_nonce.key_id,
-            &CompressedPublicKey::new_from_pk(total_nonce),
-            &CompressedPublicKey::new_from_pk(total_excess),
-            kernel_version,
-            &kernel_message,
-            &tx_meta.kernel_features,
-            TxoStage::Output,
-        )?;
-        let offset = self
-            .key_manager
-            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
-
-        let signed_data = RecipientSignedMessage {
-            tx_id,
-            output: transaction_output,
-            public_spend_key: public_excess,
-            partial_signature: signature,
-            tx_metadata: tx_meta,
-            offset,
-        };
-
-        Ok(SignedMessage {
-            signed_data,
-            sender_public_nonce,
-            sender_public_excess,
-            sender_offset_key_id: sender_offset_key.key_id,
-            sent_hashes,
-            change_hashes,
-        })
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn sign_multisig_message(
-        &mut self,
-        tx_id: TxId,
-        info: &OneSidedMultisigTransactionInfo,
-    ) -> Result<SignedMessage, TransactionBuilderError> {
-        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
-        let (_commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
-
-        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
-
-        let recipient_view_key = info.recipient.address.public_spend_key();
-        let recipient_spend_key = info.recipient.address.public_spend_key();
-        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-            private_key: sender_offset_key.key_id.clone().into(),
-            public_key: recipient_view_key.clone(),
-        };
-
-        let encryption_key = TariKeyId::DHEncryptedData {
-            private_key: sender_offset_key.key_id.clone().into(),
-            public_key: recipient_view_key.clone(),
-        };
-        let script_pubkey = self
-            .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)?;
-
-        let mut message = Box::new([0u8; 32]);
-        OsRng.fill_bytes(message.as_mut());
-
-        let ephemeral_pubkeys =
-            derive_multisig_ephemeral_pubkeys(self.key_manager, &info.public_keys, &sender_offset_key.key_id)?;
-
-        let mut script_opcodes = vec![Opcode::CheckMultiSigVerify(
-            info.party_number,
-            u8::try_from(ephemeral_pubkeys.len()).expect("Is checked"),
-            ephemeral_pubkeys.clone(),
-            message,
-        )];
-
-        script_opcodes.push(Opcode::PushPubKey(script_pubkey.into()));
-
-        let full_script = TariScript::new(script_opcodes)?;
-
-        let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key_id.clone())
-            .with_script(full_script.clone())
-            .with_features(info.recipient.output_features.clone())
-            .with_input_data(Default::default())
-            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())?
-            .with_script_key(script_key.key_id)
-            .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver(self.key_manager, &sender_offset_key.key_id)?
-            .try_build(self.key_manager)?;
-
-        let sent_hashes = vec![output.output_hash()];
-        let change_hashes = match &info.change_output {
-            Some(change_output) => vec![change_output.output_pair.output.output_hash()],
-            None => vec![],
-        };
-
-        let (sender_public_nonce, sender_public_excess) = self.calculate_total_nonce_and_total_public_excess(info)?;
-        let kernel_version = TransactionKernelVersion::get_current_version();
-
-        let transaction_output = output.to_transaction_output()?;
-        let public_nonce = self.key_manager.get_random_key(None, false)?;
-        let tx_meta = if output.is_burned() {
-            let mut meta = info.metadata.clone();
-            meta.burn_commitment = Some(transaction_output.commitment().clone());
-            meta
-        } else {
-            info.metadata.clone()
-        };
-        let public_excess = self
-            .key_manager
-            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
-
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            kernel_version,
-            tx_meta.fee,
-            tx_meta.lock_height,
-            &tx_meta.kernel_features,
-            &tx_meta.burn_commitment,
-        );
-        let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
-        let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
-
-        let signature = self.key_manager.get_partial_txo_kernel_signature(
-            output.commitment_mask_key_id(),
-            &public_nonce.key_id,
-            &CompressedPublicKey::new_from_pk(total_nonce),
-            &CompressedPublicKey::new_from_pk(total_excess),
-            kernel_version,
-            &kernel_message,
-            &tx_meta.kernel_features,
-            TxoStage::Output,
-        )?;
-        let offset = self
-            .key_manager
-            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
-
-        let signed_data = RecipientSignedMessage {
-            tx_id,
-            output: transaction_output,
-            public_spend_key: public_excess,
-            partial_signature: signature,
-            tx_metadata: tx_meta,
-            offset,
-        };
-
-        Ok(SignedMessage {
-            signed_data,
-            sender_public_nonce,
-            sender_public_excess,
-            sender_offset_key_id: sender_offset_key.key_id,
-            sent_hashes,
-            change_hashes,
-        })
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn sign_multisig_withdraw_message(
-        &mut self,
-        tx_id: TxId,
-        info: &OneSidedTransactionInfo,
-    ) -> Result<SignedMessage, TransactionBuilderError> {
-        let (_commitment_mask_key, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
-
-        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
-
-        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
-
-        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-            private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info
-                .recipient
-                .address
-                .public_view_key()
-                .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
-                .clone(),
-        };
-
-        let encryption_key = TariKeyId::DHEncryptedData {
-            private_key: sender_offset_key.key_id.clone().into(),
-            public_key: info
-                .recipient
-                .address
-                .public_view_key()
-                .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?
-                .clone(),
-        };
-
-        let (sender_public_nonce, sender_public_excess) = self.calculate_total_nonce_and_total_public_excess(info)?;
-        let kernel_version = TransactionKernelVersion::get_current_version();
-
-        let script_spending_key = self
-            .key_manager
-            .clone()
-            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())?;
-
-        let script = push_pubkey_script(&script_spending_key);
-
-        let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key_id.clone())
-            .with_script(script.clone())
-            .with_features(info.recipient.output_features.clone())
-            .with_input_data(ExecutionStack::default())
-            .encrypt_data_for_recovery(self.key_manager, Some(&encryption_key), info.payment_id.clone())?
-            .with_script_key(script_key.key_id)
-            .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver(self.key_manager, &sender_offset_key.key_id)?
-            .try_build(self.key_manager)?;
-
-        let sent_hashes = vec![output.output_hash()];
-        let change_hashes = match &info.change_output {
-            Some(change_output) => vec![change_output.output_pair.output.output_hash()],
-            None => vec![],
-        };
-
-        let transaction_output = output.to_transaction_output()?;
-        let public_nonce = self.key_manager.get_random_key(None, false)?;
-        let tx_meta = if output.is_burned() {
-            let mut meta = info.metadata.clone();
-            meta.burn_commitment = Some(transaction_output.commitment().clone());
-            meta
-        } else {
-            info.metadata.clone()
-        };
-        let public_excess = self
-            .key_manager
-            .get_txo_kernel_signature_excess_with_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
-
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            kernel_version,
-            tx_meta.fee,
-            tx_meta.lock_height,
-            &tx_meta.kernel_features,
-            &tx_meta.burn_commitment,
-        );
-        let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
-        let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
-        let signature = self.key_manager.get_partial_txo_kernel_signature(
-            output.commitment_mask_key_id(),
-            &public_nonce.key_id,
-            &CompressedPublicKey::new_from_pk(total_nonce),
-            &CompressedPublicKey::new_from_pk(total_excess),
-            kernel_version,
-            &kernel_message,
-            &tx_meta.kernel_features,
-            TxoStage::Output,
-        )?;
-        let offset = self
-            .key_manager
-            .get_txo_private_kernel_offset(output.commitment_mask_key_id(), &public_nonce.key_id)?;
-
-        let signed_data = RecipientSignedMessage {
-            tx_id,
-            output: transaction_output,
-            public_spend_key: public_excess,
-            partial_signature: signature,
-            tx_metadata: tx_meta,
-            offset,
-        };
-
-        Ok(SignedMessage {
-            signed_data,
-            sender_public_nonce,
-            sender_public_excess,
-            sender_offset_key_id: sender_offset_key.key_id,
-            sent_hashes,
-            change_hashes,
-        })
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn build_transaction(
-        &mut self,
-        info: OneSidedTransactionInfo,
-        signed_message: RecipientSignedMessage,
-        sender_offset_key_id: TariKeyId,
-        sender_public_nonce: CompressedPublicKey,
-        sender_public_excess: CompressedPublicKey,
-    ) -> Result<(Transaction, Option<WalletOutput>), TransactionBuilderError> {
-        let mut tx_builder = CoreTransactionBuilder::new();
-
-        let total_public_nonce = &sender_public_nonce.to_public_key()? +
-            signed_message
-                .partial_signature
-                .get_compressed_public_nonce()
-                .to_public_key()?;
-        let total_public_excess =
-            &sender_public_excess.to_public_key()? + &signed_message.public_spend_key.to_public_key()?;
-        let total_public_nonce = CompressedPublicKey::new_from_pk(total_public_nonce);
-        let total_public_excess = CompressedPublicKey::new_from_pk(total_public_excess);
-
-        let mut offset = signed_message.offset.clone();
-        let mut signature = signed_message.partial_signature.clone().to_schnorr_signature()?;
-        let mut script_keys = Vec::new();
-        let mut sender_offset_keys = Vec::new();
-        let kernel_version = TransactionKernelVersion::get_current_version();
-        let burn_commitment = if info.metadata.kernel_features.is_burned() {
-            Some(signed_message.output.commitment.clone())
-        } else {
-            info.metadata.burn_commitment.clone()
-        };
-
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            kernel_version,
-            info.metadata.fee,
-            info.metadata.lock_height,
-            &info.metadata.kernel_features,
-            &burn_commitment.clone(),
-        );
-        for input in &info.inputs {
-            tx_builder.add_input(input.output_pair.output.to_transaction_input(self.key_manager)?);
-            signature = &signature +
-                &self
-                    .key_manager
-                    .get_partial_txo_kernel_signature(
-                        input.output_pair.output.commitment_mask_key_id(),
-                        &input.output_pair.kernel_nonce,
-                        &total_public_nonce,
-                        &total_public_excess,
-                        kernel_version,
-                        &kernel_message,
-                        &info.metadata.kernel_features,
-                        TxoStage::Input,
-                    )?
-                    .to_schnorr_signature()?;
-            offset = offset -
-                &self.key_manager.get_txo_private_kernel_offset(
-                    input.output_pair.output.commitment_mask_key_id(),
-                    &input.output_pair.kernel_nonce,
-                )?;
-            script_keys.push(input.output_pair.output.script_key_id().clone());
-        }
-
-        for output in &info.outputs {
-            tx_builder.add_output(output.output_pair.output.to_transaction_output()?);
-            signature = &signature +
-                &self
-                    .key_manager
-                    .get_partial_txo_kernel_signature(
-                        output.output_pair.output.commitment_mask_key_id(),
-                        &output.output_pair.kernel_nonce,
-                        &total_public_nonce,
-                        &total_public_excess,
-                        kernel_version,
-                        &kernel_message,
-                        &info.metadata.kernel_features,
-                        TxoStage::Output,
-                    )?
-                    .to_schnorr_signature()?;
-            offset = offset +
-                &self.key_manager.get_txo_private_kernel_offset(
-                    output.output_pair.output.commitment_mask_key_id(),
-                    &output.output_pair.kernel_nonce,
-                )?;
-            let output_sender_offset_key_id = output
-                .output_pair
-                .sender_offset_key_id
-                .clone()
-                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
-            sender_offset_keys.push(output_sender_offset_key_id);
-        }
-
-        sender_offset_keys.push(sender_offset_key_id);
-
-        let change_output = match &info.change_output {
-            Some(change) => {
-                let change = self.lock_sent_output_in_payment_id(&change.output_pair, signed_message.output.hash())?;
-                tx_builder.add_output(change.output.to_transaction_output()?);
-                signature = &signature +
-                    &self
-                        .key_manager
-                        .get_partial_txo_kernel_signature(
-                            change.output.commitment_mask_key_id(),
-                            &change.kernel_nonce,
-                            &total_public_nonce,
-                            &total_public_excess,
-                            kernel_version,
-                            &kernel_message,
-                            &info.metadata.kernel_features,
-                            TxoStage::Output,
-                        )?
-                        .to_schnorr_signature()?;
-                offset = offset +
-                    &self.key_manager.get_txo_private_kernel_offset(
-                        change.output.commitment_mask_key_id(),
-                        &change.kernel_nonce,
-                    )?;
-                let sender_offset_key_id = change
-                    .sender_offset_key_id
-                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
-                sender_offset_keys.push(sender_offset_key_id);
-                Some(change.output)
-            },
-            None => None,
-        };
-        tx_builder.add_output(signed_message.output.clone());
-        let script_offset = self.key_manager.get_script_offset(&script_keys, &sender_offset_keys)?;
-
-        tx_builder.add_offset(offset);
-        tx_builder.add_script_offset(script_offset);
-        let excess = CompressedCommitment::from_compressed_key(total_public_excess);
-
-        let kernel = KernelBuilder::new()
-            .with_fee(info.metadata.fee)
-            .with_features(info.metadata.kernel_features)
-            .with_lock_height(info.metadata.lock_height)
-            .with_burn_commitment(burn_commitment)
-            .with_excess(&excess)
-            .with_signature(CompressedSignature::new_from_schnorr(signature))
-            .build()?;
-        tx_builder.with_kernel(kernel);
-        let transaction = tx_builder.build()?;
-        Ok((transaction, change_output))
-    }
-
-    fn lock_sent_output_in_payment_id(
-        &mut self,
-        change: &OutputPair,
-        output_hash: FixedHash,
-    ) -> Result<OutputPair, TransactionBuilderError> {
-        let mut payment_id = change.output.payment_id().clone();
-        payment_id
-            .transaction_info_set_sent_output_hashes(vec![output_hash])
-            .map_err(TransactionBuilderError::InvalidMemo)?;
-        let encrypted_data = self.key_manager.encrypt_data_for_recovery(
-            change.output.commitment_mask_key_id(),
-            change.custom_recovery_key_id.as_ref(),
-            change.output.value().as_u64(),
-            payment_id.clone(),
-        )?;
-        let mut change_output = change.output.clone();
-        change_output.change_encrypted_data(
-            encrypted_data,
-            change
-                .sender_offset_key_id
-                .as_ref()
-                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
-            payment_id,
-            self.key_manager,
-        )?;
-        Ok(OutputPair::new(
-            change_output,
-            change.kernel_nonce.clone(),
-            change.sender_offset_key_id.clone(),
-            change.custom_recovery_key_id.clone(),
-        ))
-    }
+    let output = WalletOutputBuilder::new(recipient.amount, commitment_mask_key_id.clone())
+        .with_script(script.clone())
+        .with_features(recipient.output_features.clone())
+        .with_input_data(ExecutionStack::default())
+        .encrypt_data_for_recovery(key_manager, Some(&encryption_key), info.payment_id.clone())?
+        .with_script_key(script_key.key_id)
+        .with_sender_offset_public_key(sender_offset_public_key.clone())
+        .sign_as_sender_and_receiver(key_manager, &sender_offset_key.key_id)?
+        .try_build(key_manager)?;
+    Ok((output, sender_offset_key))
 }
