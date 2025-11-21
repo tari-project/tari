@@ -164,7 +164,8 @@ where
                     commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
-                    confirmed: (tip_height - mined_info.mined_at_height) >= self.config.num_confirmations_required,
+                    confirmed: tip_height.saturating_sub(mined_info.mined_at_height) >=
+                        self.config.num_confirmations_required,
                     mined_timestamp: mined_info.mined_timestamp,
                 });
             }
@@ -345,7 +346,8 @@ where
                     commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
-                    confirmed: (tip_height - mined_info.mined_at_height) >= self.config.num_confirmations_required,
+                    confirmed: tip_height.saturating_sub(mined_info.mined_at_height) >=
+                        self.config.num_confirmations_required,
                     mined_timestamp: mined_info.mined_timestamp,
                 });
             }

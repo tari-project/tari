@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, fmt, ops::Range, sync::Arc};
+use std::{collections::HashMap, fmt, fmt::Display, ops::Range, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
@@ -3216,4 +3216,21 @@ pub struct OutputInfoByTxId {
     pub statuses: Vec<OutputStatus>,
     pub(crate) mined_height: Option<u64>,
     pub(crate) block_hash: Option<BlockHash>,
+}
+
+impl Display for OutputInfoByTxId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "OutputInfoByTxId {{ statuses: {:?}, mined_height: {:?}, block_hash: {:?} }}",
+            self.statuses,
+            self.mined_height,
+            if let Some(hash) = self.block_hash {
+                hash.to_hex()
+            } else {
+                "None".to_string()
+            }
+        )?;
+        Ok(())
+    }
 }

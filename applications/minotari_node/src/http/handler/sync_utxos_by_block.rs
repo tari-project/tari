@@ -1,6 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use std::sync::Arc;
+
+use std::{fmt::Display, sync::Arc};
 
 use axum::{
     extract::Query,
@@ -11,17 +12,23 @@ use axum::{
 };
 use log::debug;
 use serde::Deserialize;
+use tari_common_types::types::HashOutput;
 use tari_core::{
     base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse};
+use tari_utilities::hex::Hex;
 use tonic::service::AxumBody;
 
 use crate::{
     http::{
         cache_config::{apply_cache_control, RouteKey},
-        handler::{error_handler_with_message, util::from_hex, ErrorResponse},
+        handler::{
+            error_handler_with_message,
+            util::from_hex,
+            ErrorResponse,
+        },
     },
     HttpCacheConfig,
 };
@@ -71,7 +78,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Query(params): Query<SyncUtxosByBlockQueryParams>,
     Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received sync_utxos_by_block request: {params:?}");
+    debug!(target: LOG_TARGET, "Received sync_utxos_by_block request: {params}");
     let request = params.into();
     let tip_info = query_service.get_tip_info().await.map_err(error_handler_with_message)?;
     let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
@@ -91,4 +98,19 @@ pub async fn handle<B: BlockchainBackend + 'static>(
         last_height,
     );
     Ok(response)
+}
+
+impl Display for SyncUtxosByBlockQueryParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SyncUtxosByBlockQueryParams {{ start_header_hash: {}, limit: {}, page: {}, exclude_spent: {} }}",
+            HashOutput::try_from(self.start_header_hash.as_slice())
+                .unwrap_or_default()
+                .to_hex(),
+            self.limit,
+            self.page,
+            self.exclude_spent
+        )
+    }
 }
