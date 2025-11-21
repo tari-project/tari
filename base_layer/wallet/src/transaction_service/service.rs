@@ -2829,7 +2829,7 @@ where
             let sent_hash = finalized
                 .sent_output_hashes
                 .get(i)
-                .cloned()
+                .copied()
                 .ok_or(TransactionServiceError::Other(
                     "sent_output_hashes index out of bounds".to_string(),
                 ))?;
