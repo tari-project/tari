@@ -157,21 +157,54 @@ where TBackend: TransactionKeyManagerBackend + 'static
             LegacyTariKeyId::DHCommitmentMask {
                 public_key,
                 private_key,
-            } => Ok(TariKeyId::DHCommitmentMask {
-                public_key: public_key.clone(),
-                private_key: private_key.as_str().into(),
-            }),
+            } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(private_key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::DHCommitmentMask {
+                            public_key: public_key.clone(),
+                            private_key: val.to_string().into(),
+                        });
+                    }
+                }
+
+                Ok(TariKeyId::DHCommitmentMask {
+                    public_key: public_key.clone(),
+                    private_key: private_key.as_str().into(),
+                })
+            },
             LegacyTariKeyId::DHEncryptedData {
                 public_key,
                 private_key,
-            } => Ok(TariKeyId::DHEncryptedData {
-                public_key: public_key.clone(),
-                private_key: private_key.as_str().into(),
-            }),
-            LegacyTariKeyId::Encrypted { encrypted, key } => Ok(TariKeyId::Encrypted {
-                encrypted: encrypted.clone(),
-                key: key.as_str().into(),
-            }),
+            } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(private_key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::DHEncryptedData {
+                            public_key: public_key.clone(),
+                            private_key: val.to_string().into(),
+                        });
+                    }
+                }
+
+                Ok(TariKeyId::DHEncryptedData {
+                    public_key: public_key.clone(),
+                    private_key: private_key.as_str().into(),
+                })
+            },
+            LegacyTariKeyId::Encrypted { encrypted, key } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::Encrypted {
+                            encrypted: encrypted.clone(),
+                            key: val.to_string().into(),
+                        });
+                    }
+                }
+
+                Ok(TariKeyId::Encrypted {
+                    encrypted: encrypted.clone(),
+                    key: key.as_str().into(),
+                })
+            },
         }
     }
 

@@ -191,11 +191,9 @@ impl FromStr for TariKeyId {
                     if parts.len() < 3 {
                         return Err("Wrong derived format".to_string());
                     };
-                    if id.contains("derived.managed.commitment mask.") {
-                        return Err("Wrong derived format".to_string());
-                    };
 
                     let key = parts.get(1..).expect("Already checked").join(".");
+                    let _check_valid_key = TariKeyId::from_str(&key)?;
                     Ok(TariKeyId::Derived {
                         key: SerializedKeyString::from(key),
                     })
@@ -207,6 +205,7 @@ impl FromStr for TariKeyId {
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid public key".to_string())?;
                     let private_key = parts.get(2..).expect("Already checked").join(".");
+                    let _check_valid_key = TariKeyId::from_str(&private_key)?;
                     Ok(TariKeyId::DHCommitmentMask {
                         public_key,
                         private_key: SerializedKeyString::from(private_key),
@@ -219,6 +218,7 @@ impl FromStr for TariKeyId {
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid public key".to_string())?;
                     let private_key = parts.get(2..).expect("Already checked").join(".");
+                    let _check_valid_key = TariKeyId::from_str(&private_key)?;
                     Ok(TariKeyId::DHEncryptedData {
                         public_key,
                         private_key: SerializedKeyString::from(private_key),
@@ -231,6 +231,7 @@ impl FromStr for TariKeyId {
                     let encrypted: Vec<u8> = from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid encrypted bytes".to_string())?;
                     let key = parts.get(2..).expect("Already checked").join(".");
+                    let _check_valid_key = TariKeyId::from_str(&key)?;
                     Ok(TariKeyId::Encrypted {
                         encrypted,
                         key: SerializedKeyString::from(key),

@@ -37,13 +37,14 @@ strum = "0.22"
 strum_macros = "0.22"
 serde = { workspace = true, features = ["derive"] }
 rand = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync"] }
 zeroize = "1"
 tari_crypto = { workspace = true, features = ["borsh"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
+tokio = { workspace = true, features = ["time"] }
 
 tempfile = "3.1.0"
 [lib]
