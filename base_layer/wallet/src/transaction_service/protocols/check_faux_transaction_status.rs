@@ -126,8 +126,12 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend,
     all_detected_transactions.append(&mut confirmed_dectected);
 
     let mut state_changed = false;
+    debug!(target: LOG_TARGET, "Checking {} transactions",  all_detected_transactions.len());
     for (i, tx) in all_detected_transactions.iter().enumerate() {
-        debug!(target: LOG_TARGET, "Checking transaction {}/{}: TxId: {}", i + 1, all_detected_transactions.len(), tx.tx_id);
+        if i % 100 == 0 {
+            debug!(target: LOG_TARGET, "Checking transaction {}/{}: TxId: {}", i + 1, all_detected_transactions.len(), tx.tx_id);
+        }
+
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {

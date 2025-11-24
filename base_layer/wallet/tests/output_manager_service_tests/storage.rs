@@ -388,7 +388,7 @@ pub async fn test_count_outputs_in_ranges() {
             &mut OsRng,
             MicroMinotari::from(value),
             &OutputFeatures::default(),
-            &mut key_manager,
+            &key_manager,
         )
         .await;
         let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
@@ -450,7 +450,7 @@ pub async fn test_range_limited_outputs_for_spending() {
             &mut OsRng,
             MicroMinotari::from(value),
             &OutputFeatures::default(),
-            &mut key_manager,
+            &key_manager,
         )
         .await;
         let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
