@@ -191,6 +191,9 @@ impl FromStr for TariKeyId {
                     if parts.len() < 3 {
                         return Err("Wrong derived format".to_string());
                     };
+                    if id.contains("derived.managed.commitment mask.") {
+                        return Err("Wrong derived format".to_string());
+                    };
 
                     let key = parts.get(1..).expect("Already checked").join(".");
                     Ok(TariKeyId::Derived {
