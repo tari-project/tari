@@ -4316,11 +4316,10 @@ where
         }
         let payment_id = request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = match request.signed_transaction.change_output{
-            Some(v) => Some(vec!(v.clone())),
+        let change = match request.signed_transaction.change_output {
+            Some(v) => Some(vec![v.clone()]),
             None => None,
         };
-
 
         let _result = self
             .event_publisher
@@ -4341,19 +4340,30 @@ where
             let tx_id = if i == 0 {
                 new_tx_id
             } else {
-                TxId::new_deterministic(self.resources.transaction_key_manager_service.get_private_view_key().as_bytes(), request.signed_transaction.sent_hashes
-                    .get(i)
-                    .ok_or(TransactionServiceError::Other(
-                        "sent_outputs index out of bounds".to_string(),
-                    ))?)
+                TxId::new_deterministic(
+                    self.resources
+                        .transaction_key_manager_service
+                        .get_private_view_key()
+                        .as_bytes(),
+                    request
+                        .signed_transaction
+                        .sent_hashes
+                        .get(i)
+                        .ok_or(TransactionServiceError::Other(
+                            "sent_outputs index out of bounds".to_string(),
+                        ))?,
+                )
             };
             tx_ids.push(tx_id);
-            let sent_hash = request.signed_transaction.sent_hashes
-                .get(i)
-                .copied()
-                .ok_or(TransactionServiceError::Other(
-                    "sent_output_hashes index out of bounds".to_string(),
-                ))?;
+            let sent_hash =
+                request
+                    .signed_transaction
+                    .sent_hashes
+                    .get(i)
+                    .copied()
+                    .ok_or(TransactionServiceError::Other(
+                        "sent_output_hashes index out of bounds".to_string(),
+                    ))?;
             let completed_tx = CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
@@ -4367,7 +4377,7 @@ where
                 None,
                 None,
                 payment_id.clone(),
-                vec!(sent_hash),
+                vec![sent_hash],
                 vec![],
                 request.signed_transaction.change_hashes.clone(),
             )?;
@@ -4379,7 +4389,6 @@ where
         for completed_tx in completed_txs {
             self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
         }
-
 
         Ok(tx_ids)
     }

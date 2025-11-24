@@ -97,7 +97,6 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
         ..
     } = finalized_tx;
 
-
     Ok(SignedTransaction {
         transaction,
         sent_hashes: sent_output_hashes,
@@ -154,7 +153,7 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         sent_hashes: sent_output_hashes,
         change_hashes: change_output_hashes,
         change_output: change,
-        tx_id
+        tx_id,
     })
 }
 
@@ -253,7 +252,8 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         transaction,
         sent_hashes: sent_output_hashes,
         change_hashes: change_output_hashes,
-        change_output: change,tx_id,
+        change_output: change,
+        tx_id,
     })
 }
 
