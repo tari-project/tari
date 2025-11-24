@@ -453,7 +453,8 @@ where
                     return Ok(result);
                 }
 
-                let response = response?;
+                let mut response = response?;
+                response.blocks.sort_by(|a, b| a.height.cmp(&b.height));
                 #[allow(clippy::cast_possible_wrap)]
                 for response in response.blocks {
                     if let Some(previous_block) = &prev_scanned_block {
