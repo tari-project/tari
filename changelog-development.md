@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.1.3-pre.3](https://github.com/tari-project/tari/compare/v5.1.3-pre.2...v5.1.3-pre.3) (2025-11-24)
+
+
+### Features
+
+* improve wallet validation performance ([7c8de87](https://github.com/tari-project/tari/commit/7c8de876333fdac1c3bf1b215ec5bec3af706fa6))
+
+
+### Bug Fixes
+
+* store completed transactions with corresponding sent_output_hash ([a3c4ca6](https://github.com/tari-project/tari/commit/a3c4ca61bd09eaaaf77812fa642fa2f1b55a64d7))
+
 ### [5.1.3-pre.2](https://github.com/tari-project/tari/compare/v5.1.3-pre.1...v5.1.3-pre.2) (2025-11-19)
 
 
