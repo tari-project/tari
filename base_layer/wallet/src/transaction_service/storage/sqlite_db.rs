@@ -1387,7 +1387,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-
         let tx_ids = completed_transactions::table
             .select(completed_transactions::tx_id)
             .filter(completed_transactions::mined_height.ge(reorg_height as i64))

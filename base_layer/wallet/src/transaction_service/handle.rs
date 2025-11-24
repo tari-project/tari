@@ -1987,7 +1987,7 @@ impl TransactionServiceHandle {
     pub async fn process_reorg(&mut self, height: u64) -> Result<(), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::ProcessReorg{height})
+            .call(TransactionServiceRequest::ProcessReorg { height })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ProcessReorg({e})"))??
         {
