@@ -208,6 +208,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn batch_offline_sign_is_valid() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
