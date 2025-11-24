@@ -302,12 +302,16 @@ pub enum TransactionServiceRequest {
         recipient_address: TariAddress,
         signatures: Vec<CompressedCheckSigSchnorrSignature>,
     },
+    ProcessReorg {
+        height: u64,
+    },
 }
 
 impl fmt::Display for TransactionServiceRequest {
     #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ProcessReorg { height } => write!(f, "ProcessReorg to height: {}", height),
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
@@ -617,6 +621,7 @@ pub enum TransactionServiceResponse {
     LowPowerModeSet,
     NormalPowerModeSet,
     ProtocolsRestarted,
+    ReorgProcessed,
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
@@ -1979,6 +1984,20 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::UserPayForFee".to_string(),
+            )),
+        }
+    }
+
+    pub async fn process_reorg(&mut self, height: u64) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ProcessReorg { height })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ProcessReorg({e})"))??
+        {
+            TransactionServiceResponse::ReorgProcessed => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ProcessReorg".to_string(),
             )),
         }
     }

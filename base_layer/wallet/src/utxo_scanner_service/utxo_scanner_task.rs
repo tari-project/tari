@@ -326,7 +326,7 @@ where
     }
 
     async fn get_last_scanned_block(
-        &self,
+        &mut self,
         client: &TWalletClientFactory::Client,
         current_tip_height: u64,
     ) -> Result<Option<ScannedBlock>, anyhow::Error> {
@@ -380,6 +380,7 @@ where
                 "{:?}: Reorg detected on base node. Removing scanned blocks from height {}", self.mode, block.height
             );
             self.resources.db.clear_scanned_blocks_from_and_higher(block.height)?;
+            self.resources.transaction_service.process_reorg(block.height).await?;
         }
 
         if let Some(sb) = found_scanned_block {

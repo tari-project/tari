@@ -199,6 +199,8 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<(), TransactionStorageError>;
 
     fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
+
+    fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -922,6 +924,10 @@ where T: TransactionBackend + 'static
 
     pub fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError> {
         self.db.fetch_burn_proof(output_hash)
+    }
+
+    pub fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {
+        self.db.process_reorg(reorg_height)
     }
 }
 

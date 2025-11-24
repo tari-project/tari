@@ -1381,6 +1381,37 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let proof = decrypted.map(DbBurnProof::try_from).transpose()?;
         Ok(proof)
     }
+
+    fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let tx_ids = completed_transactions::table
+            .select(completed_transactions::tx_id)
+            .filter(completed_transactions::mined_height.ge(reorg_height as i64))
+            .load::<i64>(&mut conn)?;
+        for tx_id in &tx_ids {
+            CompletedTransactionSql::set_as_unmined((*tx_id as u64).into(), &mut conn)?;
+        }
+        trace!(
+            target: LOG_TARGET,
+            "process_reorg: Marked {} transactions as unmined due to reorg at height {}",
+            tx_ids.len(),
+            reorg_height
+        );
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - process_reorg: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq)]
