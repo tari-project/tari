@@ -2699,49 +2699,36 @@ where
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
-
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
             .confirm_pending_transaction(tx_id, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
         check_transaction_size(&tx, tx_id)?;
-        let (first_address, first_amount, first_memo) = destinations.remove(0);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
+
+        let mut tx_ids = Vec::new();
+        let mut completed_txs = Vec::new();
+
+        for (i, (address, amount, memo)) in destinations.into_iter().enumerate() {
+            let tx_id = TxId::new_random();
+
+            let sent_hash = finalized
+                .sent_output_hashes
+                .get(i)
+                .copied()
+                .ok_or(TransactionServiceError::Other(
+                    "sent_output_hashes index out of bounds".to_string(),
+                ))?;
+
+            tx_ids.push(tx_id);
+
+            let completed_tx = CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                first_address,
-                first_amount,
-                finalized.fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                first_memo,
-                sent_hashes.clone(),
-                vec![],
-                change_hashes.clone(),
-            )?,
-        )
-        .await?;
-
-        // Save the other transactions with zero fee and random tx_id to the database
-        let mut tx_ids = vec![tx_id];
-        for (address, amount, memo) in destinations {
-            let new_tx_id = TxId::new_random();
-            tx_ids.push(new_tx_id);
-            let completed_tx = CompletedTransaction::new_with_output_hashes(
-                new_tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                address.clone(),
+                address,
                 amount,
                 finalized.fee,
                 tx.clone(),
@@ -2751,11 +2738,19 @@ where
                 None,
                 None,
                 memo,
-                sent_hashes.clone(),
+                vec![sent_hash],
                 vec![],
                 change_hashes.clone(),
             )?;
-            self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
+            completed_txs.push(completed_tx);
+        }
+
+        let first_completed_tx = completed_txs.remove(0);
+        self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
+            .await?;
+
+        for completed_tx in completed_txs {
+            self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
             trace!(
                 target: LOG_TARGET,
                 "Created transaction for ({tx_id})."
