@@ -23,6 +23,7 @@
 use std::collections::VecDeque;
 
 use log::error;
+use tari_common_types::types::FixedHash;
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
@@ -33,7 +34,7 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, InputMinedInfo, OutputMinedInfo},
     consensus::BaseNodeConsensusManager,
     validation::{
         aggregate_body::{
@@ -65,7 +66,8 @@ impl BlockBodyPartialValidator {
     pub fn validate<B>(&self, backend: &B, block: &Block) -> Result<(), ValidationError>
     where B: BlockchainBackend + Send + Sync + 'static {
         let constants = self.consensus_manager.consensus_constants(block.header.height);
-        validate_kernels_in_db(&block.body, backend).inspect_err(|e| {
+        let header_hash = block.header.hash();
+        validate_kernels_in_db(&block.body, backend, header_hash).inspect_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "BlockBodyPartialValidator: validate_kernels_in_db height #{}({}): {:?}",
@@ -73,7 +75,7 @@ impl BlockBodyPartialValidator {
             )
         })?;
 
-        validate_input_hashes_in_db(&block.body, backend).inspect_err(|e| {
+        validate_input_hashes_in_db(&block.body, backend, header_hash, block.header.height).inspect_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "BlockBodyPartialValidator: validate_input_hashes_in_db height #{}({}): {:?}",
@@ -82,7 +84,7 @@ impl BlockBodyPartialValidator {
         })?;
 
         if block.header.height < backend.fetch_chain_metadata()?.best_block_height() {
-            validate_output_hashes_in_db(&block.body, backend).inspect_err(|e| {
+            validate_output_hashes_in_db(&block.body, backend, header_hash, block.header.height).inspect_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "BlockBodyPartialValidator: validate_output_hashes_in_db height #{}({}): {:?}",
@@ -135,29 +137,70 @@ impl BlockBodyPartialValidator {
     }
 }
 
-// This function checks that all kernels in the aggregate body exist in the database.
-fn validate_kernels_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+// This function checks that all kernels in the aggregate body exist in the database and that the expected hash
+// corresponds.
+fn validate_kernels_in_db<B: BlockchainBackend>(
+    body: &AggregateBody,
+    db: &B,
+    header_hash: FixedHash,
+) -> Result<(), ValidationError> {
     for kernel in body.kernels() {
-        if db.fetch_kernel_by_excess_sig(&kernel.excess_sig)?.is_none() {
-            let msg = format!(
-                "Aggregate body kernel excess {} not found in chain",
-                kernel.excess.to_hex(),
-            );
-            return Err(ValidationError::MissingKernelError(msg));
-        };
+        match db.fetch_kernel_by_excess_sig(&kernel.excess_sig)? {
+            Some((_kernel, hash)) if hash != header_hash => {
+                let msg = format!(
+                    "'kernels_db' header hash mismatch - expected {}, found {}",
+                    header_hash, hash
+                );
+                return Err(ValidationError::HeaderHashMismatch(msg));
+            },
+            None => {
+                let msg = format!(
+                    "Aggregate body kernel excess {} not found in chain",
+                    kernel.excess.to_hex(),
+                );
+                return Err(ValidationError::MissingKernelError(msg));
+            },
+            _ => {},
+        }
     }
     Ok(())
 }
 
-// This function checks that all inputs in the aggregate body exist in the database, either as spent or unspent.
-fn validate_input_hashes_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+// This function checks that all inputs in the aggregate body exist in the database, either as spent or unspent, and
+// that the expected height and hash corresponds.
+fn validate_input_hashes_in_db<B: BlockchainBackend>(
+    body: &AggregateBody,
+    db: &B,
+    header_hash: FixedHash,
+    header_height: u64,
+) -> Result<(), ValidationError> {
     let mut inputs: VecDeque<&TransactionInput> = body.inputs().iter().collect();
     let mut to_remove = Vec::new();
     for input in &inputs {
         let input_output_hash = input.output_hash();
-        if db.fetch_output(&input_output_hash)?.is_some() || db.fetch_input(&input_output_hash)?.is_some() {
-            // Mark for removal
+        if db.fetch_output(&input_output_hash)?.is_some() {
             to_remove.push(input_output_hash);
+        } else if let Some(InputMinedInfo {
+            header_hash: hash,
+            spent_height: height,
+            ..
+        }) = db.fetch_input(&input_output_hash)?
+        {
+            if hash != header_hash {
+                return Err(ValidationError::HeaderHashMismatch(format!(
+                    "Expected {}, found {}",
+                    header_hash, hash
+                )));
+            }
+            if height != header_height {
+                return Err(ValidationError::HeaderHeightMismatch(format!(
+                    "Expected {}, found {}",
+                    header_height, height
+                )));
+            }
+            to_remove.push(input_output_hash);
+        } else {
+            // Nothing here
         }
     }
     inputs.retain(|input| !to_remove.contains(&input.output_hash()));
@@ -177,15 +220,41 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &
     Ok(())
 }
 
-// This function checks that all outputs in the aggregate body exist in the database, either as spent or unspent.
-fn validate_output_hashes_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+// This function checks that all outputs in the aggregate body exist in the database, either as spent or unspent, and
+// that the expected height and hash corresponds.
+fn validate_output_hashes_in_db<B: BlockchainBackend>(
+    body: &AggregateBody,
+    db: &B,
+    header_hash: FixedHash,
+    header_height: u64,
+) -> Result<(), ValidationError> {
     let mut outputs: VecDeque<&TransactionOutput> = body.outputs().iter().collect();
     let mut to_remove = Vec::new();
     for output in &outputs {
         let output_hash = output.hash();
-        if db.fetch_output(&output_hash)?.is_some() || db.fetch_input(&output_hash)?.is_some() {
-            // Mark for removal
+        if let Some(OutputMinedInfo {
+            header_hash: hash,
+            mined_height: height,
+            ..
+        }) = db.fetch_output(&output_hash)?
+        {
+            if hash != header_hash {
+                return Err(ValidationError::HeaderHashMismatch(format!(
+                    "Expected {}, found {}",
+                    header_hash, hash
+                )));
+            }
+            if height != header_height {
+                return Err(ValidationError::HeaderHeightMismatch(format!(
+                    "Expected {}, found {}",
+                    header_height, height
+                )));
+            }
             to_remove.push(output_hash);
+        } else if db.fetch_input(&output_hash)?.is_some() {
+            to_remove.push(output_hash);
+        } else {
+            // Nothing here
         }
     }
     outputs.retain(|output| !to_remove.contains(&output.hash()));

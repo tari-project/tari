@@ -94,6 +94,10 @@ pub enum ValidationError {
     DuplicateKernelError(String),
     #[error("Missing kernel error: {0}")]
     MissingKernelError(String),
+    #[error("Header height mismatch error: {0}")]
+    HeaderHeightMismatch(String),
+    #[error("Header hash mismatch error: {0}")]
+    HeaderHashMismatch(String),
     #[error("Missing output error: {0}")]
     MissingOutputError(String),
     #[error("Covenant failed to validate: {0}")]
@@ -198,7 +202,9 @@ impl ValidationError {
             ValidationError::FatalStorageError(_) |
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             ValidationError::MissingKernelError(_) |
-            ValidationError::MissingOutputError(_) => None,
+            ValidationError::MissingOutputError(_) |
+            ValidationError::HeaderHashMismatch(_) |
+            ValidationError::HeaderHeightMismatch(_) => None,
         }
     }
 }
