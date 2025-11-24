@@ -105,6 +105,10 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 "/generate_kernel_merkle_proof",
                 get(handler::generate_kernel_merkle_proof::handle::<B>),
             )
+            .route(
+                "/get_mempool_transactions",
+                get(handler::get_mempool_transactions::handle::<B>),
+            )
             .layer(RequestBodyLimitLayer::new(4 * 1024 * 1024))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
