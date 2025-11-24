@@ -547,8 +547,8 @@ where
                                 current_height,
                                 block_hash.to_hex()
                             );
-                            self.resources.db.save_scanned_block(scanned_block)?;
-                            last_saved_hash = Some(block_hash);
+                            self.resources.db.save_scanned_block(scanned_block.clone())?;
+                            last_saved_hash = Some(scanned_block.header_hash);
                             if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                                 debug!(
                                     target: LOG_TARGET,
