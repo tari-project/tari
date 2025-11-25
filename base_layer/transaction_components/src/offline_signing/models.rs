@@ -28,18 +28,14 @@ use tari_common_types::{
 };
 
 use crate::{
-    offline_signing::marshal_output_pair::MarshalOutputPair,
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, TransactionError, WalletOutput},
     MicroMinotari,
 };
 
-const SUPPORTED_VERSION: &str = "2.0.0";
+const SUPPORTED_VERSION: &str = "3.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
-    vec![
-        Version::parse(SUPPORTED_VERSION).unwrap(),
-        Version::parse("1.0.0").unwrap(),
-    ]
+    vec![Version::parse(SUPPORTED_VERSION).unwrap()]
 }
 
 pub fn get_latest_version() -> Version {
@@ -83,6 +79,7 @@ pub struct PaymentRecipient {
     pub amount: MicroMinotari,
     pub output_features: OutputFeatures,
     pub address: TariAddress,
+    pub payment_id: MemoField,
 }
 
 /// Transaction metadata, this includes all the fields that needs to be signed on the kernel
@@ -103,15 +100,13 @@ pub struct OneSidedTransactionInfo {
     /// Payment ID
     pub payment_id: MemoField,
     /// Recipient
-    pub recipient: PaymentRecipient,
-    /// The change output details. This may be None if no change is required.
-    pub change_output: Option<MarshalOutputPair>,
+    pub recipients: Vec<PaymentRecipient>,
     /// All transaction inputs inputs.
-    pub inputs: Vec<MarshalOutputPair>,
+    pub inputs: Vec<WalletOutput>,
     /// The recipient's outputs.
-    pub outputs: Vec<MarshalOutputPair>,
-    // /// Details used to construct the transaction kernel.
-    pub metadata: TransactionMetadata,
+    pub outputs: Vec<WalletOutput>,
+    pub fee: MicroMinotari,
+    pub fee_per_gram: MicroMinotari,
     /// Sender address
     pub sender_address: TariAddress,
 }
@@ -203,6 +198,7 @@ pub struct SignedTransaction {
     pub sent_hashes: Vec<FixedHash>,
     pub change_hashes: Vec<FixedHash>,
     pub change_output: Option<WalletOutput>,
+    pub tx_id: TxId,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

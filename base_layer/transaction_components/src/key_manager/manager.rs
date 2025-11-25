@@ -25,6 +25,7 @@ use std::{ops::Shl, str::FromStr};
 use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
 use digest::{consts::U64, KeyInit};
+use log::trace;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
@@ -235,6 +236,14 @@ impl KeyManager {
             return Ok(signature);
         }
 
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger signature with tx_version: {:?}, script key:{}, value: {:?}, commitment_mask: {}, script_message: {:?}",
+            txi_version,
+            script_key_id,
+            value.to_vec(),
+            commitment_mask_key_id,
+            script_message);
+
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -253,6 +262,11 @@ impl KeyManager {
             return Ok(signature);
         }
 
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger schnorr signature with index: {}, ledger branch key:{}, challenge: {:?}",
+            index,
+            branch,
+            challenge);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -319,6 +333,10 @@ impl KeyManager {
             return Ok(signature);
         }
 
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger script offset with script_key_ids: {:?}, sender_offset_key_ids:{:?}",
+            script_key_ids,
+            sender_offset_key_ids);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -346,6 +364,14 @@ impl KeyManager {
             return Ok(signature);
         }
 
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger raw schnorr signature with private_key_index: {:?}, private_key:{}, nonce_index: {}, nonce: {}, challenge: {:?}",
+            private_key_index,
+            private_key,
+            nonce_index,
+            nonce,
+            challenge);
+
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -363,6 +389,10 @@ impl KeyManager {
             return Ok(CompressedPublicKey::new_from_pk(key));
         }
 
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger public key with branch: {:?}, index :{}",
+            branch,
+            index);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -381,6 +411,10 @@ impl KeyManager {
             return Ok(key);
         }
 
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger DH shared secret key with branch: {:?}, index :{}",
+            branch,
+            index);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -422,6 +456,15 @@ impl KeyManager {
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
             return Ok(sig);
         }
+
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger metadata signature with txo_version: {:?}, value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, message: {:?}",
+            txo_version,
+            value,
+            sender_offset_key_id,
+            commitment_mask_key_id,
+            receiver_address,
+            metadata_signature_message_common);
 
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
