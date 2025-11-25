@@ -94,6 +94,16 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
             ))
         }
     }
+
+    fn validate_body_at_height(&self, _: &B, _: &ChainBlock) -> Result<(), ValidationError> {
+        if self.is_valid.load(Ordering::SeqCst) {
+            Ok(())
+        } else {
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
+            ))
+        }
+    }
 }
 
 // #[async_trait]

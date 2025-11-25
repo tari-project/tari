@@ -87,7 +87,7 @@ impl AggregateBodyChainLinkedValidator {
         Ok(())
     }
 
-    fn validate_body<B: BlockchainBackend>(
+    pub fn validate_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
@@ -150,7 +150,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
     Ok(inputs)
 }
 
-fn validate_input_maturity(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
+pub fn validate_input_maturity(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
     for input in body.inputs() {
         if !input.is_mature_at(height)? {
             return Err(TransactionError::InputMaturity.into());
@@ -178,7 +178,7 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
     Ok(())
 }
 
-/// This function checks that all inputs in the blocks are valid UTXO's to be spent
+// This function checks that all inputs in the blocks are valid UTXO's to be spent
 fn check_inputs_are_spendable<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
@@ -250,7 +250,7 @@ pub fn check_outputs<B: BlockchainBackend>(
 }
 
 /// This function checks the body contains no duplicated inputs or outputs.
-fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), ValidationError> {
+pub fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), ValidationError> {
     if body.contains_duplicated_inputs() {
         warn!(
             target: LOG_TARGET,
@@ -271,7 +271,7 @@ fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), Valid
 /// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
-fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
+pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
     let mut burned_outputs = HashSet::new();
     for output in body.outputs() {
         if output.is_burned() {
@@ -297,7 +297,7 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
 
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
 // input maturities
-fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
+pub fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
     if body.min_spendable_height()? > current_height.saturating_add(1) {
         warn!(
             target: LOG_TARGET,

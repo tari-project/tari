@@ -41,7 +41,15 @@ mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
 pub mod row_data;
-pub use lmdb_db::{AccumulatedDataRebuildStatus, PayrefRebuildStatus};
+pub use lmdb_db::{
+    AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    BlockchainCheckStatus,
+    CheckFailure,
+    PayrefRebuildStatus,
+    BREATHING_TIME_MS_MAX,
+    BREATHING_TIME_MS_MIN,
+};
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
 mod stats_collector;

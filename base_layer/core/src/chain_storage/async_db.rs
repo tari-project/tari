@@ -52,7 +52,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::epoch_time::EpochTime;
 
-use super::{MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
+use super::{BlockchainCheckStatus, MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
@@ -301,6 +301,22 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
 
     make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> MinedInfo, "fetch_mined_info_by_output_hash");
+
+    make_async_fn!(request_accumulated_data_check(auto_correct: bool, breathing_time_ms: u64) -> (), "request_accumulated_data_check");
+
+    make_async_fn!(request_blockchain_consistency_check(full_validation: bool, auto_correct: bool, breathing_time_ms: u64) -> (), "request_blockchain_consistency_check");
+
+    make_async_fn!(stop_running_accumulated_data_check_task() -> (), "stop_running_accumulated_data_check_task");
+
+    make_async_fn!(stop_running_blockchain_consistency_check_task() -> (), "stop_running_blockchain_consistency_check_task");
+
+    make_async_fn!(reset_accumulated_data_check_db_counters() -> (), "reset_accumulated_data_check_db_counters");
+
+    make_async_fn!(reset_blockchain_consistency_check_db_counters() -> (), "reset_blockchain_consistency_check_db_counters");
+
+    make_async_fn!(fetch_accumulated_data_check_status() -> Option<BlockchainCheckStatus>, "fetch_accumulated_data_check_status");
+
+    make_async_fn!(fetch_blockchain_consistency_check_status() -> Option<BlockchainCheckStatus>, "fetch_blockchain_consistency_check_status");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

@@ -20,4 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 mod aggregate_body_chain_validator;
-pub use aggregate_body_chain_validator::AggregateBodyChainLinkedValidator;
+pub use aggregate_body_chain_validator::{
+    check_total_burned,
+    validate_input_maturity,
+    verify_no_duplicated_inputs_outputs,
+    verify_timelocks,
+    AggregateBodyChainLinkedValidator,
+};
