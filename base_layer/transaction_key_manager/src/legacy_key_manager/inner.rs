@@ -1,9 +1,11 @@
+use std::str::FromStr;
 //  Copyright 2022, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+// the  following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+//     following
 //  disclaimer.
 //
 //  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
@@ -12,13 +14,14 @@
 //  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
 //  products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
 use std::sync::{Arc, RwLock};
 
 use tari_common_types::{
@@ -134,9 +137,19 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     self.key_manager.create_encrypted_key(private_key, None)
                 },
             },
-            LegacyTariKeyId::Derived { key } => Ok(TariKeyId::Derived {
-                key: key.as_str().into(),
-            }),
+            LegacyTariKeyId::Derived { key } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::Derived {
+                            key: val.to_string().into(),
+                        });
+                    }
+                }
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::Derived",
+                    key
+                )))
+            },
             LegacyTariKeyId::Imported { .. } => {
                 let private_key = self.get_legacy_private_key(key_id)?;
                 self.key_manager.create_encrypted_key(private_key, None)
@@ -146,21 +159,51 @@ where TBackend: TransactionKeyManagerBackend + 'static
             LegacyTariKeyId::DHCommitmentMask {
                 public_key,
                 private_key,
-            } => Ok(TariKeyId::DHCommitmentMask {
-                public_key: public_key.clone(),
-                private_key: private_key.as_str().into(),
-            }),
+            } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(private_key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::DHCommitmentMask {
+                            public_key: public_key.clone(),
+                            private_key: val.to_string().into(),
+                        });
+                    }
+                }
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::DHCommitmentMask",
+                    private_key
+                )))
+            },
             LegacyTariKeyId::DHEncryptedData {
                 public_key,
                 private_key,
-            } => Ok(TariKeyId::DHEncryptedData {
-                public_key: public_key.clone(),
-                private_key: private_key.as_str().into(),
-            }),
-            LegacyTariKeyId::Encrypted { encrypted, key } => Ok(TariKeyId::Encrypted {
-                encrypted: encrypted.clone(),
-                key: key.as_str().into(),
-            }),
+            } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(private_key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::DHEncryptedData {
+                            public_key: public_key.clone(),
+                            private_key: val.to_string().into(),
+                        });
+                    }
+                }
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::DHEncryptedData",
+                    private_key
+                )))
+            },
+            LegacyTariKeyId::Encrypted { encrypted, key } => {
+                if let Ok(inner) = LegacyTariKeyId::from_str(key.as_str()) {
+                    if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
+                        return Ok(TariKeyId::Encrypted {
+                            encrypted: encrypted.clone(),
+                            key: val.to_string().into(),
+                        });
+                    }
+                }
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::Encrypted",
+                    key
+                )))
+            },
         }
     }
 
