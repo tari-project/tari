@@ -33,6 +33,7 @@ use crate::{
     proof_of_work::monero_rx::MoneroPowData,
     validation::{
         aggregate_body::AggregateBodyChainLinkedValidator,
+        block_body::block_body_partial_validator::BlockBodyPartialValidator,
         helpers::check_mmr_roots,
         BlockBodyValidator,
         CandidateBlockValidator,
@@ -46,6 +47,7 @@ pub struct BlockBodyFullValidator {
     consensus_manager: BaseNodeConsensusManager,
     block_internal_validator: BlockBodyInternalConsistencyValidator,
     aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
+    block_body_partial_validator: BlockBodyPartialValidator,
 }
 
 impl BlockBodyFullValidator {
@@ -54,10 +56,12 @@ impl BlockBodyFullValidator {
         let block_internal_validator =
             BlockBodyInternalConsistencyValidator::new(rules.clone(), bypass_range_proof_verification, factories);
         let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules.clone());
+        let block_body_partial_validator = BlockBodyPartialValidator::new(rules.clone());
         Self {
             consensus_manager: rules,
             block_internal_validator,
             aggregate_body_chain_validator,
+            block_body_partial_validator,
         }
     }
 
@@ -129,6 +133,16 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError> {
         self.validate(backend, block.block(), Some(metadata))?;
+        Ok(())
+    }
+
+    // This body-at-height validation is intended to validate the block body without any knowledge of consecutive
+    // blocks that may exist. For example, it cannot validate that kernels are unique, that outputs have not been
+    // spent already or that the block is building on tip.
+    fn validate_body_at_height(&self, backend: &B, block: &ChainBlock) -> Result<(), ValidationError> {
+        self.block_internal_validator.validate(block.block())?;
+        self.block_body_partial_validator.validate(backend, block.block())?;
+
         Ok(())
     }
 }

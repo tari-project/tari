@@ -61,6 +61,8 @@ use crate::{
         AccumulatedDataRebuildStatus,
         BlockAddResult,
         BlockchainBackend,
+        BlockchainCheckRequest,
+        BlockchainCheckStatus,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
         ChainStorageError,
@@ -377,6 +379,31 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_accumulated_data_rebuild_status()
     }
 
+    fn update_accumulated_data_check_status(
+        &self,
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+        self.db.as_ref().unwrap().update_accumulated_data_check_status(request)
+    }
+
+    fn update_blockchain_consistency_check_status(
+        &self,
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .update_blockchain_consistency_check_status(request)
+    }
+
+    fn fetch_accumulated_data_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_accumulated_data_check_status()
+    }
+
+    fn fetch_blockchain_consistency_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_blockchain_consistency_check_status()
+    }
+
     fn build_payref_indexes_for_height(
         &self,
         height: u64,
@@ -395,11 +422,14 @@ impl BlockchainBackend for TempDatabase {
         height: u64,
         header_accum_data: BlockHeaderAccumulatedData,
         last_chain_header: ChainHeader,
+        update_meta_data_db: bool,
     ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .update_accumulated_difficulty(height, header_accum_data, last_chain_header)
+        self.db.as_ref().unwrap().update_accumulated_difficulty(
+            height,
+            header_accum_data,
+            last_chain_header,
+            update_meta_data_db,
+        )
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {

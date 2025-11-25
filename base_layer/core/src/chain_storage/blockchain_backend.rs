@@ -13,6 +13,7 @@ use tari_transaction_components::transaction_components::{TransactionInput, Tran
 use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
     AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -21,6 +22,7 @@ use super::{
 use crate::{
     blocks::BlockAccumulatedData,
     chain_storage::{
+        lmdb_db::BlockchainCheckStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -34,6 +36,7 @@ use crate::{
         Reorg,
     },
 };
+
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
 /// operation within it must succeed, or they all fail. Failure to support this contract could lead to
@@ -154,6 +157,20 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Returns the stored accumulated data rebuild status.
     fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
+    /// Resets the stored blockchain consistency check status.
+    fn update_blockchain_consistency_check_status(
+        &self,
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError>;
+    /// Resets the stored accumulated data check status.
+    fn update_accumulated_data_check_status(
+        &self,
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError>;
+    /// Returns the stored blockchain consistency check status.
+    fn fetch_blockchain_consistency_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
+    /// Returns the stored accumulated data check status.
+    fn fetch_accumulated_data_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
     /// Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
@@ -168,6 +185,7 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         height: u64,
         header_accum_data: BlockHeaderAccumulatedData,
         last_chain_header: ChainHeader,
+        update_meta_data_db: bool,
     ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;

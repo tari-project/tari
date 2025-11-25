@@ -78,7 +78,17 @@ use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
-    offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
+    offline_signing::{
+        models::{PaymentRecipient, SignedOneSidedTransactionResult},
+        offline_signer::{
+            prepare_deposit_multisig_transaction,
+            prepare_one_sided_transaction_for_signing,
+            prepare_withdraw_multisig_transaction,
+            sign_locked_deposit_multisig_transaction,
+            sign_locked_transaction,
+            sign_locked_withdraw_multisig_transaction,
+        },
+    },
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -93,7 +103,6 @@ use tari_transaction_components::{
         TransactionError,
         TransactionOutput,
         ValidatorNodeSignature,
-        WalletOutput,
         WalletOutputBuilder,
     },
     tx_outputs_to_tx_id,
@@ -396,6 +405,10 @@ where
 
         trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         let response: Result<TransactionServiceResponse, TransactionServiceError> = match request {
+            TransactionServiceRequest::ProcessReorg { height } => {
+                self.resources.db.process_reorg(height)?;
+                Ok(TransactionServiceResponse::ReorgProcessed)
+            },
             TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
@@ -458,14 +471,17 @@ where
                             },
                         )
                         .unwrap_or(payment_id);
-
-                    let mut offline_signing =
-                        OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                    let res = offline_signing.prepare_one_sided_transaction_for_signing(
-                        tx_builder,
-                        destination,
+                    let recipients = [PaymentRecipient {
                         amount,
-                        *output_features,
+                        output_features: (*output_features).clone(),
+                        address: destination.clone(),
+                        payment_id: payment_id.clone(),
+                    }];
+
+                    let res = prepare_one_sided_transaction_for_signing(
+                        temp_tx_id,
+                        tx_builder,
+                        &recipients,
                         payment_id,
                         self.resources.one_sided_tari_address.clone(),
                     )?;
@@ -485,7 +501,6 @@ where
             TransactionServiceRequest::PrepareDepositMultisigTransaction { request } => {
                 async {
                     self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
-                    let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
 
                     let temp_tx_id = TxId::new_random();
                     let script = push_pubkey_script(&Default::default());
@@ -519,7 +534,8 @@ where
                     )
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
 
-                    let response = offline_signing.prepare_deposit_multisig_transaction(
+                    let response = prepare_deposit_multisig_transaction(
+                        temp_tx_id,
                         tx_builder,
                         request.amount,
                         payment_id,
@@ -546,7 +562,6 @@ where
             TransactionServiceRequest::PrepareWithdrawMultisigTransaction { request } => {
                 async {
                     self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
-                    let offline_signing = OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
 
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(request.utxo_commitment.clone());
@@ -645,8 +660,9 @@ where
                         vec![],
                     )
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
-
-                    let response = offline_signing.prepare_withdraw_multisig_transaction(
+                    let tx_id = TxId::new_random();
+                    let response = prepare_withdraw_multisig_transaction(
+                        tx_id,
                         tx_builder,
                         total_amount,
                         payment_id,
@@ -670,9 +686,13 @@ where
 
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
                 async {
-                    let mut offline_signing =
-                        OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                    let res = offline_signing.sign_locked_transaction(request)?;
+                    let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+                    let res = sign_locked_transaction(
+                        self.resources.transaction_key_manager_service.key_manager(),
+                        self.resources.consensus_manager.consensus_constants(tip_height).clone(),
+                        self.resources.network,
+                        request,
+                    )?;
                     Ok(TransactionServiceResponse::SignedOneSidedTransaction(Box::new(res)))
                 }
                 .await
@@ -680,9 +700,13 @@ where
 
             TransactionServiceRequest::SignOneSidedDepositMultisigTransaction { request } => {
                 async {
-                    let mut offline_signing =
-                        OfflineSigner::new(self.resources.transaction_key_manager_service.clone());
-                    let res = offline_signing.sign_locked_deposit_multisig_transaction(request)?;
+                    let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+                    let res = sign_locked_deposit_multisig_transaction(
+                        self.resources.transaction_key_manager_service.key_manager(),
+                        self.resources.consensus_manager.consensus_constants(tip_height).clone(),
+                        self.resources.network,
+                        request,
+                    )?;
                     Ok(TransactionServiceResponse::SignedOneSidedDepositMultisigTransaction(
                         Box::new(res),
                     ))
@@ -693,17 +717,15 @@ where
             TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction { request } => {
                 async {
                     let key_manager = self.resources.transaction_key_manager_service.clone();
-                    let mut offline_signing = OfflineSigner::new(key_manager.clone());
                     let mut request = request;
 
                     for pair_output in &mut request.info.inputs.iter_mut() {
-                        let input_wallet_output = &mut pair_output.output_pair.output;
                         let view_key = key_manager.get_view_key();
                         let spend_key = key_manager.get_spend_key();
 
                         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
                             private_key: view_key.key_id.clone().into(),
-                            public_key: input_wallet_output.sender_offset_public_key().clone(),
+                            public_key: pair_output.sender_offset_public_key().clone(),
                         };
                         let script_pubkey = key_manager
                             .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)?;
@@ -711,7 +733,7 @@ where
                             key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                         };
 
-                        let pushed_pk = input_wallet_output
+                        let pushed_pk = pair_output
                             .script()
                             .as_slice()
                             .iter()
@@ -732,16 +754,23 @@ where
                             )));
                         }
 
-                        if *input_wallet_output.commitment_mask_key_id() == TariKeyId::Zero {
+                        if *pair_output.commitment_mask_key_id() == TariKeyId::Zero {
                             return Err(TransactionServiceError::ServiceError(
                                 "Input commitment mask key id is zero".into(),
                             ));
                         }
 
                         // 5) Attach k' so signer uses the correct key
-                        input_wallet_output.set_script_key_id(script_key);
+                        pair_output.set_script_key_id(script_key);
                     }
-                    let res = offline_signing.sign_locked_withdraw_multisig_transaction(request)?;
+
+                    let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+                    let res = sign_locked_withdraw_multisig_transaction(
+                        self.resources.transaction_key_manager_service.key_manager(),
+                        self.resources.consensus_manager.consensus_constants(tip_height).clone(),
+                        self.resources.network,
+                        request,
+                    )?;
 
                     Ok(TransactionServiceResponse::SignedOneSidedWithdrawMultisigTransaction(
                         Box::new(res),
@@ -755,7 +784,7 @@ where
                     let res = self
                         .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
                         .await?;
-                    Ok(TransactionServiceResponse::TransactionSent(res))
+                    Ok(TransactionServiceResponse::TransactionsSent(res))
                 }
                 .await
             },
@@ -2801,69 +2830,48 @@ where
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
-
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
             .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
-        let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
-        let mut outputs = finalized
-            .sent_outputs
-            .iter()
-            .map(|o| o.output.clone())
-            .collect::<Vec<WalletOutput>>();
-
         check_transaction_size(&tx, finalized.tx_id)?;
-        let (first_address, first_amount, first_memo) = destinations.remove(0);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                finalized.tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                first_address,
-                first_amount,
-                finalized.fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                first_memo,
-                sent_hashes.clone(),
-                vec![],
-                change_hashes.clone(),
-            )?,
-        )
-        .await?;
-        if let Some(pos) = outputs.iter().position(|o| o.value() == first_amount) {
-            outputs.swap_remove(pos);
-        }
 
-        // Save the other transactions with zero fee and random tx_id to the database
-        let mut tx_ids = vec![finalized.tx_id];
+        let mut tx_ids = Vec::new();
+        let mut completed_txs = Vec::new();
         let view_key = self.resources.transaction_key_manager_service.get_view_key().pub_key;
-        for (address, amount, memo) in destinations {
-            let new_tx_id = if let Some(pos) = outputs.iter().position(|o| o.value() == amount) {
-                let tx_id = outputs
-                    .get(pos)
-                    .expect("pos exists")
-                    .calculate_tx_id(view_key.as_bytes());
-                outputs.swap_remove(pos);
-                tx_id
+
+        for (i, (address, amount, memo)) in destinations.into_iter().enumerate() {
+            let tx_id = if i == 0 {
+                finalized.tx_id
             } else {
-                TxId::new_random()
+                finalized
+                    .sent_outputs
+                    .get(i)
+                    .ok_or(TransactionServiceError::Other(
+                        "sent_outputs index out of bounds".to_string(),
+                    ))?
+                    .output
+                    .calculate_tx_id(view_key.as_bytes())
             };
 
-            tx_ids.push(new_tx_id);
+            let sent_hash = finalized
+                .sent_output_hashes
+                .get(i)
+                .copied()
+                .ok_or(TransactionServiceError::Other(
+                    "sent_output_hashes index out of bounds".to_string(),
+                ))?;
+
+            tx_ids.push(tx_id);
+
             let completed_tx = CompletedTransaction::new_with_output_hashes(
-                new_tx_id,
+                tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                address.clone(),
+                address,
                 amount,
                 finalized.fee,
                 tx.clone(),
@@ -2873,11 +2881,19 @@ where
                 None,
                 None,
                 memo,
-                sent_hashes.clone(),
+                vec![sent_hash],
                 vec![],
                 change_hashes.clone(),
             )?;
-            self.db.insert_completed_transaction(new_tx_id, completed_tx.clone())?;
+            completed_txs.push(completed_tx);
+        }
+
+        let first_completed_tx = completed_txs.remove(0);
+        self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
+            .await?;
+
+        for completed_tx in completed_txs {
+            self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
             trace!(
                 target: LOG_TARGET,
                 "Created transaction for ({}).", finalized.tx_id
@@ -4292,47 +4308,67 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = request.request.tx_id;
-        let dest_address = request.request.info.recipient.address;
-        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
-        let amount = request.request.info.recipient.amount;
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
+        let old_tx_id = request.request.tx_id;
+        let new_tx_id = request.signed_transaction.tx_id;
+        for recipient in &request.request.info.recipients {
+            self.verify_send(&recipient.address, TariAddressFeatures::create_one_sided_only())?;
+        }
         let payment_id = request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = match (
-            request.signed_transaction.change_output,
-            request.request.info.change_output,
-        ) {
-            (Some(change), Some(original)) => {
-                let mut change = change.clone();
-                change.set_commitment_mask_key_id(
-                    original.output_pair.output.commitment_mask_key_id().clone(),
-                    &self.resources.transaction_key_manager_service,
-                )?;
-                Some(vec![change])
-            },
-            _ => None,
+        let change = match request.signed_transaction.change_output {
+            Some(v) => Some(vec![v.clone()]),
+            None => None,
         };
 
         let _result = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
 
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id, None, change)
+            .confirm_pending_transaction(old_tx_id, Some(new_tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .map_err(|e| TransactionServiceProtocolError::new(new_tx_id, e.into()))?;
 
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
+        let mut tx_ids = Vec::new();
+        let mut completed_txs = Vec::new();
+
+        for (i, recipient) in request.request.info.recipients.iter().enumerate() {
+            let tx_id = if i == 0 {
+                new_tx_id
+            } else {
+                TxId::new_deterministic(
+                    self.resources
+                        .transaction_key_manager_service
+                        .get_private_view_key()
+                        .as_bytes(),
+                    request
+                        .signed_transaction
+                        .sent_hashes
+                        .get(i)
+                        .ok_or(TransactionServiceError::Other(
+                            "sent_outputs index out of bounds".to_string(),
+                        ))?,
+                )
+            };
+            tx_ids.push(tx_id);
+            let sent_hash =
+                request
+                    .signed_transaction
+                    .sent_hashes
+                    .get(i)
+                    .copied()
+                    .ok_or(TransactionServiceError::Other(
+                        "sent_output_hashes index out of bounds".to_string(),
+                    ))?;
+            let completed_tx = CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                dest_address.clone(),
-                amount,
+                recipient.address.clone(),
+                recipient.amount,
                 fee,
                 request.signed_transaction.transaction.clone(),
                 LegacyTransactionStatus::Completed,
@@ -4340,15 +4376,21 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                payment_id,
-                request.signed_transaction.sent_hashes,
+                payment_id.clone(),
+                vec![sent_hash],
                 vec![],
-                request.signed_transaction.change_hashes,
-            )?,
-        )
-        .await?;
+                request.signed_transaction.change_hashes.clone(),
+            )?;
+            completed_txs.push(completed_tx);
+        }
+        let first_completed_tx = completed_txs.remove(0);
+        self.submit_transaction(transaction_broadcast_join_handles, first_completed_tx)
+            .await?;
+        for completed_tx in completed_txs {
+            self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
+        }
 
-        Ok(tx_id)
+        Ok(tx_ids)
     }
 }
 

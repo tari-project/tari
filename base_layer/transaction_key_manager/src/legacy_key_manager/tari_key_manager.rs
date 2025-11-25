@@ -155,9 +155,18 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use blake2::Blake2b;
+    use tari_transaction_components::key_manager::{SecretTransactionKeyManagerInterface, TariKeyId};
 
     use super::*;
+    use crate::legacy_key_manager::{
+        create_new_random_key_manager,
+        LegacySerializedKeyString,
+        LegacyTariKeyId,
+        LegacyTransactionKeyManagerInterface,
+    };
 
     #[test]
     fn test_new_keymanager() {
@@ -214,5 +223,52 @@ mod test {
         let next_key1 = km1.next_key().unwrap();
         let next_key2 = km2.next_key().unwrap();
         assert_ne!(next_key1.key, next_key2.key);
+    }
+
+    #[tokio::test]
+    async fn test_convert_legacy_managed_and_derived_key() {
+        let legacy_key_manager = create_new_random_key_manager().await.unwrap();
+
+        // Managed key
+        let legacy_managed = LegacyTariKeyId::Managed {
+            branch: "commitment mask".to_string(),
+            index: 18309514604232961632,
+        };
+        // Derived key wrapping managed
+        let legacy_derived = LegacyTariKeyId::Derived {
+            key: LegacySerializedKeyString::from(legacy_managed.to_string()),
+        };
+
+        let legacy_managed_converted = legacy_key_manager
+            .convert_legacy_tari_key_id_to_current(&legacy_managed)
+            .unwrap();
+        let legacy_derived_converted = legacy_key_manager
+            .convert_legacy_tari_key_id_to_current(&legacy_derived)
+            .unwrap();
+
+        let legacy_managed_private_key = legacy_key_manager.get_private_key(&legacy_managed_converted).unwrap();
+        let legacy_derived_private_key = legacy_key_manager.get_private_key(&legacy_derived_converted).unwrap();
+        //  Legacy managed and derived private keys should be different
+        assert_ne!(legacy_managed_private_key, legacy_derived_private_key);
+
+        let key_manager = legacy_key_manager.key_manager();
+
+        let managed_private_key = key_manager.get_private_key(&legacy_managed_converted).unwrap();
+        let derived_private_key = key_manager.get_private_key(&legacy_derived_converted).unwrap();
+        // New managed and derived private keys should be different
+        assert_ne!(managed_private_key, derived_private_key);
+
+        // Legacy and new managed_private_key should be the same
+        assert_eq!(legacy_managed_private_key, managed_private_key);
+        // Legacy and new derived_private_key should be the same
+        assert_eq!(legacy_derived_private_key, derived_private_key);
+
+        // These must fail because the legacy format is not compatible with the current TariKeyId parser
+        assert!(TariKeyId::from_str(&legacy_managed.to_string()).is_err());
+        assert!(TariKeyId::from_str(&legacy_derived.to_string()).is_err());
+
+        // These must pass because they have been converted to the current format
+        assert!(TariKeyId::from_str(&legacy_managed_converted.to_string()).is_ok());
+        assert!(TariKeyId::from_str(&legacy_derived_converted.to_string()).is_ok());
     }
 }

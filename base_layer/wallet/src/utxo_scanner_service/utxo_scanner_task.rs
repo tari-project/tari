@@ -296,7 +296,12 @@ where
             );
 
             let scan_result = self
-                .scan_utxos_to_tip(&wallet_service_client, next_block_to_scan.header_hash, tip_height)
+                .scan_utxos_to_tip(
+                    &wallet_service_client,
+                    next_block_to_scan.header_hash,
+                    tip_height,
+                    tip_hash,
+                )
                 .await?;
             scanned_blocks += scan_result.blocks_scanned;
             total_num_recovered += scan_result.total_num_recovered;
@@ -328,7 +333,7 @@ where
     }
 
     async fn get_last_scanned_block(
-        &self,
+        &mut self,
         client: &TWalletClientFactory::Client,
         current_tip_height: u64,
     ) -> Result<Option<ScannedBlock>, anyhow::Error> {
@@ -382,6 +387,7 @@ where
                 "{:?}: Reorg detected on base node. Removing scanned blocks from height {}", self.mode, block.height
             );
             self.resources.db.clear_scanned_blocks_from_and_higher(block.height)?;
+            self.resources.transaction_service.process_reorg(block.height).await?;
         }
 
         if let Some(sb) = found_scanned_block {
@@ -413,6 +419,7 @@ where
         client: &TWalletClientFactory::Client,
         start_header_hash: HashOutput,
         tip_height: u64,
+        tip_hash: BlockHash,
     ) -> Result<ScanUtxosResult, anyhow::Error> {
         info!(
             target: LOG_TARGET,
@@ -429,6 +436,7 @@ where
         let mut blocks_scanned = 0;
         let mut starting_header_vec = start_header_hash.to_vec();
         let mut last_saved_hash = None;
+
         loop {
             let mut utxo_stream = client
                 .sync_utxos_by_block(starting_header_vec.clone(), self.shutdown_signal.clone())
@@ -446,9 +454,40 @@ where
                     return Ok(result);
                 }
 
-                let response = response?;
+                let mut response = response?;
+                response.blocks.sort_by(|a, b| a.height.cmp(&b.height));
                 #[allow(clippy::cast_possible_wrap)]
                 for response in response.blocks {
+                    if let Some(previous_block) = &prev_scanned_block {
+                        if response.height < previous_block.height {
+                            // We do not accept blocks that go backwards in height - fork block re-validation forced.
+                            return Err(anyhow!(
+                                "Non-monotonic block heights received during UTXO scan: {} followed by {}",
+                                previous_block.height,
+                                response.height
+                            ));
+                        }
+                        if response.height > previous_block.height + 1 {
+                            // Missing block(s) detected between previous_block and response height - fork block
+                            // re-validation forced.
+                            return Err(anyhow!(
+                                "Non-consecutive block heights received during UTXO scan: {} followed by {}",
+                                previous_block.height,
+                                response.height
+                            ));
+                        }
+                        if response.height == previous_block.height &&
+                            response.header_hash != previous_block.header_hash.to_vec()
+                        {
+                            // Conflicting block detected for the same height - fork block re-validation forced.
+                            return Err(anyhow!(
+                                "Conflicting blocks for same height {} during UTXO scan: response {} vs expected {}",
+                                response.height,
+                                BlockHash::try_from(response.header_hash).unwrap_or_default(),
+                                previous_block.header_hash,
+                            ));
+                        }
+                    }
                     blocks_scanned += 1;
                     let current_height = response.height;
                     let current_header_hash = response.header_hash;
@@ -508,8 +547,8 @@ where
                                 current_height,
                                 block_hash.to_hex()
                             );
-                            self.resources.db.save_scanned_block(scanned_block)?;
-                            last_saved_hash = Some(block_hash);
+                            self.resources.db.save_scanned_block(scanned_block.clone())?;
+                            last_saved_hash = Some(scanned_block.header_hash);
                             if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                                 debug!(
                                     target: LOG_TARGET,
@@ -536,7 +575,7 @@ where
                 starting_header_vec = response.next_header_to_scan;
             }
             // We need to update the last one
-            if let Some(scanned_block) = prev_scanned_block {
+            if let Some(scanned_block) = prev_scanned_block.clone() {
                 self.resources.db.clear_scanned_blocks_before_height(
                     scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
                     true,
@@ -547,6 +586,18 @@ where
             }
 
             if starting_header_vec.is_empty() {
+                if let Some(previous_block) = prev_scanned_block {
+                    // The base node did not return all blocks up to the expected tip, but things may have changed since
+                    // the request was made
+                    if previous_block.height < tip_height || previous_block.header_hash != tip_hash {
+                        debug!(
+                            target: LOG_TARGET,
+                            "End state block mismatch - the base node state may have changed: expected height \
+                            {tip_height} vs. actual {}, expected hash {tip_hash} vs. actual {}.",
+                            previous_block.height, previous_block.header_hash,
+                        );
+                    }
+                }
                 // No more blocks to scan
                 break;
             }
