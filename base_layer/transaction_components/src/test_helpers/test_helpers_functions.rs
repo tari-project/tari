@@ -149,7 +149,7 @@ impl TestParams {
             .with_sender_offset_public_key(self.sender_offset_key_pk.clone())
             .with_script_key(self.script_key_id.clone())
             .with_minimum_value_promise(params.minimum_value_promise)
-            .sign_as_sender_and_receiver(key_manager, &self.sender_offset_key_id)
+            .sign_metadata_signature(key_manager, &self.sender_offset_key_id)
             .unwrap()
             .try_build(key_manager)
             .unwrap();
@@ -671,7 +671,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
             .with_version(version)
             .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key_id.clone())
-            .sign_as_sender_and_receiver(key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(key_manager, &sender_offset.key_id)
             .unwrap()
             .try_build(key_manager)
             .unwrap();

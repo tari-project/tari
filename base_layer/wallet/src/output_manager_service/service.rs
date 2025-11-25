@@ -1533,7 +1533,7 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(
+            .sign_metadata_signature_user_verified(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &recipient_address,

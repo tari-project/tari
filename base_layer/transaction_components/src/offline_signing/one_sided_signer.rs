@@ -215,7 +215,7 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
         .encrypt_data_for_recovery(key_manager, Some(&encryption_key), info.payment_id.clone())?
         .with_script_key(script_key.key_id)
         .with_sender_offset_public_key(sender_offset_public_key.clone())
-        .sign_as_sender_and_receiver(key_manager, &sender_offset_key.key_id)?
+        .sign_metadata_signature(key_manager, &sender_offset_key.key_id)?
         .try_build(key_manager)?;
     Ok((output, sender_offset_key))
 }
@@ -318,7 +318,7 @@ fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
         .encrypt_data_for_recovery(key_manager, Some(&encryption_key), info.payment_id.clone())?
         .with_script_key(script_key.key_id)
         .with_sender_offset_public_key(sender_offset_public_key.clone())
-        .sign_as_sender_and_receiver(key_manager, &sender_offset_key.key_id)?
+        .sign_metadata_signature(key_manager, &sender_offset_key.key_id)?
         .try_build(key_manager)?;
     Ok((output, sender_offset_key))
 }

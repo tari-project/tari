@@ -859,7 +859,7 @@ pub fn create_pre_mine_genesis_block_info(
             .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key.key_id)
             .with_minimum_value_promise(item.value)
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .map_err(|e| e.to_string())?
             .try_build(&key_manager)
             .map_err(|e| e.to_string())?;

@@ -164,7 +164,7 @@ impl WalletOutputBuilder {
         &self.covenant
     }
 
-    pub fn sign_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
+    pub fn sign_metadata_signature<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
@@ -197,7 +197,7 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
-    pub fn sign_as_sender_and_receiver_verified<KM: TransactionKeyManagerInterface>(
+    pub fn sign_metadata_signature_user_verified<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
@@ -215,7 +215,7 @@ impl WalletOutputBuilder {
             &self.encrypted_data,
             &self.minimum_value_promise,
         );
-        let metadata_signature = key_manager.get_one_sided_metadata_signature(
+        let metadata_signature = key_manager.get_metadata_signature_user_verified(
             &self.commitment_mask_key_id,
             self.value,
             sender_offset_key_id,
@@ -300,6 +300,20 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
+    pub fn with_place_holder_metadata_signature<KM: TransactionKeyManagerInterface>(
+        mut self,
+        key_manager: &KM,
+        sender_offset_key_id: &TariKeyId,
+    ) -> Result<Self, TransactionError> {
+        self.metadata_signature = Some(ComAndPubSignature::default());
+        self.metadata_signed_by_receiver = true;
+        self.metadata_signed_by_sender = true;
+
+        let sender_offset_public_key = key_manager.get_public_key_at_key_id(sender_offset_key_id)?;
+        self.sender_offset_public_key = Some(sender_offset_public_key);
+        Ok(self)
+    }
+
     pub fn try_build<KM: TransactionKeyManagerInterface>(
         self,
         key_manager: &KM,
@@ -362,7 +376,7 @@ mod test {
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .unwrap();
         match kmob.clone().try_build(&key_manager) {
             Ok(val) => {
@@ -406,7 +420,7 @@ mod test {
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .unwrap();
         match kmob.clone().try_build(&key_manager) {
             Ok(wallet_output) => {

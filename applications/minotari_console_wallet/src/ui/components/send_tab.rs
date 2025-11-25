@@ -8,7 +8,6 @@ use tari_transaction_components::{
     transaction_components::memo_field::{MemoField, TxType},
     MicroMinotari,
 };
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -44,11 +43,10 @@ pub struct SendTab {
     confirmation_dialog: Option<ConfirmationDialogType>,
     selected_unique_id: Option<Vec<u8>>,
     table_state: TableState,
-    wallet_type: LegacyWalletType,
 }
 
 impl SendTab {
-    pub fn new(app_state: &AppState, wallet_type: LegacyWalletType) -> Self {
+    pub fn new(app_state: &AppState) -> Self {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
@@ -64,7 +62,6 @@ impl SendTab {
             confirmation_dialog: None,
             selected_unique_id: None,
             table_state: TableState::default(),
-            wallet_type,
         }
     }
 
@@ -452,12 +449,6 @@ impl<B: Backend> Component<B> for SendTab {
             'f' => self.send_input_mode = SendInputMode::Fee,
             'p' => self.send_input_mode = SendInputMode::PaymentId,
             's' | 'o' => {
-                if let LegacyWalletType::Ledger(_) = self.wallet_type {
-                    // If we're a ledger wallet, then ignore interactive send requests
-                    if c == 's' {
-                        return;
-                    }
-                }
                 if self.to_field.is_empty() {
                     self.error_message =
                         Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());

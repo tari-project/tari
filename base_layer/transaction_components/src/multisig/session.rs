@@ -153,7 +153,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key_id), payment_id.clone())?
             .with_script_key(TariKeyId::Zero)
             .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_key.key_id, &recipient)?
+            .sign_metadata_signature_user_verified(&self.key_manager, &sender_offset_key.key_id, &recipient)?
             .try_build(&self.key_manager)?;
 
         tx_builder.add_recipient(

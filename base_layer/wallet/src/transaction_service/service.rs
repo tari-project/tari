@@ -2199,7 +2199,7 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.transaction_key_manager_service.get_spend_key().key_id)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(
+            .sign_metadata_signature(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )
@@ -2285,6 +2285,7 @@ where
         mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with amount {amount}");
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
         if selection_criteria.range_limit.is_some() {
             return Err(TransactionServiceError::RangeLimitError {
                 reason: "Range limit coin-join cannot be set for send_one_sided_or_stealth".to_string(),
@@ -2329,7 +2330,6 @@ where
             )
             .map_err(TransactionServiceError::InvalidPaymentId)?;
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
-        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         tx_builder.add_stealth_recipient(
             dest_address.clone(),
@@ -2459,7 +2459,7 @@ where
         values.get_mut(0).expect("index exists").0 += residual;
 
         for value in values {
-            let _output = tx_builder.add_stealth_recipient(
+            tx_builder.add_stealth_recipient(
                 dest_address.clone(),
                 value,
                 output_features.clone(),
@@ -2633,7 +2633,7 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(
+            .sign_metadata_signature_user_verified(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
                 &dest_address,
@@ -3000,7 +3000,7 @@ where
             .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero())
-            .sign_as_sender_and_receiver(
+            .sign_metadata_signature(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
             )?

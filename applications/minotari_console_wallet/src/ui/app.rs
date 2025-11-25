@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
-use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common::exit_codes::{ExitError};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -92,11 +92,7 @@ impl<B: Backend> App<B> {
             .add(
                 "Send".into(),
                 Box::new(SendTab::new(
-                    &app_state,
-                    app_state
-                        .get_wallet_type()
-                        .await
-                        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?,
+                    &app_state
                 )),
             )
             .add("Receive".into(), Box::new(ReceiveTab::new()))

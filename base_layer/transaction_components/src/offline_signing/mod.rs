@@ -686,7 +686,7 @@ mod test {
             .encrypt_data_for_recovery(&alice_view_key_manager, None, payment_id.clone())
             .unwrap()
             .with_sender_offset_public_key(sender_offset_key.pub_key.clone())
-            .sign_as_sender_and_receiver_verified(
+            .sign_metadata_signature_user_verified(
                 &alice_view_key_manager,
                 &sender_offset_key.key_id,
                 &Default::default(),

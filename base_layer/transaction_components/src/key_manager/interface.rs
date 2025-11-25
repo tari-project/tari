@@ -187,8 +187,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, KeyManagerError>;
 
-    // Look into perhaps removing all nonce here, if the signer and receiver are the same it should not be required to
-    // share or pre calc the nonces
+    // creates a metadata signature for the output without requiring manual user verification on a ledger device
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -199,7 +198,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    fn get_one_sided_metadata_signature(
+    // creates a metadata signature for the output requiring manual user verification on a ledger device
+    fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,

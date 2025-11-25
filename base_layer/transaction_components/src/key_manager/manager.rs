@@ -431,13 +431,10 @@ impl KeyManager {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let sender_offset_key_index = match sender_offset_key_id {
-                TariKeyId::LedgerKey {
-                    branch: LedgerKeyBranch::OneSidedSenderOffset,
-                    index,
-                } => index,
+                TariKeyId::LedgerKey { branch: _, index } => index,
                 _ => {
                     return Err(KeyManagerError::LedgerError(
-                        "Sender offset key must be a Ledger key on OneSidedSenderOffset".to_string(),
+                        "Non ledger key for sender offset in ledger wallet".to_string(),
                     ));
                 },
             };
@@ -602,7 +599,17 @@ impl TransactionKeyManagerInterface for KeyManager {
                 Ok(CompressedPublicKey::from_secret_key(&private_key))
             },
             TariKeyId::Zero => Ok(CompressedPublicKey::default()),
-            TariKeyId::LedgerKey { branch, index } => self.ledger_get_public_key_wrapper(*branch, *index),
+            TariKeyId::LedgerKey { branch, index } => {
+                if !self.wallet_type.is_ledger() {
+                    return Err(KeyManagerError::InvalidWalletType(
+                        "Trying to access Ledger key on non-Ledger wallet".to_string(),
+                    ));
+                }
+                match branch {
+                    LedgerKeyBranch::Spend => Ok(self.wallet_type.get_public_spend_key()),
+                    _ => self.ledger_get_public_key_wrapper(*branch, *index),
+                }
+            },
             TariKeyId::SpendKey => Ok(self.wallet_type.get_public_spend_key()),
             TariKeyId::ViewKey => Ok(self.wallet_type.get_public_view_key()),
         }
@@ -1026,6 +1033,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         }
     }
 
+    // creates a metadata signature for the output without requiring manual user verification on a ledger device
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -1063,7 +1071,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(metadata_signature)
     }
 
-    fn get_one_sided_metadata_signature(
+    // creates a metadata signature for the output requiring manual user verification on a ledger device
+    fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,

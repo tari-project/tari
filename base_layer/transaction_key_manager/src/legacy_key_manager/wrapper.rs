@@ -401,7 +401,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         )
     }
 
-    fn get_one_sided_metadata_signature(
+    fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
@@ -412,7 +412,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        self.transaction_key_manager_inner.get_one_sided_metadata_signature(
+        self.transaction_key_manager_inner.get_metadata_signature_user_verified(
             commitment_mask_key_id,
             value,
             sender_offset_key_id,
