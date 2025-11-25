@@ -24,13 +24,26 @@ pub mod models;
 pub mod offline_signer;
 pub mod one_sided_signer;
 
+pub use models::PaymentRecipient;
+pub use offline_signer::{
+    prepare_deposit_multisig_transaction,
+    prepare_one_sided_transaction_for_signing,
+    prepare_withdraw_multisig_transaction,
+    sign_locked_deposit_multisig_transaction,
+    sign_locked_transaction,
+    sign_locked_withdraw_multisig_transaction,
+};
+
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
     use argon2::password_hash::rand_core::OsRng;
     use rand::RngCore;
     use tari_common::configuration::Network;
-    use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+    use tari_common_types::{
+        tari_address::{TariAddress, TariAddressFeatures},
+        transaction::TxId,
+    };
     use tari_script::{
         push_pubkey_script,
         CompressedCheckSigSchnorrSignature,
@@ -53,7 +66,15 @@ mod test {
             TransactionKeyManagerInterface,
         },
         multisig::script::derive_multisig_ephemeral_pubkeys,
-        offline_signing::offline_signer::OfflineSigner,
+        offline_signing::{
+            offline_signer::sign_locked_transaction,
+            prepare_deposit_multisig_transaction,
+            prepare_one_sided_transaction_for_signing,
+            prepare_withdraw_multisig_transaction,
+            sign_locked_deposit_multisig_transaction,
+            sign_locked_withdraw_multisig_transaction,
+            PaymentRecipient,
+        },
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
             covenants::Covenant,
@@ -106,7 +127,6 @@ mod test {
             .unwrap();
 
         // now we start the offline process
-        let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -144,25 +164,34 @@ mod test {
         .unwrap();
 
         assert_eq!(alice_address, alice_address_s);
+        let recipients = [PaymentRecipient {
+            amount,
+            output_features: output_features.clone(),
+            address: bob_address.clone(),
+            payment_id: payment_id.clone(),
+        }];
 
-        let init = offline_signing
-            .prepare_one_sided_transaction_for_signing(
-                tx_builder,
-                bob_address,
-                amount,
-                output_features,
-                payment_id,
-                alice_address,
-            )
-            .unwrap();
+        let init = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            payment_id,
+            alice_address,
+        )
+        .unwrap();
 
-        assert!(init.info.change_output.is_some());
-        assert_eq!(init.info.metadata.fee, MicroMinotari(2960));
+        assert_eq!(init.info.fee, MicroMinotari(0));
+        assert_eq!(init.info.fee_per_gram, MicroMinotari(20));
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        let mut signer = OfflineSigner::new(alice_key_manager.clone());
-        let signed = signer.sign_locked_transaction(init).unwrap();
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
@@ -171,6 +200,238 @@ mod test {
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 2);
         assert_eq!(signed.signed_transaction.sent_hashes.len(), 1);
+        let tx = signed.signed_transaction.transaction.clone();
+
+        let factories = CryptoFactories::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn batch_offline_sign_is_valid() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let charlie_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap()
+            .with_input(input2)
+            .unwrap()
+            .with_input(input3)
+            .unwrap();
+
+        // now we start the offline process
+        let payment_id = MemoField::new_empty();
+        let output_features = OutputFeatures::default();
+        let amount = MicroMinotari(5000);
+
+        let spend_key = bob_key_manager.get_spend_key().pub_key;
+        let view_key = bob_key_manager.get_view_key().pub_key;
+        let bob_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let spend_key = charlie_key_manager.get_spend_key().pub_key;
+        let view_key = charlie_key_manager.get_view_key().pub_key;
+        let charlie_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let spend_key = alice_view_key_manager.get_spend_key().pub_key;
+        let view_key = alice_view_key_manager.get_view_key().pub_key;
+        let alice_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let spend_key = alice_key_manager.get_spend_key().pub_key;
+        let view_key = alice_key_manager.get_view_key().pub_key;
+        let alice_address_s = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(alice_address, alice_address_s);
+        let recipients = [
+            PaymentRecipient {
+                amount,
+                output_features: output_features.clone(),
+                address: bob_address.clone(),
+                payment_id: payment_id.clone(),
+            },
+            PaymentRecipient {
+                amount,
+                output_features: output_features.clone(),
+                address: charlie_address.clone(),
+                payment_id: payment_id.clone(),
+            },
+        ];
+
+        let init = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            payment_id,
+            alice_address,
+        )
+        .unwrap();
+
+        assert_eq!(init.info.fee, MicroMinotari(0));
+        assert_eq!(init.info.fee_per_gram, MicroMinotari(20));
+        assert_eq!(init.info.inputs.len(), 3);
+        assert_eq!(init.info.outputs.len(), 0);
+
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
+        assert!(signed.signed_transaction.change_output.is_some());
+        assert_eq!(
+            signed.signed_transaction.transaction.body.kernels()[0].fee,
+            MicroMinotari(4100)
+        );
+        assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
+        assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 3);
+        assert_eq!(signed.signed_transaction.sent_hashes.len(), 2);
+        let tx = signed.signed_transaction.transaction.clone();
+
+        let factories = CryptoFactories::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn large_batch_offline_sign_is_valid() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+        let mut recipients = Vec::new();
+        let amount = 100;
+        let payment_id = MemoField::new_empty();
+        let output_features = OutputFeatures::default();
+        for _i in 0..amount {
+            let key_manager = KeyManager::new_random().unwrap();
+            let spend_key = key_manager.get_spend_key().pub_key;
+            let view_key = key_manager.get_view_key().pub_key;
+            let address = TariAddress::new_dual_address(
+                view_key,
+                spend_key,
+                Network::LocalNet,
+                TariAddressFeatures::create_one_sided_only(),
+                None,
+            )
+            .unwrap();
+            let amount = 5000.into();
+            let recipient = PaymentRecipient {
+                amount,
+                output_features: output_features.clone(),
+                address,
+                payment_id: payment_id.clone(),
+            };
+            recipients.push(recipient);
+        }
+
+        let input = create_test_input(MicroMinotari(1000000000), 0, &alice_view_key_manager, vec![], None);
+        // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+
+        let spend_key = alice_view_key_manager.get_spend_key().pub_key;
+        let view_key = alice_view_key_manager.get_view_key().pub_key;
+        let alice_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let init = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            payment_id,
+            alice_address,
+        )
+        .unwrap();
+
+        assert_eq!(init.info.fee, MicroMinotari(0));
+        assert_eq!(init.info.fee_per_gram, MicroMinotari(20));
+        assert_eq!(init.info.inputs.len(), 1);
+        assert_eq!(init.info.outputs.len(), 0);
+
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
+        assert!(signed.signed_transaction.change_output.is_some());
+        assert_eq!(
+            signed.signed_transaction.transaction.body.kernels()[0].fee,
+            MicroMinotari(115500)
+        );
+        assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 1);
+        assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 101);
+        assert_eq!(signed.signed_transaction.sent_hashes.len(), 100);
         let tx = signed.signed_transaction.transaction.clone();
 
         let factories = CryptoFactories::default();
@@ -244,7 +505,6 @@ mod test {
             .unwrap();
 
         // now we start the offline process
-        let offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -261,32 +521,34 @@ mod test {
         .unwrap();
 
         assert_eq!(alice_address, alice_address_s);
-        let init = offline_signing
-            .prepare_deposit_multisig_transaction(
-                tx_builder,
-                amount,
-                payment_id,
-                output_features,
-                party_number,
-                multisignature_participiants,
-                alice_address,
-                bob_address,
-            )
-            .unwrap();
+        let init = prepare_deposit_multisig_transaction(
+            TxId::new_random(),
+            tx_builder,
+            amount,
+            payment_id,
+            output_features,
+            party_number,
+            multisignature_participiants,
+            alice_address,
+            bob_address,
+        )
+        .unwrap();
 
-        assert!(init.info.change_output.is_some());
-        assert_eq!(init.info.metadata.fee, MicroMinotari(2960));
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        let mut signer = OfflineSigner::new(alice_key_manager.clone());
-
-        let signed = signer.sign_locked_deposit_multisig_transaction(init).unwrap();
+        let signed = sign_locked_deposit_multisig_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
 
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
-            MicroMinotari(2960)
+            MicroMinotari(3120)
         );
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 2);
@@ -451,7 +713,6 @@ mod test {
             .unwrap();
 
         // now we start the offline process
-        let offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
 
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
         let script = push_pubkey_script(&Default::default());
@@ -468,21 +729,25 @@ mod test {
 
         let total_amount = amount.checked_sub(fee).unwrap();
         assert_eq!(alice_address, alice_address_s);
-        let init = offline_signing
-            .prepare_withdraw_multisig_transaction(
-                tx_builder,
-                total_amount,
-                payment_id,
-                output_features,
-                alice_address,
-                bob_address,
-            )
-            .unwrap();
-        assert_eq!(init.info.metadata.fee, fee);
+        let init = prepare_withdraw_multisig_transaction(
+            TxId::new_random(),
+            tx_builder,
+            total_amount,
+            payment_id,
+            output_features,
+            alice_address,
+            bob_address,
+        )
+        .unwrap();
         assert_eq!(init.info.inputs.len(), 1);
         assert_eq!(init.info.outputs.len(), 0);
-        let mut signer = OfflineSigner::new(alice_key_manager.clone());
-        let signed = signer.sign_locked_withdraw_multisig_transaction(init).unwrap();
+        let signed = sign_locked_withdraw_multisig_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
         assert_eq!(signed.signed_transaction.transaction.body.kernels()[0].fee, fee,);
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 1);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 1);
@@ -520,7 +785,6 @@ mod test {
             .unwrap();
 
         // now we start the offline process
-        let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
         let spend_key = bob_key_manager.get_spend_key().pub_key;
         let view_key = bob_key_manager.get_view_key().pub_key;
         let bob_address = TariAddress::new_dual_address(
@@ -541,20 +805,28 @@ mod test {
             None,
         )
         .unwrap();
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(5000),
+            output_features: OutputFeatures::default(),
+            address: bob_address.clone(),
+            payment_id: MemoField::new_empty(),
+        }];
+        let init = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
 
-        let init = offline_signing
-            .prepare_one_sided_transaction_for_signing(
-                tx_builder,
-                bob_address,
-                MicroMinotari(5000),
-                OutputFeatures::default(),
-                MemoField::new_empty(),
-                alice_address,
-            )
-            .unwrap();
-
-        let mut signer = OfflineSigner::new(alice_key_manager.clone());
-        let signed = signer.sign_locked_transaction(init).unwrap();
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
         let tx = signed.signed_transaction.transaction.clone();
 
         let factories = CryptoFactories::default();
@@ -628,7 +900,6 @@ mod test {
             .unwrap();
 
         // now we start the offline process
-        let mut offline_signing = OfflineSigner::new(alice_view_key_manager.clone());
         let payment_id = MemoField::new_empty();
         let output_features = OutputFeatures::default();
         let amount = MicroMinotari(5000);
@@ -666,24 +937,31 @@ mod test {
         .unwrap();
 
         assert_eq!(alice_address, alice_address_s);
+        let recipients = [PaymentRecipient {
+            amount,
+            output_features: output_features.clone(),
+            address: bob_address.clone(),
+            payment_id: payment_id.clone(),
+        }];
 
-        let init = offline_signing
-            .prepare_one_sided_transaction_for_signing(
-                tx_builder,
-                bob_address,
-                amount,
-                output_features,
-                payment_id,
-                alice_address,
-            )
-            .unwrap();
+        let init = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            payment_id,
+            alice_address,
+        )
+        .unwrap();
 
-        assert!(init.info.change_output.is_some());
-        assert_eq!(init.info.metadata.fee, MicroMinotari(2960));
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        let mut signer = OfflineSigner::new(alice_view_key_manager.clone());
-        assert!(signer.sign_locked_transaction(init).is_err());
+        assert!(sign_locked_transaction(
+            &alice_view_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init
+        )
+        .is_err());
     }
 }
