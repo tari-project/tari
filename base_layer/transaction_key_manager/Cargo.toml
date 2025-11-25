@@ -37,7 +37,7 @@ strum = "0.22"
 strum_macros = "0.22"
 serde = { workspace = true, features = ["derive"] }
 rand = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 zeroize = "1"
 tari_crypto = { workspace = true, features = ["borsh"] }
 thiserror = { workspace = true }

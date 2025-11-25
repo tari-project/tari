@@ -129,7 +129,11 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         uo.set_sender_offset_public_key(sender_offset_key.pub_key);
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
-
+    if info.base.recipients.len() != 1 {
+        return Err(TransactionBuilderError::Other(
+            "Only one recipient is supported for multisig transactions".to_string(),
+        ));
+    }
     let recipient = info
         .base
         .recipients
@@ -161,6 +165,11 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     info: &OneSidedMultisigTransactionInfo,
 ) -> Result<(WalletOutput, TariKeyAndId), TransactionBuilderError> {
+    if info.base.recipients.len() != 1 {
+        return Err(TransactionBuilderError::Other(
+            "Only one recipient is supported for multisig transactions".to_string(),
+        ));
+    }
     let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
 
     let sender_offset_key = key_manager.get_random_key(None, true)?;
@@ -234,7 +243,11 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         uo.set_sender_offset_public_key(sender_offset_key.pub_key);
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
-
+    if info.recipients.len() != 1 {
+        return Err(TransactionBuilderError::Other(
+            "Only one recipient is supported for multisig transactions".to_string(),
+        ));
+    }
     let recipient = info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
     tx_builder.add_recipient(recipient.address.clone(), output, Some(sender_offset.key_id), None)?;
 
@@ -261,6 +274,11 @@ fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     info: &OneSidedTransactionInfo,
 ) -> Result<(WalletOutput, TariKeyAndId), TransactionBuilderError> {
+    if info.recipients.len() != 1 {
+        return Err(TransactionBuilderError::Other(
+            "Only one recipient is supported for multisig transactions".to_string(),
+        ));
+    }
     let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
 
     let (_commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
