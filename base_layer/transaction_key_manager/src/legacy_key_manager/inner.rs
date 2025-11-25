@@ -140,13 +140,15 @@ where TBackend: TransactionKeyManagerBackend + 'static
             LegacyTariKeyId::Derived { key } => {
                 if let Ok(inner) = LegacyTariKeyId::from_str(key.as_str()) {
                     if let Ok(val) = self.convert_legacy_tari_key_id_to_current(&inner) {
-                        return Ok(val);
+                        return Ok(TariKeyId::Derived {
+                            key: val.to_string().into(),
+                        });
                     }
                 }
-
-                Ok(TariKeyId::Derived {
-                    key: key.as_str().into(),
-                })
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::Derived",
+                    key
+                )))
             },
             LegacyTariKeyId::Imported { .. } => {
                 let private_key = self.get_legacy_private_key(key_id)?;
@@ -166,11 +168,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         });
                     }
                 }
-
-                Ok(TariKeyId::DHCommitmentMask {
-                    public_key: public_key.clone(),
-                    private_key: private_key.as_str().into(),
-                })
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::DHCommitmentMask",
+                    private_key
+                )))
             },
             LegacyTariKeyId::DHEncryptedData {
                 public_key,
@@ -184,11 +185,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         });
                     }
                 }
-
-                Ok(TariKeyId::DHEncryptedData {
-                    public_key: public_key.clone(),
-                    private_key: private_key.as_str().into(),
-                })
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::DHEncryptedData",
+                    private_key
+                )))
             },
             LegacyTariKeyId::Encrypted { encrypted, key } => {
                 if let Ok(inner) = LegacyTariKeyId::from_str(key.as_str()) {
@@ -199,11 +199,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         });
                     }
                 }
-
-                Ok(TariKeyId::Encrypted {
-                    encrypted: encrypted.clone(),
-                    key: key.as_str().into(),
-                })
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "Could not convert '{}' to TariKeyId::Encrypted",
+                    key
+                )))
             },
         }
     }

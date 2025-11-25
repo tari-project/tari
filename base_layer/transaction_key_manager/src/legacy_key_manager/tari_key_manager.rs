@@ -248,27 +248,19 @@ mod test {
 
         let legacy_managed_private_key = legacy_key_manager.get_private_key(&legacy_managed_converted).unwrap();
         let legacy_derived_private_key = legacy_key_manager.get_private_key(&legacy_derived_converted).unwrap();
-        assert_eq!(
-            legacy_managed_private_key,
-            legacy_derived_private_key,
-            "\n{}\n{}",
-            legacy_managed_private_key.reveal(),
-            legacy_derived_private_key.reveal()
-        );
+        //  Legacy managed and derived private keys should be different
+        assert_ne!(legacy_managed_private_key, legacy_derived_private_key);
 
         let key_manager = legacy_key_manager.key_manager();
 
         let managed_private_key = key_manager.get_private_key(&legacy_managed_converted).unwrap();
         let derived_private_key = key_manager.get_private_key(&legacy_derived_converted).unwrap();
-        assert_eq!(
-            managed_private_key,
-            derived_private_key,
-            "\n{}\n{}",
-            managed_private_key.reveal(),
-            derived_private_key.reveal()
-        );
+        // New managed and derived private keys should be different
+        assert_ne!(managed_private_key, derived_private_key);
 
+        // Legacy and new managed_private_key should be the same
         assert_eq!(legacy_managed_private_key, managed_private_key);
+        // Legacy and new derived_private_key should be the same
         assert_eq!(legacy_derived_private_key, derived_private_key);
 
         // These must fail because the legacy format is not compatible with the current TariKeyId parser
