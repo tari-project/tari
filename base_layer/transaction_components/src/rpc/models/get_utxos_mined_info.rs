@@ -36,17 +36,16 @@ pub struct GetUtxosMinedInfoResponse {
 
 impl Display for GetUtxosMinedInfoResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let utxos = self
+            .utxos
+            .iter()
+            .map(|u| format!("{}", u))
+            .collect::<Vec<String>>()
+            .join(", ")
+            .to_string();
         write!(
             f,
-            "GetUtxosMinedInfoResponse {{ utxos: {}, best_block_hash: {}, best_block_height: {} }}",
-            format!(
-                "{}",
-                self.utxos
-                    .iter()
-                    .map(|u| format!("{}", u))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
+            "GetUtxosMinedInfoResponse {{ utxos: {utxos}, best_block_hash: {}, best_block_height: {} }}",
             HashOutput::try_from(self.best_block_hash.as_slice())
                 .unwrap_or_default()
                 .to_hex(),

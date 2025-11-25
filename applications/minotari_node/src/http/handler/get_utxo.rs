@@ -24,11 +24,7 @@ use tonic::service::AxumBody;
 use crate::{
     http::{
         cache_config::{apply_cache_control, RouteKey},
-        handler::{
-            error_handler_with_message,
-            util::from_hex,
-            ErrorResponse,
-        },
+        handler::{error_handler_with_message, util::from_hex, ErrorResponse},
     },
     HttpCacheConfig,
 };
