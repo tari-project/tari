@@ -93,7 +93,6 @@ pub enum TransportType {
     Memory,
     /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
     /// configured to allow communication with peers using the tor transport.
-    #[default]
     Tcp,
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
     /// onion v3 and DNS addresses.
