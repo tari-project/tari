@@ -395,6 +395,10 @@ where
 
         trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         let response: Result<TransactionServiceResponse, TransactionServiceError> = match request {
+            TransactionServiceRequest::ProcessReorg { height } => {
+                self.resources.db.process_reorg(height)?;
+                Ok(TransactionServiceResponse::ReorgProcessed)
+            },
             TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
