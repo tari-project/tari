@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn roundtrip_derived_with_dots() {
-        let s = "derived.wallet.sub.section";
+        let s = "derived.ledger_key.MetadataEphemeralNonce.0";
         let parsed = TariKeyId::from_str(s).unwrap();
         assert!(matches!(parsed, TariKeyId::Derived { .. }));
         assert_eq!(parsed.to_string(), s);
@@ -389,12 +389,15 @@ mod tests {
     fn roundtrip_dh_commitment_mask() {
         // Use a known-good 32-byte compressed public key hex from repo examples
         let pk = "28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d5c9";
-        let s = format!(
-            "{branch}.{pk}.{}",
-            "my.private.key.with.dots",
-            branch = DH_COMMITMENT_MASK_BRANCH,
-            pk = pk
-        );
+        let inner = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::MetadataEphemeralNonce,
+            index: 0,
+        };
+        let key = TariKeyId::DHCommitmentMask {
+            public_key: CompressedPublicKey::from_hex(pk).unwrap(),
+            private_key: SerializedKeyString::from(inner.to_string()),
+        };
+        let s = key.to_string();
         let parsed = TariKeyId::from_str(&s).unwrap();
         assert!(matches!(parsed, TariKeyId::DHCommitmentMask { .. }));
         assert_eq!(parsed.to_string(), s);
@@ -402,13 +405,17 @@ mod tests {
 
     #[test]
     fn roundtrip_dh_encrypted_data() {
+        // Use a known-good 32-byte compressed public key hex from repo examples
         let pk = "5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee5a2";
-        let s = format!(
-            "{branch}.{pk}.{}",
-            "another.private.key.segment",
-            branch = DH_ENCRYPTED_DATA_BRANCH,
-            pk = pk
-        );
+        let inner = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::MetadataEphemeralNonce,
+            index: 0,
+        };
+        let key = TariKeyId::DHEncryptedData {
+            public_key: CompressedPublicKey::from_hex(pk).unwrap(),
+            private_key: SerializedKeyString::from(inner.to_string()),
+        };
+        let s = key.to_string();
         let parsed = TariKeyId::from_str(&s).unwrap();
         assert!(matches!(parsed, TariKeyId::DHEncryptedData { .. }));
         assert_eq!(parsed.to_string(), s);
@@ -416,15 +423,16 @@ mod tests {
 
     #[test]
     fn roundtrip_encrypted() {
-        // encrypted bytes in hex must be valid; ensure lowercase for to_hex matching
         let enc_hex = "deadbeef00cafebabe";
-        let key = "my.derived.path";
-        let s = format!(
-            "{branch}.{enc}.{key}",
-            branch = ENCRYPTED_BRANCH,
-            enc = enc_hex,
-            key = key
-        );
+        let inner = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::MetadataEphemeralNonce,
+            index: 0,
+        };
+        let key = TariKeyId::Encrypted {
+            encrypted: enc_hex.as_bytes().to_vec(),
+            key: SerializedKeyString::from(inner.to_string()),
+        };
+        let s = key.to_string();
         let parsed = TariKeyId::from_str(&s).unwrap();
         assert!(matches!(parsed, TariKeyId::Encrypted { .. }));
         // Display will use lowercase hex; our enc_hex is already lowercase
