@@ -83,15 +83,13 @@ impl BlockBodyPartialValidator {
             )
         })?;
 
-        if block.header.height < backend.fetch_chain_metadata()?.best_block_height() {
-            validate_output_hashes_in_db(&block.body, backend, header_hash, block.header.height).inspect_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "BlockBodyPartialValidator: validate_output_hashes_in_db height #{}({}): {:?}",
-                        block.header.height, block.hash().to_hex(), e
-                )
-            })?;
-        }
+        validate_output_hashes_in_db(&block.body, backend, header_hash, block.header.height).inspect_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "BlockBodyPartialValidator: validate_output_hashes_in_db height #{}({}): {:?}",
+                    block.header.height, block.hash().to_hex(), e
+            )
+        })?;
 
         validate_input_maturity(&block.body, block.header.height).inspect_err(|e| {
             error!(
@@ -178,11 +176,9 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
     let mut to_remove = Vec::new();
     for input in &inputs {
         let input_output_hash = input.output_hash();
-        if db.fetch_output(&input_output_hash)?.is_some() {
-            to_remove.push(input_output_hash);
-        } else if let Some(InputMinedInfo {
+        if let Some(InputMinedInfo {
             header_hash: hash,
-            spent_height: height,
+            spent_height,
             ..
         }) = db.fetch_input(&input_output_hash)?
         {
@@ -192,15 +188,33 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
                     header_hash, hash
                 )));
             }
-            if height != header_height {
+            if spent_height != header_height {
                 return Err(ValidationError::HeaderHeightMismatch(format!(
                     "Expected {}, found {}",
-                    header_height, height
+                    header_height, spent_height
+                )));
+            }
+            if let Some(OutputMinedInfo {
+                header_hash: _hash,
+                mined_height,
+                ..
+            }) = db.fetch_output(&input_output_hash)?
+            {
+                if spent_height < mined_height {
+                    return Err(ValidationError::InputSpentBeforeMined(format!(
+                        "Input output hash {} spent at height {} before it was mined at height {}",
+                        input_output_hash.to_hex(),
+                        spent_height,
+                        mined_height
+                    )));
+                }
+            } else {
+                return Err(ValidationError::MissingOutputError(format!(
+                    "Input output hash {} not found as unspent output",
+                    input_output_hash.to_hex()
                 )));
             }
             to_remove.push(input_output_hash);
-        } else {
-            // Nothing here
         }
     }
     inputs.retain(|input| !to_remove.contains(&input.output_hash()));
@@ -251,10 +265,6 @@ fn validate_output_hashes_in_db<B: BlockchainBackend>(
                 )));
             }
             to_remove.push(output_hash);
-        } else if db.fetch_input(&output_hash)?.is_some() {
-            to_remove.push(output_hash);
-        } else {
-            // Nothing here
         }
     }
     outputs.retain(|output| !to_remove.contains(&output.hash()));

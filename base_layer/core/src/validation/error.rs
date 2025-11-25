@@ -100,6 +100,8 @@ pub enum ValidationError {
     HeaderHashMismatch(String),
     #[error("Missing output error: {0}")]
     MissingOutputError(String),
+    #[error("Input spent before mined error: {0}")]
+    InputSpentBeforeMined(String),
     #[error("Covenant failed to validate: {0}")]
     CovenantError(#[from] CovenantError),
     #[error("Invalid or unsupported blockchain version {version}")]
@@ -203,6 +205,7 @@ impl ValidationError {
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             ValidationError::MissingKernelError(_) |
             ValidationError::MissingOutputError(_) |
+            ValidationError::InputSpentBeforeMined(_) |
             ValidationError::HeaderHashMismatch(_) |
             ValidationError::HeaderHeightMismatch(_) => None,
         }
