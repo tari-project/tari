@@ -174,14 +174,6 @@ impl AppState {
         }
     }
 
-    // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, address_string: String) -> String {
-        if address_string == TariAddress::default().to_base58() {
-            return "Offline payment".to_string();
-        }
-        address_string
-    }
-
     pub async fn delete_burnt_proof(&mut self, proof_id: i32) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 

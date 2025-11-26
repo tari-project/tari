@@ -30,6 +30,8 @@ use crate::ui::{
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::transaction_tab";
+const ADDRESS_DISPLAY_SIZE: u16 = 95;
+const MAX_ADDRESS_LENGTH: u16 = ADDRESS_DISPLAY_SIZE - 1 - 3; // column border: 1 space, selection arrows: 3 spaces
 
 pub struct TransactionsTab {
     balance: Balance,
@@ -119,7 +121,7 @@ impl TransactionsTab {
 
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(t.destination_address.to_base58()),
+                    get_alias_and_clip(t.destination_address.to_base58(), MAX_ADDRESS_LENGTH),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -131,7 +133,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(t.source_address.to_base58()),
+                    get_alias_and_clip(t.source_address.to_base58(), MAX_ADDRESS_LENGTH),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -165,7 +167,11 @@ impl TransactionsTab {
             .highlight_style(styles::highlight())
             .heading_style(styles::header_row())
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination address"), Some(95), column0_items)
+            .add_column(
+                Some("Source/Destination address"),
+                Some(ADDRESS_DISPLAY_SIZE),
+                column0_items,
+            )
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Payment ID"), None, column3_items);
@@ -257,11 +263,11 @@ impl TransactionsTab {
                 (_, _, TxType::CodeTemplateRegistration) => "Code template registration",
                 (_, _, TxType::HtlcAtomicSwapRefund) => "HTLC atomic swap refund",
                 (_, _, TxType::ClaimAtomicSwap) => "Claim atomic swap",
-                (TransactionDirection::Outbound, _, _) => &app_state.get_alias(tx.destination_address.to_base58()),
-                _ => &app_state.get_alias(tx.source_address.to_base58()),
+                (TransactionDirection::Outbound, _, _) => &tx.destination_address.to_base58(),
+                _ => &tx.source_address.to_base58(),
             };
             column0_items.push(ListItem::new(Span::styled(
-                app_state.get_alias(address_text.to_string()),
+                get_alias_and_clip(address_text.to_string(), MAX_ADDRESS_LENGTH),
                 Style::default().fg(text_color),
             )));
             if tx.direction == TransactionDirection::Outbound {
@@ -315,7 +321,11 @@ impl TransactionsTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Address"), Some(95), column0_items)
+            .add_column(
+                Some("Source/Destination Address"),
+                Some(ADDRESS_DISPLAY_SIZE),
+                column0_items,
+            )
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
@@ -433,13 +443,15 @@ impl TransactionsTab {
                 if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Outbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{source}"), Style::default().fg(Color::White))
+                    let address = clip_address(format!("{source}"), 69);
+                    Span::styled(address, Style::default().fg(Color::White))
                 };
             let destination_address =
                 if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Inbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{destination}"), Style::default().fg(Color::White))
+                    let address = clip_address(format!("{destination}"), 69);
+                    Span::styled(address, Style::default().fg(Color::White))
                 };
 
             let direction = Span::styled(format!("{direction}"), Style::default().fg(Color::White));
@@ -867,4 +879,30 @@ pub enum SelectedTransactionList {
     None,
     PendingTxs,
     CompletedTxs,
+}
+
+// Return alias or pub key if the contact is not in the list, clipping the address in the middle if needed.
+fn get_alias_and_clip(address_string: String, max_len: u16) -> String {
+    let address = if address_string == TariAddress::default().to_base58() {
+        "Offline payment".to_string()
+    } else {
+        address_string
+    };
+    clip_address(address, max_len)
+}
+
+// Clip the emoji address in the middle if needed.
+fn clip_address(address: String, max_len: u16) -> String {
+    let max_len = max_len as usize;
+    if address.chars().count() > max_len {
+        let display_portion = (max_len - 4) / 2;
+        let chars: Vec<char> = address.chars().collect();
+        format!(
+            "{}....{}",
+            chars[..display_portion].iter().collect::<String>(),
+            chars[chars.len() - display_portion - 1..].iter().collect::<String>()
+        )
+    } else {
+        address
+    }
 }
