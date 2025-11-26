@@ -213,7 +213,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         // fetch utxos
         let mut utxos = vec![];
         let mut current_header = start_header;
-        let mut fetched_utxos = 0;
+        let mut fetched_chunks = 0;
         let spending_end_header_hash = self
             .db
             .fetch_header(
@@ -287,6 +287,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
+                fetched_chunks += 1;
             }
             // We might still have inputs left to send if they are more than the outputs
             for input_chunk in inputs.chunks(2000) {
@@ -298,16 +299,15 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
+                fetched_chunks += 1;
             }
-
-            fetched_utxos += 1;
 
             if current_header.height >= tip_header.header().height {
                 next_header_to_request = vec![];
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break;
             }
-            if fetched_utxos >= request.limit {
+            if fetched_chunks > request.limit {
                 next_header_to_request = current_header_hash.to_vec();
                 // This is a special edge case, our request has reached the page limit, but we are also not done with
                 // the block. We also dont want to split up the block over two requests. So we need to ensure that we
