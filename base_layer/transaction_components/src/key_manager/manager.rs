@@ -65,7 +65,7 @@ use tari_crypto::{
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::{ByteArray, Hidden};
+use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use zeroize::Zeroize;
 
 use crate::{
@@ -412,9 +412,8 @@ impl KeyManager {
         }
 
         trace!(target: "wallet::key_manager::ledger",
-            "Trying to get ledger DH shared secret key with branch: {:?}, index :{}",
-            branch,
-            index);
+            "Trying to get ledger DH shared secret key with branch: {:?}, index :{}, public key: {}",
+            branch, index, public_key.to_hex());
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))

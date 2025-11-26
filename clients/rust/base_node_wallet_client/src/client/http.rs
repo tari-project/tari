@@ -375,9 +375,9 @@ impl BaseNodeWalletClient for Client {
         );
 
         let res_text = res.text().await?;
-        debug!(target: LOG_TARGET, "Response text: {res_text}");
         let json = serde_json::from_str::<GetUtxosMinedInfoResponse>(&res_text)
             .map_err(|e| anyhow!("Failed to parse response JSON: {e}"))?;
+        debug!(target: LOG_TARGET, "Response json: {json}");
         Ok(json)
     }
 

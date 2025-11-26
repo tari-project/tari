@@ -1,6 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use std::sync::Arc;
+
+use std::{fmt::Display, sync::Arc};
 
 use axum::{
     extract::Query,
@@ -11,11 +12,13 @@ use axum::{
 };
 use log::debug;
 use serde::Deserialize;
+use tari_common_types::types::HashOutput;
 use tari_core::{
     base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::{GetUtxoRequest, GetUtxoResponse};
+use tari_utilities::hex::Hex;
 use tonic::service::AxumBody;
 
 use crate::{
@@ -25,6 +28,7 @@ use crate::{
     },
     HttpCacheConfig,
 };
+
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxo";
 
 #[derive(Deserialize, Debug, utoipa::IntoParams)]
@@ -57,7 +61,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Query(params): Query<GetUtxoQueryParams>,
     Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received get_utxo request: {params:?}");
+    debug!(target: LOG_TARGET, "Received get_utxo request: {params}");
 
     let request = params.into();
 
@@ -69,4 +73,14 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     let mut response = body.into_response();
     apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetUtxosByBlock, 0, 0);
     Ok(response)
+}
+
+impl Display for GetUtxoQueryParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GetUtxoQueryParams {{ utxo: {} }}",
+            HashOutput::try_from(self.utxo.as_slice()).unwrap_or_default().to_hex()
+        )
+    }
 }

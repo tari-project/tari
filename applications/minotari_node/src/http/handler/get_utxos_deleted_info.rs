@@ -1,6 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use std::sync::Arc;
+
+use std::{fmt::Display, sync::Arc};
 
 use axum::{
     extract::Query,
@@ -11,11 +12,13 @@ use axum::{
 };
 use log::debug;
 use serde::Deserialize;
+use tari_common_types::types::HashOutput;
 use tari_core::{
     base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::{GetUtxosDeletedInfoRequest, GetUtxosDeletedInfoResponse};
+use tari_utilities::hex::Hex;
 use tonic::service::AxumBody;
 
 use crate::{
@@ -64,7 +67,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Query(params): Query<GetUtxosDeletedInfoParams>,
     Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received get_utxos_deleted_info request: {params:?}");
+    debug!(target: LOG_TARGET, "Received get_utxos_deleted_info request: {params}");
     let request = params.into();
 
     let response = query_service
@@ -76,4 +79,20 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     let mut response = body.into_response();
     apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetUtxosDeletedInfo, 0, 0);
     Ok(response)
+}
+
+impl Display for GetUtxosDeletedInfoParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GetUtxosDeletedInfoParams {{ must_include_header: {}, hashes: {:?} }}",
+            HashOutput::try_from(self.must_include_header.as_slice())
+                .unwrap_or_default()
+                .to_hex(),
+            self.hashes
+                .iter()
+                .map(|h| HashOutput::try_from(h.as_slice()).unwrap_or_default().to_hex())
+                .collect::<Vec<_>>()
+        )
+    }
 }

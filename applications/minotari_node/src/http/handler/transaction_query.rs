@@ -1,7 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
 use axum::{
     extract::Query,
@@ -12,11 +12,13 @@ use axum::{
 };
 use log::debug;
 use serde::Deserialize;
+use tari_common_types::types::HashOutput;
 use tari_core::{
     base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models;
+use tari_utilities::hex::Hex;
 use tonic::service::AxumBody;
 
 use crate::{
@@ -51,7 +53,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Query(params): Query<TransactionQueryQueryParams>,
     Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received transaction_query request: {params:?}");
+    debug!(target: LOG_TARGET, "Received transaction_query request: {params}");
     let request = params.into();
 
     let response = query_service
@@ -63,4 +65,19 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     let mut response = body.into_response();
     apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::TransactionQuery, 0, 0);
     Ok(response)
+}
+
+impl Display for TransactionQueryQueryParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "TransactionQueryQueryParams {{ excess_sig_sig: {}, excess_sig_nonce: {} }}",
+            HashOutput::try_from(self.excess_sig_sig.as_slice())
+                .unwrap_or_default()
+                .to_hex(),
+            HashOutput::try_from(self.excess_sig_nonce.as_slice())
+                .unwrap_or_default()
+                .to_hex(),
+        )
+    }
 }
