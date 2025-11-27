@@ -45,10 +45,15 @@ pub struct Client {
 
 impl Client {
     pub fn new(local_api_address: Url, default_seed_address: Url) -> Self {
+        let http_client_builder = reqwest::Client::builder();
+        let http_client = http_client_builder
+            .http2_initial_stream_window_size(4 * 1024 * 1024)
+            .build()
+            .expect("http2 init");
         Self {
             local_api_address,
             default_seed_address,
-            http_client: reqwest::Client::new(),
+            http_client,
             last_latency: RwLock::new(None),
             use_local_api_address: RwLock::new(None),
         }
@@ -455,6 +460,14 @@ impl BaseNodeWalletClient for Client {
                 "transaction": transaction,
             }
         });
+
+        let body_bytes = serde_json::to_vec(&request_body)?;
+        let len = body_bytes.len();
+        debug!(
+            target: LOG_TARGET,
+            "submit_transaction JSON body size: {}, bytes: ~{:.2} MiB, inputs: {}, outputs: {}",
+            len, len as f64 / (1024.0 * 1024.0), transaction.body.inputs().len(), transaction.body.outputs().len()
+        );
 
         let res = self.http_client.post(target_url).json(&request_body).send().await?;
         if res.status().is_client_error() || res.status().is_server_error() {
