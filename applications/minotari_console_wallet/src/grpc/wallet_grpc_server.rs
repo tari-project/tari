@@ -340,7 +340,6 @@ impl WalletGrpcServer {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetAllCompletedTransactionsStreamStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
@@ -3233,7 +3232,7 @@ fn convert_wallet_transaction_into_transaction_info(
 }
 
 struct CommitmentInfo {
-    commitment: Option<CompressedCommitment>,
+    commitment: CompressedCommitment,
     hash: FixedHash,
 }
 
@@ -3244,12 +3243,10 @@ fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<ta
         .inputs()
         .iter()
         .map(|o| CommitmentInfo {
-            commitment: if let Ok(commitment) = o.commitment().cloned() {
-                Some(commitment)
-            } else {
-                warn!(target: LOG_TARGET, "Expected to find a commitment for output '{}'", o.output_hash());
-                None
-            },
+            commitment: o
+                .commitment()
+                .expect("wallet db contains full set of input/output data")
+                .clone(),
             hash: o.output_hash(),
         })
         .collect::<Vec<_>>();
@@ -3259,7 +3256,7 @@ fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<ta
         .outputs()
         .iter()
         .map(|o| CommitmentInfo {
-            commitment: Some(o.commitment.clone()),
+            commitment: o.commitment.clone(),
             hash: o.hash(),
         })
         .collect::<Vec<_>>();
@@ -3298,11 +3295,7 @@ fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<ta
 
 fn get_commitment(all_artefacts: &[CommitmentInfo], hash: &FixedHash) -> Vec<u8> {
     if let Some(output) = all_artefacts.iter().find(|&val| &val.hash == hash) {
-        if let Some(commitment) = &output.commitment {
-            commitment.as_bytes().to_vec()
-        } else {
-            vec![]
-        }
+        output.commitment.as_bytes().to_vec()
     } else {
         vec![]
     }

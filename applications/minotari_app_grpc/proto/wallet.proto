@@ -1595,7 +1595,7 @@ service Wallet {
   // - **payment_references_received** (repeated bytes): Metadata references associated with received outputs. *(deprecated)*
   // - **payment_references_change** (repeated bytes): Metadata references associated with change outputs. *(deprecated)*
   // - **output_commitments_info** (repeated CommitmentInfo):
-  //     Contains details for each output commitment in the transaction.
+  //     Contains details for each output commitment (excluding change) in the transaction.
   //     Each CommitmentInfo includes:
   //       - `hash` (bytes): The hash representing the output.
   //       - `commitment` (bytes): The cryptographic commitment representing the output.
