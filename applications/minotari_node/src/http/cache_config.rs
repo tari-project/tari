@@ -126,13 +126,13 @@ impl HttpCacheConfig {
         // The max_age is more about client-side caching, which is less critical for us as our wallets wont do caching
         // as it will only be called once.
         let (max_age, s_maxage, stale_while_revalidate) = match tip_height.saturating_sub(height) {
-            0..=10 => (30, 30, 15),          // within 10 blocks of tip (30s)
-            11..=100 => (300, 300, 60),      // within 100 blocks of tip (11 blocks = 22min, cache 5 mins)
-            101..=1000 => (360, 1200, 60),   // within 1000 blocks of tip (101 blocks = 6.7 hours, cache 20 mins)
-            1001..=2000 => (360, 1800, 60),  // within 2000 blocks of tip (1001 blocks = 2.7 days, cache 30 mins)
-            2001..=10000 => (360, 3600, 60), // within 10000 blocks of tip (11 blocks = 5.5 days, cache 1 hour)
-            _ => (360, 86400, 60),           /* more than 10000 blocks from tip (10001 blocks = 27 days, cache 30
-                                               * days) */
+            0..=10 => (30, 30, 15),             // within 10 blocks of tip (30s)
+            11..=100 => (300, 60 * 5, 60),      // within 100 blocks of tip (11 blocks = 22min, cache 5 mins)
+            101..=1000 => (360, 60 * 20, 60),   // within 1000 blocks of tip (101 blocks = 6.7 hours, cache 20 mins)
+            1001..=2000 => (360, 60 * 30, 60),  // within 2000 blocks of tip (1001 blocks = 2.7 days, cache 30 mins)
+            2001..=10000 => (360, 60 * 60, 60), // within 10000 blocks of tip (11 blocks = 5.5 days, cache 1 hour)
+            _ => (360, 60 * 60 * 24 * 30, 60),  /* more than 10000 blocks from tip (10001 blocks = 27 days, cache 30
+                                                  * days) */
         };
         match key {
             RouteKey::GetTipInfo => default,
@@ -279,7 +279,7 @@ mod tests {
             (2000, 360, 1800, 60),
             (2001, 360, 3600, 60),
             (10000, 360, 3600, 60),
-            (10001, 360, 86400, 60),
+            (10001, 360, 2592000, 60),
         ];
         let tip = 50_000u64;
         for (delta, max_age, s_maxage, swr) in cases {
