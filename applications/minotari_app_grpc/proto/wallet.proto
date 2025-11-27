@@ -1597,7 +1597,6 @@ service Wallet {
   // - **output_commitments_info** (repeated CommitmentInfo):
   //     Contains details for each output commitment (excluding change) in the transaction.
   //     Each CommitmentInfo includes:
-  //       - `hash` (bytes): The hash representing the output.
   //       - `commitment` (bytes): The cryptographic commitment representing the output.
   //       - `payment_reference` (bytes): The associated payment reference for the output.
   //       - `category` (enum): The category of the output (`Sent`, `Received`, `Change`).
@@ -1647,13 +1646,11 @@ service Wallet {
   //     "payment_references_change": [],
   //     "output_commitments_info": [
   //       {
-  //         "hash": "0xa1b2c3...",
   //         "commitment": "0xabcdef...",
   //         "payment_reference": "0x123456...",
   //         "category": "Sent"
   //       },
   //       {
-    //       "hash": "0xf4e3d2c1...",
   //         "commitment": "0xghijkl...",
   //         "payment_reference": "0x789abc...",
   //         "category": "Change"
@@ -2159,10 +2156,9 @@ message TransactionInfo {
 }
 
 message CommitmentInfo {
-  bytes hash = 1;
-  bytes commitment = 2;
-  bytes payment_reference = 3;
-  OutputCategory category = 4;
+  bytes commitment = 1;
+  bytes payment_reference = 2;
+  OutputCategory category = 3;
 }
 
 enum OutputCategory {

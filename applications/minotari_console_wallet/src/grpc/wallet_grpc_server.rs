@@ -156,7 +156,6 @@ use tari_common_types::{
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
-        FixedHash,
         PrivateKey,
         SignatureWithDomain,
     },
@@ -3231,85 +3230,29 @@ fn convert_wallet_transaction_into_transaction_info(
     }
 }
 
-struct CommitmentInfo {
-    commitment: CompressedCommitment,
-    hash: FixedHash,
-}
-
 fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<tari_rpc::CommitmentInfo> {
-    let input_artefacts = txn
-        .transaction
-        .body
-        .inputs()
-        .iter()
-        .map(|o| CommitmentInfo {
-            commitment: o
-                .commitment()
-                .expect("wallet db contains full set of input/output data")
-                .clone(),
-            hash: o.output_hash(),
-        })
-        .collect::<Vec<_>>();
-    let output_artefacts = txn
-        .transaction
-        .body
-        .outputs()
-        .iter()
-        .map(|o| CommitmentInfo {
-            commitment: o.commitment.clone(),
-            hash: o.hash(),
-        })
-        .collect::<Vec<_>>();
-    let all_artefacts = input_artefacts.into_iter().chain(output_artefacts).collect::<Vec<_>>();
-
-    let mut output_commitments_info = Vec::with_capacity(
-        txn.sent_output_hashes.len() + txn.received_output_hashes.len() + txn.change_output_hashes.len(),
-    );
-    for hash in &txn.sent_output_hashes {
+    let mut output_commitments_info = Vec::with_capacity(txn.transaction.body.outputs().len());
+    for output in txn.transaction.body.outputs() {
         output_commitments_info.push(tari_rpc::CommitmentInfo {
-            hash: hash.to_vec(),
-            commitment: get_commitment(&all_artefacts, hash),
-            payment_reference: get_payment_reference(txn, hash),
-            category: tari_rpc::OutputCategory::Sent as i32,
+            commitment: output.commitment().to_vec(),
+            payment_reference: if txn.status.is_confirmed() {
+                {
+                    txn.mined_in_block
+                        .as_ref()
+                        .map(|block_hash| generate_payment_reference(block_hash, &output.hash()).to_vec())
+                        .unwrap_or_default()
+                }
+            } else {
+                Default::default()
+            },
+            category: if txn.change_output_hashes.contains(&output.hash()) {
+                tari_rpc::OutputCategory::Change as i32
+            } else if txn.direction == tari_common_types::transaction::TransactionDirection::Inbound {
+                tari_rpc::OutputCategory::Received as i32
+            } else {
+                tari_rpc::OutputCategory::Sent as i32
+            },
         });
     }
-    for hash in &txn.received_output_hashes {
-        output_commitments_info.push(tari_rpc::CommitmentInfo {
-            hash: hash.to_vec(),
-            commitment: get_commitment(&all_artefacts, hash),
-            payment_reference: get_payment_reference(txn, hash),
-            category: tari_rpc::OutputCategory::Received as i32,
-        });
-    }
-    for hash in &txn.change_output_hashes {
-        output_commitments_info.push(tari_rpc::CommitmentInfo {
-            hash: hash.to_vec(),
-            commitment: get_commitment(&all_artefacts, hash),
-            payment_reference: get_payment_reference(txn, hash),
-            category: tari_rpc::OutputCategory::Change as i32,
-        });
-    }
-
     output_commitments_info
-}
-
-fn get_commitment(all_artefacts: &[CommitmentInfo], hash: &FixedHash) -> Vec<u8> {
-    if let Some(output) = all_artefacts.iter().find(|&val| &val.hash == hash) {
-        output.commitment.as_bytes().to_vec()
-    } else {
-        vec![]
-    }
-}
-
-fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8> {
-    if txn.status.is_confirmed() {
-        {
-            txn.mined_in_block
-                .as_ref()
-                .map(|block_hash| generate_payment_reference(block_hash, hash).to_vec())
-                .unwrap_or_default()
-        }
-    } else {
-        Default::default()
-    }
 }
