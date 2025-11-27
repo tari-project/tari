@@ -25,6 +25,7 @@ use std::{
     sync::Arc,
 };
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
@@ -70,7 +71,6 @@ use crate::legacy_key_manager::{
     TransactionKeyManagerBackend,
     TransactionKeyManagerInner,
 };
-
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
 /// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
 /// for each branch.
@@ -169,7 +169,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     fn get_random_key(
         &self,
         encryption_key: Option<TariKeyId>,
-        ledger_key: bool,
+        ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
         self.transaction_key_manager_inner
             .get_random_key(encryption_key, ledger_key)

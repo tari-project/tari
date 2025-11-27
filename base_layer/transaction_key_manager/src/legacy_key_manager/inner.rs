@@ -45,6 +45,7 @@ use tari_utilities::ByteArrayError;
 use crate::legacy_key_manager::wallet_types::LegacyWalletType;
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
@@ -250,7 +251,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub fn get_random_key(
         &self,
         encryption_key: Option<TariKeyId>,
-        ledger_key: bool,
+        ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
         self.key_manager.get_random_key(encryption_key, ledger_key)
     }

@@ -29,6 +29,7 @@ use std::{
     sync::OnceLock,
 };
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
@@ -344,7 +345,7 @@ impl WalletOutput {
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, TransactionError> {
         if *script == script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
-            let key = key_manager.get_random_key(None, false)?;
+            let key = key_manager.get_random_key(None, None)?;
             return Ok(Some((inputs!(key.pub_key.clone()), key.key_id)));
         }
         // this is push public key script, so lets see if we know the public key
@@ -438,7 +439,8 @@ impl WalletOutput {
         let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value)?;
 
         let message = TransactionInput::build_script_signature_message(version, &self.script, &self.input_data);
-        let ephemeral_public_key_self = key_manager.get_random_key(None, true)?;
+        let ephemeral_public_key_self =
+            key_manager.get_random_key(None, Some(LedgerKeyBranch::MetadataEphemeralNonce))?;
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id)?;
         let script_public_key = CompressedPublicKey::new_from_pk(
             aggregated_script_public_key_shares.to_public_key()? + script_public_key_self.to_public_key()?,

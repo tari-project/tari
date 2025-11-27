@@ -105,10 +105,10 @@ pub struct TestParams {
 impl TestParams {
     pub fn new<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
-        let sender_offset = key_manager.get_random_key(None, false).unwrap();
-        let kernel_nonce = key_manager.get_random_key(None, false).unwrap();
-        let public_nonce = key_manager.get_random_key(None, false).unwrap();
-        let ephemeral_public_nonce = key_manager.get_random_key(None, false).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let kernel_nonce = key_manager.get_random_key(None, None).unwrap();
+        let public_nonce = key_manager.get_random_key(None, None).unwrap();
+        let ephemeral_public_nonce = key_manager.get_random_key(None, None).unwrap();
 
         Self {
             commitment_mask_key_id: commitment_mask_key.key_id,
@@ -253,7 +253,7 @@ pub fn create_random_signature_from_secret_key<KM: TransactionKeyManagerInterfac
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
 ) -> (CompressedPublicKey, CompressedSignature) {
-    let total_nonce = key_manager.get_random_key(None, false).unwrap();
+    let total_nonce = key_manager.get_random_key(None, None).unwrap();
     let total_excess = key_manager.get_public_key_at_key_id(&secret_key_id).unwrap();
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_message =
@@ -650,8 +650,8 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
         tx_builder.with_input(tx_input.clone()).unwrap();
     }
     for val in schema.to {
-        let commitment_mask = key_manager.get_random_key(None, false).unwrap();
-        let sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
         let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
         };
@@ -680,7 +680,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
         tx_builder.with_output(output, sender_offset.key_id, None).unwrap();
     }
     for mut utxo in schema.to_outputs {
-        let sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
         let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
         utxo.set_metadata_signature(
             key_manager
@@ -709,7 +709,7 @@ pub fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
     let kernel_features = KernelFeatures::COINBASE_KERNEL;
     let kernel_message =
         TransactionKernel::build_kernel_signature_message(kernel_version, 0.into(), 0, &kernel_features, &None);
-    let public_nonce = key_manager.get_random_key(None, false).unwrap();
+    let public_nonce = key_manager.get_random_key(None, None).unwrap();
     let public_commitment_mask = key_manager.get_public_key_at_key_id(commitment_mask_key_id).unwrap();
 
     let kernel_signature = key_manager
@@ -755,11 +755,11 @@ pub fn create_utxo<KM: TransactionKeyManagerInterface>(
     covenant: &Covenant,
     minimum_value_promise: MicroMinotari,
 ) -> (TransactionOutput, TariKeyId, TariKeyId) {
-    let commitment_mask = key_manager.get_random_key(None, false).unwrap();
+    let commitment_mask = key_manager.get_random_key(None, None).unwrap();
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(&commitment_mask.key_id, None, value.into(), MemoField::new_empty())
         .unwrap();
-    let sender_offset = key_manager.get_random_key(None, false).unwrap();
+    let sender_offset = key_manager.get_random_key(None, None).unwrap();
     let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
         TransactionOutputVersion::get_current_version(),
         script,

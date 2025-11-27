@@ -20,6 +20,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -74,7 +75,7 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     }
 
     for mut uo in info.outputs {
-        let sender_offset_key = key_manager.get_random_key(None, true)?;
+        let sender_offset_key = key_manager.get_random_key(None, None)?;
         uo.set_sender_offset_public_key(sender_offset_key.pub_key);
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
@@ -125,7 +126,7 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     }
 
     for mut uo in info.base.outputs {
-        let sender_offset_key = key_manager.get_random_key(None, true)?;
+        let sender_offset_key = key_manager.get_random_key(None, None)?;
         uo.set_sender_offset_public_key(sender_offset_key.pub_key);
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
@@ -172,7 +173,7 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     }
     let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
 
-    let sender_offset_key = key_manager.get_random_key(None, true)?;
+    let sender_offset_key = key_manager.get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
     let (_commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
 
     let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
@@ -239,7 +240,7 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     }
 
     for mut uo in info.outputs {
-        let sender_offset_key = key_manager.get_random_key(None, true)?;
+        let sender_offset_key = key_manager.get_random_key(None, None)?;
         uo.set_sender_offset_public_key(sender_offset_key.pub_key);
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
@@ -283,7 +284,7 @@ fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
 
     let (_commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
 
-    let sender_offset_key = key_manager.get_random_key(None, true)?;
+    let sender_offset_key = key_manager.get_random_key(None, None)?;
 
     let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 

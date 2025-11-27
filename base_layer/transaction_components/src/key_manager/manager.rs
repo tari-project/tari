@@ -514,29 +514,29 @@ impl TransactionKeyManagerInterface for KeyManager {
     fn get_random_key(
         &self,
         encryption_key: Option<TariKeyId>,
-        ledger_key: bool,
+        ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
-        if self.wallet_type.is_ledger() && ledger_key {
-            let random_index = OsRng.next_u64();
-
-            let branch = LedgerKeyBranch::Random;
-            let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
-            Ok(TariKeyAndId {
-                key_id: TariKeyId::LedgerKey {
-                    branch,
-                    index: random_index,
-                },
-                pub_key: public_key,
-            })
-        } else {
-            let random_private_key = PrivateKey::random(&mut OsRng);
-            let key_id = self.create_encrypted_key(random_private_key, encryption_key)?;
-            let public_key = self.get_public_key_at_key_id(&key_id)?;
-            Ok(TariKeyAndId {
-                key_id,
-                pub_key: public_key,
-            })
+        if let Some(branch) = ledger_key {
+            if self.wallet_type.is_ledger() {
+                let random_index = OsRng.next_u64();
+                let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
+                return Ok(TariKeyAndId {
+                    key_id: TariKeyId::LedgerKey {
+                        branch,
+                        index: random_index,
+                    },
+                    pub_key: public_key,
+                });
+            }
         }
+
+        let random_private_key = PrivateKey::random(&mut OsRng);
+        let key_id = self.create_encrypted_key(random_private_key, encryption_key)?;
+        let public_key = self.get_public_key_at_key_id(&key_id)?;
+        Ok(TariKeyAndId {
+            key_id,
+            pub_key: public_key,
+        })
     }
 
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
@@ -672,7 +672,7 @@ impl TransactionKeyManagerInterface for KeyManager {
     }
 
     fn get_next_commitment_mask_and_script_key(&self) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerError> {
-        let commitment_mask = self.get_random_key(None, false)?;
+        let commitment_mask = self.get_random_key(None, None)?;
         let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
         };
@@ -1044,7 +1044,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id)?;
-        let ephemeral_pubkey = self.get_random_key(None, false)?;
+        let ephemeral_pubkey = self.get_random_key(None, None)?;
         let receiver_partial_metadata_signature = self.get_receiver_partial_metadata_signature(
             commitment_mask_key_id,
             value_as_private_key,
@@ -1222,7 +1222,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        let ephemeral_commitment_nonce = self.get_random_key(None, false)?;
+        let ephemeral_commitment_nonce = self.get_random_key(None, None)?;
         let (nonce_a, nonce_b) = self
             .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)?;
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);

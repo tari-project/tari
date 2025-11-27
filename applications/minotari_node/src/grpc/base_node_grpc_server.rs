@@ -1302,7 +1302,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             new_template.body.add_output(coinbase_output);
             let new_nonce = key_manager
-                .get_random_key(None, false)
+                .get_random_key(None, None)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce +
                 &new_nonce
@@ -1542,7 +1542,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             block_template.body.add_output(coinbase_output);
             let new_nonce = key_manager
-                .get_random_key(None, false)
+                .get_random_key(None, None)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce +
                 &new_nonce

@@ -1966,7 +1966,7 @@ async fn scan_for_recovery_test() {
     let mut recoverable_wallet_outputs = Vec::new();
 
     for i in 1..=NUM_RECOVERABLE {
-        let commitment_mask_key = oms.key_manager_handle.get_random_key(None, false).unwrap();
+        let commitment_mask_key = oms.key_manager_handle.get_random_key(None, None).unwrap();
         let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask_key.key_id).into(),
         };

@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
-use tari_common::exit_codes::{ExitError};
+use tari_common::exit_codes::ExitError;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -89,12 +89,7 @@ impl<B: Backend> App<B> {
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
-            .add(
-                "Send".into(),
-                Box::new(SendTab::new(
-                    &app_state
-                )),
-            )
+            .add("Send".into(), Box::new(SendTab::new(&app_state)))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
             .add("Events".into(), Box::new(EventsComponent::new()))

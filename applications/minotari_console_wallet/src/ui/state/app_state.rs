@@ -434,8 +434,6 @@ impl AppStateInner {
         }
     }
 
-
-
     pub fn get_network(&self) -> Network {
         self.wallet.network.as_network()
     }

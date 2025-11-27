@@ -31,6 +31,7 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::rngs::OsRng;
 use sha2::Sha256;
@@ -2152,7 +2153,7 @@ where
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_random_key(None, true)?;
+            .get_random_key(None, None)?;
 
         let shared_secret = self
             .resources
@@ -2568,7 +2569,7 @@ where
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_random_key(None, true)?;
+            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
 
         let shared_secret = self
             .resources
@@ -2987,7 +2988,7 @@ where
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_random_key(None, true)?;
+            .get_random_key(None, None)?;
         let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
@@ -3349,7 +3350,7 @@ where
         let nonce = self
             .resources
             .transaction_key_manager_service
-            .get_random_key(None, false)?;
+            .get_random_key(None, None)?;
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),
             author_signature: CompressedSignature::default(),

@@ -616,7 +616,7 @@ mod test {
             bob_spend_key.clone(),
         ];
 
-        let sender_offset_key = alice_view_key_manager.get_random_key(None, false).unwrap();
+        let sender_offset_key = alice_view_key_manager.get_random_key(None, None).unwrap();
 
         let mut message = Box::new([0u8; 32]);
         OsRng.fill_bytes(message.as_mut());

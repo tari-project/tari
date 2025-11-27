@@ -1185,7 +1185,7 @@ async fn consensus_validation_large_tx() {
     let amount_per_output = (amount - fee) / output_count as u64;
     let amount_for_last_output = (amount - fee) - amount_per_output * (output_count as u64 - 1);
     let mut wallet_outputs = Vec::with_capacity(output_count);
-    let input_kernel_nonce = key_manager.get_random_key(None, false).unwrap();
+    let input_kernel_nonce = key_manager.get_random_key(None, None).unwrap();
     let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
             .get_txo_kernel_signature_excess_with_offset(input.commitment_mask_key_id(), &input_kernel_nonce.key_id)
@@ -1343,7 +1343,7 @@ async fn validation_reject_min_fee() {
 
     let fee = 0.into();
 
-    let input_kernel_nonce = key_manager.get_random_key(None, false).unwrap();
+    let input_kernel_nonce = key_manager.get_random_key(None, None).unwrap();
     let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
             .get_txo_kernel_signature_excess_with_offset(input.commitment_mask_key_id(), &input_kernel_nonce.key_id)

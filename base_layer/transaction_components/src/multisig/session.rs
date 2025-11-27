@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     tari_address::TariAddress,
@@ -106,7 +107,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
-        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
+        let sender_offset_key = self
+            .key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
 
         let recipient_spend_key = recipient.public_spend_key();
 

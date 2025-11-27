@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{
@@ -62,7 +63,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     fn get_random_key(
         &self,
         encryption_key: Option<TariKeyId>,
-        ledger_key: bool,
+        ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError>;
 
     /// Gets the key id at the specified index

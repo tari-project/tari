@@ -254,7 +254,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let kernel_version = TransactionKernelVersion::get_current_version();
         let kernel_message =
             TransactionKernel::build_kernel_signature_message(kernel_version, 0.into(), 0, &kernel_features, &None);
-        let public_nonce = self.key_manager.get_random_key(None, false)?;
+        let public_nonce = self.key_manager.get_random_key(None, None)?;
 
         let public_commitment_mask_key = self.key_manager.get_public_key_at_key_id(&commitment_mask_key_id)?;
 
@@ -417,7 +417,7 @@ pub fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInterface>(
         .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {e}, size too large")))?
     };
 
-    let sender_offset = key_manager.get_random_key(None, false)?;
+    let sender_offset = key_manager.get_random_key(None, None)?;
     let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
         private_key: sender_offset.key_id.clone().into(),
         public_key: wallet_payment_address
@@ -792,7 +792,7 @@ mod test {
         let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
         assert!(coinbase_kernel2.is_coinbase());
         coinbase_kernel2.features = KernelFeatures::empty();
-        let new_nonce = key_manager.get_random_key(None, false).unwrap();
+        let new_nonce = key_manager.get_random_key(None, None).unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             TransactionKernelVersion::get_current_version(),
             coinbase_kernel2.fee,
@@ -947,8 +947,8 @@ mod test {
         body1.verify_kernel_signatures().unwrap_err();
 
         // lets create a new kernel with a correct signature
-        let new_nonce1 = key_manager.get_random_key(None, false).unwrap();
-        let new_nonce2 = key_manager.get_random_key(None, false).unwrap();
+        let new_nonce1 = key_manager.get_random_key(None, None).unwrap();
+        let new_nonce2 = key_manager.get_random_key(None, None).unwrap();
         let nonce = &new_nonce1.pub_key.to_public_key().unwrap() + &new_nonce2.pub_key.to_public_key().unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             TransactionKernelVersion::get_current_version(),
@@ -1065,8 +1065,8 @@ mod test {
         let excess = &kernel_1.excess.to_commitment().unwrap() + &kernel_2.excess.to_commitment().unwrap();
 
         // lets create a new kernel with a correct signature
-        let new_nonce1 = key_manager.get_random_key(None, false).unwrap();
-        let new_nonce2 = key_manager.get_random_key(None, false).unwrap();
+        let new_nonce1 = key_manager.get_random_key(None, None).unwrap();
+        let new_nonce2 = key_manager.get_random_key(None, None).unwrap();
         let nonce = &new_nonce1.pub_key.to_public_key().unwrap() + &new_nonce2.pub_key.to_public_key().unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             TransactionKernelVersion::get_current_version(),
