@@ -3184,7 +3184,10 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
 
     // get the last tx id for wallet
     let tx_id = *wallet_tx_ids.last().unwrap();
-    let cancel_tx_req = CancelTransactionRequest { tx_id, force_if_completed: false };
+    let cancel_tx_req = CancelTransactionRequest {
+        tx_id,
+        force_if_completed: false,
+    };
     let cancel_tx_res = client.cancel_transaction(cancel_tx_req).await.unwrap().into_inner();
     assert!(
         cancel_tx_res.is_success,

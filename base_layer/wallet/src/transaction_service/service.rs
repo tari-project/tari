@@ -3583,7 +3583,7 @@ where
                 )));
             }
 
-            if transaction.is_completed_and_outbound() {
+            if transaction.is_completed() {
                 self.resources
                     .output_manager_service
                     .clear_long_term_encumberances()

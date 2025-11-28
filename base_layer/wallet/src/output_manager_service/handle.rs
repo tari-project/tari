@@ -1254,7 +1254,7 @@ where KM: LegacyTransactionKeyManagerInterface
         {
             OutputManagerResponse::ClearLongTermEncumberances => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
-                "OutputManagerRequest::ClearShortTermEncumberances".to_string(),
+                "OutputManagerRequest::ClearLongTermEncumberances".to_string(),
             )),
         }
     }
