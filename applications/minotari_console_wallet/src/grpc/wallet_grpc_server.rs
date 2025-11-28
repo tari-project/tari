@@ -141,7 +141,7 @@ use minotari_wallet::{
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        storage::models::{self, WalletTransaction},
+        storage::models::{self, CompletedTransaction, WalletTransaction},
     },
     WalletKeyManager,
     WalletSqlite,
@@ -156,6 +156,7 @@ use tari_common_types::{
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
+        FixedHash,
         PrivateKey,
         SignatureWithDomain,
     },
@@ -2659,50 +2660,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let tx_id = TxId::from(req.transaction_id);
-
-        match transaction_service.get_completed_transaction(tx_id).await {
-            Ok(completed_tx) => {
-                // Only return PayRefs if transaction is mined and has block hash
-                if let Some(block_hash) = &completed_tx.mined_in_block {
-                    let mut payment_references = Vec::new();
-
-                    // Generate PayRefs from sent output hashes
-                    for output_hash in &completed_tx.sent_output_hashes {
-                        let payref = generate_payment_reference(block_hash, output_hash);
-                        payment_references.push(payref.to_vec());
-                    }
-
-                    // Generate PayRefs from received output hashes
-                    for output_hash in &completed_tx.received_output_hashes {
-                        let payref = generate_payment_reference(block_hash, output_hash);
-                        payment_references.push(payref.to_vec());
-                    }
-
-                    // Generate PayRefs from change output hashes (per-output approach)
-                    for output_hash in &completed_tx.change_output_hashes {
-                        let payref = generate_payment_reference(block_hash, output_hash);
-                        payment_references.push(payref.to_vec());
-                    }
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "get_transaction_pay_refs: Generated {} PayRefs for transaction {} (including change outputs)",
-                        payment_references.len(),
-                        req.transaction_id
-                    );
-
-                    Ok(Response::new(GetTransactionPayRefsResponse { payment_references }))
-                } else {
-                    debug!(
-                        target: LOG_TARGET,
-                        "get_transaction_pay_refs: Transaction {} is not mined yet",
-                        req.transaction_id
-                    );
-                    Ok(Response::new(GetTransactionPayRefsResponse {
-                        payment_references: vec![],
-                    }))
-                }
-            },
+        let completed_tx = match transaction_service.get_completed_transaction(tx_id).await {
+            Ok(completed_tx) => completed_tx,
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
@@ -2710,12 +2669,59 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     req.transaction_id,
                     e
                 );
-                Err(Status::not_found(format!(
+                return Err(Status::not_found(format!(
                     "Transaction {} not found",
                     req.transaction_id
-                )))
+                )));
             },
-        }
+        };
+
+        let payment_references = {
+            // Only return PayRefs if transaction is mined and has block hash
+            if let Some(block_hash) = &completed_tx.mined_in_block {
+                let mut payment_references = Vec::new();
+
+                // Generate PayRefs from sent output hashes
+                for output_hash in &completed_tx.sent_output_hashes {
+                    let payref = generate_payment_reference(block_hash, output_hash);
+                    payment_references.push(payref.to_vec());
+                }
+
+                // Generate PayRefs from received output hashes
+                for output_hash in &completed_tx.received_output_hashes {
+                    let payref = generate_payment_reference(block_hash, output_hash);
+                    payment_references.push(payref.to_vec());
+                }
+
+                // Generate PayRefs from change output hashes (per-output approach)
+                for output_hash in &completed_tx.change_output_hashes {
+                    let payref = generate_payment_reference(block_hash, output_hash);
+                    payment_references.push(payref.to_vec());
+                }
+
+                debug!(
+                    target: LOG_TARGET,
+                    "get_transaction_pay_refs: Generated {} PayRefs for transaction {} (including change outputs)",
+                    payment_references.len(),
+                    req.transaction_id
+                );
+
+                payment_references
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "get_transaction_pay_refs: Transaction {} is not mined yet",
+                    req.transaction_id
+                );
+                vec![]
+            }
+        };
+
+        Ok(Response::new(GetTransactionPayRefsResponse {
+            #[allow(deprecated)]
+            payment_references,
+            output_commitments_info: get_transaction_output_commitments_info(&completed_tx),
+        }))
     }
 
     async fn get_fee_estimate(
@@ -3187,5 +3193,94 @@ fn convert_wallet_transaction_into_transaction_info(
                     .collect(),
             }
         },
+    }
+}
+
+struct CommitmentInfo {
+    commitment: Option<CompressedCommitment>,
+    hash: FixedHash,
+}
+
+fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<tari_rpc::CommitmentInfo> {
+    let input_artefacts = txn
+        .transaction
+        .body
+        .inputs()
+        .iter()
+        .map(|o| CommitmentInfo {
+            commitment: if let Ok(commitment) = o.commitment().cloned() {
+                Some(commitment)
+            } else {
+                warn!(target: LOG_TARGET, "Expected to find a commitment for output '{}'", o.output_hash());
+                None
+            },
+            hash: o.output_hash(),
+        })
+        .collect::<Vec<_>>();
+    let output_artefacts = txn
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .map(|o| CommitmentInfo {
+            commitment: Some(o.commitment.clone()),
+            hash: o.hash(),
+        })
+        .collect::<Vec<_>>();
+    let all_artefacts = input_artefacts.into_iter().chain(output_artefacts).collect::<Vec<_>>();
+
+    let mut output_commitments_info = Vec::with_capacity(
+        txn.sent_output_hashes.len() + txn.received_output_hashes.len() + txn.change_output_hashes.len(),
+    );
+    for hash in &txn.sent_output_hashes {
+        output_commitments_info.push(tari_rpc::CommitmentInfo {
+            hash: hash.to_vec(),
+            commitment: get_commitment(&all_artefacts, hash),
+            payment_reference: get_payment_reference(txn, hash),
+            category: tari_rpc::OutputCategory::Sent as i32,
+        });
+    }
+    for hash in &txn.received_output_hashes {
+        output_commitments_info.push(tari_rpc::CommitmentInfo {
+            hash: hash.to_vec(),
+            commitment: get_commitment(&all_artefacts, hash),
+            payment_reference: get_payment_reference(txn, hash),
+            category: tari_rpc::OutputCategory::Received as i32,
+        });
+    }
+    for hash in &txn.change_output_hashes {
+        output_commitments_info.push(tari_rpc::CommitmentInfo {
+            hash: hash.to_vec(),
+            commitment: get_commitment(&all_artefacts, hash),
+            payment_reference: get_payment_reference(txn, hash),
+            category: tari_rpc::OutputCategory::Change as i32,
+        });
+    }
+
+    output_commitments_info
+}
+
+fn get_commitment(all_artefacts: &[CommitmentInfo], hash: &FixedHash) -> Vec<u8> {
+    if let Some(output) = all_artefacts.iter().find(|&val| &val.hash == hash) {
+        if let Some(commitment) = &output.commitment {
+            commitment.as_bytes().to_vec()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    }
+}
+
+fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8> {
+    if txn.status.is_confirmed() {
+        {
+            txn.mined_in_block
+                .as_ref()
+                .map(|block_hash| generate_payment_reference(block_hash, hash).to_vec())
+                .unwrap_or_default()
+        }
+    } else {
+        Default::default()
     }
 }

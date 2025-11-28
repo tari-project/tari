@@ -883,6 +883,16 @@ service Wallet {
   //     - Must be a valid transaction ID that exists in the wallet.
   //     - If the transaction ID is invalid or not found, an error will be returned.
   //
+  // ### Response:
+  // - **payment_references** (repeated bytes): Metadata references associated with change outputs. *(deprecated)*
+  // - **output_commitments_info** (repeated CommitmentInfo):
+  //     Contains details for each output commitment in the transaction.
+  //     Each CommitmentInfo includes:
+  //       - `hash` (bytes): The hash representing the output.
+  //       - `commitment` (bytes): The cryptographic commitment representing the output.
+  //       - `payment_reference` (bytes): The associated payment reference for the output.
+  //       - `category` (enum): The category of the output (`Sent`, `Received`, `Change`).
+  //
   // ### Example JavaScript gRPC client usage:
   //
   // ```javascript
@@ -2462,9 +2472,23 @@ message GetTransactionPayRefsRequest {
 // Response message for GetTransactionPayRefs RPC.
 message GetTransactionPayRefsResponse {
   // List of PayRefs (32-byte payment references) for the transaction.
-  repeated bytes payment_references = 1;
+  repeated bytes payment_references = 1 [deprecated = true];
+  // List of input commitment info for the transaction - hash, commitment, payment reference, output category.
+  repeated CommitmentInfo output_commitments_info = 2;
 }
 
+message CommitmentInfo {
+  bytes hash = 1;
+  bytes commitment = 2;
+  bytes payment_reference = 3;
+  OutputCategory category = 4;
+}
+
+enum OutputCategory {
+  OUTPUT_CATEGORY_SENT = 0;
+  OUTPUT_CATEGORY_RECEIVED = 1;
+  OUTPUT_CATEGORY_CHANGE = 2;
+}
 
 // Response message for GetTransactionsWithPayRefs RPC.
 message GetTransactionsWithPayRefsResponse {
