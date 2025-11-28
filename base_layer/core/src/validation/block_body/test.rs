@@ -235,7 +235,7 @@ async fn it_allows_multiple_coinbases() {
     let (mut blockchain, validator) = setup(true);
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB"));
-    let commitment_mask_key = blockchain.km.get_random_key(None, false).unwrap();
+    let commitment_mask_key = blockchain.km.get_random_key(None, None).unwrap();
     let wallet_payment_address = TariAddress::default();
     let (_, coinbase_output) = CoinbaseBuilder::new(blockchain.km.clone())
         .with_block_height(1)

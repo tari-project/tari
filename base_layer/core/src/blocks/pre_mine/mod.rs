@@ -831,7 +831,7 @@ pub fn create_pre_mine_genesis_block_info(
         let mut commitment_bytes = [0u8; 32];
         commitment_bytes.clone_from_slice(commitment.as_bytes());
 
-        let sender_offset = key_manager.get_random_key(None, true).map_err(|e| e.to_string())?;
+        let sender_offset = key_manager.get_random_key(None, None).map_err(|e| e.to_string())?;
         let mut public_keys = public_keys.clone();
         public_keys.shuffle(&mut thread_rng());
         let script = script!(
@@ -859,7 +859,7 @@ pub fn create_pre_mine_genesis_block_info(
             .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key.key_id)
             .with_minimum_value_promise(item.value)
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .map_err(|e| e.to_string())?
             .try_build(&key_manager)
             .map_err(|e| e.to_string())?;

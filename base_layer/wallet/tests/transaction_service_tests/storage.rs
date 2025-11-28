@@ -87,13 +87,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_input(input)
         .unwrap();
 
-    let commitment_mask_key = key_manager.get_random_key(None, false).unwrap();
+    let commitment_mask_key = key_manager.get_random_key(None, None).unwrap();
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask_key.key_id).into(),
     };
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
 
-    let sender_offset = key_manager.get_random_key(None, false).unwrap();
+    let sender_offset = key_manager.get_random_key(None, None).unwrap();
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(
             &commitment_mask_key.key_id,

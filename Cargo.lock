@@ -8165,6 +8165,7 @@ dependencies = [
  "digest",
  "futures 0.3.31",
  "log",
+ "minotari_ledger_wallet_common",
  "rand 0.8.5",
  "serde",
  "strum",

@@ -61,7 +61,6 @@ use tari_transaction_components::{
     },
     weight::TransactionWeight,
 };
-use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
 use tokio::sync::{watch, RwLock};
 
@@ -410,11 +409,6 @@ impl AppState {
     pub async fn get_network(&self) -> Network {
         self.inner.read().await.get_network()
     }
-
-    pub async fn get_wallet_type(&self) -> Result<LegacyWalletType, UiError> {
-        let inner = self.inner.write().await;
-        inner.get_wallet_type()
-    }
 }
 pub struct AppStateInner {
     updated: bool,
@@ -438,14 +432,6 @@ impl AppStateInner {
             data,
             wallet,
         }
-    }
-
-    pub fn get_wallet_type(&self) -> Result<LegacyWalletType, UiError> {
-        self.wallet
-            .db
-            .get_wallet_type()
-            .map_err(UiError::WalletStorageError)
-            .and_then(|opt| opt.ok_or(UiError::WalletTypeError))
     }
 
     pub fn get_network(&self) -> Network {

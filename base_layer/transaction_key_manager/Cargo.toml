@@ -18,6 +18,7 @@ tari_utilities = { workspace = true, features = ["borsh"] }
 tari_service_framework = { workspace = true }
 tari_hashing = { workspace = true }
 tari_script = { workspace = true }
+minotari_ledger_wallet_common = { workspace = true }
 async-trait = { version = "0.1.50" }
 blake2 = "0.10"
 chacha20poly1305 = "0.10.1"

@@ -1202,7 +1202,10 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())?
             .with_memo(payment_id);
-        let sender_offset_private_key_id_self = self.resources.key_manager.get_random_key(None, true)?;
+        let sender_offset_private_key_id_self = self
+            .resources
+            .key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created sender transaction protocol");
 
         // Prepare receiver part of the transaction
@@ -1472,7 +1475,10 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_memo(payment_id.clone())
             .with_input(input.clone())?;
-        let sender_offset_private_key_id_self = self.resources.key_manager.get_random_key(None, true)?;
+        let sender_offset_private_key_id_self = self
+            .resources
+            .key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
 
         // Prepare receiver part of the transaction
 
@@ -1533,7 +1539,7 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(
+            .sign_metadata_signature_user_verified(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self.key_id,
                 &recipient_address,
@@ -2540,7 +2546,7 @@ where
             &encrypted_data,
             &minimum_value_promise,
         );
-        let sender_offset = self.resources.key_manager.get_random_key(None, true)?;
+        let sender_offset = self.resources.key_manager.get_random_key(None, None)?;
         let metadata_signature = self.resources.key_manager.get_metadata_signature(
             &commitment_mask_key.key_id,
             &PrivateKey::from(amount),
