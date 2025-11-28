@@ -434,7 +434,7 @@ where
                 let outputs = self
                     .fetch_many_outputs(&outputs)?
                     .into_iter()
-                    .map(|v| v.into())
+                    .map(|v| (v.clone(), v.into()))
                     .collect();
                 Ok(OutputManagerResponse::Outputs(outputs))
             },

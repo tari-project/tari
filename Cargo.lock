@@ -4251,6 +4251,7 @@ dependencies = [
 name = "minotari_console_wallet"
 version = "5.2.0-pre.6"
 dependencies = [
+ "anyhow",
  "chrono",
  "clap 3.2.25",
  "config",
@@ -4267,6 +4268,7 @@ dependencies = [
  "minotari_app_utilities",
  "minotari_ledger_wallet_common",
  "minotari_ledger_wallet_comms",
+ "minotari_node_wallet_client",
  "minotari_wallet",
  "qrcode",
  "rand 0.8.5",
