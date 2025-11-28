@@ -3080,10 +3080,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 &output.sender_offset_public_key,
             ) {
                 Ok(Some((commitment_mask, value, memo))) => {
-                    debug_info.push(format!(
-                        "Successfully recovered keys for UTXO with hash {}",
-                        hex
-                    ));
+                    debug_info.push(format!("Successfully recovered keys for UTXO with hash {}", hex));
                     (commitment_mask, value, memo)
                 },
                 Ok(None) => {
@@ -3100,11 +3097,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     continue;
                 },
                 Err(e) => {
-                    debug_info.push(format!(
-                        "Error recovering keys for UTXO with hash {}: {}",
-                        hex,
-                        e
-                    ));
+                    debug_info.push(format!("Error recovering keys for UTXO with hash {}: {}", hex, e));
                     results.push(ScanFeedback {
                         output_hash: hex,
                         is_found: false,
@@ -3130,11 +3123,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     wo
                 },
                 Err(e) => {
-                    debug_info.push(format!(
-                        "Error creating WalletOutput for UTXO with hash {}: {}",
-                        hex,
-                        e
-                    ));
+                    debug_info.push(format!("Error creating WalletOutput for UTXO with hash {}: {}", hex, e));
                     results.push(ScanFeedback {
                         output_hash: hex,
                         is_found: false,
@@ -3149,8 +3138,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => {
                     debug_info.push(format!(
                         "Error converting WalletOutput to TransactionOutput for UTXO with hash {}: {}",
-                        hex,
-                        e
+                        hex, e
                     ));
                     results.push(ScanFeedback {
                         output_hash: hex,
@@ -3166,10 +3154,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .await
                 .map_err(|e| Status::internal(format!("Failed to get output from Output Manager: {}", e)))?;
             if !db_result.is_empty() {
-                debug_info.push(format!(
-                    "UTXO with hash {} already exists in Output Manager",
-                    hex
-                ));
+                debug_info.push(format!("UTXO with hash {} already exists in Output Manager", hex));
                 let tx = db_result
                     .first()
                     .expect("Should not be empty, this is checked")
