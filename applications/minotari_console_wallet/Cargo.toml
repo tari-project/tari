@@ -24,6 +24,7 @@ tari_script = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
 minotari_wallet = { workspace = true, features = ["bundled_sqlite"] }
+minotari_node_wallet_client = { workspace = true }
 tari_hashing = { workspace = true }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
@@ -31,7 +32,7 @@ console-subscriber = "0.4"
 #tokio = { version = "1.36", features = ["signal", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.44", features = ["signal"] }
-
+anyhow = { workspace = true }
 blake2 = "0.10"
 chrono = { version = "0.4", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }

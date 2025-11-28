@@ -72,16 +72,16 @@ where
     }
 
     for output in outputs {
-        if !output.features().output_type.is_burn() {
+        if !output.1.features().output_type.is_burn() {
             warn!(
                 target: LOG_TARGET,
                 "NEVER HAPPEN: Output with key id {} is not a burn output, skipping",
-                output.commitment_mask_key_id()
+                output.1.commitment_mask_key_id()
             );
             continue;
         }
 
-        let output_hash = output.output_hash();
+        let output_hash = output.1.output_hash();
         let Some(burn) = db.fetch_burn_proof(&output_hash)? else {
             // OK - UTXO not burnt with claim key, so no burn proof
             debug!(

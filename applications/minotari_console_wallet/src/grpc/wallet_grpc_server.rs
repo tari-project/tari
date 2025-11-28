@@ -28,7 +28,8 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-
+use tari_common_types::types::FixedHash;
+use anyhow::anyhow;
 use futures::{
     channel::mpsc::{self, Sender},
     future,
@@ -106,6 +107,9 @@ use minotari_app_grpc::tari_rpc::{
     RescanWalletResponse,
     RevalidateRequest,
     RevalidateResponse,
+    ScanAndImportUtxosRequest,
+    ScanAndImportUtxosResponse,
+    ScanFeedback,
     SendShaAtomicSwapRequest,
     SendShaAtomicSwapResponse,
     SignMessageRequest,
@@ -128,6 +132,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateRequest,
     ValidateResponse,
 };
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
     error::WalletStorageError,
@@ -150,7 +155,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
-    transaction::{LegacyTransactionStatus, TxId},
+    transaction::{LegacyImportStatus, LegacyTransactionStatus, TxId},
     types::{
         BlockHash,
         CompressedCommitment,
@@ -166,11 +171,14 @@ use tari_hashing::WalletMessageSigningDomain;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
+    key_manager::TransactionKeyManagerInterface,
     offline_signing::models::SignedOneSidedTransactionResult,
     transaction_components::{
         memo_field::{MemoField, TxType},
         OutputFeatures,
+        TransactionOutput,
         UnblindedOutput,
+        WalletOutput,
     },
     MicroMinotari,
 };
@@ -2974,8 +2982,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 leaf_index: p.leaf_index,
             }),
             kernel: Some(proof.kernel.into()),
-            encrypted_data: output.encrypted_data().to_byte_vec(),
-            value: output.value().as_u64(),
+            encrypted_data: output.1.encrypted_data().to_byte_vec(),
+            value: output.1.value().as_u64(),
         }))
     }
 
@@ -3003,6 +3011,253 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         Ok(Response::new(RescanWalletResponse {}))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn scan_and_import_utxos(
+        &self,
+        request: Request<ScanAndImportUtxosRequest>,
+    ) -> Result<Response<ScanAndImportUtxosResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "scan_and_import_utxos: Incoming GRPC request to manually scan and import UTXOs",
+        );
+        let mut results = Vec::new();
+        let mut oms = self.wallet.output_manager_service.clone();
+        let mut tms = self.wallet.transaction_service.clone();
+        for hex in message.output_hashes {
+            let utxo = match FixedHash::from_hex(&hex) {
+                Ok(h) => h,
+                Err(e) => {
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info: vec![format!("Invalid output hash format: {}", e)],
+                    });
+                    continue;
+                },
+            };
+            let mut debug_info = Vec::new();
+            let output = match self
+                .wallet
+                .wallet_connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .fetch_utxo(utxo.to_vec())
+                .await
+                .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
+            {
+                Ok(Some(output)) => {
+                    debug_info.push(format!("Fetched UTXO with hash {} from base node", utxo.to_hex()));
+                    output
+                },
+                Ok(None) => {
+                    debug_info.push(format!("UTXO with hash {} not found on base node", utxo.to_hex()));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error fetching UTXO with hash {}: {}", utxo.to_hex(), e));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+            };
+            // we have the output, now lets try and recover this
+            let (commitment_mask, value, memo) = match self.wallet.key_manager_service.try_output_key_recovery(
+                &output.commitment,
+                &output.encrypted_data,
+                &output.sender_offset_public_key,
+            ).await {
+                Ok(Some((commitment_mask, value, memo))) => {
+                    debug_info.push(format!("Successfully recovered keys for UTXO with hash {}", hex));
+                    (commitment_mask, value, memo)
+                },
+                Ok(None) => {
+                    debug_info.push(format!(
+                        "Failed to recover keys for UTXO with hash {}, UTXO does not belong to this wallet",
+                        hex
+                    ));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error recovering keys for UTXO with hash {}: {}", hex, e));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+            };
+            // this is our output, lets try and recover the final pieces
+            let wallet_output = match WalletOutput::new_imported(
+                value,
+                commitment_mask,
+                memo,
+                output.clone(),
+                &self.wallet.key_manager_service,
+            ).await {
+                Ok(wo) => {
+                    debug_info.push(format!(
+                        "Successfully created WalletOutput for UTXO with hash {}",
+                        utxo.to_hex()
+                    ));
+                    wo
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error creating WalletOutput for UTXO with hash {}: {}", hex, e));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+            };
+            let txo = match wallet_output.to_transaction_output() {
+                Ok(txo) => txo,
+                Err(e) => {
+                    debug_info.push(format!(
+                        "Error converting WalletOutput to TransactionOutput for UTXO with hash {}: {}",
+                        hex, e
+                    ));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+            };
+            let db_result = oms
+                .get_many_outputs(vec![utxo])
+                .await
+                .map_err(|e| Status::internal(format!("Failed to get output from Output Manager: {}", e)))?;
+            if !db_result.is_empty() {
+                debug_info.push(format!("UTXO with hash {} already exists in Output Manager", hex));
+                let tx = db_result
+                    .first()
+                    .expect("Should not be empty, this is checked")
+                    .0
+                    .received_in_tx_id
+                    .unwrap_or_default();
+                results.push(ScanFeedback {
+                    output_hash: hex,
+                    is_found: true,
+                    tx_id: tx.as_u64(),
+                    debug_info,
+                });
+                continue;
+            }
+            let status = match import_output_to_oms(&mut oms, txo).await {
+                Ok(status) => {
+                    debug_info.push(format!(
+                        "Successfully imported UTXO with hash {} into Output Manager with status {:?}",
+                        utxo.to_hex(),
+                        status
+                    ));
+                    status
+                },
+                Err(e) => {
+                    debug_info.push(format!(
+                        "Error importing UTXO with hash {} into Output Manager: {}",
+                        utxo.to_hex(),
+                        e
+                    ));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                    continue;
+                },
+            };
+
+            // output is imported, lets import tx
+            let source_address = if wallet_output.is_coinbase() {
+                // It's a coinbase, so we know we mined it (we do mining with cold wallets).
+                self.wallet
+                    .get_wallet_one_sided_address().await
+                    .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
+            } else if let Some(address) = wallet_output.payment_id().get_sender_address() {
+                address
+            } else if wallet_output.payment_id().is_transaction_info() {
+                self.wallet
+                    .get_wallet_one_sided_address().await
+                    .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
+            } else {
+                TariAddress::default()
+            };
+            match tms
+                .import_utxo_with_status(
+                    wallet_output.value(),
+                    source_address,
+                    status,
+                    None,
+                    None,
+                    None,
+                    output,
+                    wallet_output.payment_id().clone(),
+                )
+                .await
+            {
+                Ok(id) => {
+                    debug_info.push(format!(
+                        "Successfully imported transaction for UTXO with hash {} into Transaction Service with tx_id \
+                         {}",
+                        utxo.to_hex(),
+                        id
+                    ));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: true,
+                        tx_id: id.as_u64(),
+                        debug_info,
+                    });
+                },
+                Err(e) => {
+                    debug_info.push(format!(
+                        "Error importing transaction for UTXO with hash {} into Transaction Service: {}",
+                        utxo.to_hex(),
+                        e
+                    ));
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info,
+                    });
+                },
+            }
+        }
+        for feedback in &results {
+            for info in &feedback.debug_info {
+                debug!(target: LOG_TARGET, "scan_and_import_utxos: {}", info);
+            }
+        }
+        Ok(Response::new(ScanAndImportUtxosResponse { feedback: results }))
     }
 }
 
@@ -3065,6 +3320,65 @@ fn simple_event(event: &str) -> TransactionEvent {
         raw_payment_id: vec![],
         user_payment_id: vec![],
     }
+}
+
+async fn import_output_to_oms<KM: TransactionKeyManagerInterface>(
+    oms: &mut OutputManagerHandle<KM>,
+    output: TransactionOutput,
+) -> Result<LegacyImportStatus, anyhow::Error> {
+    let mut found_outputs = Vec::new();
+
+    found_outputs.append(
+        &mut oms
+            .scan_outputs_for_one_sided_payments(vec![(output.clone(), None)])
+            .await?
+            .into_iter()
+            .map(|ro| -> Result<_, anyhow::Error> {
+                let status = if ro.output.is_coinbase() {
+                    LegacyImportStatus::CoinbaseUnconfirmed
+                } else {
+                    LegacyImportStatus::OneSidedUnconfirmed
+                };
+                Ok((ro.output, status, output.clone()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    );
+
+    found_outputs.append(
+        &mut oms
+            .scan_outputs_for_multisig(vec![(output.clone(), None)])
+            .await?
+            .into_iter()
+            .map(|ro| -> Result<_, anyhow::Error> {
+                let status = LegacyImportStatus::Imported;
+                Ok((ro.output, status, output.clone()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    );
+
+    found_outputs.append(
+        &mut oms
+            .scan_for_recoverable_outputs(vec![(output.clone(), None)])
+            .await?
+            .into_iter()
+            .map(|ro| -> Result<_, anyhow::Error> {
+                let status = if ro.output.is_coinbase() {
+                    LegacyImportStatus::CoinbaseUnconfirmed
+                } else {
+                    LegacyImportStatus::Imported
+                };
+                Ok((ro.output, status, output.clone()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    );
+    if found_outputs.is_empty() {
+        return Err(anyhow!("No outputs were found during import."));
+    }
+    if found_outputs.len() > 1 {
+        return Err(anyhow!("Too many outputs were found during import."));
+    }
+
+    Ok(found_outputs.first().expect("already checked for empty").1.clone())
 }
 
 #[allow(clippy::too_many_lines)]
