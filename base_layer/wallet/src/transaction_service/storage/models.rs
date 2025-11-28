@@ -602,6 +602,14 @@ impl WalletTransaction {
         }
     }
 
+    pub fn is_completed_and_outbound(&self) -> bool {
+        match self {
+            WalletTransaction::PendingInbound(_) => false,
+            WalletTransaction::PendingOutbound(_) => false,
+            WalletTransaction::Completed(tx) => tx.status.is_completed() || tx.direction.is_outbound(),
+        }
+    }
+
     pub fn is_mined(&self) -> bool {
         match self {
             WalletTransaction::PendingInbound(_) => false,

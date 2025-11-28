@@ -40,6 +40,7 @@ pub enum OutputStatus {
     ShortTermEncumberedToBeSpent,
     SpentMinedUnconfirmed,
     NotStored,
+    CancelledCompleted,
 }
 
 impl OutputStatus {
@@ -56,6 +57,7 @@ impl OutputStatus {
             Self::ShortTermEncumberedToBeSpent => 8,
             Self::SpentMinedUnconfirmed => 9,
             Self::NotStored => 10,
+            Self::CancelledCompleted => 11,
         }
     }
 }
@@ -76,6 +78,7 @@ impl TryFrom<i32> for OutputStatus {
             8 => Ok(OutputStatus::ShortTermEncumberedToBeSpent),
             9 => Ok(OutputStatus::SpentMinedUnconfirmed),
             10 => Ok(OutputStatus::NotStored),
+            11 => Ok(OutputStatus::CancelledCompleted),
             _ => Err(OutputManagerStorageError::ConversionError {
                 reason: "Was expecting value between 0 and 11 for OutputStatus".to_string(),
             }),
@@ -89,7 +92,7 @@ mod tests {
 
     #[test]
     fn to_from_int() {
-        for i in 0..=10 {
+        for i in 0..=11 {
             let status = OutputStatus::try_from(i).expect("Conversion failed");
             let i_converted = status.as_u8();
             assert_eq!(i, i32::from(i_converted));

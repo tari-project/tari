@@ -115,10 +115,17 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
     /// transaction negotiation
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;
+    /// Clear all transaction encumberances marked as long term. These are the result of an unfinished
+    /// transaction negotiation
+    fn clear_long_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;
     /// This method must take all the `outputs_to_be_spent` from the specified transaction and move them back into the
     /// `UnspentOutputs` pool. The `outputs_to_be_received`'` will be marked as cancelled inbound outputs in case they
     /// need to be recovered.
-    fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn cancel_pending_or_completed_transaction(
+        &self,
+        tx_id: TxId,
+        pending: bool,
+    ) -> Result<(), OutputManagerStorageError>;
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output

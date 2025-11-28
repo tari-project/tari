@@ -870,12 +870,15 @@ async fn cancel_transaction() {
         .await
         .unwrap();
 
-    match oms.output_manager_handle.cancel_transaction(1u64.into()).await {
+    match oms.output_manager_handle.cancel_pending_transaction(1u64.into()).await {
         Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
         _ => panic!("Value should not exist"),
     }
 
-    oms.output_manager_handle.cancel_transaction(tx_id).await.unwrap();
+    oms.output_manager_handle
+        .cancel_pending_transaction(tx_id)
+        .await
+        .unwrap();
 
     assert_eq!(
         oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(),

@@ -773,6 +773,35 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
+    fn set_completed_transaction_cancellation_status(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        match CompletedTransactionSql::find_and_set_cancelled(tx_id, cancelled, &mut conn) {
+            Ok(_) => {},
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValuesNotFound);
+            },
+            Err(e) => return Err(e),
+        }
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_completed_transaction_cancellation_status: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
+
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -2087,6 +2116,25 @@ impl CompletedTransactionSql {
             .filter(completed_transactions::status.eq(status as i32))
             .filter(completed_transactions::mined_height.ge(block_height))
             .load::<CompletedTransactionSql>(conn)?)
+    }
+
+    pub fn find_and_set_cancelled(
+        tx_id: TxId,
+        cancelled: bool,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), TransactionStorageError> {
+        diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
+            .set(UpdateCompletedTransactionSql {
+                cancelled: Some(Some(i32::from(cancelled))),
+                transaction_protocol: None,
+                send_count: None,
+                last_send_timestamp: None,
+                ..Default::default()
+            })
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+
+        Ok(())
     }
 
     /// Fetches completed transactions that have a mismatched mined status.

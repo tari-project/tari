@@ -249,10 +249,22 @@ where T: OutputManagerBackend + 'static
         self.db.clear_short_term_encumberances()
     }
 
+    /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
+    /// transaction negotiation
+    pub fn clear_long_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
+        self.db.clear_long_term_encumberances()
+    }
+
     /// When a pending transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
     /// collection.
     pub fn cancel_pending_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        self.db.cancel_pending_transaction(tx_id)
+        self.db.cancel_pending_or_completed_transaction(tx_id, true)
+    }
+
+    /// When a completed transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
+    /// collection.
+    pub fn cancel_completed_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        self.db.cancel_pending_or_completed_transaction(tx_id, false)
     }
 
     pub fn fetch_all_unspent_outputs<KM: LegacyTransactionKeyManagerInterface>(

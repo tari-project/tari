@@ -119,6 +119,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
         tx_id: TxId,
         cancelled: bool,
     ) -> Result<(), TransactionStorageError>;
+    /// Set cancellation on Completed transaction, this will update the transaction status
+    fn set_completed_transaction_cancellation_status(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<(), TransactionStorageError>;
     /// Search all pending transaction for the provided tx_id and if it exists return the public key of the counterparty
     fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
