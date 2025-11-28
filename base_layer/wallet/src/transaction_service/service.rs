@@ -3571,7 +3571,7 @@ where
         Ok(())
     }
 
-    /// Cancel a pending transaction
+    /// Cancel a completed transaction
     async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let transaction = self.db.get_any_transaction(tx_id)?;
 
