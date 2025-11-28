@@ -1916,6 +1916,7 @@ service Wallet {
   rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
   rpc GetBurnClaimProof(GetBurnClaimProofRequest) returns (GetBurnClaimProofResponse);
   rpc RescanWallet(RescanWalletRequest) returns (RescanWalletResponse);
+  rpc ScanAndImportUtxos(ScanAndImportUtxosRequest) returns (ScanAndImportUtxosResponse);
 }
 
 
@@ -2650,4 +2651,18 @@ message RescanWalletRequest {
 }
 
 message RescanWalletResponse {
+}
+
+message ScanAndImportUtxosRequest{
+  repeated bytes output_hashes = 1;
+}
+message ScanAndImportUtxosResponse{
+  repeated ScanFeedback feedback = 1;
+}
+
+message ScanFeedback{
+  bytes output_hash = 1;
+  bool is_found = 2;
+  uint64 tx_id = 3;
+  repeated string debug_info = 4;
 }
