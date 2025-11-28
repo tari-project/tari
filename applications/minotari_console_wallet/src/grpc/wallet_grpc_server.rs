@@ -3025,14 +3025,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut results = Vec::new();
         let mut oms = self.wallet.output_manager_service.clone();
         let mut tms = self.wallet.transaction_service.clone();
-        for utxo in message.output_hashes {
+        for hex in message.output_hashes {
+            let utxo = match FixedHash::from_hex(&hex) {
+                Ok(h) => h,
+                Err(e) => {
+                    results.push(ScanFeedback {
+                        output_hash: hex,
+                        is_found: false,
+                        tx_id: 0,
+                        debug_info: vec![format!("Invalid output hash format: {}", e)],
+                    });
+                    continue;
+                },
+            };
             let mut debug_info = Vec::new();
             let output = match self
                 .wallet
                 .wallet_connectivity
                 .obtain_base_node_wallet_rpc_client()
                 .await
-                .fetch_utxo(utxo.clone())
+                .fetch_utxo(utxo.to_vec())
                 .await
                 .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
             {
@@ -3043,7 +3055,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Ok(None) => {
                     debug_info.push(format!("UTXO with hash {} not found on base node", utxo.to_hex()));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3053,7 +3065,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => {
                     debug_info.push(format!("Error fetching UTXO with hash {}: {}", utxo.to_hex(), e));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3061,7 +3073,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     continue;
                 },
             };
-            // we have the output, net lets try and recover this
+            // we have the output, now lets try and recover this
             let (commitment_mask, value, memo) = match self.wallet.key_manager_service.try_output_key_recovery(
                 &output.commitment,
                 &output.encrypted_data,
@@ -3070,17 +3082,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Ok(Some((commitment_mask, value, memo))) => {
                     debug_info.push(format!(
                         "Successfully recovered keys for UTXO with hash {}",
-                        utxo.to_hex()
+                        hex
                     ));
                     (commitment_mask, value, memo)
                 },
                 Ok(None) => {
                     debug_info.push(format!(
                         "Failed to recover keys for UTXO with hash {}, UTXO does not belong to this wallet",
-                        utxo.to_hex()
+                        hex
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3090,11 +3102,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => {
                     debug_info.push(format!(
                         "Error recovering keys for UTXO with hash {}: {}",
-                        utxo.to_hex(),
+                        hex,
                         e
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3120,11 +3132,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => {
                     debug_info.push(format!(
                         "Error creating WalletOutput for UTXO with hash {}: {}",
-                        utxo.to_hex(),
+                        hex,
                         e
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3137,11 +3149,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => {
                     debug_info.push(format!(
                         "Error converting WalletOutput to TransactionOutput for UTXO with hash {}: {}",
-                        utxo.to_hex(),
+                        hex,
                         e
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3150,14 +3162,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             };
             let db_result = oms
-                .get_many_outputs(vec![FixedHash::try_from(utxo.clone())
-                    .map_err(|e| Status::internal(format!("Failed to convert hash: {}", e)))?])
+                .get_many_outputs(vec![utxo])
                 .await
                 .map_err(|e| Status::internal(format!("Failed to get output from Output Manager: {}", e)))?;
             if !db_result.is_empty() {
                 debug_info.push(format!(
                     "UTXO with hash {} already exists in Output Manager",
-                    utxo.to_hex()
+                    hex
                 ));
                 let tx = db_result
                     .first()
@@ -3166,7 +3177,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .received_in_tx_id
                     .unwrap_or_default();
                 results.push(ScanFeedback {
-                    output_hash: utxo,
+                    output_hash: hex,
                     is_found: true,
                     tx_id: tx.as_u64(),
                     debug_info,
@@ -3189,7 +3200,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         e
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
@@ -3233,7 +3244,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         id
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: true,
                         tx_id: id.as_u64(),
                         debug_info,
@@ -3246,12 +3257,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         e
                     ));
                     results.push(ScanFeedback {
-                        output_hash: utxo,
+                        output_hash: hex,
                         is_found: false,
                         tx_id: 0,
                         debug_info,
                     });
                 },
+            }
+        }
+        for feedback in &results {
+            for info in &feedback.debug_info {
+                debug!(target: LOG_TARGET, "scan_and_import_utxos: {}", info);
             }
         }
         Ok(Response::new(ScanAndImportUtxosResponse { feedback: results }))
