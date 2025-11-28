@@ -54,8 +54,6 @@ pub enum UiError {
     SendError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(String),
-    #[error("Couldn't read wallet type")]
-    WalletTypeError,
     #[error("Could not convert string into Public Key")]
     PublicKeyParseError,
 }

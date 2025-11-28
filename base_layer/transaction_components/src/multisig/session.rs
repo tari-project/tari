@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     tari_address::TariAddress,
@@ -106,7 +107,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
-        let sender_offset_key = self.key_manager.get_random_key(None, true)?;
+        let sender_offset_key = self
+            .key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
 
         let recipient_spend_key = recipient.public_spend_key();
 
@@ -153,7 +156,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key_id), payment_id.clone())?
             .with_script_key(TariKeyId::Zero)
             .with_sender_offset_public_key(sender_offset_public_key.clone())
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_key.key_id, &recipient)?
+            .sign_metadata_signature_user_verified(&self.key_manager, &sender_offset_key.key_id, &recipient)?
             .try_build(&self.key_manager)?;
 
         tx_builder.add_recipient(

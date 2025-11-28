@@ -72,7 +72,7 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager);
     let public_exess = key_manager.get_public_key_at_key_id(&p.commitment_mask_key_id).unwrap();
-    let nonce = key_manager.get_random_key(None, false).unwrap();
+    let nonce = key_manager.get_random_key(None, None).unwrap();
 
     let excess = CompressedCommitment::from_compressed_key(public_exess.clone());
     let kernel_features = KernelFeatures::create_coinbase();

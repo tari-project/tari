@@ -928,9 +928,10 @@ pub async fn command_runner(
                         };
                     let commitment = embedded_output.commitment.clone();
 
-                    let script_nonce_key = key_manager_service.get_random_key(None, true)?;
-                    let sender_offset_key = key_manager_service.get_random_key(None, true)?;
-                    let sender_offset_nonce = key_manager_service.get_random_key(None, true)?;
+                    let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
+                    let sender_offset_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
+                    let sender_offset_nonce =
+                        key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
                     let shared_secret = key_manager_service.get_diffie_hellman_shared_secret(
                         &sender_offset_key.key_id,
                         recipient_info

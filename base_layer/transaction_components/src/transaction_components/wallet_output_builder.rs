@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use derivative::Derivative;
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{ComAndPubSignature, CompressedPublicKey},
@@ -164,7 +165,7 @@ impl WalletOutputBuilder {
         &self.covenant
     }
 
-    pub fn sign_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
+    pub fn sign_metadata_signature<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
@@ -197,7 +198,7 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
-    pub fn sign_as_sender_and_receiver_verified<KM: TransactionKeyManagerInterface>(
+    pub fn sign_metadata_signature_user_verified<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
@@ -215,7 +216,7 @@ impl WalletOutputBuilder {
             &self.encrypted_data,
             &self.minimum_value_promise,
         );
-        let metadata_signature = key_manager.get_one_sided_metadata_signature(
+        let metadata_signature = key_manager.get_metadata_signature_user_verified(
             &self.commitment_mask_key_id,
             self.value,
             sender_offset_key_id,
@@ -258,7 +259,7 @@ impl WalletOutputBuilder {
         let aggregate_sender_offset_public_key = aggregated_sender_offset_public_key_shares.to_public_key()? +
             &sender_offset_public_key_self.to_public_key()?;
 
-        let ephemeral_pubkey_self = key_manager.get_random_key(None, true)?;
+        let ephemeral_pubkey_self = key_manager.get_random_key(None, Some(LedgerKeyBranch::MetadataEphemeralNonce))?;
         let aggregate_ephemeral_pubkey =
             aggregated_ephemeral_public_key_shares.to_public_key()? + &ephemeral_pubkey_self.pub_key.to_public_key()?;
 
@@ -297,6 +298,20 @@ impl WalletOutputBuilder {
         self.metadata_signed_by_receiver = true;
         self.metadata_signed_by_sender = true;
         self.sender_offset_public_key = Some(CompressedPublicKey::new_from_pk(aggregate_sender_offset_public_key));
+        Ok(self)
+    }
+
+    pub fn with_place_holder_metadata_signature<KM: TransactionKeyManagerInterface>(
+        mut self,
+        key_manager: &KM,
+        sender_offset_key_id: &TariKeyId,
+    ) -> Result<Self, TransactionError> {
+        self.metadata_signature = Some(ComAndPubSignature::default());
+        self.metadata_signed_by_receiver = true;
+        self.metadata_signed_by_sender = true;
+
+        let sender_offset_public_key = key_manager.get_public_key_at_key_id(sender_offset_key_id)?;
+        self.sender_offset_public_key = Some(sender_offset_public_key);
         Ok(self)
     }
 
@@ -353,7 +368,7 @@ mod test {
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
         assert!(kmob.clone().try_build(&key_manager).is_err());
-        let sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset.pub_key);
         assert!(kmob.clone().try_build(&key_manager).is_err());
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
@@ -362,7 +377,7 @@ mod test {
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .unwrap();
         match kmob.clone().try_build(&key_manager) {
             Ok(val) => {
@@ -398,7 +413,7 @@ mod test {
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
-        let sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset.pub_key);
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
         let kmob = kmob.with_script_key(script_key.key_id);
@@ -406,7 +421,7 @@ mod test {
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .unwrap();
         match kmob.clone().try_build(&key_manager) {
             Ok(wallet_output) => {
@@ -414,7 +429,7 @@ mod test {
                 assert!(output.verify_metadata_signature().is_ok());
 
                 // Now we can swap out the metadata signature for one built from partial sender and receiver signatures
-                let ephemeral_key = key_manager.get_random_key(None, false).unwrap();
+                let ephemeral_key = key_manager.get_random_key(None, None).unwrap();
                 let metadata_message = TransactionOutput::metadata_signature_message(&wallet_output);
 
                 let receiver_metadata_signature = key_manager

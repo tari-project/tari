@@ -105,7 +105,9 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 "/generate_kernel_merkle_proof",
                 get(handler::generate_kernel_merkle_proof::handle::<B>),
             )
-            .layer(RequestBodyLimitLayer::new(4 * 1024 * 1024))
+            // A large transaction with 2_316 inputs, 154 outputs and byte size 2_109_809 translated to 4_853_330 JSON
+            // object bytes, ~ 2.3 times larger. So we set the limit here to 2.5 times 4 MB.
+            .layer(RequestBodyLimitLayer::new(25 * 4 * 1024 * 1024 / 10))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()))

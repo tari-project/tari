@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{
@@ -62,7 +63,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     fn get_random_key(
         &self,
         encryption_key: Option<TariKeyId>,
-        ledger_key: bool,
+        ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError>;
 
     /// Gets the key id at the specified index
@@ -187,8 +188,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, KeyManagerError>;
 
-    // Look into perhaps removing all nonce here, if the signer and receiver are the same it should not be required to
-    // share or pre calc the nonces
+    // Creates a metadata signature for the output, without requiring manual user verification if on a ledger device
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -199,7 +199,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    fn get_one_sided_metadata_signature(
+    // Creates a metadata signature for the output, requiring manual user verification if on a ledger device
+    fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,

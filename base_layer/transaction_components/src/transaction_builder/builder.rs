@@ -4,11 +4,13 @@
 use std::{fmt, fmt::Debug};
 
 use log::*;
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{
+        ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
@@ -158,7 +160,7 @@ where KM: TransactionKeyManagerInterface
         sender_offset_key_id: Option<TariKeyId>,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
-        let kernel_nonce = self.key_manager.get_random_key(None, false)?;
+        let kernel_nonce = self.key_manager.get_random_key(None, None)?;
         let recipient_output = OutputPair::new(
             recipient_output,
             kernel_nonce.key_id,
@@ -179,10 +181,12 @@ where KM: TransactionKeyManagerInterface
         amount: MicroMinotari,
         output_features: OutputFeatures,
         memo_field: MemoField,
-    ) -> Result<WalletOutput, TransactionBuilderError> {
+    ) -> Result<(), TransactionBuilderError> {
         // if this is a ledger wallet, this needs to come from the ledger as it needs to sign with this key for the
         // metadata signatures
-        let sender_offset_private_key = self.key_manager.get_random_key(None, true)?;
+        let sender_offset_private_key = self
+            .key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
 
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_private_key.key_id.clone().into(),
@@ -217,20 +221,21 @@ where KM: TransactionKeyManagerInterface
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_private_key.key_id, &destination)?
+            //We add a placeholder so that we only sign the metadata signature once all fees are calculated, and the user if they are on a ledger, only gets the prompt once
+            .with_place_holder_metadata_signature(&self.key_manager, &sender_offset_private_key.key_id)?
             .try_build(&self.key_manager)?;
 
         self.add_recipient(
             destination,
-            output.clone(),
+            output,
             Some(sender_offset_private_key.key_id),
             Some(encryption_key),
         )?;
-        Ok(output)
+        Ok(())
     }
 
     pub fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
-        let nonce = self.key_manager.get_random_key(None, false)?;
+        let nonce = self.key_manager.get_random_key(None, None)?;
         let pair = OutputPair::new(input, nonce.key_id, None, None);
         self.inputs.push(pair);
         Ok(self)
@@ -248,7 +253,7 @@ where KM: TransactionKeyManagerInterface
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
-        let nonce = self.key_manager.get_random_key(None, false)?;
+        let nonce = self.key_manager.get_random_key(None, None)?;
         let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id), custom_recovery_key_id);
         self.custom_outputs.push(pair);
         Ok(self)
@@ -510,7 +515,7 @@ where KM: TransactionKeyManagerInterface
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key()?;
         let memo = self.create_change_memo(amount)?;
-        let sender_offset_public = self.key_manager.get_random_key(None, false)?;
+        let sender_offset_public = self.key_manager.get_random_key(None, None)?;
         let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
         let input_data = ExecutionStack::default();
 
@@ -561,7 +566,7 @@ where KM: TransactionKeyManagerInterface
             memo,
             &self.key_manager,
         )?;
-        let nonce = self.key_manager.get_random_key(None, false)?;
+        let nonce = self.key_manager.get_random_key(None, None)?;
         Ok(Some(OutputPair::new(
             change_wallet_output,
             nonce.key_id,
@@ -639,12 +644,14 @@ where KM: TransactionKeyManagerInterface
     }
 
     // Helper function to change the memo field and encrypted data if the fee has changed due to a change output
-    fn change_encrypted_data_if_fee_changed(
+    fn update_encrypted_data_and_metadata_sig(
         key_manager: &KM,
         output_pair: &mut OutputPair,
         final_fee: MicroMinotari,
+        recipient_address: Option<&TariAddress>,
     ) -> Result<(), TransactionBuilderError> {
         let mut memo_field = output_pair.output.payment_id().clone();
+        let mut need_update = false;
         if let Some(existing_fee) = memo_field.get_fee() {
             if existing_fee == final_fee {
                 debug!(
@@ -652,15 +659,24 @@ where KM: TransactionKeyManagerInterface
                     "[Update fee] Fee ({}) was correct for output '{}'",
                     existing_fee, output_pair.output.commitment().to_hex()
                 );
-                return Ok(());
             } else {
                 debug!(
                     target: LOG_TARGET,
                     "[Update fee] Changing fee changed from {} to {} for output '{}'",
                     existing_fee, final_fee, output_pair.output.commitment().to_hex()
                 );
+                need_update = true;
             }
-
+        }
+        if output_pair.output.metadata_signature() == &ComAndPubSignature::default() {
+            debug!(
+                target: LOG_TARGET,
+                "[Update fee] Metadata signature is a placeholder for output '{}', updating encrypted data",
+                output_pair.output.commitment().to_hex()
+            );
+            need_update = true;
+        };
+        if need_update {
             memo_field.set_fee(final_fee);
             let encrypted_data = key_manager.encrypt_data_for_recovery(
                 output_pair.output.commitment_mask_key_id(),
@@ -669,15 +685,28 @@ where KM: TransactionKeyManagerInterface
                 memo_field.clone(),
             )?;
             // This will change all the necessary fields in the wallet output
-            output_pair.output.change_encrypted_data(
-                encrypted_data,
-                output_pair
-                    .sender_offset_key_id
-                    .as_ref()
-                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
-                memo_field,
-                key_manager,
-            )?;
+            if let Some(recipient) = recipient_address {
+                output_pair.output.change_encrypted_data_with_verified_signature(
+                    encrypted_data,
+                    output_pair
+                        .sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    memo_field,
+                    recipient,
+                    key_manager,
+                )?;
+            } else {
+                output_pair.output.change_encrypted_data(
+                    encrypted_data,
+                    output_pair
+                        .sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    memo_field,
+                    key_manager,
+                )?;
+            }
         }
 
         Ok(())
@@ -708,7 +737,12 @@ where KM: TransactionKeyManagerInterface
         }
         let mut sent_outputs = Vec::new();
         for recipient in &mut self.recipient_outputs {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, &mut recipient.output, total_fee)?;
+            Self::update_encrypted_data_and_metadata_sig(
+                &self.key_manager,
+                &mut recipient.output,
+                total_fee,
+                Some(&recipient.recipient_address),
+            )?;
 
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
@@ -759,7 +793,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         for output in &mut self.custom_outputs {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, output, total_fee)?;
+            Self::update_encrypted_data_and_metadata_sig(&self.key_manager, output, total_fee, None)?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -812,7 +846,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &mut change_output {
-            Self::change_encrypted_data_if_fee_changed(&self.key_manager, change, total_fee)?;
+            Self::update_encrypted_data_and_metadata_sig(&self.key_manager, change, total_fee, None)?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
@@ -1218,7 +1252,7 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_input(input)
             .unwrap();
-        let bob_sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(
             MicroMinotari(1200) - fee - MicroMinotari(10),
@@ -1232,7 +1266,7 @@ mod test {
         .with_sender_offset_public_key(bob_public_key)
         .with_script_key(bob_key.script_key_id)
         .with_minimum_value_promise(0.into())
-        .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+        .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
         .unwrap()
         .try_build(&key_manager)
         .unwrap();
@@ -1282,7 +1316,7 @@ mod test {
             .with_fee_per_gram(MicroMinotari(20))
             .with_input(input)
             .unwrap();
-        let bob_sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
 
         let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
@@ -1294,7 +1328,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
             .unwrap()
             .try_build(&key_manager)
             .unwrap();
@@ -1335,7 +1369,7 @@ mod test {
             .unwrap()
             .with_input(input3)
             .unwrap();
-        let bob_sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
             .with_features(OutputFeatures::default())
@@ -1346,7 +1380,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
             .unwrap()
             .try_build(&key_manager)
             .unwrap();
@@ -1390,7 +1424,7 @@ mod test {
         )
         .unwrap();
 
-        let bob_output = builder
+        builder
             .add_stealth_recipient(
                 bob_address.clone(),
                 MicroMinotari(5000),
@@ -1398,6 +1432,7 @@ mod test {
                 MemoField::new_empty(),
             )
             .unwrap();
+        let bob_output = builder.recipient_outputs.last().unwrap().output.output.clone();
         let bob_sender_offset = builder
             .recipient_outputs
             .last()
@@ -1457,7 +1492,7 @@ mod test {
             .unwrap();
 
         let bob_key = TestParams::new(&key_manager);
-        let bob_sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
             .with_features(OutputFeatures::default())
@@ -1468,7 +1503,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
             .unwrap()
             .try_build(&key_manager)
             .unwrap();
@@ -1499,7 +1534,7 @@ mod test {
             .with_prevent_fee_gt_amount(false);
 
         let bob_key = TestParams::new(&key_manager);
-        let bob_sender_offset = key_manager.get_random_key(None, false).unwrap();
+        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
             .with_features(OutputFeatures::default())
@@ -1510,7 +1545,7 @@ mod test {
             .with_sender_offset_public_key(bob_public_key)
             .with_script_key(bob_key.script_key_id)
             .with_minimum_value_promise(0.into())
-            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
             .unwrap()
             .try_build(&key_manager)
             .unwrap();

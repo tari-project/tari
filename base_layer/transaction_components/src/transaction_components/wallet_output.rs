@@ -29,8 +29,10 @@ use std::{
     sync::OnceLock,
 };
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof},
 };
@@ -343,7 +345,7 @@ impl WalletOutput {
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, TransactionError> {
         if *script == script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
-            let key = key_manager.get_random_key(None, false)?;
+            let key = key_manager.get_random_key(None, None)?;
             return Ok(Some((inputs!(key.pub_key.clone()), key.key_id)));
         }
         // this is push public key script, so lets see if we know the public key
@@ -437,7 +439,8 @@ impl WalletOutput {
         let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value)?;
 
         let message = TransactionInput::build_script_signature_message(version, &self.script, &self.input_data);
-        let ephemeral_public_key_self = key_manager.get_random_key(None, true)?;
+        let ephemeral_public_key_self =
+            key_manager.get_random_key(None, Some(LedgerKeyBranch::MetadataEphemeralNonce))?;
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id)?;
         let script_public_key = CompressedPublicKey::new_from_pk(
             aggregated_script_public_key_shares.to_public_key()? + script_public_key_self.to_public_key()?,
@@ -581,6 +584,42 @@ impl WalletOutput {
             self.version,
             &metadata_message,
             self.features.range_proof_type,
+        )?;
+        self.metadata_signature = metadata_sig;
+        self.recalculate_hash();
+        Ok(())
+    }
+
+    pub fn change_encrypted_data_with_verified_signature<KM: TransactionKeyManagerInterface>(
+        &mut self,
+        encrypted_data: EncryptedData,
+        sender_offset: &TariKeyId,
+        payment_id: MemoField,
+        recipient_address: &TariAddress,
+        key_manager: &KM,
+    ) -> Result<(), TransactionError> {
+        self.input = OnceLock::new();
+        self.output = OnceLock::new();
+        self.encrypted_data = encrypted_data;
+        self.payment_id = payment_id;
+        // now we have to update the metadata signature as this has changed
+        let metadata_message_common = TransactionOutput::metadata_signature_message_common_from_parts(
+            &self.version,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            &self.minimum_value_promise,
+        );
+
+        let metadata_sig = key_manager.get_metadata_signature_user_verified(
+            &self.commitment_mask_key_id,
+            self.value,
+            sender_offset,
+            self.version,
+            &metadata_message_common,
+            self.features.range_proof_type,
+            &self.script,
+            recipient_address,
         )?;
         self.metadata_signature = metadata_sig;
         self.recalculate_hash();
