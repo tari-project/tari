@@ -199,7 +199,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    // creates a metadata signature for the output requiring manual user verification on a ledger device
+    // Creates a metadata signature for the output, requiring manual user verification if on a ledger device
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
