@@ -964,6 +964,55 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
+    fn get_broadcasted_not_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let txs = completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+            .load::<CompletedTransactionSql>(&mut conn)?;
+
+        let tx = txs.first().ok_or(TransactionStorageError::UnexpectedResult(format!(
+            "TxId:{} not found",
+            tx_id
+        )))?;
+        let tx = CompletedTransaction::try_from(tx.clone(), &self.cipher).map_err(|e| {
+            TransactionStorageError::UnexpectedResult(format!(
+                "Transaction TxId:{} could not be converted: {}",
+                tx_id, e
+            ))
+        })?;
+
+        if !tx.status.is_broadcast() {
+            return Err(TransactionStorageError::UnexpectedResult(format!(
+                "Transaction TxId:{} is not in broadcasted state, current status: {:?}",
+                tx_id, tx.status
+            )));
+        }
+        if let Some(cancelled) = tx.cancelled {
+            return Err(TransactionStorageError::UnexpectedResult(format!(
+                "Transaction TxId:{} is cancelled with reason: {:?}",
+                tx_id, cancelled
+            )));
+        }
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_broadcasted_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(tx)
+    }
+
     // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to
     // extract, thus we should not wipe it out. Coinbases can also not be mined in a different height so the data will
     // never be wrong.

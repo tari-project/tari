@@ -66,6 +66,10 @@ impl LegacyTransactionStatus {
         )
     }
 
+    pub fn is_broadcast(&self) -> bool {
+        matches!(self, LegacyTransactionStatus::Broadcast)
+    }
+
     pub fn is_confirmed(&self) -> bool {
         matches!(
             self,

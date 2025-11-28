@@ -3986,15 +3986,11 @@ where
             return Err(TransactionServiceError::ZeroFeeIncrease);
         }
 
-        let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
-            TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
-                DbKey::CompletedTransaction(tx_id),
-            ))
-        })?;
-
-        if original_transaction.status.is_mined() {
-            return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
-        }
+        let original_transaction = self
+            .resources
+            .db
+            .get_broadcasted_not_cancelled_transaction(tx_id)
+            .inspect_err(|e| warn!(target: LOG_TARGET, "replace_by_fee error: {}", e))?;
 
         let destination = original_transaction.destination_address.clone();
         let original_amount = original_transaction.amount;
@@ -4049,11 +4045,6 @@ where
     ///
     /// # Returns
     /// Returns the new transaction ID of the fee payment transaction, or an error if the operation fails.
-    ///
-    /// # Errors
-    /// * `TransactionStorageError` - If the original transaction cannot be found
-    /// * `TransactionAlreadyMined` - If the original transaction has already been mined
-    /// * `KeyManagerServiceError` - If there are issues accessing cryptographic keys
     #[allow(clippy::too_many_lines)]
     async fn user_pay_for_fee(
         &mut self,
@@ -4064,14 +4055,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
-        let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
-            TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
-                DbKey::CompletedTransaction(tx_id),
-            ))
-        })?;
-        if original_transaction.status.is_mined() {
-            return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
-        }
+        let original_transaction = self
+            .resources
+            .db
+            .get_broadcasted_not_cancelled_transaction(tx_id)
+            .inspect_err(|e| warn!(target: LOG_TARGET, "user_pay_for_fee error: {}", e))?;
 
         let all_outputs = original_transaction
             .transaction

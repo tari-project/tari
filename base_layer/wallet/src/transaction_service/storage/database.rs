@@ -71,7 +71,14 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Light weight method to retrieve pertinent unconfirmed transactions info from completed transactions
     fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError>;
 
+    /// This method returns all completed transactions that must be broadcast
     fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+
+    /// Get the broadcasted not-cancelled transaction with the given TxId
+    fn get_broadcasted_not_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError>;
 
     /// Check for presence of any form of cancelled transaction with this TxId
     fn fetch_any_cancelled_transaction(
@@ -559,24 +566,12 @@ where T: TransactionBackend + 'static
         self.db.get_transactions_to_be_broadcast()
     }
 
-    pub fn get_transaction_to_be_broadcast(
+    /// This method returns all completed transactions that must be broadcast
+    pub(crate) fn get_broadcasted_not_cancelled_transaction(
         &self,
         tx_id: TxId,
     ) -> Result<CompletedTransaction, TransactionStorageError> {
-        let key = DbKey::CompletedTransaction(tx_id);
-        let t = match self.db.fetch(&DbKey::CompletedTransaction(tx_id)) {
-            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
-            Ok(Some(DbValue::CompletedTransaction(pt))) => {
-                if pt.status == LegacyTransactionStatus::Completed && pt.status == LegacyTransactionStatus::Broadcast {
-                    Ok(pt)
-                } else {
-                    Err(TransactionStorageError::ValueNotFound(key))
-                }
-            },
-            Ok(Some(other)) => unexpected_result(key, other),
-            Err(e) => log_error(key, e),
-        }?;
-        Ok(*t)
+        self.db.get_broadcasted_not_cancelled_transaction(tx_id)
     }
 
     pub fn get_completed_transaction_cancelled_or_not(
