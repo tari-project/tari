@@ -188,7 +188,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, KeyManagerError>;
 
-    // creates a metadata signature for the output without requiring manual user verification on a ledger device
+    // Creates a metadata signature for the output, without requiring manual user verification if on a ledger device
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
