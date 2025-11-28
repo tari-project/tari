@@ -1033,7 +1033,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         }
     }
 
-    // creates a metadata signature for the output without requiring manual user verification on a ledger device
+    // Creates a metadata signature for the output without requiring manual user verification on a ledger device
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -1071,7 +1071,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(metadata_signature)
     }
 
-    // creates a metadata signature for the output requiring manual user verification on a ledger device
+    // Creates a metadata signature for the output requiring manual user verification on a ledger device
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
