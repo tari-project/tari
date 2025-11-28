@@ -566,7 +566,7 @@ where T: TransactionBackend + 'static
         self.db.get_transactions_to_be_broadcast()
     }
 
-    /// This method returns all completed transactions that must be broadcast
+    /// This method returns the broadcasted not-cancelled transaction with the given TxId
     pub(crate) fn get_broadcasted_not_cancelled_transaction(
         &self,
         tx_id: TxId,
