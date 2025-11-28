@@ -141,7 +141,7 @@ use minotari_wallet::{
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        storage::models::{self, WalletTransaction},
+        storage::models::{self, CompletedTransaction, WalletTransaction},
     },
     WalletKeyManager,
     WalletSqlite,
@@ -156,6 +156,7 @@ use tari_common_types::{
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
+        FixedHash,
         PrivateKey,
         SignatureWithDomain,
     },
@@ -181,8 +182,7 @@ use tokio::{
     time::{sleep, timeout},
 };
 use tonic::{Request, Response, Status};
-use minotari_wallet::transaction_service::storage::models::CompletedTransaction;
-use tari_common_types::types::FixedHash;
+
 use crate::{
     grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
