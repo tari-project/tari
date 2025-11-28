@@ -332,7 +332,7 @@ pub enum OutputManagerResponse<KM> {
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
     UnspentOutputs(Vec<DbWalletOutput>),
-    Outputs(Vec<WalletOutput>),
+    Outputs(Vec<(DbWalletOutput, WalletOutput)>),
     InvalidOutputs(Vec<WalletOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
@@ -744,7 +744,10 @@ where KM: LegacyTransactionKeyManagerInterface
         }
     }
 
-    pub async fn get_many_outputs(&mut self, outputs: Vec<FixedHash>) -> Result<Vec<WalletOutput>, OutputManagerError> {
+    pub async fn get_many_outputs(
+        &mut self,
+        outputs: Vec<FixedHash>,
+    ) -> Result<Vec<(DbWalletOutput, WalletOutput)>, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetManyOutputs { outputs })
