@@ -901,7 +901,9 @@ fn clip_address(address: String, max_len: u16) -> String {
         format!(
             "{}....{}",
             chars[..display_portion].iter().collect::<String>(),
-            chars[chars.len() - display_portion - adjust_odd..].iter().collect::<String>()
+            chars[chars.len() - display_portion - adjust_odd..]
+                .iter()
+                .collect::<String>()
         )
     } else {
         address
