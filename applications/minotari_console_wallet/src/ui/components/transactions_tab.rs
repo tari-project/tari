@@ -897,10 +897,11 @@ fn clip_address(address: String, max_len: u16) -> String {
     if address.chars().count() > max_len {
         let display_portion = (max_len - 4) / 2;
         let chars: Vec<char> = address.chars().collect();
+        let adjust_odd = usize::from(!max_len.is_multiple_of(2));
         format!(
             "{}....{}",
             chars[..display_portion].iter().collect::<String>(),
-            chars[chars.len() - display_portion - 1..].iter().collect::<String>()
+            chars[chars.len() - display_portion - adjust_odd..].iter().collect::<String>()
         )
     } else {
         address

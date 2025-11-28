@@ -151,7 +151,6 @@ pub(crate) const SPEND_STEP_2_SELF: &str = "step_2_for_self";
 pub(crate) const SPEND_STEP_3_SELF: &str = "step_3_for_self";
 pub(crate) const SPEND_STEP_3_PARTIES: &str = "step_3_for_parties";
 pub(crate) const SPEND_STEP_4_LEADER: &str = "step_4_for_leader_from_";
-// 182pdTyFugJYu7vDc1z7bU1t6KvoqzvKxwbfw1AcYK7X63xduDvSHsezfNgKY5xjEX4EYnC5zoqLVTv2xfzhFYgpVBMxnMyuS
 
 #[derive(Debug)]
 pub struct SentTransaction {}
