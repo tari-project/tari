@@ -32,7 +32,7 @@ use crate::{
     MicroMinotari,
 };
 
-const SUPPORTED_VERSION: &str = "3.0.0";
+const SUPPORTED_VERSION: &str = "4.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
     vec![Version::parse(SUPPORTED_VERSION).unwrap()]
@@ -196,6 +196,7 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 pub struct SignedTransaction {
     pub transaction: Transaction,
     pub sent_hashes: Vec<FixedHash>,
+    pub outputs: Vec<WalletOutput>,
     pub change_hashes: Vec<FixedHash>,
     pub change_output: Option<WalletOutput>,
     pub tx_id: TxId,

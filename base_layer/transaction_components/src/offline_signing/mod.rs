@@ -200,6 +200,7 @@ mod test {
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 2);
         assert_eq!(signed.signed_transaction.sent_hashes.len(), 1);
+        assert_eq!(signed.signed_transaction.outputs.len(), 1);
         let tx = signed.signed_transaction.transaction.clone();
 
         let factories = CryptoFactories::default();
@@ -335,6 +336,7 @@ mod test {
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 3);
         assert_eq!(signed.signed_transaction.sent_hashes.len(), 2);
+        assert_eq!(signed.signed_transaction.outputs.len(), 2);
         let tx = signed.signed_transaction.transaction.clone();
 
         let factories = CryptoFactories::default();
@@ -432,6 +434,7 @@ mod test {
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 1);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 101);
         assert_eq!(signed.signed_transaction.sent_hashes.len(), 100);
+        assert_eq!(signed.signed_transaction.outputs.len(), 100);
         let tx = signed.signed_transaction.transaction.clone();
 
         let factories = CryptoFactories::default();
@@ -553,6 +556,7 @@ mod test {
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 2);
         assert_eq!(signed.signed_transaction.sent_hashes.len(), 1);
+        assert_eq!(signed.signed_transaction.outputs.len(), 1);
         let tx = signed.signed_transaction.transaction.clone();
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
@@ -752,6 +756,7 @@ mod test {
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 1);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 1);
         assert_eq!(signed.signed_transaction.sent_hashes.len(), 1);
+        assert_eq!(signed.signed_transaction.outputs.len(), 1);
         let tx = signed.signed_transaction.transaction.clone();
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
