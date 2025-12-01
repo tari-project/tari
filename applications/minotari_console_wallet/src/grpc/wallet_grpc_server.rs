@@ -28,7 +28,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tari_common_types::types::FixedHash;
+
 use anyhow::anyhow;
 use futures::{
     channel::mpsc::{self, Sender},
@@ -161,6 +161,7 @@ use tari_common_types::{
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
+        FixedHash,
         PrivateKey,
         SignatureWithDomain,
     },
@@ -3075,11 +3076,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             };
             // we have the output, now lets try and recover this
-            let (commitment_mask, value, memo) = match self.wallet.key_manager_service.try_output_key_recovery(
-                &output.commitment,
-                &output.encrypted_data,
-                &output.sender_offset_public_key,
-            ).await {
+            let (commitment_mask, value, memo) = match self
+                .wallet
+                .key_manager_service
+                .try_output_key_recovery(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    &output.sender_offset_public_key,
+                )
+                .await
+            {
                 Ok(Some((commitment_mask, value, memo))) => {
                     debug_info.push(format!("Successfully recovered keys for UTXO with hash {}", hex));
                     (commitment_mask, value, memo)
@@ -3115,7 +3121,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 memo,
                 output.clone(),
                 &self.wallet.key_manager_service,
-            ).await {
+            )
+            .await
+            {
                 Ok(wo) => {
                     debug_info.push(format!(
                         "Successfully created WalletOutput for UTXO with hash {}",
@@ -3199,13 +3207,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let source_address = if wallet_output.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.wallet
-                    .get_wallet_one_sided_address().await
+                    .get_wallet_one_sided_address()
+                    .await
                     .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
             } else if let Some(address) = wallet_output.payment_id().get_sender_address() {
                 address
             } else if wallet_output.payment_id().is_transaction_info() {
                 self.wallet
-                    .get_wallet_one_sided_address().await
+                    .get_wallet_one_sided_address()
+                    .await
                     .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
             } else {
                 TariAddress::default()

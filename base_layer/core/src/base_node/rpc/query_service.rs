@@ -5,7 +5,10 @@ use std::cmp;
 
 use log::trace;
 use serde_valid::{validation, Validate};
-use tari_common_types::{types, types::FixedHashSizeError};
+use tari_common_types::{
+    types,
+    types::{FixedHash, FixedHashSizeError},
+};
 use tari_transaction_components::{
     rpc::{
         models,
@@ -32,7 +35,6 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
 };
-
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
 
 #[derive(Debug, Error)]
