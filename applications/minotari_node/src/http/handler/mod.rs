@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tari_core::base_node::rpc::{query_service, query_service::Error};
 use utoipa::ToSchema;
 pub mod get_header_by_height;
+pub mod get_utxo;
 pub mod get_utxos_by_block;
 pub use get_header_by_height::__path_handle as __path_get_header_by_height;
 pub mod get_tip_info;
@@ -34,6 +35,7 @@ pub fn query_service_error_to_status_code(error: query_service::Error) -> Status
         Error::HeaderHashNotFound => StatusCode::NOT_FOUND,
         Error::HeaderHeightMismatch { .. } => StatusCode::BAD_REQUEST,
         Error::General { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::OutputNotFound => StatusCode::NOT_FOUND,
     }
 }
 

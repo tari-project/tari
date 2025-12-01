@@ -57,6 +57,8 @@ pub enum Error {
     HeaderHashNotFound,
     #[error("Start header height {start_height} cannot be greater than the end header height {end_height}")]
     HeaderHeightMismatch { start_height: u64, end_height: u64 },
+    #[error("Output not found")]
+    OutputNotFound,
     #[error("A general error occurred: {0}")]
     General(anyhow::Error),
 }
@@ -521,5 +523,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             block_hash: proof.block_hash,
             leaf_index: proof.leaf_index.value() as u64,
         })
+    }
+
+    async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<models::GetUtxoResponse, Self::Error> {
+        let hash: FixedHash = request.output_hash.try_into().map_err(Error::general)?;
+        let outputs = self.db().fetch_outputs_with_spend_status_at_tip(vec![hash]).await?;
+        let output = match outputs.first() {
+            Some(Some((output, _spent))) => Some(output.clone()),
+            _ => return Err(Error::OutputNotFound),
+        };
+        Ok(models::GetUtxoResponse { output })
     }
 }

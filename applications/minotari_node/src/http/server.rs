@@ -80,6 +80,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
             .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
             .route("/get_utxos_mined_info", get(handler::get_utxos_mined_info::handle::<B>))
+            .route("/fetch_utxo", get(handler::get_utxo::handle::<B>))
             .route(
                 "/get_utxos_deleted_info",
                 get(handler::get_utxos_deleted_info::handle::<B>).layer(DefaultBodyLimit::disable()),
