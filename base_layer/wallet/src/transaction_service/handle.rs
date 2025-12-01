@@ -247,7 +247,8 @@ pub enum TransactionServiceRequest {
         MicroMinotari,
         MemoField,
     ),
-    CancelTransaction(TxId),
+    CancelPendingTransaction(TxId),
+    CancelCompletedTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroMinotari,
         source_address: TariAddress,
@@ -490,7 +491,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SendShaAtomicSwapTransaction(k, _, v, _, id) => {
                 write!(f, "SendShaAtomicSwapTransaction (to {k}, {v}, {id})")
             },
-            Self::CancelTransaction(t) => write!(f, "CancelTransaction ({t})"),
+            Self::CancelPendingTransaction(t) => write!(f, "CancelPendingTransaction ({t})"),
+            Self::CancelCompletedTransaction(t) => write!(f, "CancelCompletedTransaction ({t})"),
             Self::ImportUtxoWithStatus {
                 amount,
                 source_address,
@@ -1350,16 +1352,31 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+    pub async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::CancelTransaction(tx_id))
+            .call(TransactionServiceRequest::CancelPendingTransaction(tx_id))
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::CancelTransaction({e})"))??
         {
             TransactionServiceResponse::TransactionCancelled => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::CancelTransaction".to_string(),
+            )),
+        }
+    }
+
+    pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CancelCompletedTransaction(tx_id))
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::CancelCompletedTransaction({e})"),
+            )?? {
+            TransactionServiceResponse::TransactionCancelled => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::CancelCompletedTransaction".to_string(),
             )),
         }
     }

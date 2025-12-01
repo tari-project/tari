@@ -120,7 +120,7 @@ where
                 return Ok(self.tx_id);
             }
             if let Err(e) = check_transaction_size(&completed_tx.transaction, self.tx_id) {
-                self.cancel_transaction(TxCancellationReason::Oversized).await;
+                self.cancel_pending_transaction(TxCancellationReason::Oversized).await;
                 return Err(e);
             }
 
@@ -230,7 +230,7 @@ where
                 ),
             };
 
-            self.cancel_transaction(reason).await;
+            self.cancel_pending_transaction(reason).await;
 
             let _size = self
                 .resources
@@ -326,7 +326,8 @@ where
                     "Transaction (TxId: {}) has been {}, cancelling transaction",
                     self.tx_id, reason,
                 );
-                self.cancel_transaction(TxCancellationReason::InvalidTransaction).await;
+                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction)
+                    .await;
 
                 let _size = self
                     .resources
@@ -383,22 +384,23 @@ where
         }
     }
 
-    async fn cancel_transaction(&mut self, reason: TxCancellationReason) {
+    async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason) {
         if let Err(e) = self
             .resources
             .output_manager_service
-            .cancel_transaction(self.tx_id)
+            .cancel_pending_transaction(self.tx_id)
             .await
         {
             warn!(
                 target: LOG_TARGET,
-                "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
+                "Failed to Cancel pending outputs for TxId: {} after failed sending attempt with error {:?}",
+                self.tx_id, e
             );
         }
         if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason) {
             warn!(
                 target: LOG_TARGET,
-                "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
+                "Failed to Cancel pending TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
             );
         }
     }

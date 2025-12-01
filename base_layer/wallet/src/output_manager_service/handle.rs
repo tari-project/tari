@@ -121,7 +121,8 @@ pub enum OutputManagerRequest {
         payment_id: MemoField,
         minimum_value_promise: MicroMinotari,
     },
-    CancelTransaction(TxId),
+    CancelPendingTransaction(TxId),
+    CancelCompletedTransaction(TxId),
     GetSpentOutputs,
     GetOutputsByQuery(OutputBackendQuery),
     GetUnspentOutputs,
@@ -237,7 +238,8 @@ impl fmt::Display for OutputManagerRequest {
             GetTransactionBuilder { .. } => write!(f, "GetTransactionBuilder "),
             GetTransactionBuilderRangeLimitedCoinJoin { .. } => write!(f, "GetTransactionBuilderRangeLimitedCoinJoin "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
-            CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
+            CancelPendingTransaction(v) => write!(f, "CancelPendingTransaction ({v})"),
+            CancelCompletedTransaction(v) => write!(f, "CancelCompletedTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
@@ -711,16 +713,30 @@ where KM: LegacyTransactionKeyManagerInterface
         }
     }
 
-    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::CancelTransaction(tx_id))
+            .call(OutputManagerRequest::CancelPendingTransaction(tx_id))
             .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::CancelTransaction({e})"))??
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::CancelPendingTransaction({e})"))??
         {
             OutputManagerResponse::TransactionCancelled => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
-                "OutputManagerRequest::CancelTransaction".to_string(),
+                "OutputManagerRequest::CancelPendingTransaction".to_string(),
+            )),
+        }
+    }
+
+    pub async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CancelCompletedTransaction(tx_id))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::CancelCompletedTransaction({e})"))??
+        {
+            OutputManagerResponse::TransactionCancelled => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::CancelCompletedTransaction".to_string(),
             )),
         }
     }

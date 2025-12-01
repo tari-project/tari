@@ -2292,20 +2292,64 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Incoming gRPC request to Cancel Transaction (TxId: {})", message.tx_id,
         );
         let mut transaction_service = self.get_transaction_service();
+        let txn = transaction_service
+            .get_any_transaction(message.tx_id.into())
+            .await
+            .map_err(|e| Status::internal(format!("{}", e)))?
+            .ok_or(Status::not_found(format!(
+                "Transaction TxId:{} is not found",
+                message.tx_id
+            )))?;
 
-        match transaction_service.cancel_transaction(message.tx_id.into()).await {
-            Ok(_) => {
-                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
-                    is_success: true,
-                    failure_message: "".to_string(),
-                }))
-            },
-            Err(e) => {
-                return Ok(Response::new(tari_rpc::CancelTransactionResponse {
-                    is_success: false,
-                    failure_message: e.to_string(),
-                }))
-            },
+        if txn.status().is_pending() {
+            match transaction_service
+                .cancel_pending_transaction(message.tx_id.into())
+                .await
+            {
+                Ok(_) => {
+                    return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                        is_success: true,
+                        failure_message: "".to_string(),
+                    }))
+                },
+                Err(e) => {
+                    return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    }))
+                },
+            }
+        } else if txn.status().is_completed() {
+            if !message.force_if_completed {
+                return Err(Status::out_of_range(format!(
+                    "Transaction TxId:{} is Completed and not Pending. To cancel a completed transaction, set \
+                     'force_if_completed' to true",
+                    message.tx_id
+                )));
+            }
+            match transaction_service
+                .cancel_completed_transaction(message.tx_id.into())
+                .await
+            {
+                Ok(_) => {
+                    return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                        is_success: true,
+                        failure_message: "".to_string(),
+                    }))
+                },
+                Err(e) => {
+                    return Ok(Response::new(tari_rpc::CancelTransactionResponse {
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    }))
+                },
+            }
+        } else {
+            Err(Status::out_of_range(format!(
+                "Transaction TxId:{} has status {:?} which cannot be cancelled",
+                message.tx_id,
+                txn.status()
+            )))
         }
     }
 

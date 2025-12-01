@@ -1240,6 +1240,8 @@ service Wallet {
   // ### Request Parameters:
   //
   // - **tx_id**: The unique identifier for the transaction to be cancelled (uint64).
+  // - **force_if_completed**: Force cancelling a completed transaction, otherwise it is only applicable to pending
+  //                           transactions (bool).
   //
   // ### Response Fields:
   //
@@ -2328,6 +2330,8 @@ message CreateTemplateRegistrationResponse {
 message CancelTransactionRequest {
   // The transaction ID to be cancelled.
   uint64 tx_id = 1;
+  // Force cancelling a completed transaction, otherwise it is only applicable to pending transactions.
+  bool force_if_completed = 2;
 }
 
 // Response message for the CancelTransaction RPC.

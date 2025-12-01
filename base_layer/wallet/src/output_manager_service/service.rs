@@ -405,8 +405,11 @@ where
                 self.confirm_encumberance(tx_id, tx_id_update, change_outputs)
                     .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
             },
-            OutputManagerRequest::CancelTransaction(tx_id) => self
-                .cancel_transaction(tx_id)
+            OutputManagerRequest::CancelPendingTransaction(tx_id) => self
+                .cancel_pending_transaction(tx_id)
+                .map(|_| OutputManagerResponse::TransactionCancelled),
+            OutputManagerRequest::CancelCompletedTransaction(tx_id) => self
+                .cancel_completed_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
             OutputManagerRequest::GetSpentOutputs => {
                 let outputs = self.fetch_spent_outputs()?;
@@ -1690,12 +1693,21 @@ where
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
-    pub fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Cancelling pending transaction outputs for TxId: {tx_id}"
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id)?)
+    }
+
+    /// Cancel a completed transaction and place the encumbered outputs back into the unspent pool
+    pub fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Cancelling completed transaction outputs for TxId: {tx_id}"
+        );
+        Ok(self.resources.db.cancel_completed_transaction_outputs(tx_id)?)
     }
 
     /// Restore the pending transaction encumberance and output for an inbound transaction that was previously

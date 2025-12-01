@@ -8073,7 +8073,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
         (*wallet)
             .wallet
             .transaction_service
-            .cancel_transaction(TxId::from(transaction_id)),
+            .cancel_pending_transaction(TxId::from(transaction_id)),
     ) {
         Ok(_) => true,
         Err(e) => {

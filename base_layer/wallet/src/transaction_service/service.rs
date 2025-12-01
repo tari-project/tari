@@ -1170,9 +1170,17 @@ where
                 .await
             },
 
-            TransactionServiceRequest::CancelTransaction(tx_id) => {
+            TransactionServiceRequest::CancelPendingTransaction(tx_id) => {
                 async {
                     self.cancel_pending_transaction(tx_id).await?;
+                    Ok(TransactionServiceResponse::TransactionCancelled)
+                }
+                .await
+            },
+
+            TransactionServiceRequest::CancelCompletedTransaction(tx_id) => {
+                async {
+                    self.cancel_completed_transaction(tx_id).await?;
                     Ok(TransactionServiceResponse::TransactionCancelled)
                 }
                 .await
@@ -3527,7 +3535,69 @@ where
         let _unused = self
             .resources
             .output_manager_service
-            .cancel_transaction(tx_id)
+            .cancel_pending_transaction(tx_id)
+            .await
+            .inspect_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Locked UTXO's could not be unlocked: {e:?}"
+                );
+            });
+
+        if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
+            let _result = cancellation_sender.send(());
+        }
+
+        if let Some(cancellation_sender) = self.receiver_transaction_cancellation_senders.remove(&tx_id) {
+            let _result = cancellation_sender.send(());
+        }
+        let _public_key = self.finalized_transaction_senders.remove(&tx_id);
+
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                tx_id,
+                TxCancellationReason::UserCancelled,
+            )))
+            .inspect_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event because there are no subscribers: {e:?}"
+                );
+            });
+
+        info!(target: LOG_TARGET, "Pending Transaction (TxId: {tx_id}) cancelled");
+
+        Ok(())
+    }
+
+    /// Cancel a completed transaction
+    async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        let transaction = self.db.get_any_transaction(tx_id)?;
+
+        if let Some(transaction) = transaction {
+            if transaction.is_mined() {
+                return Err(TransactionServiceError::FailedToCancelTransaction(format!(
+                    "Invalid transaction status: {}",
+                    transaction.status()
+                )));
+            }
+        };
+
+        let _unused = self
+            .db
+            .reject_completed_transaction(tx_id, TxCancellationReason::UserCancelled)
+            .inspect_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Completed Transaction does not exist and could not be cancelled: {e:?}"
+                );
+            });
+
+        let _unused = self
+            .resources
+            .output_manager_service
+            .cancel_completed_transaction(tx_id)
             .await
             .inspect_err(|e| {
                 warn!(
@@ -4145,7 +4215,12 @@ where
     }
 
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {
-        if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
+        if let Err(e) = self
+            .resources
+            .output_manager_service
+            .cancel_pending_transaction(tx_id)
+            .await
+        {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel outputs for TxId: {tx_id} after failed sending attempt with error {e:?}"

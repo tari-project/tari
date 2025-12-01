@@ -66,6 +66,14 @@ impl LegacyTransactionStatus {
         )
     }
 
+    pub fn is_pending(&self) -> bool {
+        matches!(self, LegacyTransactionStatus::Pending)
+    }
+
+    pub fn is_completed(&self) -> bool {
+        matches!(self, LegacyTransactionStatus::Completed)
+    }
+
     pub fn is_confirmed(&self) -> bool {
         matches!(
             self,
@@ -300,6 +308,12 @@ pub enum TransactionDirection {
     Inbound,
     Outbound,
     Unknown,
+}
+
+impl TransactionDirection {
+    pub fn is_outbound(&self) -> bool {
+        matches!(self, TransactionDirection::Outbound)
+    }
 }
 
 #[derive(Debug, Error)]
