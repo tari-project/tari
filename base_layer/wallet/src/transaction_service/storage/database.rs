@@ -567,7 +567,7 @@ where T: TransactionBackend + 'static
         let t = match self.db.fetch(&DbKey::CompletedTransaction(tx_id)) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::CompletedTransaction(pt))) => {
-                if pt.status == LegacyTransactionStatus::Completed && pt.status == LegacyTransactionStatus::Broadcast {
+                if pt.status == LegacyTransactionStatus::Completed || pt.status == LegacyTransactionStatus::Broadcast {
                     Ok(pt)
                 } else {
                     Err(TransactionStorageError::ValueNotFound(key))
