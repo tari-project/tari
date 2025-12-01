@@ -95,12 +95,15 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
         change_output_hashes,
         change,
         tx_id,
+        sent_outputs,
         ..
     } = finalized_tx;
+    let outputs = sent_outputs.iter().map(|o| o.output.clone()).collect();
 
     Ok(SignedTransaction {
         transaction,
         sent_hashes: sent_output_hashes,
+        outputs,
         change_hashes: change_output_hashes,
         change_output: change,
         tx_id,
@@ -150,12 +153,15 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         change_output_hashes,
         change,
         tx_id,
+        sent_outputs,
         ..
     } = finalized_tx;
+    let outputs = sent_outputs.iter().map(|o| o.output.clone()).collect();
 
     Ok(SignedTransaction {
         transaction,
         sent_hashes: sent_output_hashes,
+        outputs,
         change_hashes: change_output_hashes,
         change_output: change,
         tx_id,
@@ -260,11 +266,15 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         change_output_hashes,
         change,
         tx_id,
+        sent_outputs,
         ..
     } = finalized_tx;
+    let outputs = sent_outputs.iter().map(|o| o.output.clone()).collect();
+
     Ok(SignedTransaction {
         transaction,
         sent_hashes: sent_output_hashes,
+        outputs,
         change_hashes: change_output_hashes,
         change_output: change,
         tx_id,
