@@ -195,13 +195,6 @@ where
             .map_err(OutputManagerError::from)
     }
 
-    pub fn clear_long_term_encumberances(&self) -> Result<(), OutputManagerError> {
-        self.resources
-            .db
-            .clear_long_term_encumberances()
-            .map_err(OutputManagerError::from)
-    }
-
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
         let request_stream = self
             .request_stream
@@ -543,9 +536,6 @@ where
             OutputManagerRequest::ClearShortTermEncumberances => self
                 .clear_short_term_encumberances()
                 .map(|_| OutputManagerResponse::ClearShortTermEncumberances),
-            OutputManagerRequest::ClearLongTermEncumberances => self
-                .clear_long_term_encumberances()
-                .map(|_| OutputManagerResponse::ClearLongTermEncumberances),
         }
     }
 

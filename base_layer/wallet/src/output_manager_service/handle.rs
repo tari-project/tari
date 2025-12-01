@@ -168,7 +168,6 @@ pub enum OutputManagerRequest {
     GetOutputInfoByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
     ClearShortTermEncumberances,
-    ClearLongTermEncumberances,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -295,7 +294,6 @@ impl fmt::Display for OutputManagerRequest {
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
             FetchUnspentOutputs(hashes) => write!(f, "FetchUnspentOutputs: {:?}", hashes),
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
-            ClearLongTermEncumberances => write!(f, "ClearLongTermEncumberances"),
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
             ScanOutputsForMultisig(_) => write!(f, "ScanOutputsForMultisig"),
             GetManyOutputs { outputs } => write!(f, "GetManyOutputs ({})", outputs.len()),
@@ -357,7 +355,6 @@ pub enum OutputManagerResponse<KM> {
     FetchUnspentOutputs(Vec<TransactionOutput>),
     ConfirmEncumberance,
     ClearShortTermEncumberances,
-    ClearLongTermEncumberances,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -1244,20 +1241,6 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::ClearShortTermEncumberances => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::ClearShortTermEncumberances".to_string(),
-            )),
-        }
-    }
-
-    pub async fn clear_long_term_encumberances(&mut self) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ClearLongTermEncumberances)
-            .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ClearLongTermEncumberances({e})"))??
-        {
-            OutputManagerResponse::ClearLongTermEncumberances => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse(
-                "OutputManagerRequest::ClearLongTermEncumberances".to_string(),
             )),
         }
     }

@@ -1004,38 +1004,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn clear_long_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        conn.transaction::<_, _, _>(|conn| {
-            diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32)))
-                .set((
-                    outputs::status.eq(OutputStatus::CancelledInbound as i32),
-                    outputs::last_validation_timestamp
-                        .eq(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc()),
-                ))
-                .execute(conn)?;
-
-            diesel::update(outputs::table.filter(outputs::status.eq(OutputStatus::EncumberedToBeSpent as i32)))
-                .set((outputs::status.eq(OutputStatus::Unspent as i32),))
-                .execute(conn)
-        })?;
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - clear_long_term_encumberances: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
     fn get_last_mined_output<KM: LegacyTransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
@@ -1176,11 +1144,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     );
                     output.update(
                         UpdateOutput {
-                            status: if pending {
-                                Some(OutputStatus::CancelledInbound)
-                            } else {
-                                Some(OutputStatus::CancelledCompleted)
-                            },
+                            status: Some(OutputStatus::CancelledInbound),
                             last_validation_timestamp: Some(Some(
                                 DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc(),
                             )),

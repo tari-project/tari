@@ -3582,14 +3582,6 @@ where
                     transaction.status()
                 )));
             }
-
-            if transaction.is_completed() {
-                self.resources
-                    .output_manager_service
-                    .clear_long_term_encumberances()
-                    .await
-                    .map_err(TransactionServiceError::from)?
-            };
         };
 
         let _unused = self
