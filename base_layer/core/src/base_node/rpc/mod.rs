@@ -74,10 +74,15 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 
     async fn transaction_query(&self, signature: models::Signature) -> Result<models::TxQueryResponse, Self::Error>;
 
-    async fn sync_utxos_by_block(
+    async fn sync_utxos_by_block_v0(
         &self,
         request: models::SyncUtxosByBlockRequest,
-    ) -> Result<models::SyncUtxosByBlockResponse, Self::Error>;
+    ) -> Result<models::SyncUtxosByBlockResponseV0, Self::Error>;
+
+    async fn sync_utxos_by_block_v1(
+        &self,
+        request: models::SyncUtxosByBlockRequest,
+    ) -> Result<models::SyncUtxosByBlockResponseV1, Self::Error>;
 
     async fn get_utxos_deleted_info(
         &self,
