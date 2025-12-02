@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::net::IpAddr;
+
 use tari_core::{
     base_node::{
         rpc::{query_service, BaseNodeWalletQueryService},

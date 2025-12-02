@@ -21,10 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    net::IpAddr,
     path::{Path, PathBuf},
     time::Duration,
 };
-use std::net::IpAddr;
+
 use config::Config;
 use serde::{Deserialize, Serialize};
 use tari_common::{
