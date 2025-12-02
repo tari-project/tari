@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{cmp, str::FromStr, sync::Arc};
-
 use log::*;
 use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
 use tari_common::{
@@ -309,6 +308,7 @@ where B: BlockchainBackend + 'static
         // wallet http server
         let wallet_http_server = create_base_node_wallet_http_server(
             wallet_query_service_config.port,
+            wallet_query_service_config.local_ip.clone().unwrap_or("127.0.0.1".parse().expect("should not fail")),
             db.clone(),
             handles.expect_handle::<StateMachineHandle>(),
             handles.expect_handle::<MempoolHandle>(),

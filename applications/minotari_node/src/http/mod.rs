@@ -1,6 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::net::IpAddr;
 use tari_core::{
     base_node::{
         rpc::{query_service, BaseNodeWalletQueryService},
@@ -19,6 +20,7 @@ pub use cache_config::HttpCacheConfig;
 
 pub fn create_base_node_wallet_http_server<B: BlockchainBackend + 'static>(
     port: u16,
+    local_ip: IpAddr,
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     mempool: MempoolHandle,
@@ -27,6 +29,7 @@ pub fn create_base_node_wallet_http_server<B: BlockchainBackend + 'static>(
 ) -> server::Server<impl BaseNodeWalletQueryService> {
     server::Server::new(
         port,
+        local_ip,
         query_service::Service::new(db, state_machine, mempool.clone()),
         mempool,
         shutdown_signal,
