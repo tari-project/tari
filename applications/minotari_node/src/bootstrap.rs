@@ -311,7 +311,7 @@ where B: BlockchainBackend + 'static
             wallet_query_service_config.port,
             wallet_query_service_config
                 .local_ip
-                .unwrap_or("127.0.0.1".parse().expect("should not fail")),
+                .unwrap_or("0.0.0.0".parse().expect("should not fail")),
             db.clone(),
             handles.expect_handle::<StateMachineHandle>(),
             handles.expect_handle::<MempoolHandle>(),
