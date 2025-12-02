@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use serde::{Deserialize, Serialize};
 use serde_valid::Validate;
+use tari_utilities::hex::Hex;
 use utoipa::ToSchema;
 
 #[derive(Serialize, Deserialize, Validate, Debug)]
@@ -58,7 +59,7 @@ impl From<SyncUtxosByBlockResponseV1> for SyncUtxosByBlockResponseV0 {
         Self {
             blocks,
             has_next_page: value.has_next_page,
-            next_header_to_scan: value.next_header_to_scan,
+            next_header_to_scan: Vec::<u8>::from_hex(&value.next_header_to_scan).unwrap_or_default(),
         }
     }
 }
@@ -67,7 +68,7 @@ impl From<SyncUtxosByBlockResponseV1> for SyncUtxosByBlockResponseV0 {
 pub struct SyncUtxosByBlockResponseV1 {
     pub blocks: Vec<BlockUtxoInfoBase64>,
     pub has_next_page: bool,
-    pub next_header_to_scan: Vec<u8>,
+    pub next_header_to_scan: String,
 }
 
 impl From<SyncUtxosByBlockResponseV0> for SyncUtxosByBlockResponseV1 {
@@ -101,7 +102,7 @@ impl From<SyncUtxosByBlockResponseV0> for SyncUtxosByBlockResponseV1 {
         Self {
             blocks,
             has_next_page: value.has_next_page,
-            next_header_to_scan: value.next_header_to_scan,
+            next_header_to_scan: value.next_header_to_scan.to_hex(),
         }
     }
 }
