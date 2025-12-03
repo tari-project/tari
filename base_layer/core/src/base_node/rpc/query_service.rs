@@ -626,6 +626,7 @@ mod tests {
             limit: 4,
             page: 0,
             exclude_spent: false,
+            version: 0,
         };
         let err = service.fetch_utxos(req).await.unwrap_err();
         match err {
