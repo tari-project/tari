@@ -37,6 +37,7 @@ use tari_transaction_components::{
         GenerateKernelMerkleProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
+        SyncUtxosByBlockResponseV0,
         TxSubmissionResponse,
     },
     transaction_components::{Transaction, TransactionOutput},
@@ -44,7 +45,7 @@ use tari_transaction_components::{
 use tari_utilities::ByteArray;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
-use tari_transaction_components::rpc::models::{SyncUtxosByBlockResponseV0};
+
 use crate::support::comms_rpc::UtxosByBlock;
 
 #[derive(Default)]
