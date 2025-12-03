@@ -3198,13 +3198,53 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .await
                 .map_err(|e| Status::internal(format!("Failed to get output from Output Manager: {}", e)))?;
             if !db_result.is_empty() {
+                let db_output = &db_result.first().expect("Should not be empty, this is checked").0;
                 debug_info.push(format!("UTXO with hash {} already exists in Output Manager", hex));
-                let tx = db_result
-                    .first()
-                    .expect("Should not be empty, this is checked")
-                    .0
-                    .received_in_tx_id
-                    .unwrap_or_default();
+                match (db_output.mined_in_block, db_output.mined_timestamp) {
+                    (Some(hash), Some(_)) => {
+                        debug_info.push(format!("UTXO with hash {} is already mined in block: {}", hex, hash));
+                    },
+                    _ => {
+                        debug_info.push(format!("UTXO with hash {} is unmined, according to wallet", hex));
+                    },
+                }
+                match (db_output.marked_deleted_in_block, db_output.marked_deleted_at_height) {
+                    (Some(hash), Some(height)) => {
+                        debug_info.push(format!(
+                            "UTXO with hash {} is marked deleted at height: {} in block: {}",
+                            hex, height, hash
+                        ));
+                    },
+                    (None, None) => {},
+                    _ => {
+                        debug_info.push(format!("UTXO with hash {} is has inconsistent mined data", hex));
+                    },
+                }
+                if let Some(tx_id) = db_output.received_in_tx_id {
+                    let tx = tms.get_any_transaction(tx_id).await;
+                    match tx {
+                        Ok(Some(tx)) => {
+                            debug_info.push(format!("UTXO is associated with transaction {}", tx));
+                        },
+                        Ok(None) => {
+                            debug_info.push(format!(
+                                "UTXO is associated with transaction id: {} but transaction not found in Transaction \
+                                 Service",
+                                tx_id.as_u64()
+                            ));
+                        },
+                        Err(e) => {
+                            debug_info.push(format!(
+                                "Error fetching transaction id: {} associated with UTXO: {}: {}",
+                                tx_id.as_u64(),
+                                hex,
+                                e
+                            ));
+                        },
+                    }
+                }
+
+                let tx = db_output.received_in_tx_id.unwrap_or_default();
                 results.push(ScanFeedback {
                     output_hash: hex,
                     is_found: true,
