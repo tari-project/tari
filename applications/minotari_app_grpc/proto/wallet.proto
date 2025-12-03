@@ -2345,6 +2345,7 @@ message CancelTransactionResponse {
 
 message RevalidateRequest{
   bool only_rejected = 1;
+  bool revalidate_outputs = 2;
 }
 
 message RevalidateResponse{}
