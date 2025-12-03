@@ -37,7 +37,6 @@ use tari_transaction_components::{
         GenerateKernelMerkleProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
-        SyncUtxosByBlockResponse,
         TxSubmissionResponse,
     },
     transaction_components::{Transaction, TransactionOutput},
@@ -45,7 +44,7 @@ use tari_transaction_components::{
 use tari_utilities::ByteArray;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
-
+use tari_transaction_components::rpc::models::{SyncUtxosByBlockResponseV0};
 use crate::support::comms_rpc::UtxosByBlock;
 
 #[derive(Default)]
@@ -250,7 +249,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         &self,
         start_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
-    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error> {
+    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponseV0, Error>>, Error> {
         let (tx, rx) = mpsc::channel(100);
         let state2 = self.state.read().await;
 
@@ -296,7 +295,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                 }
                 if blocks.len() >= page_size || height == end_height {
                     let has_next_page = height < end_height;
-                    let response = SyncUtxosByBlockResponse {
+                    let response = SyncUtxosByBlockResponseV0 {
                         blocks: blocks.clone(),
                         has_next_page,
                         next_header_to_scan: vec![],
