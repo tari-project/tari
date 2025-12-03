@@ -2343,7 +2343,9 @@ message CancelTransactionResponse {
   string failure_message = 2;
 }
 
-message RevalidateRequest{}
+message RevalidateRequest{
+  bool only_rejected = 1;
+}
 
 message RevalidateResponse{}
 

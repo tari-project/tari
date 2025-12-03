@@ -563,8 +563,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn revalidate_all_transactions(
         &self,
-        _request: Request<RevalidateRequest>,
+        request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
+        let mut tms = self.wallet.transaction_service.clone();
+        if request.into_inner().only_rejected {
+            tms.revalidate_rejected_transactions().await.map_err(|e| {
+                Status::internal(format!("Failed to revalidate rejected transactions: {}", e.to_string()))
+            })?;
+        } else {
+            tms.revalidate_all_transactions()
+                .await
+                .map_err(|e| Status::internal(format!("Failed to revalidate all transactions: {}", e.to_string())))?;
+        }
+
         Ok(Response::new(RevalidateResponse {}))
     }
 

@@ -266,6 +266,7 @@ pub enum TransactionServiceRequest {
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
     ReValidateRejectedTransactions,
+    ReValidateTransactions,
     ReplaceByFee {
         tx_id: TxId,
         fee_increase: MicroMinotari,
@@ -515,6 +516,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({t})"),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
+            Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::ReplaceByFee { tx_id, fee_increase } => {
                 write!(f, "ReplaceByFee(tx_id: {tx_id}, fee_increase: {fee_increase})")
             },
@@ -1647,6 +1649,20 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::LowPowerModeSet => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::SetLowPowerMode".to_string(),
+            )),
+        }
+    }
+
+    pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReValidateTransactions)
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ReValidateTransactions({e})"))??
+        {
+            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::ReValidateTransactions".to_string(),
             )),
         }
     }
