@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    net::IpAddr,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -168,6 +169,8 @@ pub struct BaseNodeConfig {
 pub struct WalletHttpServiceConfig {
     /// Port that the local wallet query service will listen on.
     pub port: u16,
+    #[serde(default)]
+    pub local_ip: Option<IpAddr>,
     /// The external address of the wallet query service.
     /// This must be accessible (if set) from the internet to let other peers connect to that.
     /// Also this address will be sent to peers when requesting for the query service URL (via RPC call).
@@ -182,6 +185,7 @@ impl Default for WalletHttpServiceConfig {
         let port = wallet_http_service_default_port(Network::get_current());
         Self {
             port,
+            local_ip: None,
             external_address: Some(
                 Url::parse(format!("http://127.0.0.1:{port}").as_str()).expect("This should be a valid URL"),
             ),
