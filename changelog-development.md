@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-pre.7](https://github.com/tari-project/tari/compare/v5.2.0-pre.6...v5.2.0-pre.7) (2025-12-04)
+
+
+### Features
+
+* add cancel completed transaction to grpc method ([#7614](https://github.com/tari-project/tari/issues/7614)) ([ea5ef36](https://github.com/tari-project/tari/commit/ea5ef368085b1f2d6d693f2825fef87a8f48fdfa))
+* add option to manually try import of blockchain outputs ([#7613](https://github.com/tari-project/tari/issues/7613)) ([69394ab](https://github.com/tari-project/tari/commit/69394ab8794d3ad805a1283ae1b3c79b5094ed59))
+* add outputs to offline signing response ([#7617](https://github.com/tari-project/tari/issues/7617)) ([9406e48](https://github.com/tari-project/tari/commit/9406e482007ac8b8c63db8b76fd8fd92d244ca09))
+* improve scanning feedback ([#7622](https://github.com/tari-project/tari/issues/7622)) ([0868273](https://github.com/tari-project/tari/commit/086827329e72a1d24ad1f94df7a9b79d19c4474b))
+* reduce scanning size ([#7619](https://github.com/tari-project/tari/issues/7619)) ([37a8ced](https://github.com/tari-project/tari/commit/37a8ced5c9a1da71daaac46fcd8aa338a5641c81))
+
+
+### Bug Fixes
+
+* console wallet address display overrun ([#7607](https://github.com/tari-project/tari/issues/7607)) ([3b93201](https://github.com/tari-project/tari/commit/3b93201077e2a248202d628fee7d0099baab3976))
+* grpc re-validation trigger ([#7621](https://github.com/tari-project/tari/issues/7621)) ([3e8afb2](https://github.com/tari-project/tari/commit/3e8afb295b33b00b92d20a61853dc4093f030ff5))
+* improve performance by not downloading every block ([#7620](https://github.com/tari-project/tari/issues/7620)) ([8aba8c1](https://github.com/tari-project/tari/commit/8aba8c189bd870aee40e5bc4d1505ef5a5d45b6a))
+* wallet  listen address ([#7618](https://github.com/tari-project/tari/issues/7618)) ([71d5806](https://github.com/tari-project/tari/commit/71d5806ffb1090519a34657b556153d1fcb99a99))
+* wallet scan ([a896b09](https://github.com/tari-project/tari/commit/a896b09d4aa0556c1ccb7d43d80583808fe4b714))
+
 ## [5.2.0-pre.5](https://github.com/tari-project/tari/compare/v5.2.0-pre.4...v5.2.0-pre.5) (2025-11-19)
 
 
