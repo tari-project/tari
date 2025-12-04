@@ -29,8 +29,8 @@ use crate::{tari_proof_of_work::difficulty::Difficulty, BanPeriod, BanReason};
 pub enum PowError {
     #[error("ProofOfWorkFailed")]
     InvalidProofOfWork,
-    #[error("Achieved difficulty is below the minimum")]
-    AchievedDifficultyBelowMin,
+    #[error("Achieved difficulty is below the minimum({minimum}) , block achieved: {achieved}")]
+    AchievedDifficultyBelowMin { minimum: Difficulty, achieved: Difficulty },
     #[error("Proof of work data must be empty for Sha3 blocks")]
     Sha3HeaderNonEmptyPowBytes,
     #[error("Proof of work data is too long. Max allowed is 32 bytes")]
@@ -49,7 +49,7 @@ impl PowError {
     pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             err @ PowError::InvalidProofOfWork |
-            err @ PowError::AchievedDifficultyBelowMin |
+            err @ PowError::AchievedDifficultyBelowMin { .. } |
             err @ PowError::Sha3HeaderNonEmptyPowBytes |
             err @ PowError::RandomxTPowDataTooLong |
             err @ PowError::AchievedDifficultyTooLow { .. } |

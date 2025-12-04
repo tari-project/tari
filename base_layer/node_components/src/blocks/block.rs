@@ -253,6 +253,24 @@ pub struct NewBlock {
     pub kernel_excess_sigs: Vec<PrivateKey>,
 }
 
+impl Display for NewBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        writeln!(f, "----------------- New Block -----------------")?;
+        writeln!(f, "--- Header ---")?;
+        writeln!(f, "Hash: {}", self.header.hash())?;
+        writeln!(f, "{}", self.header)?;
+        writeln!(f, "---  Coinbase Kernels  ---")?;
+        for kernel in &self.coinbase_kernels {
+            writeln!(f, "{}", kernel)?;
+        }
+        writeln!(f, "---  Coinbase Outputs  ---")?;
+        for output in &self.coinbase_outputs {
+            writeln!(f, "{}", output)?;
+        }
+        Ok(())
+    }
+}
+
 impl From<&Block> for NewBlock {
     fn from(block: &Block) -> Self {
         let coinbase_kernels = block

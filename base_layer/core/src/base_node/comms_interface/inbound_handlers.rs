@@ -650,8 +650,15 @@ where B: BlockchainBackend + 'static
             },
         };
         if achieved < min_difficulty {
+            debug!(
+                target: LOG_TARGET,
+                "Block failed with invalid pow: {new_block}"
+            );
             return Err(CommsInterfaceError::InvalidBlockHeader(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin {
+                    minimum: min_difficulty,
+                    achieved,
+                }),
             ));
         }
         Ok(())
