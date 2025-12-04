@@ -53,7 +53,7 @@ pub struct ApiDoc;
 pub struct Server<S> {
     port: u16,
     query_service: Arc<S>,
-    local_ip: IpAddr,
+    listen_ip: IpAddr,
     mempool_handle: MempoolHandle,
     shutdown_signal: ShutdownSignal,
     cache_cfg: HttpCacheConfig,
@@ -62,7 +62,7 @@ pub struct Server<S> {
 impl<S: BaseNodeWalletQueryService> Server<S> {
     pub fn new(
         port: u16,
-        local_ip: IpAddr,
+        listen_ip: IpAddr,
         query_service: S,
         mempool: MempoolHandle,
         shutdown_signal: ShutdownSignal,
@@ -70,7 +70,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
     ) -> Self {
         Self {
             port,
-            local_ip,
+            listen_ip,
             query_service: Arc::new(query_service),
             mempool_handle: mempool,
             shutdown_signal,
@@ -118,14 +118,14 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()))
             .layer(Extension(Arc::new(self.cache_cfg.clone())));
-        let local_ip = self.local_ip;
-        let address = SocketAddr::new(local_ip, port);
+        let listen_ip = self.listen_ip;
+        let address = SocketAddr::new(listen_ip, port);
 
         let listener = TcpListener::bind(address).await?;
 
         // spawn server
         tokio::spawn(async move {
-            info!(target: LOG_TARGET, "Wallet query HTTP server listening at {local_ip}:{port}");
+            info!(target: LOG_TARGET, "Wallet query HTTP server listening at {listen_ip}:{port}");
             if let Err(error) = axum::serve(listener, router)
                 .with_graceful_shutdown(shutdown_signal)
                 .await

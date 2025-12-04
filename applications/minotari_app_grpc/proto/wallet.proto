@@ -2343,7 +2343,20 @@ message CancelTransactionResponse {
   string failure_message = 2;
 }
 
-message RevalidateRequest{}
+message RevalidateRequest{
+  TransactionValidationMode transaction_mode =1;
+  OutputValidationMode output_mode = 2;
+}
+
+enum TransactionValidationMode {
+    RevalidateAll = 0;
+    RejectedOnly = 1;
+}
+
+enum OutputValidationMode {
+    Ignore = 0;
+    Revalidate = 1;
+}
 
 message RevalidateResponse{}
 

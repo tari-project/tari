@@ -1410,7 +1410,6 @@ where
                 }
                 .await
             },
-
             TransactionServiceRequest::ReValidateRejectedTransactions => {
                 async {
                     let res = self
@@ -1420,7 +1419,15 @@ where
                 }
                 .await
             },
-
+            TransactionServiceRequest::ReValidateTransactions => {
+                async {
+                    let res = self
+                        .start_transaction_revalidation(transaction_validation_join_handles)
+                        .await?;
+                    Ok(TransactionServiceResponse::ValidationStarted(res))
+                }
+                .await
+            },
             TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => {
                 async {
                     let res = self
@@ -3702,6 +3709,16 @@ where
         >,
     ) -> Result<OperationId, TransactionServiceError> {
         self.resources.db.mark_all_rejected_transactions_as_unvalidated()?;
+        self.start_transaction_validation_protocol(join_handles).await
+    }
+
+    async fn start_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) -> Result<OperationId, TransactionServiceError> {
+        self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
         self.start_transaction_validation_protocol(join_handles).await
     }
 

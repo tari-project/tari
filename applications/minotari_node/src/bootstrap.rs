@@ -310,7 +310,7 @@ where B: BlockchainBackend + 'static
         let wallet_http_server = create_base_node_wallet_http_server(
             wallet_query_service_config.port,
             wallet_query_service_config
-                .local_ip
+                .listen_ip
                 .unwrap_or("0.0.0.0".parse().expect("should not fail")),
             db.clone(),
             handles.expect_handle::<StateMachineHandle>(),

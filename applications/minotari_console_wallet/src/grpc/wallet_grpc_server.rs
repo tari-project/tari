@@ -92,6 +92,7 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    OutputValidationMode,
     PrepareDepositMultisigTransactionRequest,
     PrepareDepositMultisigTransactionResponse,
     PrepareOneSidedTransactionForSigningRequest,
@@ -124,6 +125,7 @@ use minotari_app_grpc::tari_rpc::{
     TransactionEventResponse,
     TransactionInfo,
     TransactionStatus,
+    TransactionValidationMode,
     TransferRequest,
     TransferResponse,
     TransferResult,
@@ -563,8 +565,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn revalidate_all_transactions(
         &self,
-        _request: Request<RevalidateRequest>,
+        request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
+        let mut tms = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+        if message.transaction_mode == TransactionValidationMode::RejectedOnly as i32 {
+            tms.revalidate_rejected_transactions()
+                .await
+                .map_err(|e| Status::internal(format!("Failed to revalidate rejected transactions: {}", e)))?;
+        } else {
+            tms.revalidate_all_transactions()
+                .await
+                .map_err(|e| Status::internal(format!("Failed to revalidate all transactions: {}", e)))?;
+        }
+        if message.output_mode == OutputValidationMode::Revalidate as i32 {
+            let mut oms = self.wallet.output_manager_service.clone();
+            oms.revalidate_all_outputs()
+                .await
+                .map_err(|e| Status::internal(format!("Failed to revalidate outputs: {}", e)))?;
+        }
+
         Ok(Response::new(RevalidateResponse {}))
     }
 
