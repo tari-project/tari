@@ -311,7 +311,7 @@ impl BaseNodeWalletClient for Client {
                     break;
                 }
                 target_url.set_query(Some(
-                    format!("start_header_hash={start_header_hash_hex}&limit={limit}&page={page}").as_str(),
+                    format!("start_header_hash={start_header_hash_hex}&limit={limit}&page={page}&version=1").as_str(),
                 ));
                 debug!(target: LOG_TARGET, "Requesting UTXOs by block from Base Node wallet service at {target_url}");
                 match client.get(target_url.clone()).send().await {
