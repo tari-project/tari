@@ -21,7 +21,7 @@ minotari_app_utilities = { path = "../minotari_app_utilities", features = [
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 tari_utilities = { version = "0.8" }
 
-base64 = "0.13.0"
+base64 = { workspace = true }
 borsh = { workspace = true }
 bufstream = "0.1"
 chrono = { version = "0.4", default-features = false }

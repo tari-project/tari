@@ -100,7 +100,8 @@ impl BasicAuthCredentials {
         }
 
         // Decode the credentials using base64
-        let decoded = base64::decode(encoded_credentials)?;
+        use base64::{prelude::BASE64_STANDARD, Engine};
+        let decoded = BASE64_STANDARD.decode(encoded_credentials)?;
         let as_utf8 = Zeroizing::new(String::from_utf8(decoded)?);
 
         // Parse the username and password, which must be separated by a colon
@@ -166,9 +167,10 @@ impl BasicAuthCredentials {
 
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
+        use base64::{prelude::BASE64_STANDARD, Engine};
         let password_str = String::from_utf8_lossy(password);
         let token_str = Zeroizing::new(format!("{username}:{password_str}"));
-        let mut token = base64::encode(token_str.deref());
+        let mut token = BASE64_STANDARD.encode(token_str.deref());
         let header = format!("Basic {token}");
         token.zeroize();
         match password_str {

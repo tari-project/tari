@@ -4199,7 +4199,7 @@ name = "minotari_app_grpc"
 version = "5.2.0-pre.6"
 dependencies = [
  "argon2 0.4.1",
- "base64 0.13.1",
+ "base64 0.22.1",
  "borsh",
  "log",
  "prost 0.13.4",
@@ -4381,7 +4381,7 @@ dependencies = [
 name = "minotari_miner"
 version = "5.2.0-pre.6"
 dependencies = [
- "base64 0.13.1",
+ "base64 0.22.1",
  "borsh",
  "bufstream",
  "chrono",
@@ -7601,7 +7601,7 @@ name = "tari_common_types"
 version = "5.2.0-pre.6"
 dependencies = [
  "argon2 0.4.1",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bitflags 2.6.0",
  "blake2",
  "borsh",
@@ -8108,6 +8108,7 @@ version = "5.2.0-pre.6"
 dependencies = [
  "anyhow",
  "argon2 0.4.1",
+ "base64 0.22.1",
  "bitflags 2.6.0",
  "blake2",
  "borsh",

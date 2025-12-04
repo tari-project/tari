@@ -21,7 +21,7 @@ tari_utilities = { workspace = true }
 
 
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
-base64 = "0.21.0"
+base64 = { workspace = true }
 blake2 = "0.10"
 bitflags = { version = "2.4", features = ["serde"] }
 bs58 = "0.5.1"

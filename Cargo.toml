@@ -101,7 +101,7 @@ borsh = { version = "1.5.7" }
 tokio = { version = "1.47" }
 log = { version = "0.4" }
 log4rs = { version = "1.4", default-features = false}
-
+base64 = "0.22"
 [profile.release]
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error
 # seen in debug mode. Panicking at this time is better than silently using the wrong value.

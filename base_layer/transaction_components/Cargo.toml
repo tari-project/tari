@@ -24,6 +24,7 @@ tari_utilities = { workspace = true }
 minotari_ledger_wallet_common = { workspace = true }
 
 anyhow = { workspace = true }
+base64 = { workspace = true }
 bitflags = { version = "2.4", features = ["serde"] }
 borsh = { workspace = true, features = ["derive"] }
 
