@@ -131,6 +131,8 @@ use minotari_app_grpc::tari_rpc::{
     UserPayForFeeResponse,
     ValidateRequest,
     ValidateResponse,
+    TransactionValidationMode,
+    OutputValidationMode,
 };
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
@@ -567,7 +569,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<RevalidateResponse>, Status> {
         let mut tms = self.wallet.transaction_service.clone();
         let message = request.into_inner();
-        if message.only_rejected {
+        if message.transaction_mode == TransactionValidationMode::RejectedOnly as i32 {
             tms.revalidate_rejected_transactions()
                 .await
                 .map_err(|e| Status::internal(format!("Failed to revalidate rejected transactions: {}", e)))?;
@@ -576,7 +578,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .await
                 .map_err(|e| Status::internal(format!("Failed to revalidate all transactions: {}", e)))?;
         }
-        if message.revalidate_outputs {
+        if message.output_mode == OutputValidationMode::Revalidate as i32 {
             let mut oms = self.wallet.output_manager_service.clone();
             oms.revalidate_all_outputs()
                 .await

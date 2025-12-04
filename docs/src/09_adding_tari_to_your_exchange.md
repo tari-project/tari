@@ -348,7 +348,7 @@ This is the private base node:
 # This address must be accessible by the wallet (on a global scale over the internet).
 [base_node.http_wallet_query_service]
 #port = 9000
-#local_ip = "0.0.0.0"
+#listen_ip = "0.0.0.0"
 #external_address = "http://127.0.0.1:9000"
 ```
 

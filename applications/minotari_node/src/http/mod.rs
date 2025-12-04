@@ -21,7 +21,7 @@ pub use cache_config::HttpCacheConfig;
 
 pub fn create_base_node_wallet_http_server<B: BlockchainBackend + 'static>(
     port: u16,
-    local_ip: IpAddr,
+    listen_ip: IpAddr,
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     mempool: MempoolHandle,
@@ -30,7 +30,7 @@ pub fn create_base_node_wallet_http_server<B: BlockchainBackend + 'static>(
 ) -> server::Server<impl BaseNodeWalletQueryService> {
     server::Server::new(
         port,
-        local_ip,
+        listen_ip,
         query_service::Service::new(db, state_machine, mempool.clone()),
         mempool,
         shutdown_signal,

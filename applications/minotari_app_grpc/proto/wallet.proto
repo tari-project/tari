@@ -2344,8 +2344,18 @@ message CancelTransactionResponse {
 }
 
 message RevalidateRequest{
-  bool only_rejected = 1;
-  bool revalidate_outputs = 2;
+  TransactionValidationMode transaction_mode =1;
+  OutputValidationMode output_mode = 2;
+}
+
+enum TransactionValidationMode {
+    RevalidateAll = 0;
+    RejectedOnly = 1;
+}
+
+enum OutputValidationMode {
+    Ignore = 0;
+    Revalidate = 1;
 }
 
 message RevalidateResponse{}
