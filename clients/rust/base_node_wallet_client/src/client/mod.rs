@@ -13,7 +13,7 @@ use tari_transaction_components::{
         GenerateKernelMerkleProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
-        SyncUtxosByBlockResponse,
+        SyncUtxosByBlockResponseV0,
     },
     transaction_components::{Transaction, TransactionOutput},
 };
@@ -40,7 +40,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
         &self,
         start_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
-    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error>;
+    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponseV0, Error>>, Error>;
 
     async fn get_last_request_latency(&self) -> Option<std::time::Duration>;
 

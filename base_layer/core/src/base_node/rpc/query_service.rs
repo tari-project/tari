@@ -19,7 +19,8 @@ use tari_transaction_components::{
             GetUtxosByBlockResponse,
             MinimalUtxoSyncInfo,
             SyncUtxosByBlockRequest,
-            SyncUtxosByBlockResponse,
+            SyncUtxosByBlockResponseV0,
+            SyncUtxosByBlockResponseV1,
             TipInfoResponse,
             TxLocation,
             TxQueryResponse,
@@ -177,7 +178,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn fetch_utxos(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponse, Error> {
+    async fn fetch_utxos(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponseV0, Error> {
         // validate and fetch inputs
         request.validate()?;
 
@@ -347,7 +348,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
         }
 
-        Ok(SyncUtxosByBlockResponse {
+        Ok(SyncUtxosByBlockResponseV0 {
             blocks: utxos,
             has_next_page,
             next_header_to_scan: next_header_to_request,
@@ -458,11 +459,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         Ok(response)
     }
 
-    async fn sync_utxos_by_block(
+    async fn sync_utxos_by_block_v0(
         &self,
         request: SyncUtxosByBlockRequest,
-    ) -> Result<SyncUtxosByBlockResponse, Self::Error> {
+    ) -> Result<SyncUtxosByBlockResponseV0, Self::Error> {
         self.fetch_utxos(request).await
+    }
+
+    async fn sync_utxos_by_block_v1(
+        &self,
+        request: SyncUtxosByBlockRequest,
+    ) -> Result<SyncUtxosByBlockResponseV1, Self::Error> {
+        let v1 = self.fetch_utxos(request).await?;
+        Ok(v1.into())
     }
 
     async fn get_utxos_by_block(
@@ -602,7 +611,7 @@ mod tests {
     }
 
     async fn make_service() -> Service<crate::test_helpers::blockchain::TempDatabase> {
-        let db = create_new_blockchain_with_network(Network::default());
+        let db = create_new_blockchain_with_network(Network::LocalNet);
         let adb = AsyncBlockchainDb::from(db);
         let state_machine = make_state_machine_handle();
         let mempool = make_mempool_handle();
@@ -617,6 +626,7 @@ mod tests {
             limit: 4,
             page: 0,
             exclude_spent: false,
+            version: 0,
         };
         let err = service.fetch_utxos(req).await.unwrap_err();
         match err {
@@ -635,6 +645,7 @@ mod tests {
             limit: 1,
             page: 1,
             exclude_spent: false,
+            version: 0,
         };
         let err = service.fetch_utxos(req).await.unwrap_err();
         match err {

@@ -17,7 +17,8 @@ use tari_transaction_components::{
             GenerateKernelMerkleProofResponse,
             GetUtxosDeletedInfoResponse,
             GetUtxosMinedInfoResponse,
-            SyncUtxosByBlockResponse,
+            SyncUtxosByBlockResponseV0,
+            SyncUtxosByBlockResponseV1,
             TipInfoResponse,
             TxQueryResponse,
             TxSubmissionResponse,
@@ -289,7 +290,7 @@ impl BaseNodeWalletClient for Client {
         &self,
         start_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
-    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, anyhow::Error>>, anyhow::Error> {
+    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponseV0, anyhow::Error>>, anyhow::Error> {
         debug!(
             target: LOG_TARGET,
             "Starting UTXO sync from {}",
@@ -314,11 +315,11 @@ impl BaseNodeWalletClient for Client {
                 ));
                 debug!(target: LOG_TARGET, "Requesting UTXOs by block from Base Node wallet service at {target_url}");
                 match client.get(target_url.clone()).send().await {
-                    Ok(response) => match response.json::<SyncUtxosByBlockResponse>().await {
+                    Ok(response) => match response.json::<SyncUtxosByBlockResponseV1>().await {
                         Ok(response) => {
                             has_next_page = response.has_next_page;
                             debug!(target: LOG_TARGET, "Received UTXOs for page {page}");
-                            if let Err(send_error) = resp_tx.send(Ok(response)).await {
+                            if let Err(send_error) = resp_tx.send(Ok(response.into())).await {
                                 error!(target: LOG_TARGET, "Error sending utxo response: {send_error:?}");
                             }
                         },

@@ -89,6 +89,16 @@ impl InboundTransaction {
     }
 }
 
+impl Display for InboundTransaction {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            fmt,
+            "TxId: {}, Source: {}, Amount: {}, Status: {:?}, Timestamp: {}, Cancelled: {}",
+            self.tx_id, self.source_address, self.amount, self.status, self.timestamp, self.cancelled
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutboundTransaction {
     pub tx_id: TxId,
@@ -163,6 +173,16 @@ impl OutboundTransaction {
             last_send_timestamp: None,
             sent_output_hashes,
         }
+    }
+}
+
+impl Display for OutboundTransaction {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            fmt,
+            "TxId: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Cancelled: {}",
+            self.tx_id, self.destination_address, self.amount, self.fee, self.status, self.timestamp, self.cancelled
+        )
     }
 }
 
@@ -499,6 +519,37 @@ impl CompletedTransaction {
     }
 }
 
+impl Display for CompletedTransaction {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        match self.cancelled {
+            Some(cancelled_reason) => write!(
+                fmt,
+                "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Cancelled: \
+                 {}",
+                self.tx_id,
+                self.source_address,
+                self.destination_address,
+                self.amount,
+                self.fee,
+                self.status,
+                self.timestamp,
+                cancelled_reason,
+            ),
+            None => write!(
+                fmt,
+                "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}",
+                self.tx_id,
+                self.source_address,
+                self.destination_address,
+                self.amount,
+                self.fee,
+                self.status,
+                self.timestamp,
+            ),
+        }
+    }
+}
+
 impl From<CompletedTransaction> for InboundTransaction {
     fn from(ct: CompletedTransaction) -> Self {
         Self {
@@ -653,6 +704,16 @@ impl From<WalletTransaction> for CompletedTransaction {
             WalletTransaction::PendingInbound(tx) => CompletedTransaction::from(tx),
             WalletTransaction::PendingOutbound(tx) => CompletedTransaction::from_outbound(tx, Vec::new()),
             WalletTransaction::Completed(tx) => tx,
+        }
+    }
+}
+
+impl Display for WalletTransaction {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            WalletTransaction::PendingInbound(tx) => write!(fmt, "Pending Inbound Transaction: {}", tx),
+            WalletTransaction::PendingOutbound(tx) => write!(fmt, "Pending Outbound Transaction: {}", tx),
+            WalletTransaction::Completed(tx) => write!(fmt, "Completed Transaction: {}", tx),
         }
     }
 }
