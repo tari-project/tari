@@ -568,15 +568,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut tms = self.wallet.transaction_service.clone();
         let message = request.into_inner();
         if message.only_rejected {
-            tms.revalidate_rejected_transactions().await.map_err(|e| {
-                Status::internal(format!("Failed to revalidate rejected transactions: {}", e))
-            })?;
+            tms.revalidate_rejected_transactions()
+                .await
+                .map_err(|e| Status::internal(format!("Failed to revalidate rejected transactions: {}", e)))?;
         } else {
             tms.revalidate_all_transactions()
                 .await
                 .map_err(|e| Status::internal(format!("Failed to revalidate all transactions: {}", e)))?;
         }
-        if message.revalidate_outputs{
+        if message.revalidate_outputs {
             let mut oms = self.wallet.output_manager_service.clone();
             oms.revalidate_all_outputs()
                 .await
