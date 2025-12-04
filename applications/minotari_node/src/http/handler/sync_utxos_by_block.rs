@@ -1,7 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{fmt::Display, sync::Arc};
+use std::{cmp, fmt::Display, sync::Arc};
 
 use axum::{
     Extension,
@@ -91,6 +91,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     let tip_info = query_service.get_tip_info().await.map_err(error_handler_with_message)?;
     let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
     let height;
+    let exclude_spent = request.exclude_spent;
     let mut response = match request.version {
         0 => {
             let response = query_service
@@ -111,7 +112,14 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             body.into_response()
         },
     };
-    let last_height = height.unwrap_or(0);
+    let last_height = if let true = exclude_spent {
+        // if we're excluding spent outputs we cannot cache for longer than a day, so we force the "height" so that the
+        // caching will only be a max of 1 day. Wallets will sent full without excluding spends the last 1000 blocks so
+        // this leaves a margin for wallets to get data if it changed.
+        cmp::min(height.unwrap_or(0), tip_height.saturating_add(2500))
+    } else {
+        height.unwrap_or(0)
+    };
 
     apply_cache_control(
         response.headers_mut(),
