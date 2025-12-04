@@ -92,6 +92,7 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    OutputValidationMode,
     PrepareDepositMultisigTransactionRequest,
     PrepareDepositMultisigTransactionResponse,
     PrepareOneSidedTransactionForSigningRequest,
@@ -124,6 +125,7 @@ use minotari_app_grpc::tari_rpc::{
     TransactionEventResponse,
     TransactionInfo,
     TransactionStatus,
+    TransactionValidationMode,
     TransferRequest,
     TransferResponse,
     TransferResult,
@@ -131,8 +133,6 @@ use minotari_app_grpc::tari_rpc::{
     UserPayForFeeResponse,
     ValidateRequest,
     ValidateResponse,
-    TransactionValidationMode,
-    OutputValidationMode,
 };
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
