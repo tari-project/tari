@@ -1896,6 +1896,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             uo_1.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("blah", TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await
         .unwrap();
@@ -1909,6 +1910,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             uo_2.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("one-sided 1", TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await
         .unwrap();
@@ -1922,6 +1924,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             None,
             uo_3.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("one-sided 2", TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await
         .unwrap();
@@ -2079,6 +2082,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             uo_1.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("coinbase_confirmed", TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await
         .unwrap();
@@ -2092,6 +2096,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             uo_2.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await
         .unwrap();
@@ -2105,6 +2110,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             None,
             uo_3.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("Coinbase_not_mined", TxType::PaymentToOther).unwrap(),
+            None,
         )
         .await
         .unwrap();

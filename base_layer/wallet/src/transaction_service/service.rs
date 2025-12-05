@@ -1334,6 +1334,7 @@ where
                 mined_timestamp,
                 scanned_output,
                 payment_id,
+                optional_tx_id,
             } => {
                 async {
                     let res = self
@@ -1345,6 +1346,7 @@ where
                             mined_timestamp,
                             scanned_output,
                             payment_id,
+                            optional_tx_id,
                         )
                         .await?;
                     Ok(TransactionServiceResponse::UtxoImported(res))
@@ -3942,6 +3944,7 @@ where
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
+        optional_tx_id: Option<TxId>,
     ) -> Result<TxId, TransactionServiceError> {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let (direction, amount, destination_address) =
@@ -3975,14 +3978,17 @@ where
                 )
             };
 
-        let tx_id = TxId::new_deterministic(
-            self.resources
-                .transaction_key_manager_service
-                .get_view_key()
-                .pub_key
-                .as_bytes(),
-            &scanned_output.hash(),
-        );
+        let tx_id = match optional_tx_id {
+            Some(id) => id,
+            None => TxId::new_deterministic(
+                self.resources
+                    .transaction_key_manager_service
+                    .get_view_key()
+                    .pub_key
+                    .as_bytes(),
+                &scanned_output.hash(),
+            ),
+        };
         self.db.add_utxo_import_transaction_with_status(
             tx_id,
             amount,

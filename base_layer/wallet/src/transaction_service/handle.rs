@@ -257,6 +257,7 @@ pub enum TransactionServiceRequest {
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
+        optional_tx_id: Option<TxId>,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
     SetLowPowerMode,
@@ -1594,6 +1595,7 @@ impl TransactionServiceHandle {
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
+        optional_tx_id: Option<TxId>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1605,6 +1607,7 @@ impl TransactionServiceHandle {
                 mined_timestamp,
                 scanned_output,
                 payment_id,
+                optional_tx_id,
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ImportUtxoWithStatus({e})"))??
