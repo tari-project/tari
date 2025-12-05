@@ -590,12 +590,10 @@ where
             }
 
             // Change outputs just use the view key.
-            if self
+            if let Ok(true) = self
                 .key_manager
                 .is_this_output_ours(&commitment, &encrypted, None)
                 .await
-                .ok()
-                .is_some()
             {
                 found_outputs.push(output.clone());
             }
