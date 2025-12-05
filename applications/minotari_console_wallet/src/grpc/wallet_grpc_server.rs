@@ -3090,6 +3090,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut oms = self.wallet.output_manager_service.clone();
         let mut tms = self.wallet.transaction_service.clone();
         for hex in message.output_hashes {
+            let mut add_to_oms = true;
+            let mut add_to_tms = true;
+            let mut is_found = false;
+            let mut tx_id = None;
             let utxo = match FixedHash::from_hex(&hex) {
                 Ok(h) => h,
                 Err(e) => {
@@ -3120,8 +3124,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     debug_info.push(format!("UTXO with hash {} not found on base node", utxo.to_hex()));
                     results.push(ScanFeedback {
                         output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
+                        is_found,
+                        tx_id: tx_id.unwrap_or_default(),
                         debug_info,
                     });
                     continue;
@@ -3130,8 +3134,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     debug_info.push(format!("Error fetching UTXO with hash {}: {}", utxo.to_hex(), e));
                     results.push(ScanFeedback {
                         output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
+                        is_found,
+                        tx_id: tx_id.unwrap_or_default(),
                         debug_info,
                     });
                     continue;
@@ -3154,8 +3158,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                     results.push(ScanFeedback {
                         output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
+                        is_found,
+                        tx_id: tx_id.unwrap_or_default(),
                         debug_info,
                     });
                     continue;
@@ -3164,8 +3168,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     debug_info.push(format!("Error recovering keys for UTXO with hash {}: {}", hex, e));
                     results.push(ScanFeedback {
                         output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
+                        is_found,
+                        tx_id: tx_id.unwrap_or_default(),
                         debug_info,
                     });
                     continue;
@@ -3190,8 +3194,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     debug_info.push(format!("Error creating WalletOutput for UTXO with hash {}: {}", hex, e));
                     results.push(ScanFeedback {
                         output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
+                        is_found,
+                        tx_id: tx_id.unwrap_or_default(),
                         debug_info,
                     });
                     continue;
@@ -3206,8 +3210,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                     results.push(ScanFeedback {
                         output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
+                        is_found,
+                        tx_id: tx_id.unwrap_or_default(),
                         debug_info,
                     });
                     continue;
@@ -3218,8 +3222,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .await
                 .map_err(|e| Status::internal(format!("Failed to get output from Output Manager: {}", e)))?;
             if !db_result.is_empty() {
+                add_to_oms = false;
+                is_found = true;
                 let db_output = &db_result.first().expect("Should not be empty, this is checked").0;
-                debug_info.push(format!("UTXO with hash {} already exists in Output Manager", hex));
+                debug_info.push(format!(
+                    "UTXO with hash {} already exists in Output Manager with status: {}",
+                    hex, db_output.status
+                ));
                 match (db_output.mined_in_block, db_output.mined_timestamp) {
                     (Some(hash), Some(_)) => {
                         debug_info.push(format!("UTXO with hash {} is already mined in block: {}", hex, hash));
@@ -3240,62 +3249,60 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         debug_info.push(format!("UTXO with hash {} is has inconsistent mined data", hex));
                     },
                 }
-                if let Some(tx_id) = db_output.received_in_tx_id {
-                    let tx = tms.get_any_transaction(tx_id).await;
+                if let Some(id) = db_output.received_in_tx_id {
+                    tx_id = Some(id.as_u64());
+                    let tx = tms.get_any_transaction(id).await;
                     match tx {
                         Ok(Some(tx)) => {
                             debug_info.push(format!("UTXO is associated with transaction {}", tx));
+                            add_to_tms = false;
                         },
                         Ok(None) => {
                             debug_info.push(format!(
                                 "UTXO is associated with transaction id: {} but transaction not found in Transaction \
                                  Service",
-                                tx_id.as_u64()
+                                id.as_u64()
                             ));
                         },
                         Err(e) => {
+                            add_to_tms = false;
                             debug_info.push(format!(
                                 "Error fetching transaction id: {} associated with UTXO: {}: {}",
-                                tx_id.as_u64(),
+                                id.as_u64(),
                                 hex,
                                 e
                             ));
                         },
                     }
                 }
-
-                let tx = db_output.received_in_tx_id.unwrap_or_default();
-                results.push(ScanFeedback {
-                    output_hash: hex,
-                    is_found: true,
-                    tx_id: tx.as_u64(),
-                    debug_info,
-                });
-                continue;
             }
-            let status = match import_output_to_oms(&mut oms, txo).await {
-                Ok(status) => {
-                    debug_info.push(format!(
-                        "Successfully imported UTXO with hash {} into Output Manager with status {:?}",
-                        utxo.to_hex(),
+            let status = if add_to_oms {
+                match import_output_to_oms(&mut oms, txo).await {
+                    Ok(status) => {
+                        debug_info.push(format!(
+                            "Successfully imported UTXO with hash {} into Output Manager with status {:?}",
+                            utxo.to_hex(),
+                            status
+                        ));
                         status
-                    ));
-                    status
-                },
-                Err(e) => {
-                    debug_info.push(format!(
-                        "Error importing UTXO with hash {} into Output Manager: {}",
-                        utxo.to_hex(),
-                        e
-                    ));
-                    results.push(ScanFeedback {
-                        output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
-                        debug_info,
-                    });
-                    continue;
-                },
+                    },
+                    Err(e) => {
+                        debug_info.push(format!(
+                            "Error importing UTXO with hash {} into Output Manager: {}",
+                            utxo.to_hex(),
+                            e
+                        ));
+                        results.push(ScanFeedback {
+                            output_hash: hex,
+                            is_found,
+                            tx_id: tx_id.unwrap_or_default(),
+                            debug_info,
+                        });
+                        continue;
+                    },
+                }
+            } else {
+                LegacyImportStatus::OneSidedUnconfirmed
             };
 
             // output is imported, lets import tx
@@ -3313,46 +3320,45 @@ impl wallet_server::Wallet for WalletGrpcServer {
             } else {
                 TariAddress::default()
             };
-            match tms
-                .import_utxo_with_status(
-                    wallet_output.value(),
-                    source_address,
-                    status,
-                    None,
-                    None,
-                    output,
-                    wallet_output.payment_id().clone(),
-                )
-                .await
-            {
-                Ok(id) => {
-                    debug_info.push(format!(
-                        "Successfully imported transaction for UTXO with hash {} into Transaction Service with tx_id \
-                         {}",
-                        utxo.to_hex(),
-                        id
-                    ));
-                    results.push(ScanFeedback {
-                        output_hash: hex,
-                        is_found: true,
-                        tx_id: id.as_u64(),
-                        debug_info,
-                    });
-                },
-                Err(e) => {
-                    debug_info.push(format!(
-                        "Error importing transaction for UTXO with hash {} into Transaction Service: {}",
-                        utxo.to_hex(),
-                        e
-                    ));
-                    results.push(ScanFeedback {
-                        output_hash: hex,
-                        is_found: false,
-                        tx_id: 0,
-                        debug_info,
-                    });
-                },
+            if add_to_tms {
+                match tms
+                    .import_utxo_with_status(
+                        wallet_output.value(),
+                        source_address,
+                        status,
+                        None,
+                        None,
+                        output,
+                        wallet_output.payment_id().clone(),
+                        tx_id.map(TxId::from),
+                    )
+                    .await
+                {
+                    Ok(id) => {
+                        debug_info.push(format!(
+                            "Successfully imported transaction for UTXO with hash {} into Transaction Service with \
+                             tx_id {}",
+                            utxo.to_hex(),
+                            id
+                        ));
+                        is_found = true;
+                        tx_id = Some(id.as_u64());
+                    },
+                    Err(e) => {
+                        debug_info.push(format!(
+                            "Error importing transaction for UTXO with hash {} into Transaction Service: {}",
+                            utxo.to_hex(),
+                            e
+                        ));
+                    },
+                }
             }
+            results.push(ScanFeedback {
+                output_hash: hex,
+                is_found,
+                tx_id: tx_id.unwrap_or_default(),
+                debug_info,
+            });
         }
         for feedback in &results {
             for info in &feedback.debug_info {

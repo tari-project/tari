@@ -424,6 +424,7 @@ where
                 None,
                 wallet_output.to_transaction_output()?,
                 payment_id,
+                None,
             )
             .await?;
         // As non-rewindable

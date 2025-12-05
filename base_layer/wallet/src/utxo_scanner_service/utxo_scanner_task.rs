@@ -836,6 +836,7 @@ where
                 Some(mined_timestamp),
                 scanned_output,
                 wallet_output.payment_id().clone(),
+                None,
             )
             .await?;
 
