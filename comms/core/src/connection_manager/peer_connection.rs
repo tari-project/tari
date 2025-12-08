@@ -323,7 +323,7 @@ impl PeerConnection {
             self.substream_count()
         );
         let (reply_tx, reply_rx) = oneshot::channel();
-        let _unused = self
+        self
             .request_tx
             .send(PeerConnectionRequest::Disconnect(
                 false,
@@ -332,14 +332,15 @@ impl PeerConnection {
                 requester.to_string(),
             ))
             .await
-            .inspect_err(|e| {
+            .map_err(|e| {
                 info!(
                     target: LOG_TARGET,
                     "Failed to send Disconnect request to peer `{}`: {}",
                     self.peer_node_id,
                     e
                 );
-            });
+                PeerConnectionError::InternalReplyCancelled
+            })?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
@@ -385,14 +386,15 @@ impl PeerConnection {
                 requester.to_string(),
             ))
             .await
-            .inspect_err(|e| {
+            .map_err(|e| {
                 info!(
                     target: LOG_TARGET,
                     "Failed to send Disconnect request to peer `{}`: {}",
                     self.peer_node_id,
                     e
                 );
-            });
+                PeerConnectionError::InternalReplyCancelled
+            })?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
