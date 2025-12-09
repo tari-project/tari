@@ -3,11 +3,14 @@
 
 #![allow(clippy::indexing_slicing)]
 use log::*;
+#[cfg(feature = "ledger")]
+use minotari_ledger_wallet_comms::accessor_methods::ledger_get_public_spend_key;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_transaction_components::{
     transaction_components::memo_field::{MemoField, TxType},
     MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -43,10 +46,11 @@ pub struct SendTab {
     confirmation_dialog: Option<ConfirmationDialogType>,
     selected_unique_id: Option<Vec<u8>>,
     table_state: TableState,
+    wallet_type: LegacyWalletType,
 }
 
 impl SendTab {
-    pub fn new(app_state: &AppState) -> Self {
+    pub fn new(app_state: &AppState, wallet_type: LegacyWalletType) -> Self {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
@@ -62,6 +66,7 @@ impl SendTab {
             confirmation_dialog: None,
             selected_unique_id: None,
             table_state: TableState::default(),
+            wallet_type,
         }
     }
 
@@ -202,8 +207,8 @@ impl SendTab {
     #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
+            self.confirmation_dialog = None;
             if 'n' == c {
-                self.confirmation_dialog = None;
                 return KeyHandled::Handled;
             } else if 'y' == c {
                 match self.confirmation_dialog {
@@ -230,8 +235,32 @@ impl SendTab {
                             };
 
                             let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
-
                             let mut reset_fields = false;
+
+                            #[cfg(feature = "ledger")]
+                            if let LegacyWalletType::Ledger(ledger) = &self.wallet_type {
+                                match ledger_get_public_spend_key(ledger.account) {
+                                    Ok(spend_key) => {
+                                        if spend_key != ledger.public_alpha {
+                                            self.error_message = Some(
+                                                "Ledger public spend key does not match wallet public spend key. \
+                                                 Please ensure you have selected the correct Ledger.\nPress Enter to \
+                                                 continue."
+                                                    .to_string(),
+                                            );
+                                            return KeyHandled::Handled;
+                                        }
+                                    },
+                                    _ => {
+                                        self.error_message = Some(
+                                            "Could not connect to Ledger. Please ensure your Ledger is connected and \
+                                             unlocked.\nPress Enter to continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
+                                }
+                            };
 
                             match Handle::current().block_on(app_state.send_one_sided_to_stealth_address_transaction(
                                 self.to_field.clone(),
@@ -270,7 +299,6 @@ impl SendTab {
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);
                             }
-                            self.confirmation_dialog = None;
                             return KeyHandled::Handled;
                         }
                     },
