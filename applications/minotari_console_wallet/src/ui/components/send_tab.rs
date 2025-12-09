@@ -207,13 +207,14 @@ impl SendTab {
     #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
-            self.confirmation_dialog = None;
             if 'n' == c {
+                self.confirmation_dialog = None;
                 return KeyHandled::Handled;
             } else if 'y' == c {
                 match self.confirmation_dialog {
                     None => (),
                     Some(ConfirmationDialogType::Normal) => {
+                        self.confirmation_dialog = None;
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
                                 v
