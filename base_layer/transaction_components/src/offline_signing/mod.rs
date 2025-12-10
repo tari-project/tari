@@ -78,6 +78,7 @@ mod test {
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
             covenants::Covenant,
+            memo_field::TxType,
             one_sided::public_key_to_output_encryption_key,
             EncryptedData,
             MemoField,
@@ -810,11 +811,13 @@ mod test {
             None,
         )
         .unwrap();
+
+        let payment_id_bob = MemoField::new_open_from_string("bob message", TxType::PaymentToOther).unwrap();
         let recipients = [PaymentRecipient {
             amount: MicroMinotari(5000),
             output_features: OutputFeatures::default(),
             address: bob_address.clone(),
-            payment_id: MemoField::new_empty(),
+            payment_id: payment_id_bob.clone(),
         }];
         let init = prepare_one_sided_transaction_for_signing(
             TxId::new_random(),
@@ -869,6 +872,7 @@ mod test {
         let res =
             EncryptedData::decrypt_data(&recovery_key, &sent_output.commitment, &sent_output.encrypted_data).unwrap();
         assert_eq!(res.0, MicroMinotari(5000));
+        assert_eq!(res.2, payment_id_bob);
     }
 
     #[tokio::test]
