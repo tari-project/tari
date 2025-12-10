@@ -39,6 +39,7 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
 const SYNC_UTXOS_SPEND_TIP_SAFETY_LIMIT: u64 = 1000;
+const WALLET_MAX_BLOCKS_PER_REQUEST: u64 = 100;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -189,11 +190,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .await?
             .ok_or_else(|| Error::StartHeaderHashNotFound)?;
 
+
         let tip_header = self.db.fetch_tip_header().await?;
         // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
         // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
         // we can cache all wallet's queries
-        let increase = ((start_header.height + 100) / 100) * 100;
+        let increase = ((start_header.height + WALLET_MAX_BLOCKS_PER_REQUEST) / WALLET_MAX_BLOCKS_PER_REQUEST) * WALLET_MAX_BLOCKS_PER_REQUEST;
         let end_height = cmp::min(tip_header.header().height, increase);
 
         // pagination
@@ -232,8 +234,9 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             })?
             .hash();
         let next_header_to_request;
-        let mut has_next_page = false;
+        let mut has_next_page = true;
         loop {
+            dbg!(current_header.height);
             let current_header_hash = current_header.hash();
             trace!(
                 target: LOG_TARGET,
@@ -257,6 +260,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .map(|(output, _spent)| output)
                     .collect::<Vec<TransactionOutput>>()
             };
+            dbg!(outputs.len());
             let mut inputs = self
                 .db
                 .fetch_inputs_in_block(current_header_hash)
@@ -304,6 +308,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
 
             if current_header.height >= tip_header.header().height {
+                dbg!("reached tip");
                 next_header_to_request = vec![];
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break;
@@ -320,6 +325,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .header_hash ==
                     current_header_hash.to_vec()
                 {
+                    dbg!("edge");
                     // special edge case where the first block is also the last block we can send, so we just send it as
                     // is, partial
                     break;
@@ -329,7 +335,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .header_hash ==
                         current_header_hash.to_vec()
                 {
-                    utxos.pop();
+                    let res = utxos.pop();
+                    match res {
+                        Some(block) => {
+                            dbg!("removing block at height {}", block.height);
+                        },
+                        None => {dbg!("no block to remove");},
+                    };
                 }
                 break;
             }
@@ -344,8 +356,18 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             if current_header.height == end_height {
                 next_header_to_request = current_header.hash().to_vec();
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                dbg!("ending");
                 break; // Stop if we reach the end height
             }
+
+            if fetched_chunks = request.limit{
+                // we are on the limit, stop here
+                next_header_to_request = current_header.hash().to_vec();
+                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+            }
+        }
+        for utxo in &utxos {
+            dbg!(utxo.height);
         }
 
         Ok(SyncUtxosByBlockResponseV0 {
@@ -652,5 +674,137 @@ mod tests {
             Error::HeaderHeightMismatch { .. } => {},
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_utxos_paginates_results() {
+        use crate::test_helpers::blockchain::create_main_chain;
+        use crate::block_specs;
+
+        // Build a small chain: GB -> A -> B -> C
+        let db = create_new_blockchain_with_network(Network::LocalNet);
+        let (_names, chain) = create_main_chain(&db, block_specs!(
+            ["A->GB"],
+            ["B->A"],
+            ["C->B"],
+            ["D->C"]
+        ));
+
+        // Construct the service over this DB
+        let adb = AsyncBlockchainDb::from(db);
+        let state_machine = make_state_machine_handle();
+        let mempool = make_mempool_handle();
+        let service = Service::new(adb, state_machine, mempool);
+
+        // Use genesis as the start header hash
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+        let g_hash = genesis.hash().to_vec();
+
+        // Page 0, limit 1: should return only A (height 1) and next header should be B
+        // genesis block in local net has 0 inputs and outputs
+        let resp0 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash.clone(),
+                limit: 1,
+                page: 0,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos page 0 should succeed");
+
+        assert_eq!(resp0.blocks.len(), 1, "expected exactly one block in first page");
+        assert_eq!(resp0.blocks[0].height, 1, "first page should start at genesis height");
+
+        // Expect next_header_to_scan to be the hash of block A (height 1)
+        let b_hash = chain.get("B").unwrap().hash().to_vec();
+        assert_eq!(resp0.next_header_to_scan, b_hash, "next header should point to B");
+
+        // Page 1, limit 1: should return only block A (height 1) and next header should be B
+        let resp1 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash.clone(),
+                limit: 1,
+                page: 1,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos page 1 should succeed");
+
+        assert_eq!(resp1.blocks.len(), 1, "expected exactly one block in second page");
+        assert_eq!(resp1.blocks[0].height, 1, "second page should start at height 1 (A)");
+
+        // Expect next_header_to_scan to be the hash of block B (height 2)
+        let b_hash = chain.get("B").unwrap().hash().to_vec();
+        assert_eq!(resp1.next_header_to_scan, b_hash, "next header should point to B");
+
+        // Page 2, limit 1: should return only block B (height 2) and next header should be C
+        let resp2 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash.clone(),
+                limit: 1,
+                page: 2,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos page 2 should succeed");
+
+        assert_eq!(resp2.blocks.len(), 1, "expected exactly one block in third page");
+        assert_eq!(resp2.blocks[0].height, 2, "third page should start at height 2 (B)");
+        let c_hash = chain.get("C").unwrap().hash().to_vec();
+        assert_eq!(resp2.next_header_to_scan, c_hash, "next header should point to C");
+
+        // Page 3, limit 1: should return only block C (height 3) and next header should be empty (tip reached)
+        let resp3 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash.clone(),
+                limit: 1,
+                page: 3,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos page 3 should succeed");
+
+        assert_eq!(resp3.blocks.len(), 1, "expected exactly one block in fourth page");
+        assert_eq!(resp3.blocks[0].height, 3, "fourth page should start at height 3 (C)");
+        let d_hash = chain.get("D").unwrap().hash().to_vec();
+        assert_eq!(resp3.next_header_to_scan, d_hash, "next header should point to D");
+
+        // Page 4, limit 1: should return only block C (height 3) and next header should be empty (tip reached)
+        let resp4 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash.clone(),
+                limit: 1,
+                page: 4,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos page 3 should succeed");
+
+        assert_eq!(resp4.blocks.len(), 1, "expected exactly one block in fourth page");
+        assert_eq!(resp4.blocks[0].height, 4, "fourth page should start at height 4 (D)");
+        assert!(resp4.next_header_to_scan.is_empty(), "no next header at tip");
+
+        let resp5 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash,
+                limit: 2,
+                page: 0,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos should succeed");
+
+        assert_eq!(resp5.blocks.len(), 2, "expected 2 blocks");
+        assert_eq!(resp5.blocks[0].height, 1, "Should be block (A)");
+        assert_eq!(resp5.blocks[1].height, 2, "Should be block (B)");
+        let c_hash = chain.get("C").unwrap().hash().to_vec();
+        assert_eq!(resp5.next_header_to_scan, c_hash, "next header should point to C");
+        assert!(resp5.has_next_page, "Should have more pages");
     }
 }
