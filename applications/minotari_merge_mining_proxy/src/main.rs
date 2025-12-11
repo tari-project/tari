@@ -28,7 +28,6 @@ mod cli;
 mod common;
 mod config;
 mod error;
-mod monero_fail;
 mod proxy;
 mod run_merge_miner;
 
