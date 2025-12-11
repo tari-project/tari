@@ -30,6 +30,5 @@ pub use cli::Cli;
 mod common;
 mod config;
 mod error;
-mod monero_fail;
 mod proxy;
 pub mod run_merge_miner;
