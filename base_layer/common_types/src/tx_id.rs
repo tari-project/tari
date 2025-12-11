@@ -42,8 +42,8 @@ impl TxId {
     }
 
     /// Create a new TxId deterministically from the given 32-byte output hash and MAC key.
-    pub fn new_deterministic(mac_key: &[u8], output_hash: &[u8; 32]) -> Self {
-        let hash = Mac::<Blake2b<U32>>::generate(mac_key, output_hash, "tari/tx_id_64");
+    pub fn new_deterministic(view_key: &[u8], output_hash: &[u8; 32]) -> Self {
+        let hash = Mac::<Blake2b<U32>>::generate(view_key, output_hash, "tari/tx_id_64");
         let hash = hash.as_ref();
 
         let mut buffer = [0u8; 8];

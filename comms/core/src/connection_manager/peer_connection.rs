@@ -323,8 +323,7 @@ impl PeerConnection {
             self.substream_count()
         );
         let (reply_tx, reply_rx) = oneshot::channel();
-        let _unused = self
-            .request_tx
+        self.request_tx
             .send(PeerConnectionRequest::Disconnect(
                 false,
                 reply_tx,
@@ -339,7 +338,7 @@ impl PeerConnection {
                     self.peer_node_id,
                     e
                 );
-            });
+            })?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
@@ -376,8 +375,7 @@ impl PeerConnection {
         requester: &str,
     ) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        let _unused = self
-            .request_tx
+        self.request_tx
             .send(PeerConnectionRequest::Disconnect(
                 true,
                 reply_tx,
@@ -392,7 +390,7 @@ impl PeerConnection {
                     self.peer_node_id,
                     e
                 );
-            });
+            })?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
