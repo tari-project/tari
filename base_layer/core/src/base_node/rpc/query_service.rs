@@ -190,12 +190,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .await?
             .ok_or_else(|| Error::StartHeaderHashNotFound)?;
 
-
         let tip_header = self.db.fetch_tip_header().await?;
         // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
         // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
         // we can cache all wallet's queries
-        let increase = ((start_header.height + WALLET_MAX_BLOCKS_PER_REQUEST) / WALLET_MAX_BLOCKS_PER_REQUEST) * WALLET_MAX_BLOCKS_PER_REQUEST;
+        let increase = ((start_header.height + WALLET_MAX_BLOCKS_PER_REQUEST) / WALLET_MAX_BLOCKS_PER_REQUEST) *
+            WALLET_MAX_BLOCKS_PER_REQUEST;
         let end_height = cmp::min(tip_header.header().height, increase);
 
         // pagination
@@ -236,7 +236,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let next_header_to_request;
         let mut has_next_page = true;
         loop {
-            dbg!(current_header.height);
             let current_header_hash = current_header.hash();
             trace!(
                 target: LOG_TARGET,
@@ -260,7 +259,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .map(|(output, _spent)| output)
                     .collect::<Vec<TransactionOutput>>()
             };
-            dbg!(outputs.len());
             let mut inputs = self
                 .db
                 .fetch_inputs_in_block(current_header_hash)
@@ -308,7 +306,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
 
             if current_header.height >= tip_header.header().height {
-                dbg!("reached tip");
                 next_header_to_request = vec![];
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break;
@@ -325,7 +322,6 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .header_hash ==
                     current_header_hash.to_vec()
                 {
-                    dbg!("edge");
                     // special edge case where the first block is also the last block we can send, so we just send it as
                     // is, partial
                     break;
@@ -335,13 +331,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .header_hash ==
                         current_header_hash.to_vec()
                 {
-                    let res = utxos.pop();
-                    match res {
-                        Some(block) => {
-                            dbg!("removing block at height {}", block.height);
-                        },
-                        None => {dbg!("no block to remove");},
-                    };
+                    utxos.pop();
                 }
                 break;
             }
@@ -356,20 +346,16 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             if current_header.height == end_height {
                 next_header_to_request = current_header.hash().to_vec();
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
-                dbg!("ending");
                 break; // Stop if we reach the end height
             }
 
-            if fetched_chunks = request.limit{
+            if fetched_chunks == request.limit {
                 // we are on the limit, stop here
                 next_header_to_request = current_header.hash().to_vec();
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                break;
             }
         }
-        for utxo in &utxos {
-            dbg!(utxo.height);
-        }
-
         Ok(SyncUtxosByBlockResponseV0 {
             blocks: utxos,
             has_next_page,
@@ -612,6 +598,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
     use tari_shutdown::Shutdown;
 
@@ -678,17 +665,11 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_utxos_paginates_results() {
-        use crate::test_helpers::blockchain::create_main_chain;
-        use crate::block_specs;
+        use crate::{block_specs, test_helpers::blockchain::create_main_chain};
 
         // Build a small chain: GB -> A -> B -> C
         let db = create_new_blockchain_with_network(Network::LocalNet);
-        let (_names, chain) = create_main_chain(&db, block_specs!(
-            ["A->GB"],
-            ["B->A"],
-            ["C->B"],
-            ["D->C"]
-        ));
+        let (_names, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"]));
 
         // Construct the service over this DB
         let adb = AsyncBlockchainDb::from(db);
