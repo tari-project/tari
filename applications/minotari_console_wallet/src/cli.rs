@@ -439,7 +439,7 @@ impl From<HexError> for CliParseError {
 pub struct FinaliseShaAtomicSwapArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
     pub output_hash: Vec<Vec<u8>>,
-    #[clap(short, long)]
+    #[clap(long)]
     pub pre_image: UniPublicKey,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap")]
     pub payment_id: String,
