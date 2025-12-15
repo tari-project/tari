@@ -253,7 +253,7 @@ jobs:
           ls -alhtR "${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: lib${{ matrix.libffis }}-${{ matrix.builds.tari_network }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
           path: ${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
@@ -338,7 +338,7 @@ jobs:
           ls -alhtR
 
       - name: Upload iOS universal libffis artifacts for ${{ matrix.tari_networks }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal
           path: libffiss/lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal
@@ -390,7 +390,7 @@ jobs:
           ls -alhtR
 
       - name: Upload iOS xcframework libffis artifacts for ${{ matrix.tari_networks }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework
           path: libffiss/lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework
@@ -413,7 +413,7 @@ jobs:
           ls -alht
 
       - name: Upload libffis archive for ${{ matrix.tari_networks }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}_archive
           path: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}_archive.zip*
