@@ -25,8 +25,8 @@
 use std::convert::TryInto;
 
 use bytes::BytesMut;
-use hyper::{body::HttpBody, header, header::HeaderValue, http::response, Body, Response, StatusCode, Version};
-use reqwest::{ResponseBuilderExt, Url};
+use http_body::Body as HttpBodyTrait;
+use hyper::{header, header::HeaderValue, http::response, Response, StatusCode, Version};
 use serde_json as json;
 
 use crate::error::MmProxyError;
@@ -34,7 +34,6 @@ use crate::error::MmProxyError;
 pub async fn convert_json_to_hyper_json_response(
     resp: json::Value,
     code: StatusCode,
-    url: Url,
 ) -> Result<Response<json::Value>, MmProxyError> {
     let mut builder = Response::builder();
 
@@ -43,7 +42,7 @@ pub async fn convert_json_to_hyper_json_response(
         .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
     headers.append("Content-Type", HeaderValue::from_str("application/json").unwrap());
 
-    builder = builder.version(Version::HTTP_11).status(code).url(url);
+    builder = builder.version(Version::HTTP_11).status(code);
 
     let body = resp;
     let resp = builder.body(body)?;
@@ -55,39 +54,39 @@ pub async fn convert_json_to_hyper_json_response(
 /// # Errors
 ///
 /// Return error when body is invalid.
-pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<Body>, MmProxyError> {
-    let body_str = json::to_string(body)?;
+pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<json::Value>, MmProxyError> {
+    let body_val = body.clone();
     Response::builder()
         .header(header::CONTENT_TYPE, "application/json".to_string())
-        .header(header::CONTENT_LENGTH, body_str.len())
+        .header(header::CONTENT_LENGTH, body_val.to_string().len())
         .status(status)
-        .body(body_str.into())
+        .body(body_val)
         .map_err(Into::into)
 }
 
 /// Convert parts and content into body response.
-pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<Body> {
-    let resp = json::to_string(content).expect("json::to_string cannot fail when stringifying a json::Value");
+pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<json::Value> {
+    let resp = content.clone();
     // Ensure that the content length header is correct
-    parts.headers.insert(header::CONTENT_LENGTH, resp.len().into());
+    parts.headers.insert(header::CONTENT_LENGTH, resp.to_string().len().into());
     parts
         .headers
         .insert(header::CONTENT_TYPE, "application/json".try_into().unwrap());
-    Response::from_parts(parts, resp.into())
+    Response::from_parts(parts, resp)
 }
 
 /// Convert json response to body response.
-pub fn into_body_from_response(resp: Response<json::Value>) -> Response<Body> {
+pub fn into_body_from_response(resp: Response<json::Value>) -> Response<json::Value> {
     let (parts, body) = resp.into_parts();
     into_response(parts, &body)
 }
 
 /// Reads the body until there is no more to read.
-pub async fn read_body_until_end(body: &mut Body) -> Result<BytesMut, MmProxyError> {
+pub async fn read_body_until_end<B: HttpBodyTrait + Unpin>(body: &mut B) -> Result<BytesMut, MmProxyError> {
     let mut bytes = BytesMut::new();
-    while let Some(data) = body.data().await {
-        let data = data?;
-        bytes.extend(data);
+    while let Some(chunk) = body.data().await {
+        let data = chunk.map_err(|_e| MmProxyError::InvalidMonerodResponse("Failed to read body".to_string()))?;
+        bytes.extend_from_slice(&data);
     }
     Ok(bytes)
 }
@@ -100,9 +99,8 @@ pub mod test {
     async fn test_convert_json_to_hyper_json_response() {
         let resp = json::json!({"test key":"test value"});
         let code = StatusCode::from_u16(200).unwrap();
-        let url = Url::parse("http://test.com/path?test=param").unwrap();
         // println!("{:?}", resp);
-        let hyper = convert_json_to_hyper_json_response(resp.clone(), code, url)
+        let hyper = convert_json_to_hyper_json_response(resp.clone(), code)
             .await
             .unwrap();
         assert_eq!(hyper.status(), code);

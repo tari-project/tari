@@ -23,8 +23,8 @@
 #![allow(clippy::indexing_slicing)]
 use bytes::Bytes;
 use hyper::{Request, Response};
+use hyper::header::{HeaderName as HyperHeaderName, HeaderValue as HyperHeaderValue};
 use minotari_app_grpc::tari_rpc;
-use reqwest::ResponseBuilderExt;
 use serde_json as json;
 use serde_json::json;
 use tari_utilities::hex::Hex;
@@ -42,15 +42,22 @@ pub async fn convert_reqwest_response_to_hyper_json_response(
     let headers = builder
         .headers_mut()
         .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
-    headers.extend(resp.headers().iter().map(|(name, value)| (name.clone(), value.clone())));
+    for (name, value) in resp.headers().iter() {
+        let hn = HyperHeaderName::from_bytes(name.as_str().as_bytes()).map_err(|e| {
+            MmProxyError::ConversionError(format!("Failed to convert header name to hyper type: {}", e))
+        })?;
+        let hv = HyperHeaderValue::from_bytes(value.as_bytes()).map_err(|e| {
+            MmProxyError::ConversionError(format!("Failed to convert header value to hyper type: {}", e))
+        })?;
+        headers.insert(hn, hv);
+    }
 
     builder = builder
-        .version(resp.version())
-        .status(resp.status())
-        .url(resp.url().clone());
+        .version(hyper::Version::HTTP_11)
+        .status(hyper::StatusCode::from_u16(resp.status().as_u16()).map_err(|e| MmProxyError::ConversionError(format!("Invalid status code: {}", e)))?);
 
-    let body = resp.json().await.map_err(MmProxyError::MonerodRequestFailed)?;
-    let resp = builder.body(body)?;
+    let body_json = resp.json().await.map_err(MmProxyError::MonerodRequestFailed)?;
+    let resp = builder.body(body_json)?;
     Ok(resp)
 }
 

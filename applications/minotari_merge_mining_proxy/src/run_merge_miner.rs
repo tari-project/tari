@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::Infallible;
-
-use futures::future;
-use hyper::{service::make_service_fn, Server};
+use tonic::transport::Server as TonicServer;
+use tokio::net::TcpListener;
+use tower::make::Shared;
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
@@ -117,13 +116,18 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         randomx_factory,
         wallet_payment_address,
     )?;
-    let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(randomx_service.clone())));
+    let make_svc = Shared::new(randomx_service);
 
-    match Server::try_bind(&listen_addr) {
-        Ok(builder) => {
+    match TcpListener::bind(listen_addr).await {
+        Ok(listener) => {
             info!(target: LOG_TARGET, "Listening on {listen_addr}...");
             println!("Listening on {listen_addr}...");
-            builder.serve(service).await?;
+
+            TonicServer::builder()
+                .add_service(crate::proxy::service::NamedProxyService::new(make_svc))
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await?;
+
             Ok(())
         },
         Err(err) => {
@@ -131,7 +135,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("Fatal: Cannot bind to '{listen_addr}'.");
             println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
             println!("'proxy_host_address' in 'config/config.toml' and for the applicable RandomX '[pools][url]' or");
-            println!("[pools][self-select]' config setting that can be found  in 'config/xmrig_config_***.json' or");
+            println!("'[pools][self-select]' config setting that can be found in 'config/xmrig_config_***.json' or");
             println!("'<xmrig folder>/config.json'.");
             println!();
             Err(err.into())
