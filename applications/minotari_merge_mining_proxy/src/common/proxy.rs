@@ -26,6 +26,7 @@ use std::convert::TryInto;
 
 use bytes::BytesMut;
 use http_body::Body as HttpBodyTrait;
+use http_body_util::BodyExt;
 use hyper::{header, header::HeaderValue, http::response, Response, StatusCode, Version};
 use serde_json as json;
 
@@ -82,13 +83,10 @@ pub fn into_body_from_response(resp: Response<json::Value>) -> Response<json::Va
 }
 
 /// Reads the body until there is no more to read.
-pub async fn read_body_until_end<B: HttpBodyTrait + Unpin>(body: &mut B) -> Result<BytesMut, MmProxyError> {
-    let mut bytes = BytesMut::new();
-    while let Some(chunk) = body.data().await {
-        let data = chunk.map_err(|_e| MmProxyError::InvalidMonerodResponse("Failed to read body".to_string()))?;
-        bytes.extend_from_slice(&data);
-    }
-    Ok(bytes)
+pub async fn read_body_until_end<B: HttpBodyTrait + Unpin>(body: B) -> Result<BytesMut, MmProxyError> {
+    let collected = body.collect().await
+        .map_err(|_e| MmProxyError::InvalidMonerodResponse("Failed to read body".to_string()))?;
+    Ok(BytesMut::from(collected.to_bytes().as_ref()))
 }
 
 #[cfg(test)]

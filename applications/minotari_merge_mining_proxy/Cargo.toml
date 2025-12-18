@@ -43,7 +43,9 @@ dhat = "0.3.3"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 hyper = { version = "1.6.0", features = ["full"] }
+hyper-util = "0.1"
 http-body = "1.0"
+http-body-util = "0.1"
 jsonrpc = "0.12.0"
 log = { workspace = true, features = ["std"] }
 monero = { version = "0.21.0", features = ["serde"] }
@@ -51,8 +53,9 @@ reqwest = { version = "0.12", features = ["json", "native-tls", "blocking"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "net"] }
 url = "2.1.1"
+tokio-stream = "0.1"
 rand = { workspace = true }
 blake2 = "0.10"
 tower = "0.4"

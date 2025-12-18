@@ -24,21 +24,19 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc, RwLock},
-    task::{Context, Poll},
 };
 
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
-use http_body_util::BodyExt;
+use http_body_util::Full;
 use std::convert::Infallible;
-
-use hyper::body::Body as HyperBody;
+use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
+use hyper::service::Service;
 use jsonrpc::error::StandardError;
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::protocol::rpc::__macro_reexports::Service;
 use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tracing::{error, trace, warn};
 
@@ -92,19 +90,23 @@ impl MergeMiningProxyService {
 #[allow(clippy::type_complexity)]
 type ProxyBody = BoxBody<Bytes, Infallible>;
 
-impl Service<Request<ProxyBody>> for MergeMiningProxyService {
-    type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+fn json_response_to_boxbody(resp: Response<serde_json::Value>) -> Response<ProxyBody> {
+    let (parts, body) = resp.into_parts();
+    let body_bytes = serde_json::to_vec(&body).unwrap_or_default();
+    let boxed_body = BoxBody::new(Full::new(Bytes::from(body_bytes)));
+    Response::from_parts(parts, boxed_body)
+}
+
+impl Service<Request<Incoming>> for MergeMiningProxyService {
     type Response = Response<ProxyBody>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, mut request: Request<ProxyBody>) -> Self::Future {
+    fn call(&self, request: Request<Incoming>) -> Self::Future {
         let inner = self.inner.clone();
         let future = async move {
-            let bytes = match proxy::read_body_until_end(request.body_mut()).await {
+            let (parts, body) = request.into_parts();
+            let bytes = match proxy::read_body_until_end(body).await {
                 Ok(b) => b,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Method: Unknown, Failed to read request: {:?}", err);
@@ -117,25 +119,27 @@ impl Service<Request<ProxyBody>> for MergeMiningProxyService {
                         ),
                     )
                     .expect("unexpected failure");
-                    return Ok(resp);
+                    return Ok(json_response_to_boxbody(resp));
                 },
             };
-            let request = request.map(|_| bytes.freeze());
+            let request = Request::from_parts(parts, bytes.freeze());
             let monerod_method = parse_monerod_rpc_method(request.method(), request.uri(), request.body());
 
             match inner.handle(monerod_method, request).await {
-                Ok(resp) => Ok(resp),
+                Ok(resp) => Ok(json_response_to_boxbody(resp)),
                 Err(err) => {
                     error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", monerod_method, err);
-                    Ok(proxy::json_response(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        &json_rpc::standard_error_response(
-                            None,
-                            StandardError::InternalError,
-                            Some(json!({"details": err.to_string()})),
-                        ),
-                    )
-                    .expect("unexpected failure"))
+                    Ok(json_response_to_boxbody(
+                        proxy::json_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &json_rpc::standard_error_response(
+                                None,
+                                StandardError::InternalError,
+                                Some(json!({"details": err.to_string()})),
+                            ),
+                        )
+                        .expect("unexpected failure")
+                    ))
                 },
             }
         };
@@ -143,3 +147,4 @@ impl Service<Request<ProxyBody>> for MergeMiningProxyService {
         Box::pin(future)
     }
 }
+

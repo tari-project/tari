@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tonic::transport::Server as TonicServer;
+use hyper::server::conn::http1;
 use tokio::net::TcpListener;
-use tower::make::Shared;
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
@@ -107,7 +106,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
-    let randomx_service = MergeMiningProxyService::try_create(
+    let randomx_service = std::sync::Arc::new(MergeMiningProxyService::try_create(
         config,
         client,
         base_node_client,
@@ -115,20 +114,27 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         BlockTemplateRepository::new(),
         randomx_factory,
         wallet_payment_address,
-    )?;
-    let make_svc = Shared::new(randomx_service);
+    )?);
 
     match TcpListener::bind(listen_addr).await {
         Ok(listener) => {
             info!(target: LOG_TARGET, "Listening on {listen_addr}...");
             println!("Listening on {listen_addr}...");
 
-            TonicServer::builder()
-                .add_service(crate::proxy::service::NamedProxyService::new(make_svc))
-                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
-                .await?;
+            loop {
+                let (tcp, _) = listener.accept().await?;
+                let svc = randomx_service.clone();
+                let io = hyper_util::rt::TokioIo::new(tcp);
 
-            Ok(())
+                tokio::task::spawn(async move {
+                    if let Err(e) = http1::Builder::new()
+                        .serve_connection(io, &*svc)
+                        .await
+                    {
+                        error!("Connection error: {}", e);
+                    }
+                });
+            }
         },
         Err(err) => {
             error!(target: LOG_TARGET, "Fatal: Cannot bind to '{listen_addr}'.");
