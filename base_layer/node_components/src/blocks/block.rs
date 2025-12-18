@@ -29,7 +29,6 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_transaction_components::{

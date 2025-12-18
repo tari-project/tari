@@ -36,6 +36,7 @@ use crate::chain_storage::{
     lmdb_db::{
         composite_key::CompositeKey,
         cursors::{FromKeyBytes, LmdbReadCursor},
+        helpers,
         lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup, lmdb_len},
     },
     ChainStorageError,
@@ -47,8 +48,8 @@ const LOG_TARGET: &str = "c::cs::lmdb_db::validator_node_store";
 const U64_SIZE: usize = size_of::<u64>();
 const PK_SIZE: usize = 32;
 
-/// <sid, pk, epoch>
-type ValidatorNodeStoreKey = CompositeKey<{ PK_SIZE + PK_SIZE + U64_SIZE }>;
+/// <sid, pk>
+type ValidatorNodeStoreKey = CompositeKey<{ PK_SIZE + PK_SIZE }>;
 /// <sid, epoch, pk>
 type ExitQueueKey = CompositeKey<{ PK_SIZE + U64_SIZE + PK_SIZE }>;
 const EXIT_QUEUE_KEY_SECTIONS: [usize; 3] = [PK_SIZE, U64_SIZE, PK_SIZE];
@@ -573,7 +574,6 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         sidechain_pk: Option<&CompressedPublicKey>,
         start_epoch: VnEpoch,
         end_epoch: VnEpoch,
-        limit: usize,
     ) -> Result<BTreeSet<ValidatorNodeEntry>, ChainStorageError> {
         if end_epoch < start_epoch {
             return Err(ChainStorageError::InvalidQuery(format!(
@@ -581,20 +581,22 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             )));
         }
 
-        if limit == 0 {
+        if end_epoch < start_epoch {
+            return Err(ChainStorageError::InvalidQuery(format!(
+                "get_vn_set: End epoch is less than start epoch: {end_epoch} < {start_epoch}"
+            )));
+        }
+
+        let mut cursor = self.activation_queue_read_cursor()?;
+
+        let start_key = create_activation_key(sidechain_pk, start_epoch);
+        if !cursor.seek_range(&start_key)? {
             return Ok(BTreeSet::new());
         }
 
-        let mut cursor = self.validator_store_cursor()?;
-
-        let prefix = create_vn_store_prefix_key(sidechain_pk, start_epoch);
-        if !cursor.seek_range(&prefix)? {
-            return Ok(BTreeSet::new());
-        }
-
-        let sidechain_bytes = sid_as_slice(sidechain_pk);
         let mut nodes = BTreeSet::new();
-        while let Some((key, vn)) = cursor.next()? {
+        let sidechain_bytes = sid_as_slice(sidechain_pk);
+        while let Some((key, pk)) = cursor.next()? {
             if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
                 "Key bytes for output hash are too short".to_string(),
             ))? != sidechain_bytes
@@ -603,13 +605,33 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 break;
             }
 
-            if vn.activation_epoch > end_epoch {
+            let activation_epoch = key.to_be_u64(PK_SIZE)?;
+            let activation_epoch = VnEpoch(activation_epoch);
+            if activation_epoch < start_epoch {
+                continue;
+            }
+            if activation_epoch > end_epoch {
                 break;
             }
+            let key = create_vn_key(sidechain_pk, &pk);
+            // Need to re-use the accessor from the cursor to double access to the transaction
+            let bytes = cursor
+                .access()
+                .get(&self.db_validator_nodes, &key)
+                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+            let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
 
             nodes.insert(vn);
-            if nodes.len() == limit {
-                break;
+
+            // Get remaining nodes from DUPSORT db within the same activation epoch
+            while let Some((_, pk)) = cursor.next_dup()? {
+                let key = create_vn_key(sidechain_pk, &pk);
+                let bytes = cursor
+                    .access()
+                    .get(&self.db_validator_nodes, &key)
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
+                nodes.insert(vn);
             }
         }
 
@@ -800,7 +822,7 @@ fn create_vn_key(
 }
 fn create_vn_key_raw(sidechain_pk: &[u8], public_key: &[u8]) -> ValidatorNodeStoreKey {
     ValidatorNodeStoreKey::try_from_parts(&[sidechain_pk, public_key])
-        .expect("create_key: Composite key length is incorrect")
+        .expect("create_vn_key_raw: Composite key length is incorrect")
 }
 
 fn create_exit_queue_key(
@@ -813,7 +835,7 @@ fn create_exit_queue_key(
         epoch.to_be_bytes().as_slice(),
         public_key.as_bytes(),
     ])
-    .expect("create_key: Composite key length is incorrect")
+    .expect("create_exit_queue_key: Composite key length is incorrect")
 }
 
 fn create_exit_queue_prefix_key<B: ByteArray>(sidechain_pk: Option<&B>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
@@ -832,19 +854,6 @@ fn create_exit_queue_prefix_key<B: ByteArray>(sidechain_pk: Option<&B>, epoch: V
 fn create_activation_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> ActivationQueueKey {
     ActivationQueueKey::try_from_parts(&[sid_as_slice(sidechain_pk), &epoch.to_be_bytes()])
         .expect("create_activation_key: Composite key length is incorrect")
-}
-
-fn create_vn_store_prefix_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
-    let mut buf = [0u8; PK_SIZE + U64_SIZE];
-    if let Some(pk) = sidechain_pk {
-        buf.get_mut(..PK_SIZE)
-            .expect("Should exists")
-            .copy_from_slice(pk.as_bytes());
-    }
-    buf.get_mut(PK_SIZE..)
-        .expect("Should exists")
-        .copy_from_slice(&epoch.to_be_bytes());
-    buf
 }
 
 fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
@@ -920,7 +929,7 @@ mod tests {
             let txn = db.write_transaction();
             let store = create_store(&db, &txn);
             let nodes = insert_n_vns(&store, 1, 0, 3, None);
-            let set = store.get_vn_set(None, VnEpoch(1), VnEpoch(3), 4).unwrap();
+            let set = store.get_vn_set(None, VnEpoch(1), VnEpoch(3)).unwrap();
             for (i, node) in set.iter().enumerate() {
                 assert_eq!(*node, nodes[i]);
             }
