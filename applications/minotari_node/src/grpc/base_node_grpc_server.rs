@@ -2855,13 +2855,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 public_key,
                 sidechain_id,
                 shard_key,
-                ..
+                activation_epoch,
+                original_registration,
+                minimum_value_promise,
             } in active_validator_nodes
             {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
                     shard_key: shard_key.to_vec(),
-                    sidechain_id: sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]),
+                    sidechain_id: sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or_default(),
+                    claim_public_key: original_registration.claim_public_key().to_vec(),
+                    minimum_value_promise: minimum_value_promise.as_u64(),
+                    activation_epoch: activation_epoch.as_u64(),
                 };
 
                 if tx.send(Ok(active_validator_node)).await.is_err() {
