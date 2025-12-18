@@ -7567,6 +7567,7 @@ version = "5.2.0-rc.0"
 dependencies = [
  "anyhow",
  "futures 0.3.31",
+ "http-body 1.0.1",
  "log",
  "once_cell",
  "prometheus",
