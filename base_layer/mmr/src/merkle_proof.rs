@@ -23,7 +23,6 @@
 use std::fmt::{self, Display, Formatter};
 
 use digest::Digest;
-use log::error;
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::Hex;
 use thiserror::Error;
