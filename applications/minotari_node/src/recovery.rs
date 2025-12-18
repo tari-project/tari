@@ -124,8 +124,6 @@ pub async fn run_recovery(
             factories.clone(),
         ),
     );
-    let mut config = node_config.storage;
-    config.cleanup_orphans_at_startup = true;
     let db = BlockchainDatabase::new(
         main_db,
         rules.clone(),
