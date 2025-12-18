@@ -147,4 +147,3 @@ impl Service<Request<Incoming>> for MergeMiningProxyService {
         Box::pin(future)
     }
 }
-

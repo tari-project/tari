@@ -34,7 +34,6 @@ use std::{
 use blake2::{digest::Update, Blake2s256, Digest};
 use borsh::BorshSerialize;
 use bytes::Bytes;
-//use hyper::body::Body as HyperBody;
 use hyper::{header::HeaderValue as HyperHeaderValue, Request, Response, StatusCode, Uri};
 use reqwest::Method;
 use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderName as ReqwestHeaderName, HeaderValue as ReqwestHeaderValue};
