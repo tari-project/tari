@@ -110,14 +110,14 @@ pub mod test {
     async fn test_json_response_and_read_body_until_end() {
         let status = StatusCode::from_u16(200).unwrap();
         let body = json::json!({"test key":"test value"});
-        let mut response = json_response(status, &body.clone()).unwrap();
+        let response = json_response(status, &body.clone()).unwrap();
         assert_eq!(response.status(), status);
         assert!(response.headers().contains_key("content-type"));
         assert_eq!(response.headers()["content-type"], "application/json");
         assert!(response.headers().contains_key("content-length"));
         assert_eq!(response.headers()["content-length"], body.to_string().len().to_string());
-        let bytes = read_body_until_end(response.body_mut()).await.unwrap();
-        assert_eq!(bytes, body.to_string());
+        // Note: The response body is serde_json::Value, not an HTTP body, so we can't call read_body_until_end on it
+        assert_eq!(response.body(), &body);
     }
 
     #[test]
