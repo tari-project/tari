@@ -10,6 +10,8 @@ diesel::table! {
         kernel_merkle_proof -> Nullable<Binary>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        encrypted_data -> Nullable<Binary>,
+        value -> Nullable<BigInt>,
     }
 }
 

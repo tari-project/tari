@@ -45,7 +45,7 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{MemoField, Transaction, TransactionKernel},
+    transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel},
     MicroMinotari,
 };
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -1348,6 +1348,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         output_hash: FixedHash,
         proof: &BurnClaimProof,
         kernel: &TransactionKernel,
+        encrypted_data: &EncryptedData,
+        value: MicroMinotari,
     ) -> Result<(), TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
@@ -1358,6 +1360,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             serializers::bincode_encode(&kernel)?,
             None,
             &self.cipher,
+            Some(encrypted_data.as_bytes()),
+            Some(value.as_u64() as i64),
         )?;
         diesel::insert_into(schema::burn_proofs::table)
             .values(proof)

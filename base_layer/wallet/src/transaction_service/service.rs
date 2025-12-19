@@ -3109,7 +3109,13 @@ where
                 ownership_proof,
             };
 
-            self.db.insert_burn_proof(output_hash, &proof, &burn_kernel)?;
+            self.db.insert_burn_proof(
+                output_hash,
+                &proof,
+                &burn_kernel,
+                tx_output.output.encrypted_data(),
+                tx_output.output.value(),
+            )?;
             burn_proof = Some(proof);
         }
 

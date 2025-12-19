@@ -35,11 +35,12 @@ use tari_common_types::{
     types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{MemoField, Transaction, TransactionKernel, TransactionOutput},
+    transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel, TransactionOutput},
     MicroMinotari,
 };
 
 use crate::{
+    schema::outputs::encrypted_data,
     storage::sqlite_db::models::DbBurnProof,
     transaction_service::{
         error::TransactionStorageError,
@@ -195,9 +196,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         output_hash: FixedHash,
         proof: &BurnClaimProof,
-
         kernel: &TransactionKernel,
+        encrypted_data: &EncryptedData,
+        value: MicroMinotari,
     ) -> Result<(), TransactionStorageError>;
+
     fn update_burn_proof_set_merkle_proof(
         &self,
         output_hash: &FixedHash,
@@ -916,8 +919,11 @@ where T: TransactionBackend + 'static
         output_hash: FixedHash,
         proof: &BurnClaimProof,
         kernel: &TransactionKernel,
+        encrypt_data: &EncryptedData,
+        value: MicroMinotari,
     ) -> Result<(), TransactionStorageError> {
-        self.db.insert_burn_proof(output_hash, proof, kernel)
+        self.db
+            .insert_burn_proof(output_hash, proof, kernel, encrypt_data, value)
     }
 
     pub fn update_burn_proof_set_merkle_proof(

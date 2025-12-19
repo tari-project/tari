@@ -3014,25 +3014,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ))
             })?;
 
-        let output = self
-            .get_output_manager_service()
-            .get_many_outputs(vec![proof.output_hash])
-            .await
-            .map_err(|e| {
-                Status::internal(format!(
-                    "Failed to get output for commitment {}: {}",
-                    commitment.to_compressed_key(),
-                    e
-                ))
-            })?
-            .pop()
-            .ok_or_else(|| {
-                Status::not_found(format!(
-                    "No output found for commitment {}",
-                    commitment.to_compressed_key()
-                ))
-            })?;
-
         Ok(Response::new(GetBurnClaimProofResponse {
             claim_proof: Some(tari_rpc::BurnClaimProof {
                 commitment: commitment.as_bytes().to_vec(),
@@ -3045,8 +3026,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 leaf_index: p.leaf_index,
             }),
             kernel: Some(proof.kernel.into()),
-            encrypted_data: output.1.encrypted_data().to_byte_vec(),
-            value: output.1.value().as_u64(),
+            encrypted_data: proof
+                .encrypted_data
+                .as_ref()
+                .map(|ed| ed.to_byte_vec())
+                .unwrap_or_default(),
+            value: proof.value.as_ref().map(|v| v.as_u64()).unwrap_or_default(),
         }))
     }
 
