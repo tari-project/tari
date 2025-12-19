@@ -28,7 +28,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use http_body_util::{combinators::BoxBody, Full};
+use http_body_util::combinators::BoxBody;
 use hyper::{body::Incoming, service::Service, Request, Response, StatusCode};
 use jsonrpc::error::StandardError;
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
@@ -84,15 +84,7 @@ impl MergeMiningProxyService {
     }
 }
 
-#[allow(clippy::type_complexity)]
-type ProxyBody = BoxBody<Bytes, Infallible>;
-
-fn json_response_to_boxbody(resp: Response<serde_json::Value>) -> Response<ProxyBody> {
-    let (parts, body) = resp.into_parts();
-    let body_bytes = serde_json::to_vec(&body).unwrap_or_default();
-    let boxed_body = BoxBody::new(Full::new(Bytes::from(body_bytes)));
-    Response::from_parts(parts, boxed_body)
-}
+pub type ProxyBody = BoxBody<Bytes, Infallible>;
 
 impl Service<Request<Incoming>> for MergeMiningProxyService {
     type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -116,27 +108,25 @@ impl Service<Request<Incoming>> for MergeMiningProxyService {
                         ),
                     )
                     .expect("unexpected failure");
-                    return Ok(json_response_to_boxbody(resp));
+                    return Ok(resp);
                 },
             };
             let request = Request::from_parts(parts, bytes.freeze());
             let monerod_method = parse_monerod_rpc_method(request.method(), request.uri(), request.body());
 
             match inner.handle(monerod_method, request).await {
-                Ok(resp) => Ok(json_response_to_boxbody(resp)),
+                Ok(resp) => Ok(resp),
                 Err(err) => {
                     error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", monerod_method, err);
-                    Ok(json_response_to_boxbody(
-                        proxy::json_response(
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            &json_rpc::standard_error_response(
-                                None,
-                                StandardError::InternalError,
-                                Some(json!({"details": err.to_string()})),
-                            ),
-                        )
-                        .expect("unexpected failure"),
-                    ))
+                    Ok(proxy::json_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &json_rpc::standard_error_response(
+                            None,
+                            StandardError::InternalError,
+                            Some(json!({"details": err.to_string()})),
+                        ),
+                    )
+                    .expect("unexpected failure"))
                 },
             }
         };

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
@@ -105,7 +106,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
-    let randomx_service = std::sync::Arc::new(MergeMiningProxyService::try_create(
+    let randomx_service = MergeMiningProxyService::try_create(
         config,
         client,
         base_node_client,
@@ -113,24 +114,27 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         BlockTemplateRepository::new(),
         randomx_factory,
         wallet_payment_address,
-    )?);
+    )?;
 
     match TcpListener::bind(listen_addr).await {
         Ok(listener) => {
             info!(target: LOG_TARGET, "Listening on {listen_addr}...");
             println!("Listening on {listen_addr}...");
 
-            loop {
-                let (tcp, _) = listener.accept().await?;
-                let svc = randomx_service.clone();
-                let io = hyper_util::rt::TokioIo::new(tcp);
-
-                tokio::task::spawn(async move {
-                    if let Err(e) = http1::Builder::new().serve_connection(io, &*svc).await {
-                        error!("Connection error: {}", e);
+            let mut shutdown = Box::pin(tokio::signal::ctrl_c());
+            let mut serve_fut = Box::pin(serve(listener, randomx_service));
+            tokio::select! {
+                _ = &mut shutdown => {
+                    info!(target: LOG_TARGET, "Ctrl-C received, shutting down merge mining proxy...");
+                    println!("Ctrl-C: shutting down merge mining proxy...");
+                }
+                result = &mut serve_fut => {
+                    if let Err(e) = result {
+                        error!(target: LOG_TARGET, "Error in merge mining proxy service: {}", e);
                     }
-                });
+                }
             }
+            Ok(())
         },
         Err(err) => {
             error!(target: LOG_TARGET, "Fatal: Cannot bind to '{listen_addr}'.");
@@ -143,6 +147,24 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             Err(err.into())
         },
     }
+}
+
+async fn serve(listener: TcpListener, service: MergeMiningProxyService) -> Result<(), MmProxyError> {
+    loop {
+        let (tcp, _) = listener.accept().await?;
+        info!(target: LOG_TARGET, "Accepted new connection");
+        let svc = service.clone();
+        let io = TokioIo::new(tcp);
+
+        tokio::task::spawn(async move {
+            if let Err(e) = http1::Builder::new().serve_connection(io, &svc).await {
+                error!("Connection error: {}", e);
+            }
+        });
+    }
+
+    #[allow(unreachable_code)]
+    Ok(())
 }
 
 async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {

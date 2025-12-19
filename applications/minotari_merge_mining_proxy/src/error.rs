@@ -41,12 +41,6 @@ use tonic::{codegen::http::uri::InvalidUri, transport};
 
 #[derive(Debug, Error)]
 pub enum MmProxyError {
-    #[error("Invalid HTTP method '{method}'")]
-    InvalidHttpMethod {
-        method: String,
-        #[source]
-        source: tonic::codegen::http::method::InvalidMethod,
-    },
     #[error("Configuration error: {0}")]
     ConfigurationError(#[from] ConfigurationError),
     #[error("Configuration error: {0}")]

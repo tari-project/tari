@@ -24,13 +24,13 @@
 
 use std::convert::TryInto;
 
-use bytes::BytesMut;
-use http_body::Body as HttpBodyTrait;
-use http_body_util::BodyExt;
+use bytes::{BufMut, BytesMut};
+use http_body::Body;
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{header, header::HeaderValue, http::response, Response, StatusCode, Version};
 use serde_json as json;
 
-use crate::error::MmProxyError;
+use crate::{error::MmProxyError, proxy::service::ProxyBody};
 
 pub async fn convert_json_to_hyper_json_response(
     resp: json::Value,
@@ -55,41 +55,54 @@ pub async fn convert_json_to_hyper_json_response(
 /// # Errors
 ///
 /// Return error when body is invalid.
-pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<json::Value>, MmProxyError> {
-    let body_val = body.clone();
+pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<ProxyBody>, MmProxyError> {
+    let (body, len) = encode_json_body(body)?;
     Response::builder()
         .header(header::CONTENT_TYPE, "application/json".to_string())
-        .header(header::CONTENT_LENGTH, body_val.to_string().len())
+        .header(header::CONTENT_LENGTH, len)
         .status(status)
-        .body(body_val)
+        .body(body)
         .map_err(Into::into)
 }
 
+fn encode_json_body(body: &json::Value) -> Result<(ProxyBody, usize), MmProxyError> {
+    let bytes = BytesMut::new();
+    let mut writer = bytes.writer();
+    json::to_writer(&mut writer, body)?;
+    let bytes = writer.into_inner().freeze();
+    let len = bytes.len();
+    let body = BoxBody::new(Full::new(bytes));
+    Ok((body, len))
+}
+
 /// Convert parts and content into body response.
-pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<json::Value> {
-    let resp = content.clone();
+pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Result<Response<ProxyBody>, MmProxyError> {
+    let (body, size) = encode_json_body(content)?;
     // Ensure that the content length header is correct
-    parts
-        .headers
-        .insert(header::CONTENT_LENGTH, resp.to_string().len().into());
+    // TODO: check if this is necessary
+    parts.headers.insert(header::CONTENT_LENGTH, size.into());
     parts
         .headers
         .insert(header::CONTENT_TYPE, "application/json".try_into().unwrap());
-    Response::from_parts(parts, resp)
+    Ok(Response::from_parts(parts, body))
 }
 
 /// Convert json response to body response.
-pub fn into_body_from_response(resp: Response<json::Value>) -> Response<json::Value> {
+pub fn into_body_from_response(resp: Response<json::Value>) -> Result<Response<ProxyBody>, MmProxyError> {
     let (parts, body) = resp.into_parts();
     into_response(parts, &body)
 }
 
 /// Reads the body until there is no more to read.
-pub async fn read_body_until_end<B: HttpBodyTrait + Unpin>(body: B) -> Result<BytesMut, MmProxyError> {
+pub async fn read_body_until_end<B>(body: B) -> Result<BytesMut, MmProxyError>
+where
+    B: Body + Unpin,
+    B::Error: std::error::Error + Send + Sync + 'static,
+{
     let collected = body
         .collect()
         .await
-        .map_err(|_e| MmProxyError::InvalidMonerodResponse("Failed to read body".to_string()))?;
+        .map_err(|e| MmProxyError::InvalidMonerodResponse(format!("Failed to read body until the end: {e}")))?;
     Ok(BytesMut::from(collected.to_bytes().as_ref()))
 }
 
@@ -118,15 +131,15 @@ pub mod test {
         assert_eq!(response.headers()["content-type"], "application/json");
         assert!(response.headers().contains_key("content-length"));
         assert_eq!(response.headers()["content-length"], body.to_string().len().to_string());
-        // Note: The response body is serde_json::Value, not an HTTP body, so we can't call read_body_until_end on it
-        assert_eq!(response.body(), &body);
+        let bytes = read_body_until_end(response.into_body()).await.unwrap();
+        assert_eq!(bytes, serde_json::to_vec(&body).unwrap());
     }
 
     #[test]
     pub fn test_into_body_from_response() {
         let body = json::json!({"test key": "test value"});
         let resp = Response::new(body.clone());
-        let response = into_body_from_response(resp);
+        let response = into_body_from_response(resp).unwrap();
         assert!(response.headers().contains_key("content-type"));
         assert_eq!(response.headers()["content-type"], "application/json");
         assert!(response.headers().contains_key("content-length"));

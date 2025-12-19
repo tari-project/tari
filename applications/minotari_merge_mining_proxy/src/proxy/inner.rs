@@ -39,10 +39,6 @@ use log::error;
 use minotari_app_grpc::tari_rpc::{self, GetTipInfoRequest, SubmitBlockRequest};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use rand::random;
-use reqwest::{
-    header::{HeaderMap as ReqwestHeaderMap, HeaderName as ReqwestHeaderName, HeaderValue as ReqwestHeaderValue},
-    Method,
-};
 use serde_json as json;
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
@@ -63,6 +59,7 @@ use crate::{
     error::MmProxyError,
     proxy::{
         monerod_method::MonerodMethod,
+        service::ProxyBody,
         utils::{convert_reqwest_response_to_hyper_json_response, request_bytes_to_value},
     },
 };
@@ -93,7 +90,7 @@ impl InnerService {
     async fn handle_get_height(
         &self,
         monerod_resp: Response<json::Value>,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         trace!(target: LOG_TARGET, "handle_get_height monerod_resp body: {}", monerod_resp.body());
         let (parts, mut json) = monerod_resp.into_parts();
         if json["height"].is_null() {
@@ -159,7 +156,7 @@ impl InnerService {
 
         json["height"] = json!(reported_height as i64);
         json["hash"] = json!(&(hash).to_hex());
-        Ok(proxy::into_response(parts, &json))
+        proxy::into_response(parts, &json)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -167,7 +164,7 @@ impl InnerService {
         &self,
         request: Request<json::Value>,
         monerod_resp: Response<json::Value>,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         let request = request.body();
         let (parts, mut json_resp) = monerod_resp.into_parts();
 
@@ -325,14 +322,14 @@ impl InnerService {
             target: LOG_TARGET,
             "Sending submit_block response (proxy_submit_to_origin({})): {}", self.config.submit_to_origin, json_resp
         );
-        Ok(proxy::into_response(parts, &json_resp))
+        proxy::into_response(parts, &json_resp)
     }
 
     #[allow(clippy::too_many_lines)]
     async fn handle_get_block_template(
         &self,
         monerod_resp: Response<json::Value>,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         let (parts, mut monerod_resp) = monerod_resp.into_parts();
         debug!(
             target: LOG_TARGET,
@@ -341,7 +338,7 @@ impl InnerService {
 
         // If monderod returned an error, there is nothing further for us to do
         if !monerod_resp["error"].is_null() {
-            return Ok(proxy::into_response(parts, &monerod_resp));
+            return proxy::into_response(parts, &monerod_resp);
         }
 
         if monerod_resp["result"]["difficulty"].is_null() {
@@ -461,18 +458,18 @@ impl InnerService {
         );
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
-        Ok(proxy::into_response(parts, &monerod_resp))
+        proxy::into_response(parts, &monerod_resp)
     }
 
     async fn handle_get_block_header_by_hash(
         &self,
         request: Request<json::Value>,
         monero_resp: Response<json::Value>,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         let (parts, monero_resp) = monero_resp.into_parts();
         // If monero succeeded, we're done here
         if !monero_resp["result"].is_null() {
-            return Ok(proxy::into_response(parts, &monero_resp));
+            return proxy::into_response(parts, &monero_resp);
         }
 
         let request = request.into_body();
@@ -498,7 +495,7 @@ impl InnerService {
                 .unwrap_or(false)
         {
             debug!(target: LOG_TARGET, "monerod found block `{}`.", hash.to_hex());
-            return Ok(proxy::into_response(parts, &monero_resp));
+            return proxy::into_response(parts, &monero_resp);
         }
 
         let hash_hex = hash.to_hex();
@@ -524,14 +521,14 @@ impl InnerService {
 
                 let json_resp = crate::proxy::utils::append_aux_chain_data(json_resp, json!({ "id": TARI_CHAIN_ID }));
 
-                Ok(proxy::into_response(parts, &json_resp))
+                proxy::into_response(parts, &json_resp)
             },
             Err(err) if err.code() == tonic::Code::NotFound => {
                 debug!(
                     target: LOG_TARGET,
                     "[get_header_by_hash] No minotari block header found with hash `{}`", hash_hex
                 );
-                Ok(proxy::into_response(parts, &monero_resp))
+                proxy::into_response(parts, &monero_resp)
             },
             Err(err) => Err(MmProxyError::GrpcRequestError {
                 status: Box::new(err),
@@ -543,10 +540,10 @@ impl InnerService {
     async fn handle_get_last_block_header(
         &self,
         monero_resp: Response<json::Value>,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         let (parts, monero_resp) = monero_resp.into_parts();
         if !monero_resp["error"].is_null() {
-            return Ok(proxy::into_response(parts, &monero_resp));
+            return proxy::into_response(parts, &monero_resp);
         }
 
         let mut client = self.base_node_client.clone();
@@ -571,7 +568,7 @@ impl InnerService {
                 "block_header": json_block_header,
             }),
         );
-        Ok(proxy::into_response(parts, &resp))
+        proxy::into_response(parts, &resp)
     }
 
     fn clear_current_monerod_server_lock(&self, last_assigned_server: Option<&str>, host_with_error: Option<&str>) {
@@ -794,28 +791,10 @@ impl InnerService {
                 );
             }
 
-            let method = Method::from_bytes(request.method().as_str().as_bytes()).map_err(|e| {
-                MmProxyError::InvalidHttpMethod {
-                    method: request.method().to_string(),
-                    source: e,
-                }
-            })?;
-
-            let mut req_headers = ReqwestHeaderMap::new();
-            for (name, value) in &headers {
-                let rn = ReqwestHeaderName::from_bytes(name.as_str().as_bytes()).map_err(|e| {
-                    MmProxyError::ConversionError(format!("Failed to convert header name to reqwest type: {}", e))
-                })?;
-                let rv = ReqwestHeaderValue::from_bytes(value.as_bytes()).map_err(|e| {
-                    MmProxyError::ConversionError(format!("Failed to convert header value to reqwest type: {}", e))
-                })?;
-                req_headers.insert(rn, rv);
-            }
-
             let mut builder = self
                 .http_client
-                .request(method, monerod_url.clone())
-                .headers(req_headers)
+                .request(request.method().clone(), monerod_url.clone())
+                .headers(headers)
                 .timeout(self.config.monerod_connection_timeout);
 
             if self.config.monerod_use_auth {
@@ -834,11 +813,7 @@ impl InnerService {
                 convert_json_to_hyper_json_response(accept_response, StatusCode::OK).await?
             } else {
                 // Send the request to the current monerod server
-                match timeout(self.config.monerod_connection_timeout, async {
-                    builder.body(body.clone()).send().await
-                })
-                .await
-                {
+                match timeout(self.config.monerod_connection_timeout, builder.body(body).send()).await {
                     Ok(response) => match response.map_err(MmProxyError::MonerodRequestFailed) {
                         Ok(val) => convert_reqwest_response_to_hyper_json_response(val).await?,
                         Err(e) => {
@@ -910,7 +885,7 @@ impl InnerService {
         request: Request<Bytes>,
         monerod_resp: Response<json::Value>,
         monerod_method: MonerodMethod,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         let start = Instant::now();
         trace!(target: LOG_TARGET, "[get_proxy_response] '{}'", monerod_method);
         let proxy_response = match monerod_method {
@@ -927,7 +902,7 @@ impl InnerService {
             MonerodMethod::GetLastBlockHeader => self.handle_get_last_block_header(monerod_resp).await,
             _ => {
                 // Simply return the response "as is"
-                Ok(proxy::into_body_from_response(monerod_resp))
+                proxy::into_body_from_response(monerod_resp)
             },
         };
         trace!(
@@ -942,7 +917,7 @@ impl InnerService {
         self,
         monerod_method: MonerodMethod,
         request: Request<Bytes>,
-    ) -> Result<Response<json::Value>, MmProxyError> {
+    ) -> Result<Response<ProxyBody>, MmProxyError> {
         let start = Instant::now();
         debug!(
             target: LOG_TARGET,
@@ -964,7 +939,7 @@ impl InnerService {
                         "[handle request] '{}' monerod status: {}, response time: {}ms",
                         monerod_method, monerod_resp.status(), start.elapsed().as_millis()
                     );
-                    return Ok(monerod_resp.map(|json| json.to_string().into()));
+                    return proxy::into_body_from_response(monerod_resp);
                 }
 
                 match self.get_proxy_response(request, monerod_resp, monerod_method).await {
