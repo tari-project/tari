@@ -130,7 +130,7 @@ pub async fn run_recovery(
         main_db,
         rules.clone(),
         validators,
-        node_config.storage,
+        config,
         difficulty_calculator,
     )?;
     db.start()?;

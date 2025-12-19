@@ -325,9 +325,9 @@ async fn peer_selection() {
         setup_connectivity_manager(config);
     let peers = add_test_peers(&peer_manager, 10).await;
 
-    let connections = future::join_all(peers.iter().cloned().map(|peer| {
+    let connections = future::join_all(peers.iter().map(|peer| {
         let value = node_identity.clone();
-        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
+        async move { create_peer_connection_mock_pair(peer.clone(), value.to_peer()).await }
     }))
     .await
     .into_iter()
@@ -387,9 +387,9 @@ async fn pool_management() {
         setup_connectivity_manager(config);
     let peers = add_test_peers(&peer_manager, 10).await;
 
-    let connections = future::join_all(peers.iter().cloned().map(|peer| {
+    let connections = future::join_all(peers.iter().map(|peer| {
         let value = node_identity.clone();
-        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
+        async move { create_peer_connection_mock_pair(peer.clone(), value.to_peer()).await }
     }))
     .await
     .into_iter()
