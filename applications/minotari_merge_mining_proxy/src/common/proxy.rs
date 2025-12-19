@@ -69,7 +69,9 @@ pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<
 pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<json::Value> {
     let resp = content.clone();
     // Ensure that the content length header is correct
-    parts.headers.insert(header::CONTENT_LENGTH, resp.to_string().len().into());
+    parts
+        .headers
+        .insert(header::CONTENT_LENGTH, resp.to_string().len().into());
     parts
         .headers
         .insert(header::CONTENT_TYPE, "application/json".try_into().unwrap());
@@ -84,7 +86,9 @@ pub fn into_body_from_response(resp: Response<json::Value>) -> Response<json::Va
 
 /// Reads the body until there is no more to read.
 pub async fn read_body_until_end<B: HttpBodyTrait + Unpin>(body: B) -> Result<BytesMut, MmProxyError> {
-    let collected = body.collect().await
+    let collected = body
+        .collect()
+        .await
         .map_err(|_e| MmProxyError::InvalidMonerodResponse("Failed to read body".to_string()))?;
     Ok(BytesMut::from(collected.to_bytes().as_ref()))
 }
@@ -98,9 +102,7 @@ pub mod test {
         let resp = json::json!({"test key":"test value"});
         let code = StatusCode::from_u16(200).unwrap();
         // println!("{:?}", resp);
-        let hyper = convert_json_to_hyper_json_response(resp.clone(), code)
-            .await
-            .unwrap();
+        let hyper = convert_json_to_hyper_json_response(resp.clone(), code).await.unwrap();
         assert_eq!(hyper.status(), code);
         assert_eq!(hyper.body(), &resp);
         assert_eq!(hyper.version(), Version::HTTP_11);

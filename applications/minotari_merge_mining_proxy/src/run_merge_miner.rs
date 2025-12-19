@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use hyper::server::conn::http1;
-use tokio::net::TcpListener;
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
@@ -37,7 +36,7 @@ use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use tari_common::{load_configuration, DefaultConfigLoader, MAX_GRPC_MESSAGE_SIZE};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
-use tokio::time::Duration;
+use tokio::{net::TcpListener, time::Duration};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
@@ -127,10 +126,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
                 let io = hyper_util::rt::TokioIo::new(tcp);
 
                 tokio::task::spawn(async move {
-                    if let Err(e) = http1::Builder::new()
-                        .serve_connection(io, &*svc)
-                        .await
-                    {
+                    if let Err(e) = http1::Builder::new().serve_connection(io, &*svc).await {
                         error!("Connection error: {}", e);
                     }
                 });

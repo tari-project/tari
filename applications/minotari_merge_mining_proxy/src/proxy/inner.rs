@@ -35,12 +35,14 @@ use blake2::{digest::Update, Blake2s256, Digest};
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use hyper::{header::HeaderValue as HyperHeaderValue, Request, Response, StatusCode, Uri};
-use reqwest::Method;
-use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderName as ReqwestHeaderName, HeaderValue as ReqwestHeaderValue};
 use log::error;
 use minotari_app_grpc::tari_rpc::{self, GetTipInfoRequest, SubmitBlockRequest};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use rand::random;
+use reqwest::{
+    header::{HeaderMap as ReqwestHeaderMap, HeaderName as ReqwestHeaderName, HeaderValue as ReqwestHeaderValue},
+    Method,
+};
 use serde_json as json;
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
@@ -88,7 +90,10 @@ pub struct InnerService {
 impl InnerService {
     #[allow(clippy::cast_possible_wrap)]
     #[allow(clippy::indexing_slicing)]
-    async fn handle_get_height(&self, monerod_resp: Response<json::Value>) -> Result<Response<json::Value>, MmProxyError> {
+    async fn handle_get_height(
+        &self,
+        monerod_resp: Response<json::Value>,
+    ) -> Result<Response<json::Value>, MmProxyError> {
         trace!(target: LOG_TARGET, "handle_get_height monerod_resp body: {}", monerod_resp.body());
         let (parts, mut json) = monerod_resp.into_parts();
         if json["height"].is_null() {
@@ -789,13 +794,12 @@ impl InnerService {
                 );
             }
 
-            let method = Method::from_bytes(request.method().as_str().as_bytes())
-                .map_err(|e| {
-                    MmProxyError::InvalidHttpMethod {
-                        method: request.method().to_string(),
-                        source: e,
-                    }
-                })?;
+            let method = Method::from_bytes(request.method().as_str().as_bytes()).map_err(|e| {
+                MmProxyError::InvalidHttpMethod {
+                    method: request.method().to_string(),
+                    source: e,
+                }
+            })?;
 
             let mut req_headers = ReqwestHeaderMap::new();
             for (name, value) in &headers {

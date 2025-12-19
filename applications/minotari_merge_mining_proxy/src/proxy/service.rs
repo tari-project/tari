@@ -21,18 +21,15 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::Infallible,
     future::Future,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc, RwLock},
 };
 
 use bytes::Bytes;
-use http_body_util::combinators::BoxBody;
-use http_body_util::Full;
-use std::convert::Infallible;
-use hyper::body::Incoming;
-use hyper::{Request, Response, StatusCode};
-use hyper::service::Service;
+use http_body_util::{combinators::BoxBody, Full};
+use hyper::{body::Incoming, service::Service, Request, Response, StatusCode};
 use jsonrpc::error::StandardError;
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use serde_json::json;
@@ -98,9 +95,9 @@ fn json_response_to_boxbody(resp: Response<serde_json::Value>) -> Response<Proxy
 }
 
 impl Service<Request<Incoming>> for MergeMiningProxyService {
-    type Response = Response<ProxyBody>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Response = Response<ProxyBody>;
 
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         let inner = self.inner.clone();
@@ -138,7 +135,7 @@ impl Service<Request<Incoming>> for MergeMiningProxyService {
                                 Some(json!({"details": err.to_string()})),
                             ),
                         )
-                        .expect("unexpected failure")
+                        .expect("unexpected failure"),
                     ))
                 },
             }
