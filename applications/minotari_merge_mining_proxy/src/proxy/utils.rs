@@ -42,7 +42,7 @@ pub async fn convert_reqwest_response_to_hyper_json_response(
     let headers = builder
         .headers_mut()
         .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
-    for (name, value) in resp.headers().iter() {
+    for (name, value) in resp.headers() {
         let hn = HyperHeaderName::from_bytes(name.as_str().as_bytes()).map_err(|e| {
             MmProxyError::ConversionError(format!("Failed to convert header name to hyper type: {}", e))
         })?;

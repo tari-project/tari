@@ -798,7 +798,7 @@ impl InnerService {
                 })?;
 
             let mut req_headers = ReqwestHeaderMap::new();
-            for (name, value) in headers.iter() {
+            for (name, value) in &headers {
                 let rn = ReqwestHeaderName::from_bytes(name.as_str().as_bytes()).map_err(|e| {
                     MmProxyError::ConversionError(format!("Failed to convert header name to reqwest type: {}", e))
                 })?;
