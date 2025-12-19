@@ -40,7 +40,6 @@ clap = { version = "3.2", features = ["derive", "env"] }
 config = { version = "0.14.0" }
 crossterm = { version = "0.28" }
 dhat = "0.3.3"
-futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 hyper = { version = "1.6.0", features = ["full"] }
 hyper-util = "0.1"
@@ -55,10 +54,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net"] }
 url = "2.1.1"
-tokio-stream = "0.1"
 rand = { workspace = true }
 blake2 = "0.10"
-tower = "0.4"
 
 [build-dependencies]
 tari_features = { workspace = true }
