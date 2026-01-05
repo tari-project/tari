@@ -28,12 +28,15 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
-    blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
-    consensus::ConsensusManager,
-    proof_of_work::Difficulty,
+    consensus::BaseNodeConsensusManager,
     test_helpers::blockchain::TempDatabase,
-    transactions::{transaction_components::WalletOutput, transaction_key_manager::MemoryDbKeyManager},
+};
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    key_manager::KeyManager,
+    tari_proof_of_work::Difficulty,
+    transaction_components::WalletOutput,
 };
 
 use crate::helpers::{
@@ -49,16 +52,16 @@ pub struct TestBlockchain {
     store: BlockchainDatabase<TempDatabase>,
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<FixedHash, String>,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     outputs: Vec<Vec<WalletOutput>>,
-    pub key_manager: MemoryDbKeyManager,
+    pub key_manager: KeyManager,
 }
 
 #[allow(dead_code)]
 impl TestBlockchain {
-    pub async fn with_genesis(genesis_name: &'static str) -> Self {
+    pub fn with_genesis(genesis_name: &'static str) -> Self {
         let network = Network::LocalNet;
-        let (store, mut b, outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
+        let (store, mut b, outputs, consensus_manager, key_manager) = create_new_blockchain(network);
 
         let name = genesis_name.to_string();
         let mut blocks = HashMap::new();
@@ -81,11 +84,11 @@ impl TestBlockchain {
         &self.store
     }
 
-    pub fn consensus_manager(&self) -> &ConsensusManager {
+    pub fn consensus_manager(&self) -> &BaseNodeConsensusManager {
         &self.consensus_manager
     }
 
-    pub async fn build_block(&self, block: TestBlockBuilderInner) -> (Block, WalletOutput) {
+    pub fn build_block(&mut self, block: TestBlockBuilderInner) -> (Block, WalletOutput) {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
@@ -95,8 +98,7 @@ impl TestBlockchain {
             &self.consensus_manager,
             None,
             &self.key_manager,
-        )
-        .await;
+        );
 
         let mut new_block = self.store.prepare_new_block(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
@@ -108,9 +110,9 @@ impl TestBlockchain {
         (new_block, output)
     }
 
-    pub async fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, WalletOutput) {
+    pub fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, WalletOutput) {
         let block_name = block.name.clone();
-        let (block, output) = self.build_block(block).await;
+        let (block, output) = self.build_block(block);
         self.outputs.push(vec![output.clone()]);
         let res = self.add_raw_block(&block_name, block).unwrap();
         (res, output)

@@ -35,9 +35,9 @@ use futures::stream::Stream;
 use multiaddr::{Multiaddr, Protocol};
 
 use crate::{
-    memsocket,
-    memsocket::{MemoryListener, MemorySocket},
+    memsocket::{self, MemoryListener, MemorySocket},
     transports::Transport,
+    types::TransportProtocol,
 };
 
 /// Transport to build in-memory connections
@@ -79,6 +79,10 @@ impl Transport for MemoryTransport {
         let port = parse_addr(addr)?;
         Ok(MemorySocket::connect(port)?)
     }
+
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        vec![TransportProtocol::Memory]
+    }
 }
 
 fn parse_addr(addr: &Multiaddr) -> io::Result<u16> {
@@ -89,14 +93,14 @@ fn parse_addr(addr: &Multiaddr) -> io::Result<u16> {
     } else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("Invalid Multiaddr '{:?}'", addr),
+            format!("Invalid Multiaddr '{addr:?}'"),
         ));
     };
 
     if iter.next().is_some() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("Invalid Multiaddr '{:?}'", addr),
+            format!("Invalid Multiaddr '{addr:?}'"),
         ));
     }
 

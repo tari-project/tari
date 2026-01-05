@@ -22,33 +22,48 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    ops::Range,
     str::FromStr,
 };
 
 use borsh::BorshDeserialize;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use diesel::{prelude::*, sql_query};
+use diesel::{
+    dsl::{count_star, sql},
+    prelude::*,
+    sql_query,
+    sql_types::{BigInt, Nullable},
+};
 use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, RangeProof},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        RangeProof,
+    },
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
+use tari_crypto::tari_utilities::ByteArray;
+use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
     transaction_components::{
-        encrypted_data::PaymentId,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         OutputType,
         TransactionOutputVersion,
         WalletOutput,
     },
-    transaction_key_manager::TariKeyId,
+    MicroMinotari,
 };
-use tari_crypto::tari_utilities::ByteArray;
-use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -59,7 +74,7 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
-            sqlite_db::{UpdateOutput, UpdateOutputSql},
+            sqlite_db::{CoinBucket, UpdateOutput, UpdateOutputSql},
             OutputSource,
             OutputStatus,
         },
@@ -147,7 +162,7 @@ impl OutputSql {
         // filtering by OutputStatus
         query = match q.status.len() {
             0 => query,
-            1 => query.filter(outputs::status.eq(q.status[0] as i32)),
+            1 => query.filter(outputs::status.eq(*q.status.first().expect("Already checked") as i32)),
             _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
         };
 
@@ -155,7 +170,7 @@ impl OutputSql {
         if !q.commitments.is_empty() {
             query = match q.commitments.len() {
                 0 => query,
-                1 => query.filter(outputs::commitment.eq(q.commitments[0].to_vec())),
+                1 => query.filter(outputs::commitment.eq(q.commitments.first().expect("Already checked").to_vec())),
                 _ => query.filter(
                     outputs::commitment.eq_any::<Vec<Vec<u8>>>(q.commitments.into_iter().map(|c| c.to_vec()).collect()),
                 ),
@@ -198,7 +213,7 @@ impl OutputSql {
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_sign_loss, clippy::too_many_lines)]
     pub fn fetch_unspent_outputs_for_spending(
         selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
@@ -232,16 +247,24 @@ impl OutputSql {
                 if selection_criteria.excluding_onesided {
                     query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
                 }
+
+                if selection_criteria.excluding_multisig {
+                    query = query.filter(outputs::source.ne(OutputSource::Multisig as i32));
+                }
             },
 
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
                 query = match commitments.len() {
                     0 => query,
-                    1 => query.filter(outputs::commitment.eq(commitments[0].to_vec())),
+                    1 => query.filter(outputs::commitment.eq(commitments.first().expect("Already checked").to_vec())),
                     _ => query.filter(
                         outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
                     ),
                 };
+            },
+
+            UtxoSelectionFilter::MustInclude { commitments } => {
+                return Self::handle_must_include_filter(selection_criteria, commitments, amount, tip_height, conn);
             },
         }
 
@@ -275,6 +298,224 @@ impl OutputSql {
         };
 
         Ok(query.limit(i64::from(TRANSACTION_INPUTS_LIMIT)).load(conn)?)
+    }
+
+    /// Retrieves UTXOs within a specified limited range with minimum target amount for spending. If not enough UTXOs
+    /// can be found, an empty vector is returned.
+    pub fn get_range_limited_outputs_for_spending(
+        selection_criteria: &UtxoSelectionCriteria,
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<(Vec<OutputSql>, MicroMinotari), OutputManagerStorageError> {
+        let range_limit =
+            selection_criteria
+                .range_limit
+                .as_ref()
+                .ok_or_else(|| OutputManagerStorageError::RangeLimitError {
+                    reason: "Range limit must be specified".to_string(),
+                })?;
+        let amounts_from = i64::try_from(range_limit.range.start).unwrap_or(i64::MAX);
+        let amounts_to = i64::try_from(range_limit.range.end).unwrap_or(i64::MAX);
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.ge(amounts_from))
+            .filter(outputs::value.lt(amounts_to));
+
+        // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            query = query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        };
+
+        for exclude in &selection_criteria.excluding {
+            query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        query = query.then_order_by(outputs::value.asc());
+
+        let transaction_input_limit = u32::try_from(range_limit.transaction_input_limit)
+            .unwrap_or(u32::MAX)
+            .min(TRANSACTION_INPUTS_LIMIT);
+        let outputs: Vec<OutputSql> = query.limit(i64::from(transaction_input_limit)).load(conn)?;
+
+        // If all the outputs together don't reach target, we cannot continue
+        let total_sum: u64 = outputs.iter().fold(0u64, |acc, o| acc.saturating_add(o.value as u64));
+        if total_sum < range_limit.target_minimum_amount {
+            debug!(
+                target: LOG_TARGET,
+                "Total unspent outputs' value in the specified range was less than the target_minimum_amount: {} < {}",
+                total_sum, range_limit.target_minimum_amount
+            );
+            return Ok((Vec::new(), MicroMinotari::zero()));
+        }
+
+        Ok((outputs, MicroMinotari::from(total_sum)))
+    }
+
+    /// Retrieves UTXO counts grouped by the provided ranges
+    pub fn count_outputs_in_ranges(
+        selection_criteria: &UtxoSelectionCriteria,
+        ranges: &[Range<u64>],
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CoinBucket>, OutputManagerStorageError> {
+        let mut result = Vec::with_capacity(ranges.len());
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+
+        for range in ranges {
+            let amounts_from = i64::try_from(range.start).unwrap_or(i64::MAX);
+            let amounts_to = i64::try_from(range.end).unwrap_or(i64::MAX);
+
+            let mut query = outputs::table
+                .into_boxed()
+                .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                .filter(outputs::value.ge(amounts_from))
+                .filter(outputs::value.lt(amounts_to));
+
+            if selection_criteria.mode == UtxoSelectionMode::Safe {
+                query = query
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height));
+            }
+
+            // Rust
+            let (count_res, sum_res) = query
+                .select((count_star(), sql::<Nullable<BigInt>>("SUM(value)")))
+                .first::<(i64, Option<i64>)>(conn)
+                .optional()?
+                .unwrap_or_default();
+
+            result.push(CoinBucket {
+                number_of_outputs: count_res as u64,
+                total_value: sum_res.unwrap_or(0) as u64,
+                range: range.clone(),
+            });
+        }
+
+        Ok(result)
+    }
+
+    fn handle_must_include_filter(
+        selection_criteria: &UtxoSelectionCriteria,
+        commitments: &[CompressedCommitment],
+        amount: u64,
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        if commitments.is_empty() {
+            // If no commitments specified, fall back to standard behavior
+            let mut selection_criteria = selection_criteria.clone();
+            selection_criteria.filter = UtxoSelectionFilter::Standard;
+            return OutputSql::fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height, conn);
+        }
+
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+        let i64_value = i64::try_from(selection_criteria.min_dust).unwrap_or(i64::MAX);
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.gt(i64_value))
+            .order_by(outputs::spending_priority.desc());
+
+        // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            query = query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        }
+
+        query = query.filter(
+            outputs::output_type
+                .eq(i32::from(OutputType::Standard.as_byte()))
+                .or(outputs::output_type.eq(i32::from(OutputType::Coinbase.as_byte()))),
+        );
+
+        if selection_criteria.excluding_onesided {
+            query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
+        }
+
+        if selection_criteria.excluding_multisig {
+            query = query.filter(outputs::source.ne(OutputSource::Multisig as i32));
+        }
+
+        // Exclude the must-include outputs from the main query
+        for commitment in commitments {
+            query = query.filter(outputs::commitment.ne(commitment.to_vec()));
+        }
+
+        for exclude in &selection_criteria.excluding {
+            query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        query = match selection_criteria.ordering {
+            UtxoSelectionOrdering::SmallestFirst => query.then_order_by(outputs::value.asc()),
+            UtxoSelectionOrdering::LargestFirst => query.then_order_by(outputs::value.desc()),
+            UtxoSelectionOrdering::Default => {
+                let max: Option<i64> = outputs::table
+                    .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height))
+                    .order(outputs::value.desc())
+                    .select(outputs::value)
+                    .first(conn)
+                    .optional()?;
+
+                match max {
+                    Some(max) if amount > max as u64 => query.then_order_by(outputs::value.desc()),
+                    _ => query.then_order_by(outputs::value.asc()),
+                }
+            },
+        };
+
+        // First, get the must-include outputs
+        let mut must_include_query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.gt(i64_value))
+            .order_by(outputs::spending_priority.desc());
+
+        // Apply safe mode filters if needed
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            must_include_query = must_include_query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        }
+
+        // Filter for the specific commitments
+        must_include_query = must_include_query
+            .filter(outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()));
+
+        // Apply excluding filters
+        for exclude in &selection_criteria.excluding {
+            must_include_query = must_include_query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        let must_include_outputs: Vec<OutputSql> = must_include_query.load(conn)?;
+
+        // Calculate total value of must-include outputs
+        let must_include_total: i64 = must_include_outputs.iter().map(|o| o.value).sum();
+        let i64_amount = i64::try_from(amount).unwrap_or(i64::MAX);
+
+        // If must-include outputs are sufficient, return only them
+        if must_include_total >= i64_amount {
+            return Ok(must_include_outputs);
+        }
+
+        // Otherwise, we need additional outputs
+        let remaining_limit = i64::from(TRANSACTION_INPUTS_LIMIT) - must_include_outputs.len() as i64;
+        let mut final_outputs = must_include_outputs;
+
+        if remaining_limit > 0 {
+            let additional_outputs: Vec<OutputSql> = query.limit(remaining_limit).load(conn)?;
+            final_outputs.extend(additional_outputs);
+        }
+
+        Ok(final_outputs)
     }
 
     /// Return all unspent outputs that have a maturity above the provided chain tip
@@ -349,6 +590,17 @@ impl OutputSql {
             .load(conn)?)
     }
 
+    pub fn index_by_output_hashes(
+        conn: &mut SqliteConnection,
+        hashes: &[HashOutput],
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let outputs = outputs::table
+            .filter(outputs::hash.eq_any(hashes.iter().map(|h| h.as_slice())))
+            .load(conn)?;
+
+        Ok(outputs)
+    }
+
     pub fn first_by_mined_height_desc(
         conn: &mut SqliteConnection,
     ) -> Result<Option<OutputSql>, OutputManagerStorageError> {
@@ -405,13 +657,12 @@ impl OutputSql {
             .collect::<Vec<_>>()
             .join(", ");
         let query = sql_query(format!(
-            "SELECT COUNT(*) as count FROM outputs WHERE commitment IN ({})",
-            placeholders
+            "SELECT COUNT(*) as count FROM outputs WHERE commitment IN ({placeholders})"
         ));
         let query_result = query.load::<CountQueryResult>(conn)?;
         let commitments_len = i64::try_from(commitments.len())
             .map_err(|e| OutputManagerStorageError::ConversionError { reason: e.to_string() })?;
-        Ok(query_result[0].count == commitments_len)
+        Ok(query_result.first().expect("Already checked").count == commitments_len)
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
@@ -428,15 +679,15 @@ impl OutputSql {
             category: String,
         }
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
-            let balance_query = sql_query(
+            sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
+                 FROM outputs WHERE status = ? AND (maturity > ? OR script_lock_height > ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? \
+                 FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ?",
@@ -445,43 +696,48 @@ impl OutputSql {
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_outgoing_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
-            balance_query.load::<BalanceQueryResult>(conn)?
+                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32)
+                .load::<BalanceQueryResult>(conn)?
         } else {
-            let balance_query = sql_query(
+            sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? \
+                 FROM outputs WHERE status = ? AND output_type != ?\
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? \
+                 FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ?",
             )
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 // pending_outgoing_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
-                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
-            balance_query.load::<BalanceQueryResult>(conn)?
+                .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32)
+                .load::<BalanceQueryResult>(conn)?
         };
         let mut available_balance = None;
         let mut time_locked_balance = Some(None);
@@ -779,16 +1035,19 @@ impl OutputSql {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn to_db_wallet_output(self) -> Result<DbWalletOutput, OutputManagerStorageError> {
+    pub fn to_db_wallet_output<KM: LegacyTransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
-                reason: format!("Could not convert json into OutputFeatures:{}", s),
+                reason: format!("Could not convert json into OutputFeatures:{s}"),
             })?;
 
         let covenant = BorshDeserialize::deserialize(&mut self.covenant.as_bytes()).map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+                "Could not create Covenant from stored bytes ({e}), They might be encrypted"
             );
             OutputManagerStorageError::ConversionError {
                 reason: "Covenant could not be converted from bytes".to_string(),
@@ -797,34 +1056,64 @@ impl OutputSql {
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let payment_id = match self.payment_id {
-            Some(bytes) => PaymentId::from_bytes(&bytes),
-            None => PaymentId::Empty,
+            Some(bytes) => MemoField::from_bytes(&bytes),
+            None => MemoField::new_empty(),
+        };
+        let commitment = CompressedCommitment::from_vec(&self.commitment)?;
+        let hash = match <Vec<u8> as TryInto<FixedHash>>::try_into(self.hash) {
+            Ok(v) => v,
+            Err(e) => {
+                error!(target: LOG_TARGET, "Malformed output hash: {e}");
+                return Err(OutputManagerStorageError::ConversionError {
+                    reason: "Malformed output hash".to_string(),
+                });
+            },
+        };
+        let commitment_mask_key_id = match TariKeyId::from_str(&self.spending_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.spending_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create spending key id({}) from stored string ({e})",self.spending_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Spending key id({}) could not be converted from string ({e})",
+                            self.spending_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
         };
 
-        let wallet_output = WalletOutput::new_with_rangeproof(
+        let script_key_id = match TariKeyId::from_str(&self.script_private_key) {
+            Ok(kid) => kid,
+            Err(_) => {
+                let legacy = LegacyTariKeyId::from_str(&self.script_private_key).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create script private key id({}) from stored string ({e})",self.script_private_key
+                    );
+                    OutputManagerStorageError::ConversionError {
+                        reason: format!(
+                            "Could not create script private key id({}) from stored string ({e})",
+                            self.script_private_key
+                        ),
+                    }
+                })?;
+                key_manager.convert_legacy_tari_key_id_to_current(&legacy)?
+            },
+        };
+        let wallet_output = WalletOutput::new_from_parts(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
-            TariKeyId::from_str(&self.spending_key).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create spending key id from stored string ({})", e
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: format!("Spending key id could not be converted from string ({})", e),
-                }
-            })?,
+            commitment_mask_key_id,
             features,
             TariScript::from_bytes(self.script.as_slice())?,
             ExecutionStack::from_bytes(self.input_data.as_slice())?,
-            TariKeyId::from_str(&self.script_private_key).map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create script private key id from stored string ({})", e
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: format!("Script private key id could not be converted from string ({})", e),
-                }
-            })?,
+            script_key_id,
             CompressedPublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
@@ -890,35 +1179,21 @@ impl OutputSql {
                 None => None,
             },
             payment_id.clone(),
+            hash,
+            commitment.clone(),
         );
 
-        let commitment = CompressedCommitment::from_vec(&self.commitment)?;
-        let hash = match <Vec<u8> as TryInto<FixedHash>>::try_into(self.hash) {
-            Ok(v) => v,
-            Err(e) => {
-                error!(target: LOG_TARGET, "Malformed output hash: {}", e);
-                return Err(OutputManagerStorageError::ConversionError {
-                    reason: "Malformed output hash".to_string(),
-                });
-            },
-        };
         let spending_priority = SpendingPriority::try_from(self.spending_priority as u32).map_err(|e| {
             OutputManagerStorageError::ConversionError {
-                reason: format!("Could not convert spending priority from i32: {}", e),
+                reason: format!("Could not convert spending priority from i32: {e}"),
             }
         })?;
         let mined_in_block = match self.mined_in_block {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            },
+            Some(v) => v.try_into().ok(),
             None => None,
         };
         let marked_deleted_in_block = match self.marked_deleted_in_block {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            },
+            Some(v) => v.try_into().ok(),
             None => None,
         };
         Ok(DbWalletOutput {

@@ -2,9 +2,11 @@
 name = "minotari_ledger_wallet_common"
 version.workspace = true
 edition.workspace = true
+#Note: `rust-version` is not specified here as this msut be kept in sync with the ledger-app-builder
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
 [dependencies]
 bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }
+serde = { version = "1",  default-features = false, features = ["derive"] }

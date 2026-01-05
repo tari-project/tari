@@ -31,12 +31,10 @@ pub enum PeerValidatorError {
     InvalidPeerSignature { peer: NodeId },
     #[error("One or more peer addresses were invalid for '{peer}'")]
     InvalidPeerAddresses { peer: NodeId },
-    #[error("Peer '{peer}' was banned")]
+    #[error("Peer '{peer}' has no address claims")]
     PeerHasNoAddresses { peer: NodeId },
     #[error("Invalid multiaddr: {0}")]
     InvalidMultiaddr(String),
-    #[error("No public addresses provided")]
-    PeerIdentityNoAddresses,
     #[error("Onion v2 is deprecated and not supported")]
     OnionV2NotSupported,
     #[error("Peer provided too many supported protocols: expected max {max} but got {length}")]

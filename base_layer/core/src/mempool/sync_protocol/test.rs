@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{fmt, io, sync::Arc};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
@@ -38,6 +39,12 @@ use tari_comms::{
     Bytes,
     BytesMut,
 };
+use tari_transaction_components::{
+    key_manager::KeyManager,
+    tari_amount::uT,
+    test_helpers::create_tx,
+    transaction_components::Transaction,
+};
 use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -45,27 +52,20 @@ use tokio::{
 };
 
 use crate::{
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    transactions::{
-        tari_amount::uT,
-        test_helpers::create_tx,
-        transaction_components::Transaction,
-        transaction_key_manager::create_memory_db_key_manager,
-    },
     validation::mocks::MockValidator,
 };
 
-pub async fn create_transactions(n: usize) -> Vec<Transaction> {
-    let key_manager = create_memory_db_key_manager().unwrap();
+pub fn create_transactions(n: usize) -> Vec<Transaction> {
+    let key_manager = KeyManager::new_random().unwrap();
     let mut transactions = Vec::new();
     for _i in 0..n {
         let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default(), &key_manager)
-            .await
             .expect("Failed to get transaction");
         transactions.push(transaction);
     }
@@ -75,11 +75,11 @@ pub async fn create_transactions(n: usize) -> Vec<Transaction> {
 async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool = Mempool::new(
         Default::default(),
-        ConsensusManager::builder(Network::LocalNet).build().unwrap(),
+        BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
         Box::new(MockValidator::new(true)),
     );
 
-    let transactions = create_transactions(n).await;
+    let transactions = create_transactions(n);
     for txn in &transactions {
         mempool.insert(Arc::new(txn.clone())).await.unwrap();
     }
@@ -260,7 +260,7 @@ async fn initiator_messages() {
         .await
         .unwrap();
 
-    let mut transactions = create_transactions(2).await;
+    let mut transactions = create_transactions(2);
     transactions.push(transactions1[0].clone());
     let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
     // As the initiator, send an inventory

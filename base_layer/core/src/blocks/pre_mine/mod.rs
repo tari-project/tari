@@ -24,49 +24,39 @@ use std::{convert::TryFrom, iter::once};
 
 use rand::{prelude::SliceRandom, rngs::OsRng, thread_rng};
 use tari_common::configuration::Network;
-use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
-    types::{
-        CompressedCommitment,
-        CompressedPublicKey,
-        PrivateKey,
-        Signature,
-        UncompressedPublicKey,
-        UncompressedSignature,
-    },
+use tari_common_types::types::{
+    CompressedCommitment,
+    CompressedPublicKey,
+    CompressedSignature,
+    PrivateKey,
+    UncompressedPublicKey,
+    UncompressedSignature,
 };
 use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
-use tari_utilities::ByteArray;
-
-use crate::{
-    one_sided::public_key_to_output_encryption_key,
-    transactions::{
-        tari_amount::{MicroMinotari, Minotari},
-        transaction_components::{
-            encrypted_data::PaymentId,
-            CoinBaseExtra,
-            KernelFeatures,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            SecretTransactionKeyManagerInterface,
-            TransactionKeyManagerInterface,
-        },
-        transaction_protocol::TransactionMetadata,
+use tari_transaction_components::{
+    key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    tari_amount::{MicroMinotari, Minotari},
+    transaction_components::{
+        one_sided::public_key_to_output_encryption_key,
+        CoinBaseExtra,
+        KernelFeatures,
+        MemoField,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutputBuilder,
     },
 };
+use tari_utilities::ByteArray;
 
-const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
+/// The average amount of blocks per day based on the target block time
+pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
 
 /// Token unlock schedule
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -591,8 +581,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                     ReleaseStrategy::Proportional(upfront_release) => {
                         if upfront_release.percentage > 100 {
                             return Err(format!(
-                                "Upfront percentage must be less than or equal to 100 in {:?}",
-                                apportionment
+                                "Upfront percentage must be less than or equal to 100 in {apportionment:?}"
                             ));
                         }
                         if apportionment
@@ -602,7 +591,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                             .checked_mul(upfront_release.percentage)
                             .is_none()
                         {
-                            return Err(format!("Minotari calculation overflow in {:?}", apportionment));
+                            return Err(format!("Minotari calculation overflow in {apportionment:?}"));
                         }
                         if upfront_release.percentage > 0 {
                             let upfront_tokens = tokens_value * upfront_release.percentage / 100;
@@ -788,13 +777,12 @@ pub fn verify_script_keys_for_index(
     }
     all_script_keys.dedup();
     if all_expected_keys.len() != all_script_keys.len() {
-        return Err(format!("Output at index {} script keys not unique", index));
+        return Err(format!("Output at index {index} script keys not unique"));
     }
     for (index, (script_key, party_key)) in all_script_keys.iter().zip(all_expected_keys).enumerate() {
         if script_key != &party_key {
             return Err(format!(
-                "\nError: Output {} script key mismatch ({} != {})\n",
-                index, script_key, party_key
+                "\nError: Output {index} script key mismatch ({script_key} != {party_key})\n"
             ));
         }
     }
@@ -804,7 +792,7 @@ pub fn verify_script_keys_for_index(
 
 /// Create pre-mine genesis block info with the given pre-mine items and party public keys
 #[allow(clippy::too_many_lines)]
-pub async fn create_pre_mine_genesis_block_info(
+pub fn create_pre_mine_genesis_block_info(
     pre_mine_items: &[PreMineItem],
     threshold_spend_keys: &[Vec<CompressedPublicKey>],
     backup_spend_keys: &[CompressedPublicKey],
@@ -822,35 +810,28 @@ pub async fn create_pre_mine_genesis_block_info(
         for key in public_keys {
             total_script_key = total_script_key + key.to_public_key().map_err(|e| e.to_string())?;
         }
-        let key_manager = create_memory_db_key_manager().map_err(|e| e.to_string())?;
+        let key_manager = KeyManager::new_random().map_err(|e| e.to_string())?;
         let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
             .map_err(|e| e.to_string())?;
         let view_key_id = key_manager
-            .import_key(view_key.clone())
-            .await
+            .create_encrypted_key(view_key.clone(), None)
             .map_err(|e| e.to_string())?;
         let address_len = u8::try_from(public_keys.len()).map_err(|e| e.to_string())?;
 
         let (commitment_mask, script_key) = key_manager
             .get_next_commitment_mask_and_script_key()
-            .await
             .map_err(|e| e.to_string())?;
         total_private_key = total_private_key +
             &key_manager
                 .get_private_key(&commitment_mask.key_id)
-                .await
                 .map_err(|e| e.to_string())?;
         let commitment = key_manager
             .get_commitment(&commitment_mask.key_id, &item.value.into())
-            .await
             .map_err(|e| e.to_string())?;
         let mut commitment_bytes = [0u8; 32];
         commitment_bytes.clone_from_slice(commitment.as_bytes());
 
-        let sender_offset = key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await
-            .map_err(|e| e.to_string())?;
+        let sender_offset = key_manager.get_random_key(None, None).map_err(|e| e.to_string())?;
         let mut public_keys = public_keys.clone();
         public_keys.shuffle(&mut thread_rng());
         let script = script!(
@@ -871,39 +852,33 @@ pub async fn create_pre_mine_genesis_block_info(
                 RangeProofType::RevealedValue,
             ))
             .with_script(script)
-            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U256(i.into()))
-            .await
+            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), MemoField::new_u256(i.into()))
             .map_err(|e| e.to_string())?
             .with_input_data(ExecutionStack::default())
             .with_version(TransactionOutputVersion::get_current_version())
             .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key.key_id)
             .with_minimum_value_promise(item.value)
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
-            .await
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
             .map_err(|e| e.to_string())?
             .try_build(&key_manager)
-            .await
             .map_err(|e| e.to_string())?;
-        outputs.push(
-            output
-                .to_transaction_output(&key_manager)
-                .await
-                .map_err(|e| e.to_string())?,
-        );
+        outputs.push(output.to_transaction_output().map_err(|e| e.to_string())?);
     }
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::empty());
     let total_public_key = CompressedPublicKey::from_secret_key(&total_private_key);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
-        &TransactionKernelVersion::get_current_version(),
+    let e = TransactionKernel::build_kernel_signature_challenge(
+        TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
-        &tx_meta,
+        0.into(),
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
     let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
-    let compressed_signature = Signature::new_from_schnorr(signature);
+    let compressed_signature = CompressedSignature::new_from_schnorr(signature);
     let excess = CompressedCommitment::from_compressed_key(total_public_key);
     let kernel = TransactionKernel::new_current_version(
         KernelFeatures::empty(),
@@ -918,11 +893,17 @@ pub async fn create_pre_mine_genesis_block_info(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{fs, fs::File, io::Write, ops::Deref};
 
     use tari_common::configuration::Network;
     use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::{Opcode, Opcode::CheckHeight};
+    use tari_transaction_components::{
+        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission},
+        tari_amount::{MicroMinotari, Minotari},
+        transaction_components::{TransactionKernel, TransactionOutput},
+    };
 
     use crate::{
         blocks::pre_mine::{
@@ -944,11 +925,7 @@ mod test {
             ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
-        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
-        transactions::{
-            tari_amount::{MicroMinotari, Minotari},
-            transaction_components::{TransactionKernel, TransactionOutput},
-        },
+        consensus::BaseNodeConsensusManager,
     };
 
     async fn genesis_block_test_info(
@@ -990,9 +967,7 @@ mod test {
         }
 
         let (outputs, kernel) =
-            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys)
-                .await
-                .unwrap();
+            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys).unwrap();
         (outputs, kernel, threshold_spend_keys, backup_spend_keys)
     }
 
@@ -1014,11 +989,11 @@ mod test {
 
         for output in outputs {
             let utxo_s = serde_json::to_string(&output).unwrap();
-            utxo_file.write_all(format!("{}\n", utxo_s).as_bytes()).unwrap();
+            utxo_file.write_all(format!("{utxo_s}\n").as_bytes()).unwrap();
         }
 
         let kernel = serde_json::to_string(&kernel).unwrap();
-        let _result = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
+        let _result = utxo_file.write_all(format!("{kernel}\n").as_bytes());
         println!(
             "\nOutputs written to: '{}'\n",
             fs::canonicalize(&file_path).unwrap().display()
@@ -1410,7 +1385,7 @@ mod test {
                 let script_height = if let Some(CheckHeight(height)) = output.script.as_slice().first() {
                     *height
                 } else {
-                    panic!("Expected CheckHeight opcode in script at index {}", index);
+                    panic!("Expected CheckHeight opcode in script at index {index}");
                 };
                 let script_threshold_keys =
                     if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) =
@@ -1418,15 +1393,12 @@ mod test {
                     {
                         keys.clone()
                     } else {
-                        panic!(
-                            "Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {}",
-                            index
-                        );
+                        panic!("Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {index}");
                     };
                 let script_backup_key = if let Some(Opcode::PushPubKey(key)) = output.script.as_slice().get(5) {
                     key.deref().clone()
                 } else {
-                    panic!("Expected PushPubKey opcode in script at index {}", index);
+                    panic!("Expected PushPubKey opcode in script at index {index}");
                 };
                 assert_eq!(script_height, pre_mine_item.original_maturity + grace_period);
                 assert_eq!(output.features.maturity, pre_mine_item.maturity);
@@ -1473,11 +1445,11 @@ mod test {
         // Initial maturity schedule up to 3 weeks ( | height | (maturity) |):
         // | 0 -> 5040 - 1 | (720) |
         //                 | 5040 -> 10080 - 1 | (540) |
-        //                                     | 10080 -> 15120 - 1 | (360) |
-        //                                                          | 15120 -> | (180) |
+        //                                     | 10080 -> 15000 - 1 | (360) |
+        //                                                          | 15000 -> | (180) |
 
         let network = Network::MainNet;
-        let consensus_manager = ConsensusManager::builder(network)
+        let consensus_manager = BaseNodeConsensusManager::builder(network)
             .build()
             .map_err(|e| e.to_string())
             .unwrap();
@@ -1510,14 +1482,14 @@ mod test {
                 898513007030503,
             ),
             // Within 4th tranche
-            (maturity_tranches[3].effective_from_height, 960614382886959),
+            (maturity_tranches[3].effective_from_height, 958961532039375),
             (
                 maturity_tranches[3].effective_from_height + maturity_tranches[2].maturity / 2,
-                963093332298424,
+                961440742937559,
             ),
             (
                 maturity_tranches[3].effective_from_height + maturity_tranches[2].maturity,
-                968050054592502,
+                966397988109264,
             ),
             // Within pre-mine maturity range 1
             (180 * BLOCKS_PER_DAY, 2573982676047120),

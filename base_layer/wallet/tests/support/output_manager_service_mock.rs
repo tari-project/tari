@@ -29,16 +29,16 @@ use minotari_wallet::output_manager_service::{
     handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
     storage::models::DbWalletOutput,
 };
-use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";
 
 pub fn make_output_manager_service_mock(
     shutdown_signal: ShutdownSignal,
-) -> (OutputManagerServiceMock, OutputManagerHandle) {
+) -> (OutputManagerServiceMock, OutputManagerHandle<MemoryKeyManager>) {
     let (sender, receiver) = reply_channel::unbounded();
     let (publisher, _) = broadcast::channel(100);
     let output_manager_handle = OutputManagerHandle::new(sender, publisher.clone());
@@ -48,7 +48,8 @@ pub fn make_output_manager_service_mock(
 
 pub struct OutputManagerServiceMock {
     _event_publisher: Sender<Arc<OutputManagerEvent>>,
-    request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+    request_stream:
+        Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse<MemoryKeyManager>, OutputManagerError>>>,
     shutdown_signal: ShutdownSignal,
     state: OutputManagerMockState,
 }
@@ -56,7 +57,10 @@ pub struct OutputManagerServiceMock {
 impl OutputManagerServiceMock {
     pub fn new(
         event_publisher: Sender<Arc<OutputManagerEvent>>,
-        request_stream: Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+        request_stream: Receiver<
+            OutputManagerRequest,
+            Result<OutputManagerResponse<MemoryKeyManager>, OutputManagerError>,
+        >,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -93,9 +97,9 @@ impl OutputManagerServiceMock {
     fn handle_request(
         &self,
         request: OutputManagerRequest,
-        reply_tx: oneshot::Sender<Result<OutputManagerResponse, OutputManagerError>>,
+        reply_tx: oneshot::Sender<Result<OutputManagerResponse<MemoryKeyManager>, OutputManagerError>>,
     ) {
-        info!(target: LOG_TARGET, "Handling Request: {}", request);
+        info!(target: LOG_TARGET, "Handling Request: {request}");
         match request {
             OutputManagerRequest::ScanForRecoverableOutputs(requested_outputs) => {
                 let lock = acquire_lock!(self.state.recoverable_outputs);
@@ -103,10 +107,9 @@ impl OutputManagerServiceMock {
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
-                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.0.commitment) {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
-                                tx_id: TxId::new_random(),
                                 hash: dbuo.hash,
                             })
                         } else {
@@ -127,10 +130,9 @@ impl OutputManagerServiceMock {
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
-                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.0.commitment) {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
-                                tx_id: TxId::new_random(),
                                 hash: dbuo.hash,
                             })
                         } else {
@@ -144,7 +146,7 @@ impl OutputManagerServiceMock {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                     });
             },
-            OutputManagerRequest::ValidateUtxos => {},
+            OutputManagerRequest::ValidateTxos => {},
             _ => panic!("Output Manager Service Mock does not support this call"),
         }
     }

@@ -27,14 +27,12 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, PrivateKey};
+use tari_node_components::blocks::Block;
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::{
-    blocks::Block,
-    mempool::{shrink_hashmap::shrink_hashmap, MempoolError},
-    transactions::transaction_components::Transaction,
-};
+use crate::mempool::{shrink_hashmap::shrink_hashmap, MempoolError};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
@@ -92,7 +90,7 @@ impl ReorgPool {
                 .unwrap_or_else(|| "no kernel!".to_string());
             debug!(
                 target: LOG_TARGET,
-                "Transaction {} already found in reorg pool", excess_hex
+                "Transaction {excess_hex} already found in reorg pool"
             );
             self.cleanup_expired(height);
             return;
@@ -106,9 +104,7 @@ impl ReorgPool {
 
         trace!(
             target: LOG_TARGET,
-            "Inserted transaction {} into reorg pool at height {}",
-            new_key,
-            height
+            "Inserted transaction {new_key} into reorg pool at height {height}"
         );
         self.tx_by_key.insert(new_key, tx);
         self.txs_by_height.entry(height).or_default().push(new_key);
@@ -168,7 +164,7 @@ impl ReorgPool {
     }
 
     /// Check if a transaction is stored in the ReorgPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
@@ -202,7 +198,7 @@ impl ReorgPool {
                     for tx_id in removed_tx_ids {
                         if let Some(tx) = self.tx_by_key.remove(&tx_id) {
                             self.remove_from_height_index(tx_id);
-                            trace!(target: LOG_TARGET, "Removed tx from reorg pool: {:?}", tx_id);
+                            trace!(target: LOG_TARGET, "Removed tx from reorg pool: {tx_id:?}");
                             removed_txs.push(tx);
                         }
                     }
@@ -244,7 +240,7 @@ impl ReorgPool {
 
         for id in to_remove {
             self.remove(id);
-            trace!(target: LOG_TARGET, "Removed double spend tx {} from reorg pool", id);
+            trace!(target: LOG_TARGET, "Removed double spend tx {id} from reorg pool");
         }
     }
 
@@ -336,20 +332,15 @@ impl ReorgPool {
 
 #[cfg(test)]
 mod test {
-
+    #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
+    use tari_transaction_components::{key_manager::KeyManager, tx, MicroMinotari};
 
     use super::*;
-    use crate::{
-        consensus::ConsensusManagerBuilder,
-        test_helpers::create_orphan_block,
-        transactions::{tari_amount::MicroMinotari, transaction_key_manager::create_memory_db_key_manager},
-        tx,
-    };
-
+    use crate::{consensus::BaseNodeConsensusManagerBuilder, test_helpers::create_orphan_block};
     #[tokio::test]
     async fn test_insert_expire_by_height() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -409,7 +400,7 @@ mod test {
 
     #[tokio::test]
     async fn test_remove_all() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -446,9 +437,9 @@ mod test {
 
     #[tokio::test]
     async fn remove_scan_for_and_remove_reorged_txs() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
+        let consensus = BaseNodeConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")

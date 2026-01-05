@@ -33,7 +33,7 @@ use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, UncompressedCommsPublicKey},
 };
 use tari_utilities::hex::Hex;
@@ -76,19 +76,21 @@ impl DnsSeedResolver {
     /// ```
     pub async fn resolve(&mut self, addr: &str) -> Result<Vec<SeedPeer>, DnsClientError> {
         let records = self.client.query_txt(addr).await?;
-        let peers = records
+        trace!(target: LOG_TARGET, "DNS records: {:?}", records);
+        let peers: Vec<_> = records
             .into_iter()
             .filter_map(|txt| {
                 txt.parse()
                     .inspect_err(|err| {
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to parse DNS seed peer string: {}. Error: {}", txt, err
+                            "Failed to parse DNS seed peer string: {txt}. Error: {err}"
                         );
                     })
                     .ok()
             })
             .collect();
+        trace!(target: LOG_TARGET, "Seed peers: {:?}", peers.iter().map(|p| format!("{}", p)).collect::<Vec<_>>());
         Ok(peers)
     }
 }
@@ -130,7 +132,7 @@ impl FromStr for SeedPeer {
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
             .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{}", e))?];
+        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{e}"))?];
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -166,7 +168,7 @@ impl From<SeedPeer> for Peer {
             seed.public_key,
             node_id,
             MultiaddressesWithStats::from_addresses_with_source(seed.addresses, &PeerAddressSource::Config),
-            Default::default(),
+            PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
             Default::default(),
@@ -176,6 +178,7 @@ impl From<SeedPeer> for Peer {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     mod peer_seed {
@@ -225,7 +228,7 @@ mod test {
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).unwrap();
             let seeds = resolver.resolve("seeds.nextnet.tari.com").await.unwrap();
-            println!("{:?}", seeds);
+            println!("{seeds:?}");
             assert!(!seeds.is_empty());
         }
     }

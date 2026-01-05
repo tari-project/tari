@@ -22,48 +22,62 @@
 
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
-
-use std::{iter, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use tari_common::configuration::Network;
+use tari_common_sqlite::connection::DbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_comms::PeerManager;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
+    types::{CommsPublicKey, TransportProtocol},
+    PeerManager,
+};
 use tari_crypto::keys::SecretKey;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader};
+use tari_transaction_components::{
+    consensus::consensus_constants::ConsensusConstants,
+    generate_coinbase_with_wallet_output,
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
+    tari_proof_of_work::Difficulty,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        RangeProofType,
+        Transaction,
+        WalletOutput,
+    },
+    MicroMinotari,
+};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
-    transactions::{
-        generate_coinbase_with_wallet_output,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-            RangeProofType,
-            Transaction,
-            WalletOutput,
-        },
-        transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
-    },
+    consensus::BaseNodeConsensusManager,
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
 };
 
 #[macro_use]
 mod block_spec;
 pub mod blockchain;
 
-pub fn create_consensus_rules() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build().unwrap()
+pub fn create_consensus_rules() -> BaseNodeConsensusManager {
+    BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap()
 }
 
 pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
@@ -72,17 +86,25 @@ pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
-pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
-    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+pub fn create_orphan_block(
+    block_height: u64,
+    transactions: Vec<Transaction>,
+    consensus: &BaseNodeConsensusManager,
+) -> Block {
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version().into());
     header.height = block_height;
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
+pub fn default_coinbase_entities(key_manager: &KeyManager) -> (TariKeyId, TariAddress) {
     let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
     let wallet_private_view_key = PrivateKey::random(&mut OsRng);
-    let _key = key_manager.import_key(wallet_private_view_key.clone()).await.unwrap();
-    let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
+    let _key = key_manager
+        .create_encrypted_key(wallet_private_view_key.clone(), None)
+        .unwrap();
+    let script_key_id = key_manager
+        .create_encrypted_key(wallet_private_spend_key.clone(), None)
+        .unwrap();
     let wallet_payment_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&wallet_private_view_key),
         CompressedPublicKey::from_secret_key(&wallet_private_spend_key),
@@ -92,18 +114,18 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
     (script_key_id, wallet_payment_address)
 }
 
-pub async fn create_block<TDB: BlockchainBackend>(
+pub fn create_block<TDB: BlockchainBackend>(
     db: &BlockchainDatabase<TDB>,
-    rules: &ConsensusManager,
+    rules: &BaseNodeConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
-    km: &MemoryDbKeyManager,
+    km: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     range_proof_type: Option<RangeProofType>,
 ) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.version = rules.consensus_constants(header.height).blockchain_version();
+    header.version = rules.consensus_constants(header.height).blockchain_version().into();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
     let reward = spec.reward_override.unwrap_or_else(|| {
@@ -130,12 +152,8 @@ pub async fn create_block<TDB: BlockchainBackend>(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::Open {
-            user_data: vec![],
-            tx_type: TxType::Coinbase,
-        },
+        MemoField::new_open(vec![], TxType::Coinbase).expect("Should never fail since the vector is empty"),
     )
-    .await
     .unwrap();
 
     let mut block = header
@@ -196,24 +214,29 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
 
-pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
-    let peer_database_name = {
-        let mut rng = rand::thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(data_path)
-        .set_env_config(Default::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None, None).unwrap())
+fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
+pub fn create_peer_manager() -> Arc<PeerManager> {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+    Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap())
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
@@ -223,11 +246,11 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
     )
     .unwrap();
-    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(header.total_kernel_offset.clone())
-        .build()
+        .build(&create_consensus_constants(header.height))
         .unwrap();
     ChainHeader::try_construct(header, accumulated_data).unwrap()
 }
@@ -240,6 +263,15 @@ pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {
     use digest::Digest;
     Blake2b::<U32>::default()
         .chain_update(preimage.as_ref())
+        .finalize()
+        .into()
+}
+
+pub fn make_hash2<T: AsRef<[u8]>, U: AsRef<[u8]>>(preimage1: T, preimage2: U) -> [u8; 32] {
+    use digest::Digest;
+    Blake2b::<U32>::default()
+        .chain_update(preimage1.as_ref())
+        .chain_update(preimage2.as_ref())
         .finalize()
         .into()
 }

@@ -26,15 +26,20 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-
-use crate::{
-    blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    },
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
+
+/// Placeholder root hash for an empty validator node Merkle tree.
+/// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the
+/// validator set is empty, we define this hash as the resulting Merkle root.
+pub const VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH: FixedHash = FixedHash::new([
+    0x27, 0x7d, 0xa6, 0x5c, 0x40, 0xb2, 0xcf, 0x99, 0xdb, 0x86, 0xba, 0xed, 0xb9, 0x03, 0xa3, 0xf0, 0xa3, 0x85, 0x40,
+    0xf3, 0xa9, 0x4d, 0x40, 0xc8, 0x26, 0xee, 0xca, 0xc7, 0xe2, 0x7d, 0x5d, 0xfc,
+]);
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -63,7 +68,7 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
         } else if let Ok(excess) = serde_json::from_str::<PrivateKey>(line) {
             block.header.total_kernel_offset = &block.header.total_kernel_offset + &excess;
         } else {
-            panic!("Error: Could not deserialize line: {} in file: {}", line, file);
+            panic!("Error: Could not deserialize line: {line} in file: {file}");
         }
     }
     block.header.output_smt_size += outputs.len() as u64;
@@ -91,20 +96,10 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -149,23 +144,13 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
     block.header.output_mr =
         FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -212,20 +197,10 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("ce7f66009cbd277968ba86d5e7be1b41aa268f5cb2f655ea1741cc82ab793c3b").unwrap();
         block.header.block_output_mr =
             FixedHash::from_hex("91e997520b0eee770914334692080f92d18db434d373561f8842c56d70c11b97").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -279,20 +254,10 @@ pub fn get_igor_genesis_block() -> ChainBlock {
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -339,22 +304,12 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("16a4ad34eccac12cbafe3ab448ca2c0d0dfcccd23098667bc6530da30526fb3d").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("a871470fefd60e1c268beeac5918c7997073e1bbd5c5890306acbfe57b85329f").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
         block.header.block_output_mr =
             FixedHash::from_hex("ab2dcfdfd29197c41838a3fd4fab24135578f741cc21614cdb575554c7513424").unwrap();
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -386,16 +341,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 pub fn get_localnet_genesis_block() -> ChainBlock {
     // lets get the block
     let block = crate::blocks::genesis_block::get_localnet_genesis_block_raw();
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -442,8 +388,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
-                .unwrap(),
+            validator_node_mr: VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
             validator_node_size: 0,
             input_mr: FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap(),
             total_kernel_offset: PrivateKey::from_hex(
@@ -469,27 +414,26 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 mod test {
     use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
-    use tari_common_types::{
-        epoch::VnEpoch,
-        types::{CompressedCommitment, UncompressedCommitment},
-    };
+    use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        crypto_factories::CryptoFactories,
+        transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, TransactionOutput},
+    };
     use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
-        chain_storage::{calculate_validator_node_mr, BlockchainBackend, SmtHasher},
-        consensus::ConsensusManager,
+        chain_storage::{BlockchainBackend, SmtHasher},
+        consensus::BaseNodeConsensusManager,
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
-        transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
-            CryptoFactories,
-        },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
+        MrHashError,
         PrunedInputMmr,
         PrunedOutputMmr,
     };
@@ -629,7 +573,7 @@ mod test {
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&tree_reader);
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
-        let mut vn_nodes = Vec::new();
+        // let mut vn_nodes = Vec::new();
         let mut smt_batch = vec![];
         for o in block.block().body.outputs() {
             if o.features.is_coinbase() {
@@ -643,18 +587,18 @@ mod test {
             smt_batch.push((smt_key, Some(smt_value.to_vec())));
 
             o.verify_metadata_signature().unwrap();
-            if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
-                let reg = o
-                    .features
-                    .sidechain_feature
-                    .as_ref()
-                    .and_then(|f| f.validator_node_registration())
-                    .unwrap();
-                vn_nodes.push((
-                    reg.public_key().clone(),
-                    reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                ));
-            }
+            // if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = o
+            //         .features
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     vn_nodes.push((
+            //         reg.public_key().clone(),
+            //         reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+            //     ));
+            // }
         }
 
         block_output_mmr
@@ -671,25 +615,25 @@ mod test {
             );
             smt_batch.push((smt_key, None));
 
-            if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
-                let reg = i
-                    .features()
-                    .unwrap()
-                    .sidechain_feature
-                    .as_ref()
-                    .and_then(|f| f.validator_node_registration())
-                    .unwrap();
-                let pos = vn_nodes
-                    .iter()
-                    .position(|v| {
-                        v == &(
-                            reg.public_key().clone(),
-                            reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                        )
-                    })
-                    .unwrap();
-                vn_nodes.remove(pos);
-            }
+            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = i
+            //         .features()
+            //         .unwrap()
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     let pos = vn_nodes
+            //         .iter()
+            //         .position(|v| {
+            //             v == &(
+            //                 reg.public_key().clone(),
+            //                 reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+            //             )
+            //         })
+            //         .unwrap();
+            //     vn_nodes.remove(pos);
+            // }
         }
 
         let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
@@ -705,9 +649,9 @@ mod test {
         assert_eq!(smt_root.0.to_vec().to_hex(), block.header().output_mr.to_vec().to_hex(),);
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
-        let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
+        let normal_output_mr = calculate_header_normal_output_mr(&block.block().body).unwrap();
         assert_eq!(
-            AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
+            calculate_header_block_output_mr(normal_output_mr, &coinbases)
                 .unwrap()
                 .to_vec()
                 .to_hex(),
@@ -724,11 +668,6 @@ mod test {
         assert_eq!(
             input_mr_hash_from_pruned_mmr(&input_mmr).unwrap().to_vec().to_hex(),
             block.header().input_mr.to_vec().to_hex(),
-        );
-
-        assert_eq!(
-            calculate_validator_node_mr(&vn_nodes).to_vec().to_hex(),
-            block.header().validator_node_mr.to_vec().to_hex()
         );
 
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
@@ -762,15 +701,18 @@ mod test {
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(
-                &*lock,
-                0,
-                &CompressedCommitment::from_commitment(total_utxo_sum),
-                &kernel_sum,
-                &CompressedCommitment::default(),
-            )
-            .unwrap();
+        ChainBalanceValidator::new(
+            BaseNodeConsensusManager::builder(network).build().unwrap(),
+            Default::default(),
+        )
+        .validate(
+            &*lock,
+            0,
+            &CompressedCommitment::from_commitment(total_utxo_sum),
+            &kernel_sum,
+            &CompressedCommitment::default(),
+        )
+        .unwrap();
     }
 
     fn set_network_by_env_var_or_force_set(network: Network) {
@@ -798,11 +740,30 @@ mod test {
         if current_network == network {
             true
         } else {
-            println!(
-                "\nNetwork mismatch!! Required: {:?}, current: {:?}.\n",
-                network, current_network
-            );
+            println!("\nNetwork mismatch!! Required: {network:?}, current: {current_network:?}.\n");
             false
         }
+    }
+
+    pub fn calculate_header_block_output_mr(
+        normal_output_mr: FixedHash,
+        coinbases: &Vec<TransactionOutput>,
+    ) -> Result<FixedHash, MrHashError> {
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in coinbases {
+            block_output_mmr.push(o.hash().to_vec())?;
+        }
+        block_output_mmr.push(normal_output_mr.to_vec())?;
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+    }
+
+    pub fn calculate_header_normal_output_mr(body: &AggregateBody) -> Result<FixedHash, MrHashError> {
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in body.outputs() {
+            if !o.features.is_coinbase() {
+                normal_output_mmr.push(o.hash().to_vec())?;
+            }
+        }
+        Ok(FixedHash::try_from(normal_output_mmr.get_merkle_root()?)?)
     }
 }

@@ -25,7 +25,7 @@ use std::path::Path;
 
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
-use tari_core::consensus::{ConsensusConstants, ConsensusManager};
+use tari_transaction_components::consensus::{ConsensusConstants, ConsensusManager};
 use tempfile::{tempdir, TempDir};
 
 use crate::storage::sqlite_utilities::{
@@ -61,11 +61,11 @@ pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnect
 
 /// A test helper to create a temporary wallet service memory databases
 pub fn make_wallet_database_memory_connection() -> WalletDbConnection {
-    run_migration_and_create_sqlite_memory_connection(16).unwrap()
+    run_migration_and_create_sqlite_memory_connection().unwrap()
 }
 
 pub fn create_consensus_rules() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build().unwrap()
+    ConsensusManager::builder(Network::LocalNet).build()
 }
 
 pub fn create_consensus_constants(height: u64) -> ConsensusConstants {

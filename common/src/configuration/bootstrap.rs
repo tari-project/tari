@@ -13,7 +13,7 @@ use super::error::ConfigError;
 use crate::configuration::Network;
 
 pub fn prompt(question: &str) -> bool {
-    println!("{}", question);
+    println!("{question}");
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
     let input = input.trim().to_lowercase();
@@ -118,6 +118,28 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
             Network::LocalNet => 18163u16,
         },
         _ => unreachable!("Application {} not supported", app_type),
+    }
+}
+
+pub fn wallet_http_service_default_port(network: Network) -> u16 {
+    match network {
+        Network::MainNet => 9000,
+        Network::StageNet => 9001,
+        Network::NextNet => 9002,
+        Network::LocalNet => 9003,
+        Network::Igor => 9004,
+        Network::Esmeralda => 9005,
+    }
+}
+
+pub fn wallet_get_default_seed_https_address(network: Network) -> &'static str {
+    match network {
+        Network::MainNet => "https://rpc.tari.com",
+        Network::StageNet => "https://rpc.stagenet.tari.com",
+        Network::NextNet => "https://rpc.nextnet.tari.com",
+        Network::LocalNet => "https://rpc.localnet.tari.com",
+        Network::Igor => "https://rpc.igor.tari.com",
+        Network::Esmeralda => "https://rpc.esmeralda.tari.com",
     }
 }
 

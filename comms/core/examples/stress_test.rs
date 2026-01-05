@@ -38,7 +38,7 @@ async fn main() {
     match run().await {
         Ok(_) | Err(Error::UserQuit) => {},
         Err(err) => {
-            println!("{error:?}: {error}", error = err);
+            println!("{err:?}: {err}");
             process::exit(1);
         },
     }
@@ -131,7 +131,7 @@ async fn run() -> Result<(), Error> {
         futures::pin_mut!(ctrl_c);
         match future::select(reply_rx, ctrl_c).await {
             Either::Left((result, _)) => {
-                println!("Stress test complete: {:?}", result);
+                println!("Stress test complete: {result:?}");
             },
             Either::Right((_, _)) => {
                 println!("SIGINT caught. Waiting for service to exit");

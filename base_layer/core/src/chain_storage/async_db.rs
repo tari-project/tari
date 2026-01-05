@@ -26,25 +26,38 @@ use primitive_types::U512;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    epoch::VnEpoch,
+    types::{
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+    },
+};
+use tari_node_components::blocks::{
+    Block,
+    BlockHeader,
+    BlockHeaderAccumulatedData,
+    ChainBlock,
+    ChainHeader,
+    HistoricalBlock,
+    NewBlockTemplate,
+};
+use tari_transaction_components::{
+    tari_proof_of_work::PowAlgorithm,
+    transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::epoch_time::EpochTime;
 
-use super::TemplateRegistrationEntry;
+use super::{BlockchainCheckStatus, MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
-    blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
-    },
+    blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
         blockchain_database::MmrRoots,
+        kernel_merkle_proof::KernelMerkleProof,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
         BlockAddResult,
         BlockchainBackend,
@@ -58,8 +71,7 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+    proof_of_work::TargetDifficultyWindow,
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -70,9 +82,7 @@ where F: FnOnce() -> R {
     let trace_id = OsRng.next_u32();
     trace!(
         target: LOG_TARGET,
-        "[{}] Entered blocking thread. trace_id: {}",
-        name,
-        trace_id
+        "[{name}] Entered blocking thread. trace_id: {trace_id}"
     );
     let ret = f();
     trace!(
@@ -173,9 +183,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
     //---------------------------------- Kernel --------------------------------------------//
-    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
+    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: CompressedSignature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
     make_async_fn!(fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>, "fetch_kernels_in_block");
+
+    make_async_fn!(generate_kernel_merkle_proof(excess_sig: CompressedSignature) -> KernelMerkleProof, "generate_kernel_merkle_proof");
 
     //---------------------------------- MMR --------------------------------------------//
     make_async_fn!(prepare_new_block(template: NewBlockTemplate) -> Block, "prepare_new_block");
@@ -232,6 +244,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_bad_blocks() -> Vec<BadBlock>, "bad_block_exists");
 
+    make_async_fn!(clear_all_bad_blocks() -> (), "clear_all_bad_blocks");
+
     make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
 
     make_async_fn!(fetch_blocks<T: RangeBounds<u64>>(bounds: T, compact: bool) -> Vec<HistoricalBlock>, "fetch_blocks");
@@ -240,7 +254,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_by_hash(hash: HashOutput, compact: bool) -> Option<HistoricalBlock>, "fetch_block_by_hash");
 
-    make_async_fn!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
+    make_async_fn!(fetch_orphan_blocks() -> Vec<ChainHeader>, "fetch_orphan_blocks");
+
+    make_async_fn!(fetch_block_with_kernel(excess_sig: CompressedSignature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 
     make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 
@@ -268,13 +284,39 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 
-    make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<(CompressedPublicKey, [u8;32])>, "fetch_active_validator_nodes");
+    make_async_fn!(fetch_all_active_validator_nodes(height: u64) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_all_active_validator_nodes");
 
-    make_async_fn!(get_shard_key(height:u64, public_key: CompressedPublicKey) -> Option<[u8;32]>, "get_shard_key");
+    make_async_fn!(fetch_active_validator_nodes(height: u64, validator_network: Option<CompressedPublicKey>) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_active_validator_nodes");
+
+    make_async_fn!(fetch_validators_activating_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_activating_in_epoch");
+
+    make_async_fn!(fetch_validators_exiting_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_exiting_in_epoch");
+
+    make_async_fn!(get_validator_node(sidechain_id: Option<CompressedPublicKey>, public_key: CompressedPublicKey) -> Option<ValidatorNodeRegistrationInfo>, "get_validator_node");
 
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
+
+    make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
+
+    make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> MinedInfo, "fetch_mined_info_by_output_hash");
+
+    make_async_fn!(request_accumulated_data_check(auto_correct: bool, breathing_time_ms: u64) -> (), "request_accumulated_data_check");
+
+    make_async_fn!(request_blockchain_consistency_check(full_validation: bool, auto_correct: bool, breathing_time_ms: u64) -> (), "request_blockchain_consistency_check");
+
+    make_async_fn!(stop_running_accumulated_data_check_task() -> (), "stop_running_accumulated_data_check_task");
+
+    make_async_fn!(stop_running_blockchain_consistency_check_task() -> (), "stop_running_blockchain_consistency_check_task");
+
+    make_async_fn!(reset_accumulated_data_check_db_counters() -> (), "reset_accumulated_data_check_db_counters");
+
+    make_async_fn!(reset_blockchain_consistency_check_db_counters() -> (), "reset_blockchain_consistency_check_db_counters");
+
+    make_async_fn!(fetch_accumulated_data_check_status() -> Option<BlockchainCheckStatus>, "fetch_accumulated_data_check_status");
+
+    make_async_fn!(fetch_blockchain_consistency_check_status() -> Option<BlockchainCheckStatus>, "fetch_blockchain_consistency_check_status");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

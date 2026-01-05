@@ -22,19 +22,16 @@
 
 use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_comms::peer_manager::NodeId;
+use tari_node_components::blocks::{Block, NewBlock};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{
-    base_node::comms_interface::{
-        error::CommsInterfaceError,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-    },
-    blocks::{Block, NewBlock},
+use crate::base_node::comms_interface::{
+    error::CommsInterfaceError,
+    FetchMempoolTransactionsResponse,
+    NodeCommsRequest,
+    NodeCommsResponse,
 };
-
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
@@ -100,8 +97,8 @@ impl OutboundNodeCommsInterface {
         new_block: NewBlock,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), CommsInterfaceError> {
-        self.block_sender.send((new_block, exclude_peers)).map_err(|err| {
-            CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
-        })
+        self.block_sender
+            .send((new_block, exclude_peers))
+            .map_err(|err| CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {err}")))
     }
 }

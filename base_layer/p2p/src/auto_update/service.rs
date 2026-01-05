@@ -143,7 +143,7 @@ impl SoftwareUpdaterService {
             self.config.update_uris.as_slice().join(", ")
         );
         if !self.config.is_update_enabled() {
-            warn!(
+            info!(
                 target: LOG_TARGET,
                 "Check for updates has been called but auto update has been disabled in the config"
             );
@@ -155,7 +155,7 @@ impl SoftwareUpdaterService {
         match auto_update::check_for_updates(self.application, &arch, &self.current_version, self.config.clone()).await
         {
             Ok(Some(update)) => {
-                log::info!(target: LOG_TARGET, "Update found {}", update);
+                log::info!(target: LOG_TARGET, "Update found {update}");
                 Some(update)
             },
             Ok(None) => {
@@ -169,7 +169,7 @@ impl SoftwareUpdaterService {
                 None
             },
             Err(err) => {
-                log::warn!(target: LOG_TARGET, "Unable to check for software updates: {}", err);
+                log::warn!(target: LOG_TARGET, "Unable to check for software updates: {err}");
                 None
             },
         }

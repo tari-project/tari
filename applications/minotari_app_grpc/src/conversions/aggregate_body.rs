@@ -22,37 +22,37 @@
 
 use std::convert::TryFrom;
 
-use tari_core::transactions::aggregated_body::AggregateBody;
+use tari_common_types::types::BlockHash;
+use tari_transaction_components::aggregated_body::AggregateBody;
 use tari_utilities::convert::try_convert_all;
 
-use crate::tari_rpc as grpc;
+use crate::{conversions::transaction_output::grpc_output_with_payref, tari_rpc as grpc};
 
-impl TryFrom<AggregateBody> for grpc::AggregateBody {
-    type Error = String;
-
-    fn try_from(source: AggregateBody) -> Result<Self, Self::Error> {
-        let (inputs, outputs, kernels) = source.dissolve();
-        Ok(Self {
-            inputs: inputs
-                .into_iter()
-                .map(grpc::TransactionInput::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            outputs: outputs
-                .into_iter()
-                .map(grpc::TransactionOutput::try_from)
-                .collect::<Result<Vec<grpc::TransactionOutput>, Self::Error>>()?,
-            kernels: kernels.into_iter().map(grpc::TransactionKernel::from).collect(),
-        })
-    }
+pub fn grpc_aggregate_body_with_payrefs(
+    block: AggregateBody,
+    block_hash: Option<BlockHash>,
+) -> Result<grpc::AggregateBody, String> {
+    let (inputs, outputs, kernels) = block.clone().dissolve();
+    Ok(grpc::AggregateBody {
+        inputs: inputs
+            .into_iter()
+            .map(grpc::TransactionInput::try_from)
+            .collect::<Result<Vec<_>, _>>()?,
+        outputs: outputs
+            .into_iter()
+            .map(|o| grpc_output_with_payref(o, block_hash))
+            .collect::<Result<Vec<_>, _>>()?,
+        kernels: kernels.into_iter().map(grpc::TransactionKernel::from).collect(),
+    })
 }
 
 impl TryFrom<grpc::AggregateBody> for AggregateBody {
     type Error = String;
 
     fn try_from(body: grpc::AggregateBody) -> Result<Self, Self::Error> {
-        let inputs = try_convert_all(body.inputs).map_err(|err: String| format!("inputs {}", err))?;
-        let outputs = try_convert_all(body.outputs).map_err(|err: String| format!("outputs {}", err))?;
-        let kernels = try_convert_all(body.kernels).map_err(|err: String| format!("kernels {}", err))?;
+        let inputs = try_convert_all(body.inputs).map_err(|err: String| format!("inputs {err}"))?;
+        let outputs = try_convert_all(body.outputs).map_err(|err: String| format!("outputs {err}"))?;
+        let kernels = try_convert_all(body.kernels).map_err(|err: String| format!("kernels {err}"))?;
         let body = AggregateBody::new(inputs, outputs, kernels);
         Ok(body)
     }

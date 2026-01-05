@@ -137,5 +137,5 @@ fn get_commit<P: AsRef<Path>>(git_root: P) -> Result<String, anyhow::Error> {
 }
 
 fn emit_cargo_warn<T: fmt::Display>(e: T) {
-    println!("cargo:warning=Could not open repo: {}", e);
+    println!("cargo:warning=Could not open repo: {e}");
 }

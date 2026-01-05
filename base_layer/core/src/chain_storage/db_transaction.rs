@@ -28,14 +28,14 @@ use std::{
 
 use primitive_types::U512;
 use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
+use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
+    blocks::UpdateBlockAccumulatedData,
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
-    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
 };
-
 #[derive(Debug)]
 pub struct DbTransaction {
     operations: Vec<WriteOperation>,
@@ -45,7 +45,7 @@ impl Display for DbTransaction {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         fmt.write_str("Db transaction: \n")?;
         for write_op in &self.operations {
-            fmt.write_str(&format!("{}\n", write_op))?;
+            fmt.write_str(&format!("{write_op}\n"))?;
         }
         Ok(())
     }
@@ -216,9 +216,15 @@ impl DbTransaction {
     /// Sets accumulated data for the orphan block, "upgrading" the orphan block to a chained orphan.
     /// Any existing accumulated data is overwritten.
     /// The transaction will rollback and write will return an error if the orphan block does not exist.
-    pub fn set_accumulated_data_for_orphan(&mut self, accumulated_data: BlockHeaderAccumulatedData) -> &mut Self {
-        self.operations
-            .push(WriteOperation::SetAccumulatedDataForOrphan(accumulated_data));
+    pub fn set_accumulated_data_for_orphan(
+        &mut self,
+        block_version: u16,
+        accumulated_data: BlockHeaderAccumulatedData,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::SetAccumulatedDataForOrphan {
+            version: block_version,
+            data: accumulated_data,
+        });
         self
     }
 
@@ -331,7 +337,10 @@ pub enum WriteOperation {
     DeleteAllInputsInBlock {
         block_hash: BlockHash,
     },
-    SetAccumulatedDataForOrphan(BlockHeaderAccumulatedData),
+    SetAccumulatedDataForOrphan {
+        version: u16,
+        data: BlockHeaderAccumulatedData,
+    },
     SetBestBlock {
         height: u64,
         hash: HashOutput,
@@ -395,19 +404,19 @@ impl fmt::Display for WriteOperation {
                 header_height,
                 header_hash,
             ),
-            DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash),
+            DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({hash})",),
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
-                write!(f, "InsertOrphanChainTip({}, {})", hash, total_accumulated_difficulty)
+                write!(f, "InsertOrphanChainTip({hash}, {total_accumulated_difficulty})")
             },
-            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash),
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({hash})"),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash()),
             UpdateBlockAccumulatedData { header_hash, .. } => {
-                write!(f, "Update Block data for block {}", header_hash)
+                write!(f, "Update Block data for block {header_hash}")
             },
-            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash),
+            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {block_hash}"),
             PruneOutputFromAllDbs {
                 output_hash,
                 commitment,
@@ -419,10 +428,10 @@ impl fmt::Display for WriteOperation {
                 commitment.to_hex(),
                 output_type,
             ),
-            DeleteAllKernelsInBlock { block_hash } => write!(f, "Delete kernels in block {}", block_hash),
-            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash),
-            SetAccumulatedDataForOrphan(accumulated_data) => {
-                write!(f, "Set accumulated data for orphan {}", accumulated_data)
+            DeleteAllKernelsInBlock { block_hash } => write!(f, "Delete kernels in block {block_hash}"),
+            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {block_hash}"),
+            SetAccumulatedDataForOrphan { version, data } => {
+                write!(f, "Set accumulated data for orphan {data} version {version}")
             },
             SetBestBlock {
                 height,
@@ -432,15 +441,15 @@ impl fmt::Display for WriteOperation {
                 timestamp,
             } => write!(
                 f,
-                "Update best block to height:{} ({}) with difficulty: {} and timestamp: {}",
-                height, hash, accumulated_difficulty, timestamp
+                "Update best block to height:{height} ({hash}) with difficulty: {accumulated_difficulty} and \
+                 timestamp: {timestamp}"
             ),
-            SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
-            SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
-            DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
-            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash),
+            SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {pruning_horizon}"),
+            SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {height}"),
+            DeleteHeader(height) => write!(f, "Delete header at height: {height}"),
+            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {hash}"),
             InsertBadBlock { hash, height, reason } => {
-                write!(f, "Insert bad block #{} {} for {}", height, hash, reason)
+                write!(f, "Insert bad block #{height} {hash} for {reason}")
             },
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
@@ -474,6 +483,15 @@ pub enum DbValue {
     OrphanBlock(Box<Block>),
 }
 
+impl DbValue {
+    pub fn into_header(self) -> Option<BlockHeader> {
+        match self {
+            DbValue::HeaderHeight(bh) | DbValue::HeaderHash(bh) => Some(*bh),
+            DbValue::OrphanBlock(_) => None,
+        }
+    }
+}
+
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
@@ -487,9 +505,9 @@ impl Display for DbValue {
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{})", v)),
-            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{})", v)),
-            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v)),
+            DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{v})")),
+            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{v})")),
+            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({v})")),
         }
     }
 }

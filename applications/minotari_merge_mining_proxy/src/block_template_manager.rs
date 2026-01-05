@@ -29,21 +29,17 @@ use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrp
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
-    consensus::ConsensusManager,
-    proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
-    transactions::{
-        generate_coinbase,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-    },
+    consensus::BaseNodeConsensusManager,
+    proof_of_work::{monero_rx, monero_rx::FixedByteArray},
     AuxChainHashes,
 };
 use tari_max_size::MaxSizeBytes;
+use tari_transaction_components::{
+    generate_coinbase,
+    key_manager::KeyManager,
+    tari_proof_of_work::Difficulty,
+    transaction_components::{CoinBaseExtra, MemoField, TransactionKernel, TransactionOutput},
+};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -60,9 +56,9 @@ pub(crate) struct BlockTemplateManager<'a> {
     config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeGrpcClient,
     p2pool_client: Option<ShaP2PoolGrpcClient>,
-    key_manager: MemoryDbKeyManager,
+    key_manager: KeyManager,
     wallet_payment_address: TariAddress,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
 }
 
 impl<'a> BlockTemplateManager<'a> {
@@ -70,10 +66,10 @@ impl<'a> BlockTemplateManager<'a> {
         base_node_client: &'a mut BaseNodeGrpcClient,
         p2pool_client: Option<ShaP2PoolGrpcClient>,
         config: Arc<MergeMiningProxyConfig>,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateManager<'a>, MmProxyError> {
-        let key_manager = create_memory_db_key_manager()?;
+        let key_manager = KeyManager::new_random()?;
         Ok(Self {
             config,
             base_node_client,
@@ -130,7 +126,7 @@ impl BlockTemplateManager<'_> {
                         b
                     },
                     Err(err) => {
-                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
+                        error!(target: LOG_TARGET, "grpc get_new_block ({err})");
                         return Err(err);
                     },
                 }
@@ -166,7 +162,7 @@ impl BlockTemplateManager<'_> {
                     val
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
+                    error!(target: LOG_TARGET, "grpc get_new_block_template ({err})");
                     return Err(err);
                 },
             };
@@ -176,12 +172,12 @@ impl BlockTemplateManager<'_> {
                 .as_ref()
                 .map(|h| h.height)
                 .unwrap_or_default();
-            debug!(target: LOG_TARGET, "Requested new block template at height: #{} (try {})", height, loop_count);
-            let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
+            debug!(target: LOG_TARGET, "Requested new block template at height: #{height} (try {loop_count})");
+            let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template)?;
 
             let template_with_coinbase =
                 merge_mining::add_coinbase(&coinbase_output, &coinbase_kernel, new_template.template.clone())?;
-            debug!(target: LOG_TARGET, "Added coinbase to new block template (try {})", loop_count);
+            debug!(target: LOG_TARGET, "Added coinbase to new block template (try {loop_count})");
 
             return Ok((template_with_coinbase, height));
         }
@@ -221,7 +217,7 @@ impl BlockTemplateManager<'_> {
             })
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {
-                status,
+                status: Box::new(status),
                 details: "failed to get new block template".to_string(),
             })?
             .into_inner();
@@ -232,7 +228,7 @@ impl BlockTemplateManager<'_> {
     }
 
     /// Get coinbase transaction for the [template](NewBlockTemplateData).
-    async fn get_coinbase(
+    fn get_coinbase(
         &mut self,
         template: &NewBlockTemplateData,
     ) -> Result<(TransactionOutput, TransactionKernel), MmProxyError> {
@@ -251,28 +247,25 @@ impl BlockTemplateManager<'_> {
             true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
-            PaymentId::Open {
-                user_data: vec![],
-                tx_type: TxType::Coinbase,
-            },
-        )
-        .await?;
+            MemoField::open_unchecked(vec![], TxType::Coinbase),
+        )?;
         Ok((coinbase_output, coinbase_kernel))
     }
 }
+use tari_transaction_components::transaction_components::memo_field::TxType;
 
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.
 pub fn calculate_aux_chain_merkle_root(hashes: AuxChainHashes) -> Result<(monero::Hash, u32), MmProxyError> {
-    if hashes.is_empty() {
-        Err(MmProxyError::MissingDataError(
-            "No aux chain hashes provided".to_string(),
-        ))
-    } else if hashes.len() == 1 {
-        Ok((hashes[0], 0))
-    } else {
+    if hashes.len() > 1 {
         unimplemented!("Multiple aux chains for Monero is not supported yet, only Tari.");
     }
+    Ok((
+        *hashes.first().ok_or(MmProxyError::MissingDataError(
+            "No aux chain hashes provided".to_string(),
+        ))?,
+        0,
+    ))
 }
 
 /// Build the [FinalBlockTemplateData] from [template](NewBlockTemplateData) and with

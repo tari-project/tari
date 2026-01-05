@@ -22,7 +22,6 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
-    sync::Arc,
 };
 
 use log::*;
@@ -30,12 +29,10 @@ use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
+use tari_node_components::blocks::{BlockError, BlockHeaderAccumulatedData};
+use tari_transaction_components::{consensus::ConsensusConstants, tari_proof_of_work::PowAlgorithm};
 
-use crate::{
-    blocks::{error::BlockError, Block, BlockHeader},
-    proof_of_work::{AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    transactions::aggregated_body::AggregateBody,
-};
+use crate::proof_of_work::AchievedTargetDifficulty;
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
@@ -108,7 +105,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn build(self) -> Result<BlockHeaderAccumulatedData, BlockError> {
+    pub fn build(self, consensus_constants: &ConsensusConstants) -> Result<BlockHeaderAccumulatedData, BlockError> {
         let previous_accum = self.previous_accum;
         let hash = self.hash.ok_or(BlockError::BuilderMissingField { field: "hash" })?;
 
@@ -123,7 +120,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             field: "Current achieved difficulty",
         })?;
 
-        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff) = match achieved_target.pow_algo() {
+        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff, cuckaroo_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::RandomXM => (
                 previous_accum
                     .accumulated_monero_randomx_difficulty
@@ -131,6 +128,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_tari_randomx_difficulty,
                 previous_accum.accumulated_sha3x_difficulty,
+                previous_accum.accumulated_cuckaroo_difficulty,
             ),
             PowAlgorithm::RandomXT => (
                 previous_accum.accumulated_monero_randomx_difficulty,
@@ -139,12 +137,23 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha3x_difficulty,
+                previous_accum.accumulated_cuckaroo_difficulty,
             ),
             PowAlgorithm::Sha3x => (
                 previous_accum.accumulated_monero_randomx_difficulty,
                 previous_accum.accumulated_tari_randomx_difficulty,
                 previous_accum
                     .accumulated_sha3x_difficulty
+                    .checked_add_difficulty(achieved_target.target())
+                    .ok_or(BlockError::DifficultyOverflow)?,
+                previous_accum.accumulated_cuckaroo_difficulty,
+            ),
+            PowAlgorithm::Cuckaroo => (
+                previous_accum.accumulated_monero_randomx_difficulty,
+                previous_accum.accumulated_tari_randomx_difficulty,
+                previous_accum.accumulated_sha3x_difficulty,
+                previous_accum
+                    .accumulated_cuckaroo_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
@@ -156,9 +165,13 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             .ok_or(BlockError::BuilderMissingField {
                 field: "total_kernel_offset",
             })?;
-        let total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
+        let mut total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
             U512::from(tari_randomx_diff.as_u128()) *
             U512::from(sha3x_diff.as_u128());
+
+        if consensus_constants.include_c29_accumulated_difficulty_into_total() {
+            total_accumulated *= U512::from(cuckaroo_diff.as_u128());
+        }
 
         let result = BlockHeaderAccumulatedData {
             hash,
@@ -168,236 +181,18 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             accumulated_monero_randomx_difficulty: monero_randomx_diff,
             accumulated_tari_randomx_difficulty: tari_randomx_diff,
             accumulated_sha3x_difficulty: sha3x_diff,
+            accumulated_cuckaroo_difficulty: cuckaroo_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
             target: LOG_TARGET,
-            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}",
+            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}, Cuckaroo {}",
             result.total_accumulated_difficulty,
             result.accumulated_monero_randomx_difficulty,
             result.accumulated_tari_randomx_difficulty,
             result.accumulated_sha3x_difficulty,
+            result.accumulated_cuckaroo_difficulty,
         );
         Ok(result)
-    }
-}
-
-/// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
-pub struct BlockHeaderAccumulatedData {
-    /// The block hash.
-    pub hash: HashOutput,
-    /// The total accumulated offset for all kernels in the block.
-    pub total_kernel_offset: PrivateKey,
-    /// The achieved difficulty for solving the current block using the specified proof of work algorithm.
-    pub achieved_difficulty: Difficulty,
-    /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
-    /// separately.
-    pub total_accumulated_difficulty: U512,
-    /// The total accumulated difficulty for Merged mined monero RandomX proof of work for all blocks since Genesis,
-    /// but not including this block, tracked separately.
-    pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
-    /// The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
-    /// but not including this block, tracked separately.
-    pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
-    /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
-    /// but not including this block, tracked separately.
-    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
-    /// The target difficulty for solving the current block using the specified proof of work algorithm.
-    pub target_difficulty: Difficulty,
-}
-
-impl BlockHeaderAccumulatedData {
-    pub fn builder(previous: &BlockHeaderAccumulatedData) -> BlockHeaderAccumulatedDataBuilder<'_> {
-        BlockHeaderAccumulatedDataBuilder::from_previous(previous)
-    }
-}
-
-impl Display for BlockHeaderAccumulatedData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Hash: {}", self.hash)?;
-        writeln!(f, "Achieved difficulty: {}", self.achieved_difficulty)?;
-        writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_difficulty)?;
-        writeln!(
-            f,
-            "Accumulated Monero RandomX difficulty: {}",
-            self.accumulated_monero_randomx_difficulty
-        )?;
-        writeln!(
-            f,
-            "Accumulated Tari RandomX difficulty: {}",
-            self.accumulated_tari_randomx_difficulty
-        )?;
-        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
-        writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
-        Ok(())
-    }
-}
-
-/// A block linked to a chain.
-/// A ChainHeader guarantees (i.e cannot be constructed) that the block and accumulated data correspond by hash.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub struct ChainHeader {
-    header: BlockHeader,
-    accumulated_data: BlockHeaderAccumulatedData,
-}
-
-impl Display for ChainHeader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.header)?;
-        writeln!(f, "{}", self.accumulated_data)?;
-        Ok(())
-    }
-}
-
-impl ChainHeader {
-    /// Attempts to construct a `ChainHeader` from a `BlockHeader` and associate `BlockHeaderAccumulatedData`. Returns
-    /// None if the Block and the BlockHeaderAccumulatedData do not correspond (i.e have different hashes)
-    pub fn try_construct(header: BlockHeader, accumulated_data: BlockHeaderAccumulatedData) -> Option<Self> {
-        if accumulated_data.hash != header.hash() {
-            return None;
-        }
-
-        Some(Self {
-            header,
-            accumulated_data,
-        })
-    }
-
-    pub fn height(&self) -> u64 {
-        self.header.height
-    }
-
-    pub fn timestamp(&self) -> u64 {
-        self.header.timestamp.as_u64()
-    }
-
-    pub fn hash(&self) -> &HashOutput {
-        &self.accumulated_data.hash
-    }
-
-    pub fn header(&self) -> &BlockHeader {
-        &self.header
-    }
-
-    pub fn accumulated_data(&self) -> &BlockHeaderAccumulatedData {
-        &self.accumulated_data
-    }
-
-    pub fn into_parts(self) -> (BlockHeader, BlockHeaderAccumulatedData) {
-        (self.header, self.accumulated_data)
-    }
-
-    pub fn into_header(self) -> BlockHeader {
-        self.header
-    }
-
-    pub fn upgrade_to_chain_block(self, body: AggregateBody) -> ChainBlock {
-        // NOTE: Panic cannot occur because a ChainBlock has the same guarantees as ChainHeader
-        ChainBlock::try_construct(Arc::new(Block::new(self.header, body)), self.accumulated_data).unwrap()
-    }
-}
-
-/// A block linked to a chain.
-/// A ChainBlock MUST have the same or stronger guarantees than `ChainHeader`
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChainBlock {
-    accumulated_data: BlockHeaderAccumulatedData,
-    block: Arc<Block>,
-}
-
-impl Display for ChainBlock {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.accumulated_data)?;
-        writeln!(f, "{}", self.block)?;
-        Ok(())
-    }
-}
-
-impl ChainBlock {
-    /// Attempts to construct a `ChainBlock` from a `Block` and associate `BlockHeaderAccumulatedData`. Returns None if
-    /// the Block and the BlockHeaderAccumulatedData do not correspond (i.e have different hashes)
-    pub fn try_construct(block: Arc<Block>, accumulated_data: BlockHeaderAccumulatedData) -> Option<Self> {
-        if accumulated_data.hash != block.hash() {
-            return None;
-        }
-
-        Some(Self {
-            accumulated_data,
-            block,
-        })
-    }
-
-    pub fn height(&self) -> u64 {
-        self.block.header.height
-    }
-
-    pub fn hash(&self) -> &HashOutput {
-        &self.accumulated_data.hash
-    }
-
-    /// Returns a reference to the inner block
-    pub fn block(&self) -> &Block {
-        &self.block
-    }
-
-    /// Returns a reference to the inner block's header
-    pub fn header(&self) -> &BlockHeader {
-        &self.block.header
-    }
-
-    /// Returns the inner block wrapped in an atomically reference counted (ARC) pointer. This call is cheap and does
-    /// not copy the block in memory.
-    pub fn to_arc_block(&self) -> Arc<Block> {
-        self.block.clone()
-    }
-
-    pub fn accumulated_data(&self) -> &BlockHeaderAccumulatedData {
-        &self.accumulated_data
-    }
-
-    pub fn to_chain_header(&self) -> ChainHeader {
-        // NOTE: Panic is impossible, a ChainBlock cannot be constructed if inconsistencies between the header and
-        // accum data exist
-        ChainHeader::try_construct(self.block.header.clone(), self.accumulated_data.clone()).unwrap()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    mod chain_block {
-        use super::*;
-        use crate::blocks::genesis_block::get_esmeralda_genesis_block;
-
-        #[test]
-        fn it_converts_to_a_chain_header() {
-            let genesis = get_esmeralda_genesis_block();
-            let header = genesis.to_chain_header();
-            assert_eq!(header.header(), genesis.header());
-            assert_eq!(header.accumulated_data(), genesis.accumulated_data());
-        }
-
-        #[test]
-        fn it_provides_guarantees_about_data_integrity() {
-            let mut genesis = get_esmeralda_genesis_block();
-            // Mess with the header, only possible using the non-public fields
-            genesis.block = Arc::new({
-                let mut b = (*genesis.block).clone();
-                b.header.height = 1;
-                b
-            });
-            assert!(ChainBlock::try_construct(genesis.to_arc_block(), genesis.accumulated_data().clone()).is_none());
-            assert!(ChainHeader::try_construct(genesis.header().clone(), genesis.accumulated_data().clone()).is_none());
-
-            genesis.block = Arc::new({
-                let mut b = (*genesis.block).clone();
-                b.header.height = 0;
-                b
-            });
-            ChainBlock::try_construct(genesis.to_arc_block(), genesis.accumulated_data().clone()).unwrap();
-            ChainHeader::try_construct(genesis.header().clone(), genesis.accumulated_data().clone()).unwrap();
-        }
     }
 }

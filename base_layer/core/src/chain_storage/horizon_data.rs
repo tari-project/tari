@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::CompressedCommitment;
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 pub struct HorizonData {
     kernel_sum: CompressedCommitment,
     utxo_sum: CompressedCommitment,

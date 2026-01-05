@@ -27,12 +27,11 @@ use std::{
 };
 
 use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
-use tari_utilities::{hex::Hex, ByteArray};
-
-use crate::transactions::{
+use tari_transaction_components::{
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
+use tari_utilities::{hex::Hex, ByteArray};
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
@@ -56,8 +55,14 @@ impl FeePriority {
         let age_priority = (u64::MAX - insert_epoch).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
-        priority[..8].copy_from_slice(&fee_priority[..]);
-        priority[8..16].copy_from_slice(&age_priority[..]);
+        priority
+            .get_mut(..8)
+            .expect("Already checked")
+            .copy_from_slice(&fee_priority[..]);
+        priority
+            .get_mut(8..16)
+            .expect("Already checked")
+            .copy_from_slice(&age_priority[..]);
         // Use the aggregate signature and nonce.
         // If a transaction has many kernels, unless they are all identical, the fee priority will be different.
         let mut agg_sig = PrivateKey::default();
@@ -66,8 +71,14 @@ impl FeePriority {
             agg_nonce = agg_nonce + tx.excess_sig.get_compressed_public_nonce().to_public_key()?;
             agg_sig = agg_sig + tx.excess_sig.get_signature();
         }
-        priority[16..48].copy_from_slice(agg_sig.as_bytes());
-        priority[48..80].copy_from_slice(agg_nonce.as_bytes());
+        priority
+            .get_mut(16..48)
+            .expect("Already checked")
+            .copy_from_slice(agg_sig.as_bytes());
+        priority
+            .get_mut(48..80)
+            .expect("Already checked")
+            .copy_from_slice(agg_nonce.as_bytes());
         Ok(Self(priority))
     }
 }
@@ -125,29 +136,28 @@ impl Display for PrioritizedTransaction {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::transactions::{
+    use tari_transaction_components::{
+        key_manager::KeyManager,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::create_tx,
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     };
 
-    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &MemoryDbKeyManager) -> Transaction {
-        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
-            .await
-            .expect("Failed to get tx");
+    use super::*;
+    fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &KeyManager) -> Transaction {
+        let (tx, _, _) =
+            create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager).expect("Failed to get tx");
         tx
     }
 
     #[tokio::test]
     async fn fee_increases_priority() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
-        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(2 * uT, &key_manager);
         let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx")).unwrap();
 
-        let tx = create_tx_with_fee(3 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(3 * uT, &key_manager);
         let p2 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx")).unwrap();
 
         assert!(p2 > p1);
@@ -155,13 +165,13 @@ mod tests {
 
     #[tokio::test]
     async fn age_increases_priority() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
-        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(2 * uT, &key_manager);
         let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx")).unwrap();
 
-        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
+        let tx = create_tx_with_fee(2 * uT, &key_manager);
         let p2 = FeePriority::new(
             &tx,
             epoch - 1,

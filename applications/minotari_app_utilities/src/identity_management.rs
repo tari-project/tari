@@ -29,7 +29,13 @@ use tari_common::{
     configuration::bootstrap::prompt,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity, NodeIdentity};
+use tari_comms::{
+    multiaddr::{Multiaddr, Protocol},
+    peer_manager::PeerFeatures,
+    tor::TorIdentity,
+    NodeIdentity,
+};
+use tari_p2p::TransportType;
 use tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "minotari_application";
@@ -52,12 +58,20 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     public_addresses: Vec<Multiaddr>,
     create_id: bool,
     peer_features: PeerFeatures,
+    transport_type: TransportType,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
-    match load_node_identity(&identity_file) {
+    match load_node_identity(&identity_file, transport_type) {
         Ok(mut id) => {
             id.set_peer_features(peer_features);
-            for public_address in public_addresses {
+            // Filter addresses based on transport type
+            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
+            for public_address in filtered_addresses {
                 id.add_public_address(public_address.clone());
+                debug!(
+                    target: LOG_TARGET,
+                    "Added address: {}",
+                    public_address
+                );
             }
             Ok(Arc::new(id))
         },
@@ -70,30 +84,28 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             ),
         )),
         Err(e) => {
-            debug!(target: LOG_TARGET, "Failed to load node identity: {}", e);
+            warn!(target: LOG_TARGET, "Failed to load node identity: {e}");
             if !create_id {
                 let prompt = prompt("Node identity does not exist.\nWould you like to create one (Y/n)?");
                 if !prompt {
                     error!(
                         target: LOG_TARGET,
-                        "Node identity not found. {}. You can update the configuration file to point to a valid node \
-                         identity file, or re-run the node and create a new one.",
-                        e
+                        "Node identity not found. {e}. You can update the configuration file to point to a valid node \
+                         identity file, or re-run the node and create a new one."
                     );
                     return Err(ExitError::new(
                         ExitCode::ConfigError,
                         format!(
-                            "Node identity information not found. {}. You can update the configuration file to point \
-                             to a valid node identity file, or re-run the node to create a new one",
-                            e
+                            "Node identity information not found. {e}. You can update the configuration file to point \
+                             to a valid node identity file, or re-run the node to create a new one"
                         ),
                     ));
                 };
             }
+            debug!(target: LOG_TARGET, "Existing node id not found. {e}. Creating new ID");
 
-            debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
-
-            match create_new_node_identity(&identity_file, public_addresses, peer_features) {
+            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
+            match create_new_node_identity(&identity_file, filtered_addresses, peer_features) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -105,10 +117,10 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                     Ok(Arc::new(id))
                 },
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
+                    error!(target: LOG_TARGET, "Could not create new node id. {e}.");
                     Err(ExitError::new(
                         ExitCode::ConfigError,
-                        format!("Could not create new node id. {}.", e),
+                        format!("Could not create new node id. {e}."),
                     ))
                 },
             }
@@ -124,21 +136,73 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing a NodeIdentity on success, string indicates the reason on failure
-fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityError> {
+fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) -> Result<NodeIdentity, IdentityError> {
     check_identity_file(&path)?;
 
     let id_str = fs::read_to_string(path.as_ref())?;
     let id = json5::from_str::<NodeIdentity>(&id_str)?;
+
+    let id = if transport_type == TransportType::Tcp {
+        let current_addresses = id.public_addresses();
+        debug!(
+            target: LOG_TARGET,
+            "Filtering addresses for TCP transport. Current addresses: {:?}",
+            current_addresses
+        );
+        // For TCP transport remove all onion addresses
+        let filtered_addresses: Vec<Multiaddr> = current_addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "After filtering for TCP transport, {} addresses remain: {:?}",
+            filtered_addresses.len(),
+            filtered_addresses
+        );
+        id.set_public_addresses(filtered_addresses);
+        id
+    } else {
+        id
+    };
+
     // Check whether the previous version has a signature and sign if necessary
     if !id.is_signed() {
         id.sign();
     }
     debug!(
+        target: LOG_TARGET,
         "Node ID loaded with public key {} and Node id {}",
         id.public_key().to_hex(),
         id.node_id().to_hex()
     );
+    save_as_json(&path, &id)?;
     Ok(id)
+}
+
+/// Filter addresses based on transport type
+fn filter_addresses_for_transport(addresses: Vec<Multiaddr>, transport_type: TransportType) -> Vec<Multiaddr> {
+    if transport_type == TransportType::Tcp {
+        // Filter out onion addresses for TCP transport
+        let filtered: Vec<Multiaddr> = addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "Filtered addresses for TCP transport: {:?}",
+            filtered
+        );
+        filtered
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "No filtering for {:?} transport, keeping all {} addresses",
+            transport_type,
+            addresses.len()
+        );
+        addresses
+    }
 }
 
 /// Create a new node id and save it to disk
@@ -206,10 +270,8 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
             fs::create_dir_all(p)?;
         }
     }
-    let json_with_comment = format!(
-        "// This file is generated by the Minotari base node. Any changes will be overwritten.\n{}",
-        json
-    );
+    let json_with_comment =
+        format!("// This file is generated by the Minotari base node. Any changes will be overwritten.\n{json}");
     fs::write(path.as_ref(), json_with_comment.as_bytes())?;
     set_permissions(path, REQUIRED_IDENTITY_PERMS)?;
     Ok(())

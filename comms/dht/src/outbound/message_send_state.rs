@@ -251,7 +251,7 @@ impl Index<usize> for MessageSendStates {
     type Output = MessageSendState;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.inner[index]
+        self.inner.get(index).expect("MessageSendStates::index out of bounds")
     }
 }
 

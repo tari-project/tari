@@ -27,16 +27,23 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{CompressedPublicKey, HashOutput, PrivateKey},
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
+};
+use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
+use tari_transaction_components::{
+    tari_proof_of_work::Difficulty,
+    transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+    MicroMinotari,
 };
 
-use crate::{
-    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::TemplateRegistrationEntry,
-    proof_of_work::Difficulty,
-    transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
+use crate::chain_storage::{
+    InputMinedInfo,
+    MinedInfo,
+    OutputMinedInfo,
+    TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
 };
-
 /// API Response enum
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
@@ -58,9 +65,14 @@ pub enum NodeCommsResponse {
     TargetDifficulty(Difficulty),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
-    FetchValidatorNodesKeysResponse(Vec<(CompressedPublicKey, [u8; 32])>),
-    GetShardKeyResponse(Option<[u8; 32]>),
+    FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),
+    FetchValidatorNodeChangesResponse(Vec<ValidatorNodeChange>),
+    GetValidatorNode(Option<ValidatorNodeRegistrationInfo>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
+    OutputMinedInfo(Option<OutputMinedInfo>),
+    MinedInfo(MinedInfo),
+    InputMinedInfo(Option<InputMinedInfo>),
+    PayRef(Option<FixedHash>),
 }
 
 impl Display for NodeCommsResponse {
@@ -96,8 +108,13 @@ impl Display for NodeCommsResponse {
                 resp.not_found.len()
             ),
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
-            GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
+            GetValidatorNode(_) => write!(f, "GetValidatorNode"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
+            OutputMinedInfo(_) => write!(f, "OutputMinedInfo"),
+            MinedInfo(_) => write!(f, "MinedInfo"),
+            InputMinedInfo(_) => write!(f, "InputMinedInfo"),
+            PayRef(_) => write!(f, "PayRef"),
+            FetchValidatorNodeChangesResponse(_) => write!(f, "FetchValidatorNodeChangesResponse"),
         }
     }
 }
@@ -107,4 +124,18 @@ impl Display for NodeCommsResponse {
 pub struct FetchMempoolTransactionsResponse {
     pub transactions: Vec<Arc<Transaction>>,
     pub not_found: Vec<PrivateKey>,
+}
+
+/// Represents a validator node state change
+#[derive(Debug, Clone)]
+pub enum ValidatorNodeChange {
+    Add {
+        registration: Box<ValidatorNodeRegistration>,
+        activation_epoch: VnEpoch,
+        minimum_value_promise: MicroMinotari,
+        shard_key: [u8; 32],
+    },
+    Remove {
+        public_key: CompressedPublicKey,
+    },
 }

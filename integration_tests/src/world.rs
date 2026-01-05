@@ -28,28 +28,21 @@ use std::{
 
 use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
+use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use rand::rngs::OsRng;
 use serde_json::Value;
-use tari_chat_client::ChatClient;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_core::{
-    blocks::Block,
-    consensus::ConsensusManager,
-    transactions::{
-        transaction_components::{Transaction, WalletOutput},
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-        },
-    },
-};
+use tari_core::consensus::BaseNodeConsensusManager;
 use tari_crypto::keys::SecretKey;
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
+    transaction_components::{Transaction, WalletOutput},
+};
 use thiserror::Error;
 
 use crate::{
@@ -78,6 +71,7 @@ pub enum TariWorldError {
 }
 
 #[derive(cucumber::World)]
+#[world(init = Self::new)]
 pub struct TariWorld {
     pub current_scenario_name: Option<String>,
     pub current_feature_name: Option<String>,
@@ -87,7 +81,8 @@ pub struct TariWorld {
     pub miners: IndexMap<String, MinerProcess>,
     pub ffi_wallets: IndexMap<String, WalletFFI>,
     pub wallets: IndexMap<String, WalletProcess>,
-    pub chat_clients: IndexMap<String, Box<dyn ChatClient>>,
+    pub balance: IndexMap<String, GetBalanceResponse>,
+    pub view_and_spend_keys: IndexMap<String, PathBuf>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -103,52 +98,13 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
-    pub key_manager: MemoryDbKeyManager,
+    pub key_manager: KeyManager,
     // This will be used for all one-sided coinbase payments
     pub wallet_private_key: PrivateKey,
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
-    pub consensus_manager: ConsensusManager,
-}
-
-impl Default for TariWorld {
-    fn default() -> Self {
-        println!("\nWorld initialized - remove this line when called!\n");
-        let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let default_payment_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&wallet_private_key),
-            CompressedPublicKey::from_secret_key(&wallet_private_key),
-            Network::LocalNet,
-        )
-        .unwrap();
-        Self {
-            current_scenario_name: None,
-            current_feature_name: None,
-            current_base_dir: None,
-            base_nodes: Default::default(),
-            blocks: Default::default(),
-            miners: Default::default(),
-            ffi_wallets: Default::default(),
-            wallets: Default::default(),
-            chat_clients: Default::default(),
-            merge_mining_proxies: Default::default(),
-            transactions: Default::default(),
-            wallet_addresses: Default::default(),
-            utxos: Default::default(),
-            output_hash: None,
-            pre_image: None,
-            wallet_connected_to_base_node: Default::default(),
-            seed_nodes: vec![],
-            wallet_tx_ids: Default::default(),
-            errors: Default::default(),
-            last_imported_tx_ids: vec![],
-            last_merge_miner_response: Default::default(),
-            key_manager: create_memory_db_key_manager().unwrap(),
-            wallet_private_key,
-            default_payment_address,
-            consensus_manager: ConsensusManager::builder(Network::LocalNet).build().unwrap(),
-        }
-    }
+    pub consensus_manager: BaseNodeConsensusManager,
+    pub assigned_ports: IndexMap<u64, u64>,
 }
 
 impl Debug for TariWorld {
@@ -160,7 +116,6 @@ impl Debug for TariWorld {
             .field("ffi_wallets", &self.ffi_wallets)
             .field("wallets", &self.wallets)
             .field("merge_mining_proxies", &self.merge_mining_proxies)
-            .field("chat_clients", &self.chat_clients.keys())
             .field("transactions", &self.transactions)
             .field("wallet_addresses", &self.wallet_addresses)
             .field("utxos", &self.utxos)
@@ -182,6 +137,46 @@ pub enum NodeClient {
 }
 
 impl TariWorld {
+    pub async fn new() -> Self {
+        println!("\nWorld initialized - remove this line when called!\n");
+        let wallet_private_key = PrivateKey::random(&mut OsRng);
+        let default_payment_address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&wallet_private_key),
+            CompressedPublicKey::from_secret_key(&wallet_private_key),
+            Network::LocalNet,
+        )
+        .unwrap();
+        Self {
+            current_scenario_name: None,
+            current_feature_name: None,
+            current_base_dir: None,
+            base_nodes: Default::default(),
+            blocks: Default::default(),
+            miners: Default::default(),
+            ffi_wallets: Default::default(),
+            wallets: Default::default(),
+            balance: Default::default(),
+            view_and_spend_keys: Default::default(),
+            merge_mining_proxies: Default::default(),
+            transactions: Default::default(),
+            wallet_addresses: Default::default(),
+            utxos: Default::default(),
+            output_hash: None,
+            pre_image: None,
+            wallet_connected_to_base_node: Default::default(),
+            seed_nodes: vec![],
+            wallet_tx_ids: Default::default(),
+            errors: Default::default(),
+            last_imported_tx_ids: vec![],
+            last_merge_miner_response: Default::default(),
+            key_manager: KeyManager::new_random().unwrap(),
+            wallet_private_key,
+            default_payment_address,
+            consensus_manager: BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
+            assigned_ports: Default::default(),
+        }
+    }
+
     pub async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,
@@ -298,27 +293,20 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
-        for (name, mut p) in self.chat_clients.drain(..) {
-            println!("Shutting down chat client {}", name);
-            p.shutdown();
-        }
         for (name, mut p) in self.wallets.drain(..) {
-            println!("Shutting down wallet {}", name);
+            println!("Shutting down wallet {name}");
             p.kill_signal.trigger();
         }
         for (name, mut p) in self.base_nodes.drain(..) {
-            println!("Shutting down base node {}", name);
+            println!("Shutting down base node {name}");
             // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
             p.kill_signal.trigger();
         }
     }
 
     pub async fn script_key_id(&mut self) -> TariKeyId {
-        match self.key_manager.import_key(self.wallet_private_key.clone()).await {
-            Ok(key_id) => key_id,
-            Err(_) => TariKeyId::Imported {
-                key: CompressedPublicKey::from_secret_key(&self.wallet_private_key),
-            },
-        }
+        self.key_manager
+            .create_encrypted_key(self.wallet_private_key.clone(), None)
+            .unwrap()
     }
 }

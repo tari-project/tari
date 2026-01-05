@@ -91,7 +91,7 @@ impl Notifier {
 
     /// Trigger a notification that a negotiated transaction was received.
     pub fn transaction_received(&self, tx_id: TxId) {
-        debug!(target: LOG_TARGET, "transaction_received tx_id: {}", tx_id);
+        debug!(target: LOG_TARGET, "transaction_received tx_id: {tx_id}");
 
         if let Some(program) = self.path.clone() {
             let mut transaction_service = self.wallet.transaction_service.clone();
@@ -107,7 +107,7 @@ impl Notifier {
                         });
                         log(result);
                     },
-                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
                 }
             });
         } else {
@@ -117,7 +117,7 @@ impl Notifier {
 
     /// Trigger a notification that a transaction was mined with a given number of confirmations.
     pub fn transaction_mined_unconfirmed(&self, tx_id: TxId, confirmations: u64) {
-        debug!(target: LOG_TARGET, "transaction_mined_unconfirmed tx_id: {}", tx_id);
+        debug!(target: LOG_TARGET, "transaction_mined_unconfirmed tx_id: {tx_id}");
 
         if let Some(program) = self.path.clone() {
             let mut transaction_service = self.wallet.transaction_service.clone();
@@ -134,7 +134,7 @@ impl Notifier {
                         let _ignored = sender.send(message);
                         log(result);
                     },
-                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
                 }
             });
         } else {
@@ -144,7 +144,7 @@ impl Notifier {
 
     /// Trigger a notification that a transaction was mined, with the accepted number of required confirmations.
     pub fn transaction_mined(&self, tx_id: TxId) {
-        debug!(target: LOG_TARGET, "transaction_mined tx_id: {}", tx_id);
+        debug!(target: LOG_TARGET, "transaction_mined tx_id: {tx_id}");
 
         if let Some(program) = self.path.clone() {
             let mut transaction_service = self.wallet.transaction_service.clone();
@@ -155,7 +155,7 @@ impl Notifier {
                         let confirmations = match transaction_service.get_num_confirmations_required().await {
                             Ok(n) => Some(n),
                             Err(e) => {
-                                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                                error!(target: LOG_TARGET, "Transaction service error: {e}");
                                 None
                             },
                         };
@@ -169,7 +169,7 @@ impl Notifier {
                         let _ignored = sender.send(message);
                         log(result);
                     },
-                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
                 }
             });
         } else {
@@ -180,12 +180,12 @@ impl Notifier {
     /// Trigger a notification that a pending transaction was sent or queued.
     pub fn transaction_sent_or_queued(&self, tx_id: TxId, is_sent: bool) {
         let event = if is_sent {
-            debug!(target: LOG_TARGET, "Transaction sent tx_id: {}", tx_id);
+            debug!(target: LOG_TARGET, "Transaction sent tx_id: {tx_id}");
             SENT
         } else {
             debug!(
                 target: LOG_TARGET,
-                "Transaction queued for further retry sending tx_id: {}", tx_id
+                "Transaction queued for further retry sending tx_id: {tx_id}"
             );
             QUEUED
         };
@@ -207,10 +207,10 @@ impl Notifier {
 
                             log(result);
                         } else {
-                            error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
+                            error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {tx_id}");
                         }
                     },
-                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
                 }
             });
         } else {
@@ -220,7 +220,7 @@ impl Notifier {
 
     /// Trigger a notification that a transaction was cancelled.
     pub fn transaction_cancelled(&self, tx_id: TxId) {
-        debug!(target: LOG_TARGET, "transaction_cancelled tx_id: {}", tx_id);
+        debug!(target: LOG_TARGET, "transaction_cancelled tx_id: {tx_id}");
 
         if let Some(program) = self.path.clone() {
             let mut transaction_service = self.wallet.transaction_service.clone();
@@ -258,8 +258,8 @@ impl Notifier {
                         let result = Command::new(program).args(&args).output();
                         log(result);
                     },
-                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
-                    _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
+                    Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
+                    _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {tx_id}"),
                 }
             });
         } else {
@@ -275,16 +275,16 @@ fn log(result: Result<Output, Error>) {
                 Some(code) => code.to_string(),
                 None => "None (killed by signal)".to_string(),
             };
-            debug!(target: LOG_TARGET, "Notify script succeeded with status code: {}", code);
+            debug!(target: LOG_TARGET, "Notify script succeeded with status code: {code}");
         },
         Err(e) => {
-            error!(target: LOG_TARGET, "Notify script failed! Error: {}", e);
+            error!(target: LOG_TARGET, "Notify script failed! Error: {e}");
         },
     }
 }
 
 fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Option<u64>) -> Vec<String> {
-    trace!(target: LOG_TARGET, "Getting args from completed tx {:?}", tx);
+    trace!(target: LOG_TARGET, "Getting args from completed tx {tx:?}");
     let amount = format!("{}", tx.amount);
     let status = format!("{}", tx.status);
     let direction = format!("{}", tx.direction);
@@ -325,7 +325,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
 }
 
 fn args_from_outbound(tx: &OutboundTransaction, event: &str) -> Vec<String> {
-    trace!(target: LOG_TARGET, "Getting args from outbound tx {:?}", tx);
+    trace!(target: LOG_TARGET, "Getting args from outbound tx {tx:?}");
     let amount = format!("{}", tx.amount);
     let status = format!("{}", tx.status);
 
@@ -333,7 +333,7 @@ fn args_from_outbound(tx: &OutboundTransaction, event: &str) -> Vec<String> {
         String::from(event),
         amount,
         tx.tx_id.to_string(),
-        tx.payment_id.user_data_as_string(),
+        tx.payment_id.payment_id_as_string(),
         tx.destination_address.to_base58(),
         status,
         "outbound".to_string(),
@@ -341,7 +341,7 @@ fn args_from_outbound(tx: &OutboundTransaction, event: &str) -> Vec<String> {
 }
 
 fn args_from_inbound(tx: &InboundTransaction, event: &str) -> Vec<String> {
-    trace!(target: LOG_TARGET, "Getting args from inbound tx {:?}", tx);
+    trace!(target: LOG_TARGET, "Getting args from inbound tx {tx:?}");
     let amount = format!("{}", tx.amount);
     let status = format!("{}", tx.status);
 
@@ -349,7 +349,7 @@ fn args_from_inbound(tx: &InboundTransaction, event: &str) -> Vec<String> {
         String::from(event),
         amount,
         tx.tx_id.to_string(),
-        tx.payment_id.user_data_as_string(),
+        tx.payment_id.payment_id_as_string(),
         tx.source_address.to_base58(),
         status,
         "inbound".to_string(),

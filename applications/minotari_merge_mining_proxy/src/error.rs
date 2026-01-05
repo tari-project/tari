@@ -29,15 +29,13 @@ use hyper::header::InvalidHeaderValue;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
 use minotari_wallet_grpc_client::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
-use tari_core::{
-    consensus::ConsensusBuilderError,
-    proof_of_work::{monero_rx::MergeMineError, DifficultyError},
-    transactions::{
-        transaction_key_manager::{error::KeyManagerServiceError, CoreKeyManagerError},
-        CoinbaseBuildError,
-    },
-};
+use tari_core::{consensus::BaseConsensusBuilderError, proof_of_work::monero_rx::MergeMineError};
 use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
+use tari_transaction_components::{
+    key_manager::error::KeyManagerError,
+    tari_proof_of_work::DifficultyError,
+    CoinbaseBuildError,
+};
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};
 
@@ -75,13 +73,11 @@ pub enum MmProxyError {
     #[error("GRPC request failed with `{status}` {details}")]
     GrpcRequestError {
         #[source]
-        status: tonic::Status,
+        status: Box<tonic::Status>,
         details: String,
     },
     #[error("HTTP error: {0}")]
     HttpError(#[from] hyper::http::Error),
-    #[error("HTML parse error: {0}")]
-    HtmlParseError(String),
     #[error("Could not parse URL: {0}")]
     UrlParseError(#[from] url::ParseError),
     #[error("Bincode error: {0}")]
@@ -106,12 +102,10 @@ pub enum MmProxyError {
     DifficultyError(#[from] DifficultyError),
     #[error("TLS connection error: {0}")]
     TlsConnectionError(String),
-    #[error("Key manager service error: `{0}`")]
-    KeyManagerServiceError(String),
     #[error("Key manager error: {0}")]
-    CoreKeyManagerError(#[from] CoreKeyManagerError),
+    CoreKeyManagerError(#[from] KeyManagerError),
     #[error("Consensus build error: {0}")]
-    ConsensusBuilderError(#[from] ConsensusBuilderError),
+    ConsensusBuilderError(#[from] BaseConsensusBuilderError),
     #[error("Consensus build error: {0}")]
     ParseInputError(#[from] ParseInputError),
     #[error("Base node not responding to gRPC requests: {0}")]
@@ -134,14 +128,8 @@ impl From<tonic::Status> for MmProxyError {
     fn from(status: tonic::Status) -> Self {
         Self::GrpcRequestError {
             details: String::from_utf8_lossy(status.details()).to_string(),
-            status,
+            status: Box::new(status),
         }
-    }
-}
-
-impl From<KeyManagerServiceError> for MmProxyError {
-    fn from(err: KeyManagerServiceError) -> Self {
-        MmProxyError::KeyManagerServiceError(err.to_string())
     }
 }
 

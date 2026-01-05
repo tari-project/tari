@@ -23,6 +23,7 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
+    ops::Range,
 };
 
 use tari_common_types::types::CompressedCommitment;
@@ -42,6 +43,19 @@ pub struct UtxoSelectionCriteria {
     pub excluding: Vec<CompressedCommitment>,
     pub min_dust: u64,
     pub excluding_onesided: bool,
+    pub excluding_multisig: bool,
+    pub range_limit: Option<RangeLimit>,
+}
+
+/// Select outputs within the specified amount ranges
+#[derive(Debug, Clone, Default)]
+pub struct RangeLimit {
+    /// The range of amounts to select from
+    pub range: Range<u64>,
+    /// The maximum number of inputs to select
+    pub transaction_input_limit: u64,
+    /// The target minimum amount to select
+    pub target_minimum_amount: u64,
 }
 
 impl UtxoSelectionCriteria {
@@ -67,7 +81,14 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
-            min_dust: 0,
+            ..Default::default()
+        }
+    }
+
+    pub fn must_include(commitments: Vec<CompressedCommitment>) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::MustInclude { commitments },
+            ordering: UtxoSelectionOrdering::Default,
             ..Default::default()
         }
     }
@@ -111,6 +132,9 @@ pub enum UtxoSelectionFilter {
     Standard,
     /// Selects specific outputs. All outputs must be exist and be spendable.
     SpecificOutputs { commitments: Vec<CompressedCommitment> },
+    /// Set of UTXOs that must be included in the selection. The system may include additional UTXOs if the specified
+    /// ones don't have the required combined amount for the transaction.
+    MustInclude { commitments: Vec<CompressedCommitment> },
 }
 impl UtxoSelectionFilter {
     pub fn is_standard(&self) -> bool {
@@ -126,6 +150,9 @@ impl Display for UtxoSelectionFilter {
             },
             UtxoSelectionFilter::SpecificOutputs { commitments: outputs } => {
                 write!(f, "Specific({} output(s))", outputs.len())
+            },
+            UtxoSelectionFilter::MustInclude { commitments: outputs } => {
+                write!(f, "MustInclude({} output(s))", outputs.len())
             },
         }
     }

@@ -4,6 +4,7 @@ description = "Tari hash domains"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -12,8 +13,6 @@ license.workspace = true
 
 [dependencies]
 tari_crypto = { workspace = true, features = ["borsh"] }
-borsh = { version = "1.5.7" }
+borsh = { workspace = true }
 digest = { version = "0.10" }
-
-[dev-dependencies]
-blake2 = "0.10"
+blake2 = { version = "0.10", default-features = false }

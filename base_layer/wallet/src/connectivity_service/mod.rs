@@ -25,22 +25,10 @@ mod error;
 pub use error::WalletConnectivityError;
 
 mod handle;
-pub use handle::WalletConnectivityHandle;
+pub use handle::{OnlineStatus, WalletConnectivityHandle, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS};
 
 mod initializer;
 pub use initializer::WalletConnectivityInitializer;
 
-mod service;
-pub use service::OnlineStatus;
-
-#[cfg(test)]
-mod test;
-
-mod mock;
-pub use mock::{create as create_wallet_connectivity_mock, WalletConnectivityMock};
-
 mod interface;
 pub use interface::WalletConnectivityInterface;
-
-mod base_node_peer_manager;
-pub use base_node_peer_manager::BaseNodePeerManager;

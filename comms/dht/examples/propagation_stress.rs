@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     ];
     let (node, dht, msg_in) = node::create(
         Some(node_identity),
-        &tmp_path,
+        &tmp_path.into_path(),
         None,
         port,
         seed_peers.as_slice(),
@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
         match prompt(&node, &dht).await {
             Ok(()) => {},
             Err(err) => {
-                log::warn!("{}", err);
+                log::warn!("{err}");
                 continue;
             },
         }

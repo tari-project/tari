@@ -27,18 +27,13 @@ use std::{
 
 use chrono::{Duration, Utc};
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::{BlockHash, FixedHash};
-use tari_comms::protocol::rpc::RpcError::RequestFailed;
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
-    proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
-};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::hex::Hex;
-use tokio::sync::watch;
 
 use crate::{
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
@@ -54,13 +49,13 @@ use crate::{
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
 #[derive(Clone)]
-pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
+pub struct TxoValidationTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     operation_id: u64,
     db: OutputManagerDatabase<TBackend>,
-    base_node_watch: watch::Receiver<Option<BaseNodePeerManager>>,
     connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
+    key_manager: TKeyManagerInterface,
 }
 
 struct MinedOutputInfo {
@@ -70,10 +65,12 @@ struct MinedOutputInfo {
     mined_timestamp: u64,
 }
 
-impl<TBackend, TWalletConnectivity> TxoValidationTask<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TxoValidationTask<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + 'static,
 {
     pub fn new(
         operation_id: u64,
@@ -81,31 +78,22 @@ where
         connectivity: TWalletConnectivity,
         event_publisher: OutputManagerEventSender,
         config: OutputManagerServiceConfig,
+        key_manager: TKeyManagerInterface,
     ) -> Self {
         Self {
             operation_id,
             db,
-            base_node_watch: connectivity.get_current_base_node_watcher(),
             connectivity,
             event_publisher,
             config,
+            key_manager,
         }
     }
 
     pub async fn execute(mut self) -> Result<u64, OutputManagerProtocolError> {
-        let mut base_node_client = self
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .ok_or(OutputManagerError::Shutdown)
-            .for_protocol(self.operation_id)?;
+        let mut base_node_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
-        let base_node_peer = self
-            .base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().node_id.clone())
-            .ok_or_else(|| OutputManagerProtocolError::new(self.operation_id, OutputManagerError::BaseNodeChanged))?;
+        let base_node_peer = base_node_client.get_address().await;
         debug!(
             target: LOG_TARGET,
             "Starting TXO validation protocol with peer {} (Id: {})", base_node_peer, self.operation_id,
@@ -115,8 +103,7 @@ where
 
         self.update_unconfirmed_outputs(&mut base_node_client).await?;
 
-        self.update_spent_outputs(&mut base_node_client, last_mined_header)
-            .await?;
+        self.update_spent_outputs(&base_node_client, last_mined_header).await?;
 
         self.update_invalid_outputs(&mut base_node_client).await?;
 
@@ -130,7 +117,7 @@ where
 
     async fn update_invalid_outputs(
         &self,
-        wallet_client: &mut BaseNodeWalletRpcClient,
+        wallet_client: &mut TWalletConnectivity::BaseNodeClient,
     ) -> Result<(), OutputManagerProtocolError> {
         let invalid_outputs = self
             .db
@@ -145,6 +132,7 @@ where
                             })?,
                     ))
                 .timestamp(),
+                &self.key_manager,
             )
             .for_protocol(self.operation_id)?;
 
@@ -176,7 +164,8 @@ where
                     commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
-                    confirmed: (tip_height - mined_info.mined_at_height) >= self.config.num_confirmations_required,
+                    confirmed: tip_height.saturating_sub(mined_info.mined_at_height) >=
+                        self.config.num_confirmations_required,
                     mined_timestamp: mined_info.mined_timestamp,
                 });
             }
@@ -199,14 +188,29 @@ where
     #[allow(clippy::too_many_lines)]
     async fn update_spent_outputs(
         &self,
-        wallet_client: &mut BaseNodeWalletRpcClient,
+        wallet_client: &TWalletConnectivity::BaseNodeClient,
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
-        let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
+        let last_scanned_height = self
+            .db
+            .get_last_scanned_height()
+            .for_protocol(self.operation_id)?
+            .unwrap_or(0);
+        let mined_outputs = self
+            .db
+            .fetch_mined_unspent_outputs(&self.key_manager)
+            .for_protocol(self.operation_id)?;
+        debug!(
+            target: LOG_TARGET,
+            "Found {} mined outputs to validate (Operation ID: {})",
+            mined_outputs.len(),
+            self.operation_id
+        );
         if mined_outputs.is_empty() {
             return Ok(());
         }
 
+        let mut spent = Vec::with_capacity(mined_outputs.len());
         for batch in mined_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
                 target: LOG_TARGET,
@@ -216,14 +220,19 @@ where
             );
 
             let response = wallet_client
-                .query_deleted(QueryDeletedRequest {
-                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()).unwrap_or_default(),
-                    hashes: batch.iter().map(|o| o.hash.to_vec()).collect(),
-                })
+                .query_deleted_utxos(
+                    batch.iter().map(|o| o.hash.to_vec()).collect(),
+                    last_mined_header_hash.map(|v| v.to_vec()).unwrap_or_default(),
+                )
                 .await
-                .for_protocol(self.operation_id)?;
+                .map_err(|e| {
+                    OutputManagerProtocolError::new(
+                        self.operation_id,
+                        OutputManagerError::BaseNodeClientError(format!("Error querying base node: {e}")),
+                    )
+                })?;
 
-            if response.data.len() != batch.len() {
+            if response.utxos.len() != batch.len() {
                 return Err(OutputManagerProtocolError::new(
                     self.operation_id,
                     OutputManagerError::InconsistentBaseNodeDataError(
@@ -234,51 +243,40 @@ where
 
             let mut unmined_and_invalid = Vec::with_capacity(batch.len());
             let mut unspent = Vec::with_capacity(batch.len());
-            let mut spent = Vec::with_capacity(batch.len());
-            for (output, data) in batch.iter().zip(response.data.iter()) {
-                // when checking mined height, 0 can be valid so we need to check the hash
-                if data.block_mined_in.is_empty() {
-                    // base node thinks this is unmined or does not know of it.
-                    unmined_and_invalid.push(output.hash);
-                    continue;
-                };
-                if data.height_deleted_at == 0 && output.marked_deleted_at_height.is_some() {
-                    // this is mined but not yet spent
-                    unspent.push((output.hash, true));
-                    info!(
-                        target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as unspent at tip height {} (Operation ID: {})",
-                        output.commitment.to_hex(),
-                        output.hash.to_hex(),
-                        response.best_block_height,
-                        self.operation_id
-                    );
-                    continue;
-                };
+            for (output, data) in batch.iter().zip(response.utxos.iter()) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Processing output comm:{}: hash {}, found in height:{:?}, spent in height {:?} (Operation ID: {})",
+                    output.commitment.to_hex(),
+                    output.hash.to_hex(),
+                    data.found_in_header.as_ref().map(|h| h.0),
+                    data.spent_in_header.as_ref().map(|h| h.0),
 
-                if data.height_deleted_at > 0 {
-                    let confirmed = (response.best_block_height.saturating_sub(data.height_deleted_at)) >=
-                        self.config.num_confirmations_required;
-                    let block_hash = data.block_deleted_in.clone().try_into().map_err(|_| {
-                        OutputManagerProtocolError::new(
-                            self.operation_id,
-                            OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-                        )
-                    })?;
-                    spent.push(SpentOutputInfoForBatch {
-                        commitment: output.commitment.clone(),
-                        confirmed,
-                        mark_deleted_at_height: data.height_deleted_at,
-                        mark_deleted_in_block: block_hash,
-                    });
-                    info!(
-                        target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
-                        output.commitment.to_hex(),
-                        output.hash.to_hex(),
-                        response.best_block_height,
-                        self.operation_id
-                    );
+                    self.operation_id
+                );
+                // when checking mined height, 0 can be valid so we need to check the hash
+                if data.found_in_header.is_some() {
+                    if let Some((spent_height, spent_hash)) = &data.spent_in_header {
+                        spent.push(SpentOutputInfoForBatch {
+                            commitment: output.commitment.clone(),
+                            confirmed: spent_height.saturating_add(self.config.num_confirmations_required) <=
+                                last_scanned_height,
+                            mark_deleted_at_height: *spent_height,
+                            mark_deleted_in_block: spent_hash.clone().try_into().map_err(|_| {
+                                OutputManagerProtocolError::new(
+                                    self.operation_id,
+                                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
+                                )
+                            })?,
+                        });
+                    } else {
+                        // only update to unspent if the output is currently marked as spent in our db
+                        if output.marked_deleted_at_height.is_some() {
+                            unspent.push((output.hash, true));
+                        }
+                    }
+                } else {
+                    unmined_and_invalid.push(output.hash);
                 }
             }
             if !unmined_and_invalid.is_empty() {
@@ -291,18 +289,27 @@ where
                     .mark_outputs_as_unspent(unspent)
                     .for_protocol(self.operation_id)?;
             }
-            if !spent.is_empty() {
-                self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
-            }
+        }
+        if !spent.is_empty() {
+            self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
         }
         Ok(())
     }
 
     async fn update_unconfirmed_outputs(
         &self,
-        wallet_client: &mut BaseNodeWalletRpcClient,
+        wallet_client: &mut TWalletConnectivity::BaseNodeClient,
     ) -> Result<(), OutputManagerProtocolError> {
-        let unconfirmed_outputs = self.db.fetch_unconfirmed_outputs().for_protocol(self.operation_id)?;
+        let unconfirmed_outputs = self
+            .db
+            .fetch_unconfirmed_outputs(&self.key_manager)
+            .for_protocol(self.operation_id)?;
+        debug!(
+            target: LOG_TARGET,
+            "Found {} unconfirmed outputs to validate (Operation ID: {})",
+            unconfirmed_outputs.len(),
+            self.operation_id
+        );
 
         for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
@@ -339,7 +346,8 @@ where
                     commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
-                    confirmed: (tip_height - mined_info.mined_at_height) >= self.config.num_confirmations_required,
+                    confirmed: tip_height.saturating_sub(mined_info.mined_at_height) >=
+                        self.config.num_confirmations_required,
                     mined_timestamp: mined_info.mined_timestamp,
                 });
             }
@@ -376,7 +384,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn check_for_reorgs(
         &mut self,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &mut TWalletConnectivity::BaseNodeClient,
     ) -> Result<Option<BlockHash>, OutputManagerProtocolError> {
         let mut last_mined_header_hash = None;
         debug!(
@@ -384,7 +392,11 @@ where
             "Checking last mined TXO to see if the base node has re-orged (Operation ID: {})", self.operation_id
         );
 
-        while let Some(last_spent_output) = self.db.get_last_spent_output().for_protocol(self.operation_id)? {
+        while let Some(last_spent_output) = self
+            .db
+            .get_last_spent_output(&self.key_manager)
+            .for_protocol(self.operation_id)?
+        {
             let mined_height = if let Some(height) = last_spent_output.marked_deleted_at_height {
                 height
             } else {
@@ -444,7 +456,11 @@ where
             }
         }
 
-        while let Some(last_mined_output) = self.db.get_last_mined_output().for_protocol(self.operation_id)? {
+        while let Some(last_mined_output) = self
+            .db
+            .get_last_mined_output(&self.key_manager)
+            .for_protocol(self.operation_id)?
+        {
             if last_mined_output.mined_height.is_none() || last_mined_output.mined_in_block.is_none() {
                 warn!(
                     target: LOG_TARGET,
@@ -492,7 +508,7 @@ where
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<Option<BlockHash>, OutputManagerError> {
         let result = match client.get_header_by_height(height).await {
             Ok(r) => r,
@@ -501,31 +517,19 @@ where
                     target: LOG_TARGET,
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
-                match &rpc_error {
-                    RequestFailed(status) => {
-                        if status.as_status_code().is_not_found() {
-                            return Ok(None);
-                        } else {
-                            return Err(rpc_error.into());
-                        }
-                    },
-                    _ => {
-                        return Err(rpc_error.into());
-                    },
-                }
+                return Err(OutputManagerError::BaseNodeClientError(format!(
+                    "Error asking base node for header: {rpc_error}"
+                )));
             },
         };
 
-        let block_header: BlockHeader = result
-            .try_into()
-            .map_err(|s| OutputManagerError::InvalidMessageError(format!("Could not convert block header: {}", s)))?;
-        Ok(Some(block_header.hash()))
+        Ok(result.map(|b| b.hash))
     }
 
     async fn query_base_node_for_outputs(
         &self,
         batch: &[DbWalletOutput],
-        base_node_client: &mut BaseNodeWalletRpcClient,
+        base_node_client: &mut TWalletConnectivity::BaseNodeClient,
     ) -> Result<(Vec<MinedOutputInfo>, Vec<DbWalletOutput>, u64), OutputManagerError> {
         let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
         trace!(
@@ -535,45 +539,27 @@ where
         );
 
         let batch_response = base_node_client
-            .utxo_query(UtxoQueryRequest {
-                output_hashes: batch_hashes,
-            })
-            .await?;
+            .get_utxos_mined_info(batch_hashes)
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))?;
 
         let mut mined = vec![];
         let mut unmined = vec![];
 
         let mut returned_outputs = HashMap::new();
-        for output_proto in &batch_response.responses {
-            match FixedHash::try_from(output_proto.output_hash.clone()) {
-                Ok(v) => {
-                    returned_outputs.insert(v, output_proto);
-                },
-                Err(_) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Malformed utxo hash received from node: {:?}", output_proto
-                    )
-                },
-            };
+        for mined_info in &batch_response.utxos {
+            returned_outputs.insert(mined_info.utxo_hash.clone(), mined_info.clone());
         }
 
         for output in batch {
-            if let Some(returned_output) = returned_outputs.get(&output.hash) {
-                match returned_output.mined_in_block.clone().try_into() {
-                    Ok(block_hash) => mined.push(MinedOutputInfo {
-                        output: output.clone(),
-                        mined_at_height: returned_output.mined_at_height,
-                        mined_block_hash: block_hash,
-                        mined_timestamp: returned_output.mined_timestamp,
-                    }),
-                    Err(_) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Malformed block hash received from node: {:?}", returned_output
-                        )
-                    },
-                };
+            if let Some(returned_output) = returned_outputs.get(&output.hash.to_vec()) {
+                mined.push(MinedOutputInfo {
+                    output: output.clone(),
+                    mined_at_height: returned_output.mined_in_height,
+                    mined_block_hash: FixedHash::try_from(returned_output.mined_in_hash.clone())
+                        .map_err(|_| OutputManagerError::UnexpectedApiResponse("FixedHash".to_string()))?,
+                    mined_timestamp: returned_output.mined_in_timestamp,
+                });
             } else {
                 unmined.push(output.clone());
             }
@@ -586,7 +572,7 @@ where
         if let Err(e) = self.event_publisher.send(Arc::new(event)) {
             debug!(
                 target: LOG_TARGET,
-                "Error sending event because there are no subscribers: {:?}", e
+                "Error sending event because there are no subscribers: {e:?}"
             );
         }
     }

@@ -13,13 +13,13 @@ use ledger_device_sdk::ui::gadgets::SingleMessage;
 
 use crate::{
     alloc::string::ToString,
-    hashing::DomainSeparatedConsensusHasher,
     crypto::{
         commitment::PedersenCommitment,
         commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
         commitment_factory::PedersenCommitmentFactory,
         keys::{RistrettoPublicKey, RistrettoSecretKey},
     },
+    hashing::DomainSeparatedConsensusHasher,
     utils::{
         alpha_hasher,
         derive_from_bip32_key,
@@ -73,7 +73,6 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
-    comm.reply_ok();
 
     Ok(())
 }
@@ -115,7 +114,6 @@ pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
-    comm.reply_ok();
 
     Ok(())
 }

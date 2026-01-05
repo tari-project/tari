@@ -23,5 +23,5 @@ use tari_comms::{multiaddr::Multiaddr, transports::MemoryTransport};
 
 pub fn get_next_memory_address() -> Multiaddr {
     let port = MemoryTransport::acquire_next_memsocket_port();
-    format!("/memory/{}", port).parse().unwrap()
+    format!("/memory/{port}").parse().unwrap()
 }

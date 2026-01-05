@@ -20,54 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::Blake2b;
-use digest::consts::U64;
-use tari_hashing::ConfidentialOutputHashDomain;
-#[cfg(feature = "base_node")]
 use tari_max_size::MaxSizeVec;
 
-use crate::consensus::DomainSeparatedConsensusHasher;
-
-pub mod borsh;
-pub mod byte_counter;
-pub mod one_sided;
-
-#[cfg(feature = "base_node")]
 pub mod rolling_avg;
-#[cfg(feature = "base_node")]
 pub mod rolling_vec;
 pub(crate) mod waiting_requests;
 
-/// Hasher used in the DAN to derive masks and encrypted value keys
-pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
-
-/// The reason for a peer being banned
-#[derive(Clone, Debug)]
-pub struct BanReason {
-    /// The reason for the ban
-    pub reason: String,
-    /// The duration of the ban
-    pub ban_duration: BanPeriod,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum BanPeriod {
-    Short,
-    Long,
-}
-
-impl BanReason {
-    /// Create a new ban reason
-    pub fn reason(&self) -> &str {
-        &self.reason
-    }
-
-    /// The duration of the ban
-    pub fn ban_duration(&self) -> BanPeriod {
-        self.ban_duration
-    }
-}
-
 /// AuxChainHashes is a vector of limited size
-#[cfg(feature = "base_node")]
 pub type AuxChainHashes = MaxSizeVec<monero::Hash, 128>;
+
+pub type RequestKey = u64;

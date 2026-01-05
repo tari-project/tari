@@ -22,11 +22,10 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    blocks::BlockHeader,
-    consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm, TargetDifficultyWindow},
-};
+use tari_node_components::blocks::BlockHeader;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
+
+use crate::{consensus::BaseNodeConsensusManager, proof_of_work::TargetDifficultyWindow};
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficulties {
@@ -34,7 +33,7 @@ pub struct TargetDifficulties {
 }
 
 impl TargetDifficulties {
-    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Result<Self, String> {
+    pub fn new(consensus_rules: &BaseNodeConsensusManager, height: u64) -> Result<Self, String> {
         let permitted_algos = consensus_rules
             .consensus_constants(height)
             .current_permitted_pow_algos();
@@ -44,6 +43,28 @@ impl TargetDifficulties {
             algos.insert(algo, target_difficulty_window);
         }
         Ok(Self { algos })
+    }
+
+    pub fn update_algos(&mut self, consensus_rules: &BaseNodeConsensusManager, height: u64) -> Result<(), String> {
+        let consensus_constants = consensus_rules.consensus_constants(height);
+        let permitted_algos = consensus_constants.current_permitted_pow_algos();
+        let current_keys: Vec<PowAlgorithm> = self.algos.keys().copied().collect();
+        for algo in current_keys {
+            if !permitted_algos.contains(&algo) {
+                self.algos.remove(&algo);
+            }
+        }
+        for algo in permitted_algos {
+            if let std::collections::hash_map::Entry::Vacant(e) = self.algos.entry(algo) {
+                let target_difficulty_window = consensus_rules.new_target_difficulty(algo, height)?;
+                e.insert(target_difficulty_window);
+            } else if let Some(target_diff) = self.algos.get_mut(&algo) {
+                target_diff.update_target_time(consensus_constants.pow_target_block_interval(algo))?
+            } else {
+                // clippy, this else should never be hit
+            }
+        }
+        Ok(())
     }
 
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) -> Result<(), String> {
@@ -76,5 +97,9 @@ impl TargetDifficulties {
 
     fn get_mut(&mut self, algo: PowAlgorithm) -> Result<&mut TargetDifficultyWindow, String> {
         self.algos.get_mut(&algo).ok_or("Algorithm not found".to_string())
+    }
+
+    pub fn algo_count(&self) -> usize {
+        self.algos.len()
     }
 }

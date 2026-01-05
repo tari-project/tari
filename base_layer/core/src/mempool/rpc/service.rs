@@ -24,13 +24,12 @@ use std::convert::{TryFrom, TryInto};
 
 use log::*;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
     proto,
-    transactions::transaction_components::Transaction,
 };
-
 const LOG_TARGET: &str = "c::mempool::rpc";
 
 pub struct MempoolRpcService {
@@ -49,7 +48,7 @@ impl MempoolRpcService {
 }
 
 fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
-    error!(target: LOG_TARGET, "Internal error: {}", err);
+    error!(target: LOG_TARGET, "Internal error: {err}");
     RpcStatus::general_default()
 }
 
@@ -63,7 +62,7 @@ impl MempoolService for MempoolRpcService {
     async fn get_state(&self, _: Request<()>) -> Result<Response<proto::mempool::StateResponse>, RpcStatus> {
         let state = self.mempool().get_state().await.map_err(to_internal_error)?;
         Ok(Response::new(state.try_into().map_err(|e: String| {
-            error!(target: LOG_TARGET, "Internal error: {}", e);
+            error!(target: LOG_TARGET, "Internal error: {e}");
             RpcStatus::general(&e)
         })?))
     }
@@ -99,7 +98,7 @@ impl MempoolService for MempoolRpcService {
                     err
                 );
                 // These error messages are safe to send back to the requester
-                return Err(RpcStatus::bad_request(&format!("Malformed transaction: {}", err)));
+                return Err(RpcStatus::bad_request(&format!("Malformed transaction: {err}")));
             },
         };
         let tx_storage = self.mempool().submit_transaction(tx).await.map_err(to_internal_error)?;

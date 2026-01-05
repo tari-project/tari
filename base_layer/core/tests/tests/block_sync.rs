@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use tari_core::{base_node::state_machine_service::states::StateEvent, chain_storage::BlockchainDatabaseConfig};
 
 use crate::helpers::{
@@ -29,7 +30,7 @@ use crate::helpers::{
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_happy_path() {
-    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
 
     // Create the network with Alice node and Bob node
     let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
@@ -52,8 +53,7 @@ async fn test_block_sync_happy_path() {
         &key_manager,
         &[3; 5],
         &None,
-    )
-    .await;
+    );
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 5);
 
     // Alice attempts header sync
@@ -117,8 +117,7 @@ async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
         &key_manager,
         &[3; 10],
         &None,
-    )
-    .await;
+    );
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 10);
     // Add blocks to Alice's chain
     sync::add_some_existing_blocks(&blocks[1..=5], &alice_node);
@@ -177,8 +176,7 @@ async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
         &key_manager,
         &[3; 10],
         &None,
-    )
-    .await;
+    );
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 10);
     // Add blocks to Alice's chain
     sync::add_some_existing_blocks(&blocks[1..=5], &alice_node);
@@ -245,8 +243,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_1() {
         2,                            // < intermediate_height,
         5,                            // > intermediate_height
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // Now rewind Bob's chain to height 1 (> pruning_horizon, < follow_up_transaction_in_block)
     sync::delete_some_blocks_and_headers(&blocks[1..=10], WhatToDelete::BlocksAndHeaders, &bob_node);
@@ -354,8 +351,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_2() {
         2,                            // < intermediate_height,
         5,                            // > intermediate_height
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // 1. Carol attempts header sync sync from Bob
     println!("\n1. Carol attempts header sync sync from Bob\n");

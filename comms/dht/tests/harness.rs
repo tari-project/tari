@@ -23,28 +23,32 @@
 use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures},
-    pipeline,
-    pipeline::SinkService,
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
+    pipeline::{self, SinkService},
     protocol::{
         messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
         ProtocolId,
     },
     transports::MemoryTransport,
-    types::CommsDatabase,
+    types::{CommsDatabase, CommsPublicKey},
     CommsBuilder,
     CommsNode,
 };
 use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtConfig};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
-use tari_test_utils::{paths::create_temporary_data_path, random};
+use tari_test_utils::random;
 use tokio::{
     sync::{broadcast, mpsc},
     time,
@@ -67,7 +71,12 @@ impl TestNode {
     }
 
     pub fn to_peer(&self) -> Peer {
-        self.comms.node_identity().to_peer()
+        let mut peer = self.comms.node_identity().to_peer();
+        let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+        for addr in &addresses {
+            peer.addresses.mark_last_seen_now(addr);
+        }
+        peer
     }
 
     #[allow(dead_code)]
@@ -90,23 +99,33 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        format!("/memory/{}", port).parse().unwrap(),
+        format!("/memory/{port}").parse().unwrap(),
         features,
     ))
 }
 
-pub fn create_peer_storage() -> CommsDatabase {
-    let database_name = random::string(8);
-    let datastore = LMDBBuilder::new()
-        .set_path(create_temporary_data_path())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
 
-    let peer_database = datastore.get_handle(&database_name).unwrap();
-    LMDBWrapper::new(Arc::new(peer_database))
+fn create_peer_storage() -> PeerDatabaseSql {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub async fn make_node<I: IntoIterator<Item = Peer>>(
@@ -164,7 +183,7 @@ pub async fn setup_comms_dht(
         .with_listener_address(node_identity.first_public_address().unwrap())
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
-        .with_peer_storage(storage,None)
+        .with_peer_storage(storage)
         .with_min_connectivity(1)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(100)))
         .build()
@@ -184,7 +203,7 @@ pub async fn setup_comms_dht(
         .unwrap();
 
     for peer in peers {
-        comms.peer_manager().add_peer(peer).await.unwrap();
+        comms.peer_manager().add_or_update_peer(peer).await.unwrap();
     }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();

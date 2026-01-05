@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+use tari_hashing::BulletRangeProofHashDomain;
 mod bullet_rangeproofs;
 mod fixed_hash;
 use blake2::Blake2b;
@@ -27,7 +27,6 @@ pub use bullet_rangeproofs::BulletRangeProof;
 use digest::consts::{U32, U64};
 use tari_crypto::{
     compressed_key::CompressedKey,
-    hasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, CompressedPedersenCommitment},
@@ -38,15 +37,16 @@ use tari_crypto::{
         RistrettoSchnorrWithDomain,
         RistrettoSecretKey,
     },
+    signatures::SchnorrSignature,
 };
-
+use tari_hashing::WalletMessageSigningDomain;
 pub type BlockHash = FixedHash;
 
 pub use fixed_hash::{FixedHash, FixedHashSizeError};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
-pub type Signature = CompressedRistrettoSchnorr;
+pub type CompressedSignature = CompressedRistrettoSchnorr;
 pub type UncompressedSignature = RistrettoSchnorr;
 /// Define a generic signature type using a hash domain.
 pub type SignatureWithDomain<H> = RistrettoSchnorrWithDomain<H>;
@@ -84,27 +84,19 @@ pub type RangeProofService = BulletproofsPlusService;
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
 
+// Diffie-Hellman key exchange type
+pub type CommsDHKE = DiffieHellmanSharedSecret<RistrettoPublicKey>;
+
 use tari_crypto::{
-    hash_domain,
+    dhke::DiffieHellmanSharedSecret,
     hashing::DomainSeparatedHasher,
     ristretto::{pedersen::PedersenCommitment, RistrettoSchnorr},
 };
 
-hasher!(
-    Blake2b<U64>,
-    WalletHasher,
-    "com.tari.base_layer.wallet",
-    1,
-    wallet_hasher
-);
-
-hash_domain!(
-    BulletRangeProofHashDomain,
-    "com.tari.base_layer.common_types.bullet_rangeproofs",
-    1
-);
-
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;
+
+pub type WalletMessageSchnorrSignature =
+    SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, WalletMessageSigningDomain>;
 
 #[derive(Debug)]
 pub struct BadBlock {

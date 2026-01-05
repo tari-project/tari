@@ -144,7 +144,7 @@ where
 
         match self.bind().await {
             Ok((mut inbound, address)) => {
-                info!(target: LOG_TARGET, "Listening for peer connections on '{}'", address);
+                info!(target: LOG_TARGET, "Listening for peer connections on '{address}'");
 
                 self.on_listening.broadcast(Ok(address));
 
@@ -165,7 +165,7 @@ where
                 }
             },
             Err(err) => {
-                warn!(target: LOG_TARGET, "PeerListener was unable to start because '{}'", err);
+                warn!(target: LOG_TARGET, "PeerListener was unable to start because '{err}'");
                 self.on_listening.broadcast(Err(err));
             },
         }
@@ -186,17 +186,17 @@ where
                     },
                 },
                 Err(err) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
-                        "Failed to read wire format byte due to error: {}", err
+                        "Failed to read wire format byte due to error: {err}"
                     );
                     Err(err)
                 },
             },
             Err(elapsed) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
-                    "Failed to read wire format byte within timeout of {:#?}. {}", time_to_first_byte, elapsed
+                    "Failed to read wire format byte within timeout of {time_to_first_byte:#?}. {elapsed}"
                 );
                 Err(elapsed.into())
             },
@@ -209,7 +209,7 @@ where
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Peer address '{}' is invalid for liveness checks. It must be an TCP/IP address.", addr
+                    "Peer address '{addr}' is invalid for liveness checks. It must be an TCP/IP address."
                 );
                 false
             },
@@ -272,9 +272,7 @@ where
                         Err(err) => {
                             debug!(
                                 target: LOG_TARGET,
-                                "[ThisNode={}] Peer connection upgrade failed for peer because '{:?}'",
-                                this_node_id_str,
-                                err
+                                "[ThisNode={this_node_id_str}] Peer connection upgrade failed for peer because '{err:?}'"
                             );
                             log_if_error!(
                                 target: LOG_TARGET,
@@ -303,13 +301,13 @@ where
                     {
                         debug!(
                             target: LOG_TARGET,
-                            "Connection at address '{}' requested liveness session", peer_addr
+                            "Connection at address '{peer_addr}' requested liveness session"
                         );
                         Self::spawn_liveness_session(socket, liveness_session_count, shutdown_signal).await;
                     } else {
                         debug!(
                             target: LOG_TARGET,
-                            "No liveness sessions available or permitted for peer address '{}'", peer_addr
+                            "No liveness sessions available or permitted for peer address '{peer_addr}'"
                         );
 
                         let _result = socket.shutdown().await;
@@ -351,7 +349,7 @@ where
         const CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
         trace!(
             target: LOG_TARGET,
-            "Listen - starting noise protocol upgrade for peer at address '{}'", peer_addr
+            "Listen - starting noise protocol upgrade for peer at address '{peer_addr}'"
         );
 
         let timer = Instant::now();
@@ -359,7 +357,7 @@ where
             .upgrade_socket(socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Listen - failed to upgrade noise: {} on address: {} ({})",
                     node_identity.node_id(),
@@ -376,9 +374,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Listen - noise socket upgrade completed in {:.2?} with public key '{}'",
-            latency,
-            authenticated_public_key
+            "Listen - noise socket upgrade completed in {latency:.2?} with public key '{authenticated_public_key}'"
         );
 
         // Check if we know the peer and if it is banned
@@ -386,8 +382,8 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Listen - starting peer identity exchange for peer with public key '{}'",
-            authenticated_public_key
+            "Listen - starting peer identity exchange for peer with public key '{authenticated_public_key}'"
+
         );
 
         let peer_identity_result = common::perform_identity_exchange(
@@ -436,14 +432,14 @@ where
             valid_peer_identity.metadata.supported_protocols,
         );
 
-        peer_manager.add_peer(peer).await?;
+        peer_manager.add_or_update_peer(peer).await?;
 
         Ok(conn)
     }
 
     async fn bind(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
         let bind_address = self.bind_address.clone();
-        debug!(target: LOG_TARGET, "Attempting to listen on {}", bind_address);
+        debug!(target: LOG_TARGET, "Attempting to listen on {bind_address}");
         self.transport
             .listen(&bind_address)
             .await

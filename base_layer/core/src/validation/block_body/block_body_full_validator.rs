@@ -22,17 +22,18 @@
 
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock};
+use tari_transaction_components::{crypto_factories::CryptoFactories, tari_proof_of_work::PowAlgorithm};
 use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
     chain_storage::{self, BlockchainBackend},
-    consensus::ConsensusManager,
-    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
-    transactions::CryptoFactories,
+    consensus::BaseNodeConsensusManager,
+    proof_of_work::monero_rx::MoneroPowData,
     validation::{
         aggregate_body::AggregateBodyChainLinkedValidator,
+        block_body::block_body_partial_validator::BlockBodyPartialValidator,
         helpers::check_mmr_roots,
         BlockBodyValidator,
         CandidateBlockValidator,
@@ -43,21 +44,24 @@ use crate::{
 const LOG_TARGET: &str = "c::val::block_body_full_validator";
 
 pub struct BlockBodyFullValidator {
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     block_internal_validator: BlockBodyInternalConsistencyValidator,
     aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
+    block_body_partial_validator: BlockBodyPartialValidator,
 }
 
 impl BlockBodyFullValidator {
-    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool) -> Self {
+    pub fn new(rules: BaseNodeConsensusManager, bypass_range_proof_verification: bool) -> Self {
         let factories = CryptoFactories::default();
         let block_internal_validator =
             BlockBodyInternalConsistencyValidator::new(rules.clone(), bypass_range_proof_verification, factories);
         let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules.clone());
+        let block_body_partial_validator = BlockBodyPartialValidator::new(rules.clone());
         Self {
             consensus_manager: rules,
             block_internal_validator,
             aggregate_body_chain_validator,
+            block_body_partial_validator,
         }
     }
 
@@ -72,11 +76,11 @@ impl BlockBodyFullValidator {
         }
 
         // validate the block body against the current db
-        let body = &block.body;
-        let height = block.header.height;
         // the inputs may be only references to outputs, that's why the validator returns a new body and we need a new
         // block
-        let body = self.aggregate_body_chain_validator.validate(body, height, backend)?;
+        let body = self
+            .aggregate_body_chain_validator
+            .validate(&block.body, &block.header, backend)?;
         let block = Block::new(block.header.clone(), body);
 
         // validate the internal consistency of the block body
@@ -101,7 +105,7 @@ impl BlockBodyFullValidator {
 
     fn check_monero_seed_height<B: BlockchainBackend>(
         header: &BlockHeader,
-        rules: &ConsensusManager,
+        rules: &BaseNodeConsensusManager,
         backend: &B,
     ) -> Result<(), ValidationError> {
         if header.pow.pow_algo == PowAlgorithm::RandomXM {
@@ -129,6 +133,16 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError> {
         self.validate(backend, block.block(), Some(metadata))?;
+        Ok(())
+    }
+
+    // This body-at-height validation is intended to validate the block body without any knowledge of consecutive
+    // blocks that may exist. For example, it cannot validate that kernels are unique, that outputs have not been
+    // spent already or that the block is building on tip.
+    fn validate_body_at_height(&self, backend: &B, block: &ChainBlock) -> Result<(), ValidationError> {
+        self.block_internal_validator.validate(block.block())?;
+        self.block_body_partial_validator.validate(backend, block.block())?;
+
         Ok(())
     }
 }

@@ -19,43 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[macro_use]
-extern crate bitflags;
 
 pub mod blocks;
-#[cfg(feature = "base_node")]
 pub mod chain_storage;
 pub mod consensus;
-#[macro_use]
-pub mod covenants;
-#[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
-#[cfg(feature = "base_node")]
 pub mod validation;
 
-#[cfg(any(test, feature = "base_node"))]
 #[macro_use]
 pub mod test_helpers;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod base_node;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
-
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
-
-#[cfg(feature = "transactions")]
-pub mod transactions;
+pub mod proto;
 
 mod common;
 
-#[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
-pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
-#[cfg(feature = "base_node")]
 mod domain_hashing {
     use std::convert::TryFrom;
 
@@ -63,19 +45,15 @@ mod domain_hashing {
     use digest::consts::U32;
     use tari_common_types::types::{FixedHash, FixedHashSizeError};
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_hashing::ValidatorNodeBmtHashDomain;
+    use tari_hashing::{hashers::KernelMmrHasherBlake256, ValidatorNodeMerkleHashDomain};
     use tari_mmr::{
         error::MerkleMountainRangeError,
         pruned_hashset::PrunedHashSet,
         sparse_merkle_tree::SparseMerkleTree,
-        BalancedBinaryMerkleTree,
         Hash,
         MerkleMountainRange,
     };
 
-    hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
-
-    pub type KernelMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, KernelMmrHashDomain>;
     pub type KernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, Vec<Hash>>;
     pub type PrunedKernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, PrunedHashSet>;
 
@@ -89,8 +67,7 @@ mod domain_hashing {
 
     pub type OutputSmt = SparseMerkleTree<OutputSmtHasherBlake256>;
 
-    pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeBmtHashDomain>;
-    pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeBmtHasherBlake256>;
+    pub type ValidatorNodeMerkleHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeMerkleHashDomain>;
 
     #[inline]
     pub fn kernel_mr_hash_from_mmr(kernel_mmr: &KernelMmr) -> Result<FixedHash, MrHashError> {
@@ -101,11 +78,6 @@ mod domain_hashing {
     pub fn kernel_mr_hash_from_pruned_mmr(kernel_mmr: &PrunedKernelMmr) -> Result<FixedHash, MrHashError> {
         Ok(FixedHash::try_from(kernel_mmr.get_merkle_root()?)?)
     }
-
-    // #[inline]
-    // pub fn output_mr_hash_from_smt(output_smt: &mut OutputSmt) -> Result<FixedHash, MrHashError> {
-    //     Ok(FixedHash::try_from(output_smt.hash().as_slice())?)
-    // }
 
     #[inline]
     pub fn input_mr_hash_from_pruned_mmr(input_mmr: &PrunedInputMmr) -> Result<FixedHash, MrHashError> {
@@ -126,5 +98,4 @@ mod domain_hashing {
     }
 }
 
-#[cfg(feature = "base_node")]
 pub use domain_hashing::*;

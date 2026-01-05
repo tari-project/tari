@@ -22,17 +22,21 @@
 
 use tari_common_types::types::FixedHash;
 use tari_comms_dht::outbound::DhtOutboundError;
+use tari_node_components::blocks::{BlockError, BlockHeaderValidationError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_transaction_components::{
+    consensus::ConsensusManagerError,
+    tari_proof_of_work::DifficultyError,
+    transaction_components::TransactionError,
+    BanPeriod,
+    BanReason,
+};
 use thiserror::Error;
 
 use crate::{
-    blocks::{BlockError, BlockHeaderValidationError},
     chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    consensus::ConsensusManagerError,
     mempool::MempoolError,
-    proof_of_work::{monero_rx::MergeMineError, DifficultyError},
-    transactions::transaction_components::TransactionError,
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
 };
 
 #[derive(Debug, Error)]
@@ -77,6 +81,8 @@ pub enum CommsInterfaceError {
     DifficultyError(#[from] DifficultyError),
     #[error("Transaction error: {0}")]
     TransactionError(#[from] TransactionError),
+    #[error("Cuckaroo verification error: {0}")]
+    CuckarooVerificationError(#[from] CuckarooVerificationError),
 }
 
 impl CommsInterfaceError {
@@ -91,6 +97,7 @@ impl CommsInterfaceError {
             err @ CommsInterfaceError::InvalidPeerResponse(_) |
             err @ CommsInterfaceError::InvalidBlockHeader(_) |
             err @ CommsInterfaceError::TransactionError(_) |
+            err @ CommsInterfaceError::CuckarooVerificationError(_) |
             err @ CommsInterfaceError::InvalidFullBlock { .. } |
             err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
                 reason: err.to_string(),
@@ -107,6 +114,7 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
+            // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }
     }

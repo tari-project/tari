@@ -20,15 +20,11 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, time::Duration};
+use std::{str::FromStr, time::Duration};
 
-use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos,
-    Block,
-    NewBlockTemplate,
-    NewBlockTemplateRequest,
-    PowAlgo,
-    TransactionOutput as GrpcTransactionOutput,
+use minotari_app_grpc::{
+    conversions::transaction_output::grpc_output_with_payref,
+    tari_rpc::{pow_algo::PowAlgos, Block, NewBlockTemplate, NewBlockTemplateRequest, PowAlgo},
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
@@ -36,19 +32,18 @@ use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::{
-    consensus::ConsensusManager,
-    transactions::{
-        generate_coinbase_with_wallet_output,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-            RangeProofType,
-            WalletOutput,
-        },
-        transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
+use tari_core::consensus::BaseNodeConsensusManager;
+use tari_transaction_components::{
+    generate_coinbase_with_wallet_output,
+    key_manager::{KeyManager, TariKeyId},
+    tari_proof_of_work::PowAlgorithm,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        RangeProofType,
+        WalletOutput,
     },
+    MicroMinotari,
 };
 use tonic::transport::Channel;
 
@@ -63,6 +58,7 @@ pub struct MinerProcess {
     pub wallet_name: String,
     pub mine_until_height: u64,
     pub stealth: bool,
+    pub pow_algo: PowAlgorithm,
 }
 
 pub fn register_miner_process(
@@ -71,13 +67,20 @@ pub fn register_miner_process(
     base_node_name: String,
     wallet_name: String,
     stealth: bool,
+    pow_algo: String,
 ) {
+    let pow_algo = PowAlgorithm::from_str(&pow_algo).unwrap();
+    eprintln!(
+        "Registering miner process '{miner_name}' on '{base_node_name}' and '{wallet_name}' with pow algo \
+         '{pow_algo:?}'"
+    );
     let miner = MinerProcess {
         name: miner_name.clone(),
         base_node_name,
         wallet_name,
         mine_until_height: 100_000,
         stealth,
+        pow_algo,
     };
 
     world.miners.insert(miner_name, miner);
@@ -91,8 +94,17 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
-        std::env::set_var("TARI_NETWORK", "localnet");
+        unsafe {
+            std::env::set_var("TARI_NETWORK", "localnet");
+        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
+        let pow_algo = match self.pow_algo {
+            PowAlgorithm::RandomXM => {
+                panic!("RandomXM is not supported in the minotari_miner");
+            },
+            _ => serde_json::to_string(&self.pow_algo).unwrap(),
+        };
+        eprintln!("Using pow algo: {pow_algo}");
 
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
@@ -126,7 +138,7 @@ impl MinerProcess {
                 config_property_overrides: vec![
                     (
                         "miner.base_node_grpc_address".to_string(),
-                        format!("http://127.0.0.1:{}", node),
+                        format!("http://127.0.0.1:{node}"),
                     ),
                     ("miner.num_mining_threads".to_string(), "1".to_string()),
                     ("miner.mine_on_tip_only".to_string(), "false".to_string()),
@@ -134,6 +146,7 @@ impl MinerProcess {
                         "miner.wallet_payment_address".to_string(),
                         wallet_payment_address.to_base58(),
                     ),
+                    ("miner.proof_of_work_algo".to_string(), pow_algo),
                 ],
                 network: Some(Network::LocalNet),
             },
@@ -149,9 +162,9 @@ impl MinerProcess {
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
     let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
-    let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
+    let wallet_addr = format!("http://127.0.0.1:{wallet_grpc_port}");
 
-    eprintln!("Wallet GRPC at {}", wallet_addr);
+    eprintln!("Wallet GRPC at {wallet_addr}");
 
     Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
 }
@@ -160,11 +173,11 @@ pub async fn mine_blocks_without_wallet(
     base_client: &mut BaseNodeClient,
     num_blocks: u64,
     weight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) {
     for _ in 0..num_blocks {
         mine_block_without_wallet(
@@ -186,11 +199,11 @@ pub async fn mine_blocks_without_wallet(
 
 pub async fn mine_block(
     base_client: &mut BaseNodeClient,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) {
     let (block_template, _wallet_output) = create_block_template_with_coinbase(
         base_client,
@@ -222,11 +235,11 @@ pub async fn mine_block(
 async fn mine_block_without_wallet(
     base_client: &mut BaseNodeClient,
     weight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) {
     let (block_template, _wallet_output) = create_block_template_with_coinbase(
         base_client,
@@ -261,11 +274,11 @@ async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClien
 async fn create_block_template_with_coinbase(
     base_client: &mut BaseNodeClient,
     weight: u64,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> (NewBlockTemplate, WalletOutput) {
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
@@ -301,16 +314,12 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
-        PaymentId::Open {
-            user_data: vec![],
-            tx_type: TxType::Coinbase,
-        },
+        MemoField::new_open(vec![], TxType::Coinbase).unwrap(),
     )
-    .await
     .unwrap();
     let body = block_template.body.as_mut().unwrap();
 
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output).unwrap();
+    let grpc_output = grpc_output_with_payref(coinbase_output, None).unwrap();
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
 
@@ -342,11 +351,11 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
 
 pub async fn mine_block_before_submit(
     client: &mut BaseNodeClient,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Block {
     let (template, _wallet_output) = create_block_template_with_coinbase(
         client,

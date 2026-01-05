@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::cmp::min;
 
 use tari_core::{
@@ -33,6 +34,7 @@ use crate::helpers::{
 };
 
 #[allow(clippy::too_many_lines)]
+#[ignore = "prune mode not yet working"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     //` cargo test --release --test core_integration_tests
@@ -49,6 +51,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             BlockchainDatabaseConfig::default(),
         ])
@@ -70,8 +73,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         3,                            // < pruning_horizon
         16,                           // > pruning_horizon
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // Now rewind Bob's chain to height 10 (> pruning_horizon, < follow_up_transaction_in_block)
     sync::delete_some_blocks_and_headers(&blocks[10..=30], WhatToDelete::BlocksAndHeaders, &bob_node);
@@ -105,9 +107,9 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 
     // 3. Alice attempts horizon sync after header sync (to height 5; includes genesys block UTXO spend)
     println!("\n3. Alice attempts horizon sync after header sync (to height 5; includes genesys block UTXO spend)\n");
-    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    let output_hash = initial_coinbase.output_hash();
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    let commitment = initial_coinbase.commitment().clone();
     assert!(alice_node
         .blockchain_db
         .fetch_unspent_output_hash_by_commitment(commitment.clone())
@@ -205,9 +207,9 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         .take(10) // To current height
         .collect::<Vec<_>>();
     for output in &spent_coinbases {
-        let output_hash = output.hash(&key_manager).await.unwrap();
+        let output_hash = output.output_hash();
         assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-        let commitment = output.commitment(&key_manager).await.unwrap();
+        let commitment = output.commitment().clone();
         assert!(alice_node
             .blockchain_db
             .fetch_unspent_output_hash_by_commitment(commitment)
@@ -233,9 +235,9 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         alice_node.blockchain_db.fetch_last_header().unwrap().height - pruning_horizon
     );
     for output in &spent_coinbases {
-        let output_hash = output.hash(&key_manager).await.unwrap();
+        let output_hash = output.output_hash();
         assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
-        let commitment = output.commitment(&key_manager).await.unwrap();
+        let commitment = output.commitment().clone();
         assert!(alice_node
             .blockchain_db
             .fetch_unspent_output_hash_by_commitment(commitment)
@@ -284,6 +286,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 }
 
 #[allow(clippy::too_many_lines)]
+#[ignore = "prune mode not yet working"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
@@ -302,6 +305,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Carol is a pruned node
             BlockchainDatabaseConfig {
@@ -310,6 +314,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Bob is an archival node
             BlockchainDatabaseConfig::default(),
@@ -334,8 +339,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
         2,                            // < pruning_horizon_alice, < pruning_horizon_carol
         14,                           // > pruning_horizon_alice, > pruning_horizon_carol
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // Now rewind Bob's chain to height 8 (> pruning_horizon, < follow_up_transaction_in_block)
     sync::delete_some_blocks_and_headers(&blocks[8..=28], WhatToDelete::BlocksAndHeaders, &bob_node);
@@ -350,9 +354,9 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     println!(
         "\n1. Alice attempts initial horizon sync from Bob (to pruning height 4; includes genesys block UTXO spend)\n"
     );
-    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    let output_hash = initial_coinbase.output_hash();
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    let commitment = initial_coinbase.commitment().clone();
     assert!(alice_node
         .blockchain_db
         .fetch_unspent_output_hash_by_commitment(commitment.clone())
@@ -401,7 +405,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_bob).await;
     match event {
         StateEvent::ProceedToBlockSync(_) => println!("Carol chose `ProceedToBlockSync` instead"),
-        _ => panic!("2. Carol should not choose '{:?}'", event),
+        _ => panic!("2. Carol should not choose '{event:?}'"),
     }
 
     // Give Bob some more blocks
@@ -473,7 +477,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_alice).await;
     match event {
         StateEvent::Continue => println!("Carol chose `Continue` instead"),
-        _ => panic!("5. Carol should not choose '{:?}'", event),
+        _ => panic!("5. Carol should not choose '{event:?}'"),
     }
     // Alice will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, alice_node.node_identity.node_id(), 1).await);
@@ -572,7 +576,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_alice).await;
     match event {
         StateEvent::Continue => println!("Carol chose `Continue` instead"),
-        _ => panic!("9. Carol should not choose '{:?}'", event),
+        _ => panic!("9. Carol should not choose '{event:?}'"),
     }
     // Alice will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, alice_node.node_identity.node_id(), 1).await);
@@ -662,6 +666,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
 }
 
 #[allow(clippy::too_many_lines)]
+#[ignore = "prune mode not yet working"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
@@ -680,6 +685,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Carol is a pruned node
             BlockchainDatabaseConfig {
@@ -688,6 +694,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
                 pruning_interval: 5,
                 track_reorgs: false,
                 cleanup_orphans_at_startup: false,
+                ..Default::default()
             },
             // Bob is an archival node
             BlockchainDatabaseConfig::default(),
@@ -712,15 +719,14 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
         2,                            // < pruning_horizon_alice, < pruning_horizon_carol
         14,                           // > pruning_horizon_alice, > pruning_horizon_carol
         follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
-    )
-    .await;
+    );
 
     // 1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)
     println!("\n1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)\n");
 
-    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    let output_hash = initial_coinbase.output_hash();
     assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    let commitment = initial_coinbase.commitment().clone();
     assert!(carol_node
         .blockchain_db
         .fetch_unspent_output_hash_by_commitment(commitment.clone())

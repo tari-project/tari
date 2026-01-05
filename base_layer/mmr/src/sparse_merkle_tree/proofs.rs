@@ -116,12 +116,18 @@ trait MerkleProofDigest<H: Digest<OutputSize = U32>> {
             |current, (i, (sibling_hash, direction))| {
                 let height = n - i - 1;
                 match direction {
-                    TraverseDirection::Left => {
-                        BranchNode::<H>::branch_hash(height, &height_key(key, height), &current, sibling_hash)
-                    },
-                    TraverseDirection::Right => {
-                        BranchNode::<H>::branch_hash(height, &height_key(key, height), sibling_hash, &current)
-                    },
+                    TraverseDirection::Left => BranchNode::<H>::branch_hash(
+                        height,
+                        &height_key(key, height).expect("Should exist"),
+                        &current,
+                        sibling_hash,
+                    ),
+                    TraverseDirection::Right => BranchNode::<H>::branch_hash(
+                        height,
+                        &height_key(key, height).expect("Should exist"),
+                        sibling_hash,
+                        &current,
+                    ),
                 }
             },
         );
@@ -226,6 +232,7 @@ impl<H: Digest<OutputSize = U32>> MerkleProofDigest<H> for ExclusionProof<H> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use blake2::Blake2b;
 
     use super::*;

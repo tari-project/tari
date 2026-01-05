@@ -3,31 +3,38 @@ name = "minotari_app_grpc"
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[features]
+default = ["base_node"]
+base_node = ["tari_core", "tari_comms"]
+
+
 [dependencies]
 tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
-tari_core = { workspace = true }
+tari_comms = { workspace = true, optional = true }
+tari_core = { workspace = true, optional = true}
 tari_crypto = { workspace = true }
 tari_script = { workspace = true }
+tari_node_components = { workspace = true }
 tari_max_size = { workspace = true }
+tari_sidechain = { workspace = true }
 tari_utilities = { workspace = true }
+tari_transaction_components = { workspace = true }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
-base64 = "0.13.0"
-borsh = "1.5.7"
-chrono = { version = "0.4.39", default-features = false }
-log = "0.4"
+base64 = { workspace = true }
+borsh = { workspace = true }
+log = { workspace = true }
 prost = "0.13.3"
-prost-types = "0.13.3"
-rand = "0.8"
+rand = { workspace = true }
 rcgen = "0.12.1"
 subtle = "2.5.0"
-thiserror = "1"
-tokio = { version = "1.44", features = ["fs"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
 tonic = { version = "0.13.1", features = ["tls-ring"] }
 zeroize = "1"
 

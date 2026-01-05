@@ -23,20 +23,22 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
-use crate::utils::datetime::format_duration;
+use crate::{connectivity::peer_health::PeerHealthMetrics, utils::datetime::format_duration};
 
 /// Basic stats for peer connection attempts. Allows the connectivity manager to keep track of successful/failed
 /// connection attempts to allow it to mark peers as offline if necessary.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct PeerConnectionStats {
     /// The last time a connection was successfully made or, None if a successful
     /// connection has never been made.
     pub last_connected_at: Option<Instant>,
     /// Represents the last connection attempt
     pub last_connection_attempt: LastConnectionAttempt,
+    /// Advanced health metrics for proactive dialing
+    pub health_metrics: PeerHealthMetrics,
 }
 
 impl PeerConnectionStats {
@@ -48,6 +50,14 @@ impl PeerConnectionStats {
     pub fn set_connection_success(&mut self) {
         self.last_connected_at = Some(Instant::now());
         self.last_connection_attempt = LastConnectionAttempt::Succeeded(Instant::now());
+        self.health_metrics.record_success(None);
+    }
+
+    /// Sets the last connection as a success with connection latency
+    pub fn set_connection_success_with_latency(&mut self, latency: Duration) {
+        self.last_connected_at = Some(Instant::now());
+        self.last_connection_attempt = LastConnectionAttempt::Succeeded(Instant::now());
+        self.health_metrics.record_success(Some(latency));
     }
 
     /// Sets the last connection as a failure
@@ -56,6 +66,20 @@ impl PeerConnectionStats {
             failed_at: Instant::now(),
             num_attempts: self.failed_attempts() + 1,
         };
+        // Use default from ConnectivityConfig to ensure centralization
+        use super::config::ConnectivityConfig;
+        let default_config = ConnectivityConfig::default();
+        self.health_metrics
+            .record_failure(default_config.circuit_breaker_failure_threshold);
+    }
+
+    /// Sets the last connection as a failure with configurable threshold
+    pub fn set_connection_failed_with_threshold(&mut self, circuit_breaker_threshold: usize) {
+        self.last_connection_attempt = LastConnectionAttempt::Failed {
+            failed_at: Instant::now(),
+            num_attempts: self.failed_attempts() + 1,
+        };
+        self.health_metrics.record_failure(circuit_breaker_threshold);
     }
 
     /// Returns the number of failed attempts. 0 is returned if the `last_connection_attempt` is not `Failed`
@@ -73,6 +97,36 @@ impl PeerConnectionStats {
             LastConnectionAttempt::Failed { failed_at, .. } => Some(*failed_at),
             _ => None,
         }
+    }
+
+    /// Check if connections should be allowed based on circuit breaker state
+    pub fn should_allow_connection(&self, retry_interval: Duration) -> bool {
+        self.health_metrics.should_allow_connection(retry_interval)
+    }
+
+    /// Calculate success rate within the given time window
+    pub fn success_rate(&self, window: Duration) -> f32 {
+        self.health_metrics.success_rate(window)
+    }
+
+    /// Calculate health score for peer selection
+    pub fn health_score(&self, window: Duration) -> f32 {
+        self.health_metrics.health_score(window)
+    }
+
+    /// Try to transition circuit breaker from open to half-open
+    pub fn try_half_open(&mut self, retry_interval: Duration) -> bool {
+        self.health_metrics.try_half_open(retry_interval)
+    }
+
+    /// Clean up old health metrics outside the window
+    pub fn cleanup_old_health_data(&mut self, window: Duration) {
+        self.health_metrics.cleanup_old_attempts(window);
+    }
+
+    /// Get access to underlying health metrics
+    pub fn health_metrics(&self) -> &PeerHealthMetrics {
+        &self.health_metrics
     }
 }
 

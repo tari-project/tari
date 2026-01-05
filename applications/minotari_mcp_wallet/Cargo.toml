@@ -1,0 +1,41 @@
+[package]
+name = "minotari_mcp_wallet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lints.clippy]
+# Allow certain lints for this crate to focus on functionality over style
+too_many_lines = "allow"
+if_not_else = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+struct_excessive_bools = "allow"
+else_if_without_else = "allow"
+
+[lints.rust]
+let_underscore_drop = "allow"
+
+[[bin]]
+name = "minotari_mcp_wallet"
+path = "src/main.rs"
+
+[dependencies]
+minotari_mcp_common = { workspace = true }
+minotari_app_utilities = { workspace = true }
+minotari_app_grpc = { workspace = true }
+minotari_wallet_grpc_client = { workspace = true }
+tari_common = { workspace = true }
+tari_utilities = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = {  workspace = true  }
+clap = { version = "3.2", features = ["derive", "env"] }
+log = { workspace = true }
+async-trait = "0.1"
+tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"

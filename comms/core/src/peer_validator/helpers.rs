@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use log::debug;
 
 use crate::{
     multiaddr::{Multiaddr, Protocol},
@@ -29,11 +30,14 @@ use crate::{
     types::CommsPublicKey,
 };
 
+const LOG_TARGET: &str = "comms::peer_validator";
+
 /// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
 /// memory addresses will be rejected.
 pub fn validate_addresses(config: &PeerValidatorConfig, addresses: &[Multiaddr]) -> Result<(), PeerValidatorError> {
     if addresses.is_empty() {
-        return Err(PeerValidatorError::PeerIdentityNoAddresses);
+        debug!(target: LOG_TARGET, "validate_addresses - no addresses to validate.");
+        return Ok(());
     }
 
     if addresses.len() > config.max_permitted_peer_addresses_per_claim {
@@ -119,8 +123,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             validate_onion3_address(&addr)
         },
         p => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Unsupported address type '{}'",
-            p
+            "Unsupported address type '{p}'"
         ))),
     }
 }
@@ -128,8 +131,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
 fn expect_end_of_address(mut iter: multiaddr::Iter<'_>) -> Result<(), PeerValidatorError> {
     match iter.next() {
         Some(p) => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Unexpected multiaddress component '{}'",
-            p
+            "Unexpected multiaddress component '{p}'"
         ))),
         None => Ok(()),
     }
@@ -142,8 +144,7 @@ fn validate_tcp_port(expected_tcp: Protocol) -> Result<(), PeerValidatorError> {
         )),
         Protocol::Tcp(_) => Ok(()),
         p => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Expected TCP address component but got '{}'",
-            p
+            "Expected TCP address component but got '{p}'"
         ))),
     }
 }
@@ -173,7 +174,7 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), PeerV
         .chain_update(version)
         .finalize();
 
-    if calculated_checksum[..2] != *checksum {
+    if *calculated_checksum.get(..2).expect("Index should be valid") != *checksum {
         return Err(PeerValidatorError::InvalidMultiaddr(
             "Invalid checksum in onion address".to_string(),
         ));
@@ -184,6 +185,7 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), PeerV
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use multiaddr::multiaddr;
 
     use super::*;

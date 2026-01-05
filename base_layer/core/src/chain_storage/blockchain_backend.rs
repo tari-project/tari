@@ -3,13 +3,26 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    epoch::VnEpoch,
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
+use tari_sidechain::ShardGroup;
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
-use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
+use super::{
+    lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
+    AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    MinedInfo,
+    PayrefRebuildStatus,
+    TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
+};
 use crate::{
-    blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    blocks::BlockAccumulatedData,
     chain_storage::{
+        lmdb_db::BlockchainCheckStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -22,7 +35,6 @@ use crate::{
         OutputMinedInfo,
         Reorg,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -34,7 +46,7 @@ use crate::{
 /// us to keep the reading and writing API extremely simple. Extending the types of data that the backends can handle
 /// will entail adding to those enums, and the backends, while this trait can remain unchanged.
 #[allow(clippy::ptr_arg)]
-pub trait BlockchainBackend: Send + Sync {
+pub trait BlockchainBackend: Send + Sync + 'static {
     /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
     /// the error condition returned. On success, every operation in the transaction will have been committed, and
     /// the function will return `Ok(())`.
@@ -82,11 +94,14 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch all bad blocks
     fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError>;
 
+    /// clears all bad blocks
+    fn clear_all_bad_blocks(&mut self) -> Result<(), ChainStorageError>;
+
     /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
     /// is in
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
     /// Fetch all UTXOs and spends in the block
@@ -96,10 +111,10 @@ pub trait BlockchainBackend: Send + Sync {
         spend_status_at_header: Option<&HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
-    /// Fetch a specific output. Returns the output
+    /// Returns optional output mined info for the given output hash
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
-    /// Fetch a specific input. Returns the input
+    /// Returns optional input mined info for the given output hash
     fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
@@ -108,6 +123,12 @@ pub trait BlockchainBackend: Send + Sync {
         &self,
         commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
+
+    /// Fetch mined info by PayRef (Payment Reference)
+    fn fetch_mined_info_by_payref(&self, payref: &FixedHash) -> Result<MinedInfo, ChainStorageError>;
+
+    /// Fetch mined info by output hash
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
@@ -132,6 +153,40 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored chain metadata.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
+    /// Returns the stored payref rebuild status.
+    fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
+    /// Returns the stored accumulated data rebuild status.
+    fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
+    /// Resets the stored blockchain consistency check status.
+    fn update_blockchain_consistency_check_status(
+        &self,
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError>;
+    /// Resets the stored accumulated data check status.
+    fn update_accumulated_data_check_status(
+        &self,
+        request: BlockchainCheckRequest,
+    ) -> Result<BlockchainCheckStatus, ChainStorageError>;
+    /// Returns the stored blockchain consistency check status.
+    fn fetch_blockchain_consistency_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
+    /// Returns the stored accumulated data check status.
+    fn fetch_accumulated_data_check_status(&self) -> Result<Option<BlockchainCheckStatus>, ChainStorageError>;
+    /// Builds the payref indexes for a given block height, with stats.
+    fn build_payref_indexes_for_height(
+        &self,
+        height: u64,
+        metadata_at_start: ChainMetadata,
+        initialize_stats: Option<u64>,
+        finalize: bool,
+    ) -> Result<PayrefRebuildStatus, ChainStorageError>;
+    /// Builds the payref indexes for a given block height, with stats.
+    fn update_accumulated_difficulty(
+        &self,
+        height: u64,
+        header_accum_data: BlockHeaderAccumulatedData,
+        last_chain_header: ChainHeader,
+        update_meta_data_db: bool,
+    ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count
@@ -174,16 +229,64 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches the validator node set for the given height ordered according to height of registration and canonical
     /// block body ordering.
+    fn fetch_all_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
+
+    /// Fetches the validator node set for the given height ordered according to height of registration and canonical
+    /// block body ordering.
     fn fetch_active_validator_nodes(
         &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
-    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError>;
-    /// Returns the shard key for the validator node if valid at the given height.
-    fn get_shard_key(
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
+
+    fn fetch_validators_activating_in_epoch(
         &self,
-        height: u64,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
+
+    fn fetch_validators_exiting_in_epoch(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
+    /// Returns true if the validator node registration UTXO exists
+    fn validator_node_exists(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        current_epoch: VnEpoch,
+        validator_node_pk: &CompressedPublicKey,
+    ) -> Result<bool, ChainStorageError>;
+    /// Returns true if the validator node is registered and currently active
+    fn validator_node_is_active(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &CompressedPublicKey,
+    ) -> Result<bool, ChainStorageError>;
+
+    fn validator_node_is_active_for_shard_group(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        epoch: VnEpoch,
+        validator_node_pk: &CompressedPublicKey,
+        shard_group: ShardGroup,
+    ) -> Result<bool, ChainStorageError>;
+    fn validator_nodes_count_for_shard_group(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        end_epoch: VnEpoch,
+        shard_group: ShardGroup,
+    ) -> Result<usize, ChainStorageError>;
+    /// Returns the validator node for the given sidechain and public key if it exists
+    fn get_validator_node(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
         public_key: CompressedPublicKey,
-    ) -> Result<Option<[u8; 32]>, ChainStorageError>;
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError>;
     /// Returns all template registrations within (inclusive) the given height range.
     fn fetch_template_registrations(
         &self,
@@ -193,4 +296,12 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Creates a reader to construct a JMT
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
+
+    /// Stats reporting methods for long-running operations
+    /// Set the total number of steps for progress tracking
+    fn set_stats_total_height(&self, total: u64);
+    /// Update the current progress step
+    fn update_stats_progress(&self, current: u64);
+
+    fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError>;
 }

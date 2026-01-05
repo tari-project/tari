@@ -26,18 +26,23 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlockHash,
-    CompressedCommitment,
-    CompressedPublicKey,
-    HashOutput,
-    PrivateKey,
-    Signature,
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+    },
 };
+use tari_node_components::blocks::NewBlockTemplate;
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
-
+use crate::chain_storage::MmrTree;
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MmrStateRequest {
@@ -58,23 +63,16 @@ pub enum NodeCommsRequest {
         range: RangeInclusive<u64>,
         compact: bool,
     },
-    FetchBlocksByKernelExcessSigs(Vec<Signature>),
+    FetchBlocksByKernelExcessSigs(Vec<CompressedSignature>),
     FetchBlocksByUtxos(Vec<CompressedCommitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     GetBlockFromAllChains(HashOutput),
-    FetchKernelByExcessSig(Signature),
+    FetchKernelByExcessSig(CompressedSignature),
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
-    },
-    FetchValidatorNodesKeys {
-        height: u64,
-    },
-    GetShardKey {
-        height: u64,
-        public_key: CompressedPublicKey,
     },
     FetchTemplateRegistrations {
         start_height: u64,
@@ -82,6 +80,22 @@ pub enum NodeCommsRequest {
     },
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
+    },
+    FetchMinedInfoByPayRef(FixedHash),
+    FetchMinedInfoByOutputHash(HashOutput),
+    FetchOutputMinedInfo(HashOutput),
+    CheckOutputSpentStatus(HashOutput),
+    FetchValidatorNodesKeys {
+        height: u64,
+        validator_network: Option<CompressedPublicKey>,
+    },
+    FetchValidatorNodeChanges {
+        epoch: VnEpoch,
+        sidechain_id: Option<CompressedPublicKey>,
+    },
+    GetValidatorNode {
+        sidechain_id: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     },
 }
 
@@ -97,22 +111,22 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
-            GetTargetDifficultyNextBlock(algo) => write!(f, "GetTargetDifficultyNextBlock ({:?})", algo),
+            GetTargetDifficultyNextBlock(algo) => write!(f, "GetTargetDifficultyNextBlock ({algo:?})"),
             FetchHeaders(range) => {
-                write!(f, "FetchHeaders ({:?})", range)
+                write!(f, "FetchHeaders ({range:?})")
             },
             FetchHeadersByHashes(v) => write!(f, "FetchHeadersByHashes (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingBlocks { range, compact } => {
-                write!(f, "FetchMatchingBlocks ({:?}, {})", range, compact)
+                write!(f, "FetchMatchingBlocks ({range:?}, {compact})")
             },
             FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
             FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
-            GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v),
-            GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v),
+            GetHeaderByHash(v) => write!(f, "GetHeaderByHash({v})"),
+            GetBlockByHash(v) => write!(f, "GetBlockByHash({v})"),
             GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),
             GetNewBlock(b) => write!(f, "GetNewBlock (Block Height={})", b.header.height),
-            GetBlockFromAllChains(v) => write!(f, "GetBlockFromAllChains({})", v),
+            GetBlockFromAllChains(v) => write!(f, "GetBlockFromAllChains({v})"),
             FetchKernelByExcessSig(s) => write!(
                 f,
                 "FetchKernelByExcessSig (signature=({}, {}))",
@@ -122,20 +136,52 @@ impl Display for NodeCommsRequest {
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
             },
-            FetchValidatorNodesKeys { height } => {
-                write!(f, "FetchValidatorNodesKeys ({})", height)
+            FetchValidatorNodesKeys {
+                height,
+                validator_network,
+            } => {
+                write!(
+                    f,
+                    "FetchValidatorNodesKeys ({}, {})",
+                    height,
+                    validator_network
+                        .as_ref()
+                        .map(|n| n.to_hex())
+                        .unwrap_or_else(|| "None".to_string())
+                )
             },
-            GetShardKey { height, public_key } => {
-                write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
+            GetValidatorNode {
+                sidechain_id,
+                public_key,
+            } => {
+                write!(f, "GetValidatorNode ({sidechain_id:?}), public key ({public_key:?})")
             },
             FetchTemplateRegistrations {
                 start_height: start,
                 end_height: end,
             } => {
-                write!(f, "FetchTemplateRegistrations ({}..={})", start, end)
+                write!(f, "FetchTemplateRegistrations ({start}..={end})")
             },
             FetchUnspentUtxosInBlock { block_hash } => {
-                write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
+                write!(f, "FetchUnspentUtxosInBlock ({block_hash})")
+            },
+            FetchMinedInfoByPayRef(payref) => {
+                write!(f, "FetchMinedInfoByPayRef ({payref})")
+            },
+            FetchMinedInfoByOutputHash(payref) => {
+                write!(f, "FetchMinedInfoByOutputHash ({payref})")
+            },
+            FetchOutputMinedInfo(output_hash) => {
+                write!(f, "FetchOutputMinedInfo ({output_hash})")
+            },
+            CheckOutputSpentStatus(output_hash) => {
+                write!(f, "CheckOutputSpentStatus ({output_hash})")
+            },
+            FetchValidatorNodeChanges { epoch, sidechain_id } => {
+                write!(
+                    f,
+                    "FetchValidatorNodeChanges (Side chain ID:{sidechain_id:?}), Epoch: {epoch}"
+                )
             },
         }
     }

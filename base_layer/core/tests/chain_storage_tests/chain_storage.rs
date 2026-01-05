@@ -203,7 +203,7 @@ fn test_checkpoints() {
 #[test]
 #[allow(clippy::identity_op)]
 fn test_rewind_to_height() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    // let _ = env_logger::builder().is_test(true).try_init();
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
 
@@ -2138,7 +2138,7 @@ mod malleability {
 
     mod kernel {
         use tari_common_types::types::Signature;
-        use tari_core::transactions::tari_amount::MicroMinotari;
+        use tari_core::transactions::MicroMinotari;
 
         use super::*;
 

@@ -25,9 +25,9 @@ use serde::{Deserialize, Serialize};
 use tari_comms::{
     multiaddr::Multiaddr,
     socks,
-    tor,
-    tor::TorIdentity,
+    tor::{self, TorIdentity},
     transports::{predicate::FalsePredicate, SocksConfig},
+    types::TransportProtocol,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
 
@@ -86,13 +86,14 @@ impl TransportConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum TransportType {
     /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.
     Memory,
     /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
     /// configured to allow communication with peers using the tor transport.
+    #[default]
     Tcp,
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
     /// onion v3 and DNS addresses.
@@ -101,11 +102,22 @@ pub enum TransportType {
     Socks5,
 }
 
-impl Default for TransportType {
-    fn default() -> Self {
-        // The tor transport configures itself as long as it has access to the control port at
-        // `TorConfig::control_address`
-        Self::Tor
+impl TransportType {
+    pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
+        match self {
+            TransportType::Memory => vec![TransportProtocol::Memory],
+            TransportType::Tcp => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+            TransportType::Tor => vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            TransportType::Socks5 => vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+        }
     }
 }
 

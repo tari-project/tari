@@ -21,30 +21,23 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    ffi::CString,
     path::PathBuf,
     ptr::null,
     sync::{Arc, Mutex},
-    time::SystemTime,
 };
 
-use chrono::{DateTime, Utc};
-use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 
 use super::ffi::{
     Balance,
     Callbacks,
     CompletedTransactions,
-    Contact,
-    Contacts,
-    ContactsLivenessData,
     FeePerGramStats,
+    FfiConnectivityStatus,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKeys,
     WalletAddress,
 };
 use crate::{
@@ -56,31 +49,31 @@ use crate::{
 #[derive(Debug)]
 pub struct WalletFFI {
     pub name: String,
-    pub port: u64,
+    pub id: String,
     pub base_dir: PathBuf,
+    pub log_path: String,
     pub wallet: Arc<Mutex<ffi::Wallet>>,
 }
 
 impl WalletFFI {
-    fn spawn(name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
-        let port = get_port(18000..18499).unwrap();
-        let transport_config =
-            ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
-        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, port));
+    fn spawn(world: &mut TariWorld, name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
+        let id = get_port(world, 18000..18499).unwrap().to_string();
+        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{name}_id_{id}"));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir);
-        let log_path = base_dir_path
+        let comms_config = ffi::WalletDbConfig::create(base_dir);
+        let log_path: String = base_dir_path
             .join("logs")
             .join("ffi_wallet.log")
             .as_os_str()
             .to_str()
             .unwrap()
             .into();
-        let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
+        let wallet = ffi::Wallet::create(comms_config, log_path.clone(), seed_words_ptr);
         Self {
             name,
-            port,
+            id,
             base_dir: base_dir_path,
+            log_path,
             wallet,
         }
     }
@@ -98,11 +91,6 @@ impl WalletFFI {
         emoji_id.as_string()
     }
 
-    pub fn add_base_node(&self, public_key: String, address: String) {
-        let node_public_key = ffi::PublicKey::from_hex(public_key);
-        self.wallet.lock().unwrap().add_base_node_peer(node_public_key, address);
-    }
-
     pub fn destroy(&mut self) {
         self.wallet.lock().unwrap().destroy();
     }
@@ -111,24 +99,12 @@ impl WalletFFI {
         self.wallet.lock().unwrap().get_address()
     }
 
-    pub fn connected_public_keys(&self) -> PublicKeys {
-        self.wallet.lock().unwrap().connected_public_keys()
+    pub fn get_connectivity_status(&self) -> (FfiConnectivityStatus, u64) {
+        self.get_counters().get_connectivity_status()
     }
 
     pub fn get_balance(&self) -> Balance {
         self.wallet.lock().unwrap().get_balance()
-    }
-
-    pub fn upsert_contact(&self, contact: Contact) -> bool {
-        self.wallet.lock().unwrap().upsert_contact(contact)
-    }
-
-    pub fn get_contacts(&self) -> Contacts {
-        self.wallet.lock().unwrap().get_contacts()
-    }
-
-    pub fn remove_contact(&self, contact_to_remove: Contact) -> bool {
-        self.wallet.lock().unwrap().remove_contact(contact_to_remove)
     }
 
     pub fn get_pending_inbound_transactions(&self) -> PendingInboundTransactions {
@@ -159,16 +135,12 @@ impl WalletFFI {
         self.wallet.lock().unwrap().start_transaction_validation()
     }
 
-    pub fn get_liveness_data(&self) -> Arc<Mutex<IndexMap<String, ContactsLivenessData>>> {
-        self.wallet.lock().unwrap().get_liveness_data()
-    }
-
     pub fn send_transaction(
         &self,
         dest: String,
         amount: u64,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         one_sided: bool,
     ) -> u64 {
         self.wallet
@@ -179,27 +151,18 @@ impl WalletFFI {
 
     pub fn restart(&mut self) {
         self.wallet.lock().unwrap().destroy();
-        let port = get_port(18000..18499).unwrap();
-        let transport_config =
-            ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
-        let now: DateTime<Utc> = SystemTime::now().into();
-        let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
-        let log_path = format!("{}/log/ffi_wallet.log", base_dir);
-        self.wallet = ffi::Wallet::create(comms_config, log_path, null());
+        let comms_config = ffi::WalletDbConfig::create(self.base_dir.as_os_str().to_str().unwrap().into());
+        self.wallet = ffi::Wallet::create(comms_config, self.log_path.clone(), null());
     }
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
         self.wallet.lock().unwrap().get_fee_per_gram_stats(count)
     }
-
-    pub fn contacts_handle(&self) -> *mut c_void {
-        self.wallet.lock().unwrap().contacts_handle()
-    }
 }
 
 pub fn spawn_wallet_ffi(world: &mut TariWorld, wallet_name: String, seed_words_ptr: *const c_void) {
     let wallet_ffi = WalletFFI::spawn(
+        world,
         wallet_name.clone(),
         seed_words_ptr,
         world.current_base_dir.clone().expect("Base dir on world"),
@@ -216,17 +179,13 @@ pub fn get_mnemonic_word_list_for_language(language: String) -> ffi::SeedWords {
         "JAPANESE" => "Japanese",
         "KOREAN" => "Korean",
         "SPANISH" => "Spanish",
-        _ => panic!("Unknown language {}", language),
+        _ => panic!("Unknown language {language}"),
     };
     ffi::SeedWords::get_mnemonic_word_list_for_language(language.to_string())
 }
 
-pub fn create_contact(alias: String, address: String) -> ffi::Contact {
-    ffi::Contact::create(alias, address)
-}
-
 pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {
-    let seed_words = ffi::SeedWords::create();
+    let seed_words = ffi::SeedWords::create_empty_seed_words();
     for word in words {
         seed_words.push_word(word.to_string());
     }

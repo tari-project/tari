@@ -48,6 +48,7 @@ struct User {
 }
 
 impl User {
+    #[allow(clippy::indexing_slicing)]
     fn new(csv: &str) -> Result<User, String> {
         let vals: Vec<&str> = csv.split(',').collect();
         if vals.len() != 6 {
@@ -134,7 +135,7 @@ fn test_single_thread() {
     }
     clean_up("single_thread"); // In Windows file handles must be released before files can be deleted
 }
-
+#[allow(clippy::indexing_slicing)]
 #[test]
 fn test_multi_thread() {
     {
@@ -240,6 +241,7 @@ fn test_multi_writes() {
     clean_up("multi-writes"); // In Windows file handles must be released before files can be deleted
 }
 
+#[allow(clippy::indexing_slicing)]
 #[test]
 fn test_pair_iterator() {
     {
@@ -283,6 +285,7 @@ fn test_lmdb_resize_on_create() {
                     100 * PRESET_SIZE * 1024 * 1024,
                     1024 * 1024,
                     512 * 1024,
+                    false,
                 ))
                 .set_max_number_of_databases(1)
                 .add_database(db_name, db::CREATE)
@@ -306,7 +309,12 @@ fn test_lmdb_resize_on_create() {
             // Load existing db environment
             let env = LMDBBuilder::new()
                 .set_path(&path)
-                .set_env_config(LMDBConfig::new(PRESET_SIZE * 1024 * 1024, 1024 * 1024, 512 * 1024))
+                .set_env_config(LMDBConfig::new(
+                    PRESET_SIZE * 1024 * 1024,
+                    1024 * 1024,
+                    512 * 1024,
+                    false,
+                ))
                 .set_max_number_of_databases(1)
                 .add_database(db_name, db::CREATE)
                 .build()
@@ -335,7 +343,7 @@ fn test_lmdb_resize_before_full() {
             // Create db with 1MB capacity
             let store = LMDBBuilder::new()
                 .set_path(&path)
-                .set_env_config(LMDBConfig::new(1024 * 1024, 512 * 1024, 100 * 1024))
+                .set_env_config(LMDBConfig::new(1024 * 1024, 512 * 1024, 100 * 1024, false))
                 .set_max_number_of_databases(1)
                 .add_database(db_name, db::CREATE)
                 .build()

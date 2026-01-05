@@ -32,6 +32,8 @@ use monero::{
 use primitive_types::U256;
 use sha2::{Digest, Sha256};
 use tari_common_types::types::FixedHash;
+use tari_node_components::blocks::BlockHeader;
+use tari_transaction_components::tari_proof_of_work::Difficulty;
 use tari_utilities::hex::HexError;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -42,13 +44,11 @@ use super::{
     pow_data::MoneroPowData,
 };
 use crate::{
-    blocks::BlockHeader,
     common::AuxChainHashes,
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{
         monero_rx::merkle_tree_parameters::MerkleTreeParameters,
         randomx_factory::{RandomXFactory, RandomXVMInstance},
-        Difficulty,
     },
 };
 
@@ -60,10 +60,10 @@ pub fn monero_randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
     genesis_block_hash: &FixedHash,
-    consensus: &ConsensusManager,
+    consensus: &BaseNodeConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
-    trace!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
+    trace!(target: LOG_TARGET, "Valid Monero data: {monero_pow_data}");
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key(), None, None)?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
@@ -75,16 +75,35 @@ pub fn tari_randomx_difficulty(
     vm_key: &FixedHash,
 ) -> Result<Difficulty, MergeMineError> {
     let vm = randomx_factory.create(vm_key.as_slice(), None, None)?;
-    let mut blob = header.nonce.to_le_bytes().to_vec();
+    // This is done to make a blob that xmrig can process.
+    // xmrig assumes the nonce is at offset 39.
+
+    // The format is:
+    // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
+    // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
+    //
+    // Major version: 0
+    // Minor version: 0
+    // Timestamp: 0
+
+    let mut blob = vec![0u8; 3];
     blob.extend_from_slice(header.mining_hash().as_slice());
-    blob.extend_from_slice(&header.pow.to_bytes());
+    // Note, only the first 4 bytes of the nonce are used (u32)
+    let nonce = header.nonce.to_be_bytes();
+    blob.extend_from_slice(&nonce);
+    // The pow_algo is the first byte of the pow field when serialized to bytes
+    let mut pow_bytes = header.pow.to_bytes();
+    if pow_bytes.len() < 33 {
+        pow_bytes.resize(33, 0)
+    }
+    blob.extend_from_slice(pow_bytes.get(0..33).expect("This should exists"));
     get_random_x_difficulty(&blob, &vm).map(|(diff, _)| diff)
 }
 
 /// Calculate the RandomX mining hash using the virtual machine together with the achieved difficulty
 fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let hash = vm.calculate_hash(input)?;
-    debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
+    debug!(target: LOG_TARGET, "RandomX Hash: {hash:?}");
     let difficulty = Difficulty::little_endian_difficulty(&hash)?;
     Ok((difficulty, hash))
 }
@@ -115,16 +134,16 @@ fn parse_extra_field_truncate_on_error(raw_extra_field: &RawExtraField) -> Extra
 pub fn verify_header(
     header: &BlockHeader,
     genesis_block_hash: &FixedHash,
-    consensus: &ConsensusManager,
+    consensus: &BaseNodeConsensusManager,
 ) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header, consensus)?;
     let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx_extra);
     let extra_field = extra_field.unwrap_or_else(|ex_field| {
-        warn!(target: LOG_TARGET, "Error deserializing, Monero extra field");
+        trace!(target: LOG_TARGET, "Error deserializing, Monero extra field");
         ex_field
     });
-    debug!(target: LOG_TARGET, "Extra field: {:?}", extra_field);
+    debug!(target: LOG_TARGET, "Extra field: {extra_field:?}");
     // Check that the Tari MM hash is found in the Monero coinbase transaction
     // and that only 1 Tari header is found
 
@@ -233,7 +252,7 @@ pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, Me
 where T: AsRef<[u8]> {
     let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
-        .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {}", e)))?;
+        .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {e}")))?;
     Ok(obj)
 }
 
@@ -253,7 +272,10 @@ pub fn construct_monero_data(
 ) -> Result<MoneroPowData, MergeMineError> {
     let hashes = create_ordered_transaction_hashes_from_block(&block);
     let root = tree_hash(&hashes)?;
-    let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).ok_or_else(|| {
+    let hash = hashes.first().ok_or(MergeMineError::ValidationError(
+        "No hashes for merkle proof".to_string(),
+    ))?;
+    let coinbase_merkle_proof = create_merkle_proof(&hashes, hash).ok_or_else(|| {
         MergeMineError::ValidationError(
             "create_merkle_proof returned None because the block had no coinbase (which is impossible because the \
              Block type does not allow that)"
@@ -362,7 +384,7 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
         mt_params.to_varint()
     };
     extra_field.0.insert(0, SubField::MergeMining(encoded, hash));
-    debug!(target: LOG_TARGET, "Inserted extra field: {:?}", extra_field);
+    debug!(target: LOG_TARGET, "Inserted extra field: {extra_field:?}");
 
     block.miner_tx.prefix.extra = extra_field.into();
 
@@ -394,9 +416,10 @@ pub fn create_block_hashing_blob(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::convert::{TryFrom, TryInto};
 
-    use borsh::BorshSerialize;
+    use borsh::{BorshDeserialize, BorshSerialize};
     use monero::{
         blockdata::transaction::TxOutTarget,
         consensus::deserialize,
@@ -408,8 +431,10 @@ mod test {
         TxIn,
         TxOut,
     };
+    use serial_test::serial;
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
     use tari_utilities::{
         epoch_time::EpochTime,
         hex::{from_hex, Hex},
@@ -417,7 +442,6 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -554,7 +578,7 @@ mod test {
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
         let mut block_header = BlockHeader {
             version: 0,
@@ -654,7 +678,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -729,7 +753,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag_no_tag() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -802,7 +826,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag_wrong_hash() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -879,7 +903,7 @@ mod test {
 
     #[test]
     fn test_duplicate_append_mm_tag() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -1005,7 +1029,7 @@ mod test {
         assert_eq!(
             "ExtraField([TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, \
              58, 168, 109, 46, 133, 127, 7])])",
-            &format!("{:?}", extra_field_before_parse)
+            &format!("{extra_field_before_parse:?}")
         );
         assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_ok());
 
@@ -1013,7 +1037,7 @@ mod test {
         assert_eq!(
             "ExtraField([Padding(230), TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), \
              Nonce([246, 58, 168, 109, 46, 133, 127, 7])])",
-            &format!("{:?}", extra_field_before_parse)
+            &format!("{extra_field_before_parse:?}")
         );
         assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_err());
 
@@ -1031,13 +1055,13 @@ mod test {
                  109, 46, 133, 127, 7])])",
                 hex::encode(hash)
             ),
-            &format!("{:?}", extra_field_after_tag)
+            &format!("{extra_field_after_tag:?}")
         );
     }
 
     #[test]
     fn test_verify_header_no_coinbase() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -1114,7 +1138,7 @@ mod test {
 
     #[test]
     fn test_verify_header_no_data() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -1172,7 +1196,7 @@ mod test {
 
     #[test]
     fn test_verify_invalid_root() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -1258,11 +1282,7 @@ mod test {
         let tx_hash = "77139305ea53cfe95cf7235d2fed6fca477395b019b98060acdbc0f8fb0b8b92"; // miner tx
         let count = "01";
 
-        let input = from_hex(&format!(
-            "{}{}{}{}{}{}",
-            versions, timestamp, prev_block, nonce, tx_hash, count
-        ))
-        .unwrap();
+        let input = from_hex(&format!("{versions}{timestamp}{prev_block}{nonce}{tx_hash}{count}")).unwrap();
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
         let rx = RandomXFactory::default();
 
@@ -1272,6 +1292,95 @@ mod test {
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
         );
         assert_eq!(difficulty.as_u64(), 430603);
+    }
+
+    #[test]
+    #[serial]
+    fn test_tari_randomx_difficulty() {
+        let network = Network::Esmeralda;
+        if std::env::var("TARI_NETWORK").is_err() {
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+        }
+        if Network::get_current_or_user_setting_or_default() != network {
+            let _ = Network::set_current(network);
+        }
+        let current_network = Network::get_current_or_user_setting_or_default();
+        if current_network != network {
+            panic!("could not set network");
+        }
+        let randomx_factory = RandomXFactory::new(1);
+        let vm_key = from_hex("920647f8f10b8b484649adf83599c5b86bba137e7eb22e95dd8739d98528f677").unwrap();
+
+        let vm = randomx_factory.create(vm_key.as_slice(), None, None).unwrap();
+
+        let mut blob = 0u8.to_le_bytes().to_vec();
+
+        blob.extend_from_slice(&[0u8; 1]);
+        // timestamp
+        blob.extend_from_slice(&[0u8; 1]);
+        let mining_hash: Vec<u8> =
+            Hex::from_hex("0ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c9").unwrap();
+        blob.extend_from_slice(mining_hash.as_slice());
+        blob.extend_from_slice(&[0u8; 4]);
+        let mut prep_mining_blob = blob.clone();
+        prep_mining_blob.extend_from_slice(&[0u8; 4]);
+        // Add pow
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::RandomXT,
+            pow_data: PowData::try_from(vec![0u8; 32]).unwrap(),
+        };
+        prep_mining_blob.extend_from_slice(&pow.to_bytes());
+
+        assert_eq!(
+            hex::encode(&prep_mining_blob),
+            "0000000ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c90000000000000000020000000000000000000000000000000000000000000000000000000000000000"
+        );
+
+        let nonce = 8390400u64;
+        // let nonce = 1u64;
+
+        blob.extend_from_slice(hex::decode("00800700").unwrap().as_slice());
+        blob.extend_from_slice(pow.to_bytes().as_slice());
+        let difficulty = get_random_x_difficulty(&blob, &vm).unwrap();
+        assert_eq!(
+            hex::encode(&difficulty.1),
+            "3b5af219f2491561cfd3b11d1ee9cc9fba81112f58042ce2f9c8541b2d44a410"
+        );
+        assert_eq!(difficulty.0.as_u64(), 15);
+
+        // Now construct a block header and see if it matches
+        let block_header = BlockHeader {
+            version: 1,
+            height: 123,
+            prev_hash: FixedHash::try_from_slice(
+                hex::decode("7d0b4f7dfcae9fbf72114f5b17d84691c7ba5061bb1cfb414964eceaf56d0157")
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap(),
+            timestamp: 11222333.into(),
+            output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
+            output_smt_size: 0,
+            kernel_mr: FixedHash::zero(),
+            kernel_mmr_size: 0,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: Default::default(),
+            total_script_offset: Default::default(),
+            nonce,
+            pow,
+            validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
+        };
+
+        let mining_hash = block_header.mining_hash();
+        assert_eq!(
+            mining_hash.to_hex(),
+            "0ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c9"
+        );
+
+        let diff = tari_randomx_difficulty(&block_header, &randomx_factory, &vm_key.try_into().unwrap()).unwrap();
+        assert_eq!(diff.as_u64(), 15);
     }
 
     #[test]

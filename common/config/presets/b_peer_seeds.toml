@@ -50,7 +50,14 @@ dns_seeds = ["seeds.stagenet.tari.com"]
 # (Default: peer_seeds = [])
 dns_seeds = ["seeds.esmeralda.tari.com"]
 # Custom specified peer seed nodes (Default: peer_seeds = [])
-#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+peer_seeds = [
+    "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/ip4/51.83.102.25/tcp/18189",
+    "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/ip6/2001:41d0:303:a619::1/tcp/18189",
+    "1e08628960f75b7e324f010b2ee609a9e28097e9101f4d769d474a38b6ee2d76::/onion3/tadnxyokalnqjtvu6mlhxndcq4v2tlolotpvrflscdmi7lcautao3had:18141",
+    "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip4/51.83.4.85/tcp/18189",
+    "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/ip6/2001:41d0:303:9a55::1/tcp/18189",
+    "4cdfb70e0b38b60c6a3573b2870e32bc3d846419c606ea379f43650b80f38409::/onion3/mhfptgpcj6htjkr5zwurom32wvt7x76ovqzn2ttnwo2bnku6baeaaiyd:18141",
+]
 
 [igor.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.

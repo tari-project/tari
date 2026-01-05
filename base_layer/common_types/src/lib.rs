@@ -23,17 +23,19 @@
 // This is the string used to derive the comms/spend key of the wallet
 pub const WALLET_COMMS_AND_SPEND_KEY_BRANCH: &str = "comms";
 
-pub mod burnt_proof;
+pub mod burn_proof;
 pub mod chain_metadata;
 pub mod dammsum;
 pub mod emoji;
 pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
-pub mod key_branches;
+pub mod payment_reference;
+pub mod seeds;
 pub mod serializers;
 pub mod tari_address;
 pub mod transaction;
 mod tx_id;
 pub mod types;
-pub mod wallet_types;
+#[cfg(feature = "wasm")]
+mod wasm;

@@ -1,7 +1,10 @@
 ---
-name: Integration tests
+name: "Integration Tests"
 
 "on":
+  push:
+    branches:
+      - "ci-*"
   pull_request:
     types:
       - opened
@@ -9,26 +12,29 @@ name: Integration tests
       - synchronize
   merge_group:
   schedule:
-    - cron: '0 2 * * *'   # daily @ 02h00 (non-critical)
-    - cron: '0 12 * * 6'  # weekly - Saturday @ noon (long-running)
+    - cron: "0 2 * * *" # daily @ 02h00 (non-critical)
+    - cron: "0 12 * * 6" # weekly - Saturday @ noon (long-running)
   workflow_dispatch:
     inputs:
       ci_bins:
         type: boolean
         default: true
-        description: 'run ci on binaries'
+        description: "run ci on binaries"
       ci_ffi:
         type: boolean
         default: true
-        description: 'run ci on ffi'
+        description: "run ci on ffi"
       ci_profile:
         default: ci
-        description: 'ci profile to run'
+        description: "ci profile to run"
         type: string
+
+permissions: {}
 
 env:
   toolchain: stable
-  nightly_toolchain: nightly-2024-07-07
+  nightly_toolchain: nightly-2025-06-24
+  RUSTUP_PERMIT_COPY_RENAME: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,7 +46,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Envs setup
         id: envs_setup
@@ -62,10 +68,10 @@ jobs:
           fi
 
       - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          toolchain: ${{ env.nightly_toolchain }}
+          toolchain: ${{ env.toolchain }}
 
       - name: Install ubuntu dependencies
         shell: bash
@@ -93,13 +99,16 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
 
       - name: cargo test compile
-        run: cargo +${{ env.nightly_toolchain }} test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
-        timeout-minutes: 90
+        timeout-minutes: 120
         run: |
-          cargo +${{ env.nightly_toolchain }} test \
+          set -e
+          set -o pipefail
+          echo "Running integration tests with profile: ${{ env.CI_PROFILE }}"
+          cargo test \
             --test cucumber \
             -v \
             --all-features \
@@ -108,9 +117,15 @@ jobs:
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
             -c 5 \
             --retry 2
+          exit_code=$?
+          echo "Integration tests exit code: $exit_code"
+          if [ $exit_code -ne 0 ]; then
+            echo "Integration tests failed with exit code $exit_code"
+            exit $exit_code
+          fi
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4  # upload test results as artifact
+        uses: actions/upload-artifact@v5 # upload test results as artifact
         if: always()
         with:
           name: junit-cucumber
@@ -121,7 +136,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Envs setup
         id: envs_setup
@@ -144,10 +159,10 @@ jobs:
 
       - name: Setup rust toolchain
         if: ${{ env.CI_FFI == 'true' }}
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          toolchain: ${{ env.nightly_toolchain }}
+          toolchain: ${{ env.toolchain }}
 
       - name: Install ubuntu dependencies
         if: ${{ env.CI_FFI == 'true' }}
@@ -175,13 +190,16 @@ jobs:
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
-        run: cargo +${{ env.nightly_toolchain }} test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo test --no-run --locked --all-features --release
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
         timeout-minutes: 90
         run: |
-          cargo +${{ env.nightly_toolchain }} test \
+          set -e
+          set -o pipefail
+          echo "Running FFI integration tests with profile: ${{ env.CI_PROFILE }}"
+          cargo test \
             --test cucumber \
             -v \
             --all-features \
@@ -190,9 +208,15 @@ jobs:
             -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)" \
             -c 1 \
             --retry 2
+          exit_code=$?
+          echo "FFI integration tests exit code: $exit_code"
+          if [ $exit_code -ne 0 ]; then
+            echo "FFI integration tests failed with exit code $exit_code"
+            exit $exit_code
+          fi
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4  # upload test results as artifact
+        uses: actions/upload-artifact@v5 # upload test results as artifact
         if: always()
         with:
           name: junit-ffi-cucumber
@@ -204,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Event File
           path: ${{ github.event_path }}

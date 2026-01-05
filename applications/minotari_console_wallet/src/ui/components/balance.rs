@@ -1,7 +1,8 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_core::transactions::tari_amount::MicroMinotari;
+#![allow(clippy::indexing_slicing)]
+use tari_transaction_components::MicroMinotari;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -54,7 +55,7 @@ impl<B: Backend> Component<B> for Balance {
             Span::styled("Available:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
             Span::raw(format!("{}", balance.available_balance)),
-            Span::raw(format!(" (Time Locked: {})", time_locked)),
+            Span::raw(format!(" (Time Locked: {time_locked})")),
         ]);
         let incoming_balance = Spans::from(vec![
             Span::styled("Pending Incoming:", Style::default().fg(Color::Magenta)),

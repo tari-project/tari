@@ -27,6 +27,8 @@ pub mod service;
 
 mod monitor;
 
+use std::marker::PhantomData;
+
 use log::*;
 use tari_service_framework::{
     async_trait,
@@ -38,64 +40,61 @@ use tari_service_framework::{
 use tokio::sync::broadcast;
 
 use crate::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
+    base_node_service::{handle::BaseNodeServiceHandle, service::BaseNodeService},
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
-    storage::database::{WalletBackend, WalletDatabase},
 };
 
+const BASENODE_SERVICE_HANDLE_CHANNEL_SIZE: usize = 1_000;
 const LOG_TARGET: &str = "wallet::base_node_service";
 
-pub struct BaseNodeServiceInitializer<T>
-where T: WalletBackend + 'static
-{
-    config: BaseNodeServiceConfig,
-    db: WalletDatabase<T>,
+pub struct BaseNodeServiceInitializer<T> {
+    phantom: PhantomData<T>,
 }
 
-impl<T> BaseNodeServiceInitializer<T>
-where T: WalletBackend + 'static
-{
-    pub fn new(config: BaseNodeServiceConfig, db: WalletDatabase<T>) -> Self {
-        Self { config, db }
+impl<T> BaseNodeServiceInitializer<T> {
+    pub fn new() -> Self {
+        Self { phantom: PhantomData }
+    }
+}
+
+impl<T> Default for BaseNodeServiceInitializer<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[async_trait]
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
-where T: WalletBackend + 'static
+where T: HttpClientFactory + Send + Sync + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         info!(target: LOG_TARGET, "Wallet base node service initializing.");
 
         let (sender, request_stream) = reply_channel::unbounded();
 
-        let (event_publisher, _) = broadcast::channel(self.config.event_channel_size);
+        let (event_publisher, _) = broadcast::channel(BASENODE_SERVICE_HANDLE_CHANNEL_SIZE);
 
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher.clone());
 
         // Register handle before waiting for handles to be ready
         context.register_handle(basenode_service_handle);
 
-        let config = self.config.clone();
-        let db = self.db.clone();
-
         context.spawn_when_ready(move |handles| async move {
-            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<T>>();
 
             let result = BaseNodeService::new(
-                config,
                 request_stream,
                 wallet_connectivity,
                 event_publisher,
                 handles.get_shutdown_signal(),
-                db,
             )
             .start()
             .await;
 
             info!(
                 target: LOG_TARGET,
-                "Wallet Base Node Service shutdown with result {:?}", result
+                "Wallet Base Node Service shutdown with result {result:?}"
             );
         });
 

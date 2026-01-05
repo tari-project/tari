@@ -198,7 +198,10 @@ impl RpcCodeGenerator {
             pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> Result<Self, #dep_mod::RpcError>
               where TSubstream: #dep_mod::AsyncRead + #dep_mod::AsyncWrite + Unpin + Send + #dep_mod::StreamId + 'static {
                 use #dep_mod::NamedProtocolService;
-                let inner = #dep_mod::RpcClient::connect(Default::default(), Default::default(), framed, Self::PROTOCOL_NAME.into(), None).await?;
+                use std::sync::{atomic::AtomicBool, Arc};
+                let inner = #dep_mod::RpcClient::connect(
+                    Default::default(), Default::default(), framed, Self::PROTOCOL_NAME.into(), None, Arc::new(AtomicBool::new(true))
+                ).await?;
                 Ok(Self { inner })
             }
 

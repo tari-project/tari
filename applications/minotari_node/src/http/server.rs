@@ -1,0 +1,139 @@
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
+
+use axum::{
+    extract::DefaultBodyLimit,
+    routing::{get, post},
+    Extension,
+    Router,
+};
+use log::{error, info};
+use tari_core::{
+    base_node::rpc::BaseNodeWalletQueryService,
+    chain_storage::BlockchainBackend,
+    mempool::service::MempoolHandle,
+};
+use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
+use tokio::{io, net::TcpListener};
+use tower_http::limit::RequestBodyLimitLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+use crate::{
+    http::{
+        handler,
+        handler::{
+            __path_get_header_by_height,
+            __path_get_height_at_time,
+            __path_get_tip_info,
+            __path_sync_utxos_by_block,
+        },
+    },
+    HttpCacheConfig,
+};
+
+const LOG_TARGET: &str = "c::bn::rpc::http::server";
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("I/O error: {0}")]
+    IO(#[from] io::Error),
+}
+
+#[derive(OpenApi)]
+#[openapi(paths(get_tip_info, get_header_by_height, get_height_at_time, sync_utxos_by_block))]
+pub struct ApiDoc;
+
+pub struct Server<S> {
+    port: u16,
+    query_service: Arc<S>,
+    listen_ip: IpAddr,
+    mempool_handle: MempoolHandle,
+    shutdown_signal: ShutdownSignal,
+    cache_cfg: HttpCacheConfig,
+}
+
+impl<S: BaseNodeWalletQueryService> Server<S> {
+    pub fn new(
+        port: u16,
+        listen_ip: IpAddr,
+        query_service: S,
+        mempool: MempoolHandle,
+        shutdown_signal: ShutdownSignal,
+        cache_cfg: HttpCacheConfig,
+    ) -> Self {
+        Self {
+            port,
+            listen_ip,
+            query_service: Arc::new(query_service),
+            mempool_handle: mempool,
+            shutdown_signal,
+            cache_cfg,
+        }
+    }
+
+    pub async fn start<B: BlockchainBackend + 'static>(&self) -> Result<(), Error> {
+        let shutdown_signal = self.shutdown_signal.clone();
+        let port = self.port;
+        let router = Router::new()
+            .route("/get_tip_info", get(handler::get_tip_info::handle::<B>))
+            .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
+            .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
+            .route("/get_utxos_mined_info", get(handler::get_utxos_mined_info::handle::<B>))
+            .route("/fetch_utxo", get(handler::get_utxo::handle::<B>))
+            .route(
+                "/get_utxos_deleted_info",
+                get(handler::get_utxos_deleted_info::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/transactions",
+                get(handler::transaction_query::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/sync_utxos_by_block",
+                get(handler::sync_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/get_utxos_by_block",
+                get(handler::get_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/json_rpc",
+                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::disable()),
+            )
+            .route(
+                "/generate_kernel_merkle_proof",
+                get(handler::generate_kernel_merkle_proof::handle::<B>),
+            )
+            // A large transaction with 2_316 inputs, 154 outputs and byte size 2_109_809 translated to 4_853_330 JSON
+            // object bytes, ~ 2.3 times larger. So we set the limit here to 2.5 times 4 MB.
+            .layer(RequestBodyLimitLayer::new(25 * 4 * 1024 * 1024 / 10))
+            .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
+            .layer(Extension(self.query_service.clone()))
+            .layer(Extension(self.mempool_handle.clone()))
+            .layer(Extension(Arc::new(self.cache_cfg.clone())));
+        let listen_ip = self.listen_ip;
+        let address = SocketAddr::new(listen_ip, port);
+
+        let listener = TcpListener::bind(address).await?;
+
+        // spawn server
+        tokio::spawn(async move {
+            info!(target: LOG_TARGET, "Wallet query HTTP server listening at {listen_ip}:{port}");
+            if let Err(error) = axum::serve(listener, router)
+                .with_graceful_shutdown(shutdown_signal)
+                .await
+            {
+                error!(target: LOG_TARGET, "Wallet query HTTP server error: {error}");
+            }
+        });
+
+        Ok(())
+    }
+}

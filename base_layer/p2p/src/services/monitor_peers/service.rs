@@ -60,7 +60,7 @@ impl<T, const MAX_SIZE: usize> PeerLiveness<T, MAX_SIZE> {
         self.vec.push_back(item);
     }
 
-    pub fn iter(&self) -> std::collections::vec_deque::Iter<T> {
+    pub fn iter(&self) -> std::collections::vec_deque::Iter<'_, T> {
         self.vec.iter()
     }
 }
@@ -120,11 +120,11 @@ impl MonitorPeersService {
                 }
 
                 _ = interval_timer.tick() => {
-                    trace!(target: LOG_TARGET, "Starting monitor peers round (iter {})", loop_count);
+                    trace!(target: LOG_TARGET, "Starting monitor peers round (iter {loop_count})");
                     let active_connections = match self.comms.get_active_connections().await {
                         Ok(val) => val,
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get active connections ({})", e);
+                            warn!(target: LOG_TARGET, "Failed to get active connections ({e})");
                             continue;
                         },
                     };
@@ -174,7 +174,7 @@ impl MonitorPeersService {
                             })
                             .collect::<Vec<_>>(),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to send pings to peers ({})", e);
+                            warn!(target: LOG_TARGET, "Failed to send pings to peers ({e})");
                             continue;
                         },
                     };
@@ -190,7 +190,7 @@ impl MonitorPeersService {
                             }
 
                             event = liveness_events.recv() => {
-                                let event_str = format!("{:?}", event);
+                                let event_str = format!("{event:?}");
                                 match event {
                                     Ok(arc_event) => {
                                         if let LivenessEvent::ReceivedPong(pong) = &*arc_event {
@@ -208,8 +208,7 @@ impl MonitorPeersService {
                                     Err(ref e) => {
                                         debug!(
                                             target: LOG_TARGET,
-                                            "Liveness event error: {:?} ({})",
-                                            event_str, e.to_string()
+                                            "Liveness event error: {event_str:?} ({e})"
                                         );
                                     },
                                 }
@@ -311,7 +310,11 @@ async fn update_stats_and_cull_unresponsive_connections(
                 peer.peer_node_id(),
                 stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
             );
-            if let Err(e) = peer.clone().disconnect(Minimized::No).await {
+            if let Err(e) = peer
+                .clone()
+                .disconnect(Minimized::No, "Monitor peers disconnect unresponsive")
+                .await
+            {
                 warn!(
                     target: LOG_TARGET,
                     "Error while attempting to disconnect peer {}: {}", peer.peer_node_id(), e

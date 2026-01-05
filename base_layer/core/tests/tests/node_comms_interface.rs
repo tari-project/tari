@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use tari_common::configuration::Network;
-use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -31,39 +31,24 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     chain_storage::{BlockchainDatabaseConfig, Validators},
-    consensus::ConsensusManager,
-    covenants::Covenant,
+    consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
+    proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
     },
-    transactions::{
-        tari_amount::MicroMinotari,
-        test_helpers::{create_utxo, TestParams, TransactionSchema},
-        transaction_components::{
-            encrypted_data::PaymentId,
-            OutputFeatures,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-        },
-        transaction_protocol::transaction_initializer::SenderTransactionInitializer,
-        SenderTransactionProtocol,
-    },
-    txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
-use tari_script::{inputs, script, ExecutionStack};
+use tari_script::script;
 use tari_service_framework::reply_channel;
+use tari_transaction_components::{
+    key_manager::KeyManager,
+    tari_proof_of_work::Difficulty,
+    test_helpers::create_utxo,
+    transaction_components::covenants::Covenant,
+    MicroMinotari,
+};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
@@ -80,7 +65,7 @@ async fn inbound_get_metadata() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = BaseNodeConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -112,7 +97,7 @@ async fn inbound_get_metadata() {
 #[tokio::test]
 async fn inbound_fetch_kernel_by_excess_sig() {
     let network = Network::LocalNet;
-    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network);
     let mempool = new_mempool();
 
     let (block_event_sender, _) = broadcast::channel(50);
@@ -149,7 +134,7 @@ async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = BaseNodeConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -180,7 +165,7 @@ async fn inbound_fetch_headers() {
 #[tokio::test]
 async fn inbound_fetch_utxos() {
     let network = Network::LocalNet;
-    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network);
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
@@ -202,7 +187,7 @@ async fn inbound_fetch_utxos() {
     let utxo_1 = block0.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let (utxo_2, _, _) = create_utxo(
         MicroMinotari(10_000),
         &key_manager,
@@ -210,8 +195,7 @@ async fn inbound_fetch_utxos() {
         &script!(Nop).unwrap(),
         &Covenant::default(),
         MicroMinotari::zero(),
-    )
-    .await;
+    );
     let hash_2 = utxo_2.hash();
 
     // Only retrieve a subset of the actual hashes, including a fake hash in the list
@@ -232,7 +216,7 @@ async fn inbound_fetch_blocks() {
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = BaseNodeConsensusManager::builder(network).build().unwrap();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -263,178 +247,12 @@ async fn inbound_fetch_blocks() {
     }
 }
 
-async fn initialize_sender_transaction_protocol_for_overflow_test(
-    key_manager: &MemoryDbKeyManager,
-    txn_schema: TransactionSchema,
-) -> SenderTransactionInitializer<MemoryDbKeyManager> {
-    let constants = ConsensusManager::builder(Network::LocalNet)
-        .build()
-        .unwrap()
-        .consensus_constants(0)
-        .clone();
-    let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let change = TestParams::new(key_manager).await;
-    let script_public_key = key_manager
-        .get_public_key_at_key_id(&change.script_key_id)
-        .await
-        .unwrap();
-    stx_builder
-        .with_lock_height(txn_schema.lock_height)
-        .with_fee_per_gram(txn_schema.fee)
-        .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
-            ExecutionStack::default(),
-            change.script_key_id,
-            change.commitment_mask_key_id,
-            Covenant::default(),
-            TariAddress::default(),
-        );
-
-    for tx_input in &txn_schema.from {
-        stx_builder.with_input(tx_input.clone()).await.unwrap();
-    }
-    for tx_output in txn_schema.to {
-        let commitment_mask_key = key_manager
-            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-            .await
-            .unwrap();
-        let sender_offset = key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await
-            .unwrap();
-
-        let script_key_id = TariKeyId::Derived {
-            key: (&commitment_mask_key.key_id).into(),
-        };
-
-        let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
-        let input_data = match &txn_schema.input_data {
-            Some(data) => data.clone(),
-            None => inputs!(script_public_key),
-        };
-        let version = match txn_schema.output_version {
-            Some(data) => data,
-            None => TransactionOutputVersion::get_current_version(),
-        };
-        let output = WalletOutputBuilder::new(tx_output, commitment_mask_key.key_id)
-            .with_features(txn_schema.features.clone())
-            .with_script(txn_schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
-            .await
-            .unwrap()
-            .with_input_data(input_data)
-            .with_covenant(txn_schema.covenant.clone())
-            .with_version(version)
-            .with_sender_offset_public_key(sender_offset.pub_key)
-            .with_script_key(script_key_id.clone())
-            .sign_as_sender_and_receiver(key_manager, &sender_offset.key_id)
-            .await
-            .unwrap()
-            .try_build(key_manager)
-            .await
-            .unwrap();
-
-        stx_builder.with_output(output, sender_offset.key_id).await.unwrap();
-    }
-    for mut utxo in txn_schema.to_outputs {
-        let sender_offset_key = key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await
-            .unwrap();
-        let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
-        utxo.metadata_signature = key_manager
-            .get_metadata_signature(
-                &utxo.spending_key_id,
-                &utxo.value.into(),
-                &sender_offset_key.key_id,
-                &utxo.version,
-                &metadata_message,
-                utxo.features.range_proof_type,
-            )
-            .await
-            .unwrap();
-
-        stx_builder.with_output(utxo, sender_offset_key.key_id).await.unwrap();
-    }
-
-    stx_builder
-}
-
-#[tokio::test]
-async fn test_sender_transaction_protocol_for_overflow() {
-    let key_manager = create_memory_db_key_manager().unwrap();
-    let script = script!(Nop).unwrap();
-    let amount = MicroMinotari(u64::MAX); // This is the adversary's attack!
-    let output_features = OutputFeatures::default();
-    let covenant = Covenant::default();
-    let (utxo, spending_key_id, sender_offset_key_id) = create_utxo(
-        amount,
-        &key_manager,
-        &output_features,
-        &script,
-        &covenant,
-        MicroMinotari::zero(),
-    )
-    .await;
-
-    let wallet_output = WalletOutput::new_with_rangeproof(
-        TransactionOutputVersion::get_current_version(),
-        amount,
-        spending_key_id.clone(),
-        output_features,
-        script,
-        inputs!(key_manager.get_public_key_at_key_id(&spending_key_id).await.unwrap()),
-        spending_key_id,
-        key_manager
-            .get_public_key_at_key_id(&sender_offset_key_id)
-            .await
-            .unwrap(),
-        utxo.metadata_signature,
-        0,
-        covenant,
-        utxo.encrypted_data,
-        utxo.minimum_value_promise,
-        utxo.proof,
-        PaymentId::Empty,
-    );
-
-    // Test overflow in inputs
-    let txn_schema =
-        // This is the adversary's attack!
-        txn_schema!(from: vec![wallet_output.clone(), wallet_output.clone()], to: vec![MicroMinotari(5_000)]);
-    let stx_builder = initialize_sender_transaction_protocol_for_overflow_test(&key_manager, txn_schema).await;
-    assert_eq!(
-        format!("{:?}", stx_builder.build().await.unwrap_err()),
-        "Total inputs being spent amount overflow"
-    );
-
-    // Test overflow in outputs to self
-    let txn_schema =
-        // This is the adversary's attack!
-        txn_schema!(from: vec![wallet_output.clone()], to: vec![MicroMinotari(5_000), MicroMinotari(u64::MAX)]);
-    let stx_builder = initialize_sender_transaction_protocol_for_overflow_test(&key_manager, txn_schema).await;
-    assert_eq!(
-        format!("{:?}", stx_builder.build().await.unwrap_err()),
-        "Total outputs to self amount overflow"
-    );
-
-    // Test overflow in total input value (inputs + outputs to self + fee)
-    let txn_schema =
-        // This is the adversary's attack!
-        txn_schema!(from: vec![wallet_output.clone()], to: vec![MicroMinotari(u64::MAX)]);
-    let stx_builder = initialize_sender_transaction_protocol_for_overflow_test(&key_manager, txn_schema).await;
-    assert_eq!(
-        format!("{:?}", stx_builder.build().await.unwrap_err()),
-        "Total input value overflow"
-    );
-}
-
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -476,7 +294,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (block2, _) = append_block(
         &store,
@@ -486,7 +303,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (block3, _) = append_block(
         &store,
@@ -496,7 +312,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (block4, _) = append_block(
         &store,
@@ -506,7 +321,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
     let (_block5, _) = append_block(
         &store,
@@ -516,7 +330,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Difficulty::min(),
         &key_manager,
     )
-    .await
     .unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch

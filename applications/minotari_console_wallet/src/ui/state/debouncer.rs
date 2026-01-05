@@ -26,7 +26,7 @@ use std::{
 };
 
 use log::*;
-use minotari_wallet::output_manager_service::handle::OutputManagerHandle;
+use minotari_wallet::{output_manager_service::handle::OutputManagerHandle, WalletKeyManager};
 use tokio::{
     sync::{broadcast, RwLock},
     time,
@@ -34,13 +34,12 @@ use tokio::{
 };
 
 use crate::ui::state::AppStateInner;
-
 const LOG_TARGET: &str = "wallet::console_wallet::debouncer";
 
 #[derive(Clone)]
 pub(crate) struct BalanceEnquiryDebouncer {
     app_state_inner: Arc<RwLock<AppStateInner>>,
-    output_manager_service: OutputManagerHandle,
+    output_manager_service: OutputManagerHandle<WalletKeyManager>,
     balance_enquiry_cooldown_period: Duration,
     tx: broadcast::Sender<()>,
 }
@@ -49,7 +48,7 @@ impl BalanceEnquiryDebouncer {
     pub fn new(
         app_state_inner: Arc<RwLock<AppStateInner>>,
         balance_enquiry_cooldown_period: Duration,
-        output_manager_service: OutputManagerHandle,
+        output_manager_service: OutputManagerHandle<WalletKeyManager>,
     ) -> Self {
         // This channel must only be size 1; the debouncer will ensure that the balance is updated timeously
         let (tx, _) = broadcast::channel(1);
@@ -80,7 +79,7 @@ impl BalanceEnquiryDebouncer {
             );
             let mut inner = self.app_state_inner.write().await;
             if let Err(e) = inner.refresh_balance(balance).await {
-                warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+                warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
             }
         }
         loop {
@@ -91,7 +90,7 @@ impl BalanceEnquiryDebouncer {
                         balance_enquiry_events.recv()
                     ).await {
                         if let Err(broadcast::error::RecvError::Lagged(n)) = result {
-                            trace!(target: LOG_TARGET, "Balance enquiry debouncer lagged {} update requests", n);
+                            trace!(target: LOG_TARGET, "Balance enquiry debouncer lagged {n} update requests");
                         }
                         match result {
                             Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {
@@ -108,11 +107,11 @@ impl BalanceEnquiryDebouncer {
                                         );
                                         let mut inner = self.app_state_inner.write().await;
                                         if let Err(e) = inner.refresh_balance(balance).await {
-                                            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+                                            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
                                         }
                                     }
                                     Err(e) => {
-                                        warn!(target: LOG_TARGET, "Could not obtain balance ({})", e);
+                                        warn!(target: LOG_TARGET, "Could not obtain balance ({e})");
                                     }
                                 }
                             }

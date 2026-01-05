@@ -29,26 +29,30 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
+    burn_proof::{BurnClaimProof, EncodedMerkleProof},
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, Transaction, TransactionOutput},
+use tari_transaction_components::{
+    transaction_components::{MemoField, Transaction, TransactionKernel, TransactionOutput},
+    MicroMinotari,
 };
 
-use crate::transaction_service::{
-    error::TransactionStorageError,
-    storage::{
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+use crate::{
+    storage::sqlite_db::models::DbBurnProof,
+    transaction_service::{
+        error::TransactionStorageError,
+        storage::{
+            models::{
+                CompletedTransaction,
+                InboundTransaction,
+                OutboundTransaction,
+                TxCancellationReason,
+                WalletTransaction,
+            },
+            sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
         },
-        sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
     },
 };
 
@@ -115,6 +119,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
         tx_id: TxId,
         cancelled: bool,
     ) -> Result<(), TransactionStorageError>;
+    /// Set cancellation on Completed transaction, this will update the transaction status
+    fn set_completed_transaction_cancellation_status(
+        &self,
+        tx_id: TxId,
+        cancelled: bool,
+    ) -> Result<(), TransactionStorageError>;
     /// Search all pending transaction for the provided tx_id and if it exists return the public key of the counterparty
     fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
@@ -133,14 +143,14 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
-        num_confirmations: u64,
         must_be_confirmed: bool,
-        status: &TransactionStatus,
+        status: LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Reset optional 'mined height' and 'mined in block' fields to nothing
     fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
+    fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
     /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
     fn get_pending_inbound_transaction_sender_info(
         &self,
@@ -161,7 +171,42 @@ pub trait TransactionBackend: Send + Sync + Clone {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn find_completed_transactions_filter_addresses(
+        &self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn get_transaction_with_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
+
+    fn find_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError>;
+    fn insert_burn_proof(
+        &self,
+        output_hash: FixedHash,
+        proof: &BurnClaimProof,
+
+        kernel: &TransactionKernel,
+    ) -> Result<(), TransactionStorageError>;
+    fn update_burn_proof_set_merkle_proof(
+        &self,
+        output_hash: &FixedHash,
+        merkle_proof: &EncodedMerkleProof,
+    ) -> Result<(), TransactionStorageError>;
+
+    fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
+
+    fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -171,10 +216,10 @@ pub enum DbKey {
     CompletedTransaction(TxId),
     PendingOutboundTransactions,
     PendingInboundTransactions,
-    CompletedTransactions,
+    CompletedTransactions(u64),
     CancelledPendingOutboundTransactions,
     CancelledPendingInboundTransactions,
-    CancelledCompletedTransactions,
+    CancelledCompletedTransactions(u64),
     CancelledPendingOutboundTransaction(TxId),
     CancelledPendingInboundTransaction(TxId),
     AnyTransaction(TxId),
@@ -211,7 +256,7 @@ impl fmt::Debug for DbKey {
             PendingInboundTransactions => {
                 write!(f, "PendingInboundTransactions")
             },
-            CompletedTransactions => {
+            CompletedTransactions(_) => {
                 write!(f, "CompletedTransactions ")
             },
             CancelledPendingOutboundTransactions => {
@@ -220,7 +265,7 @@ impl fmt::Debug for DbKey {
             CancelledPendingInboundTransactions => {
                 write!(f, "CancelledPendingInboundTransactions")
             },
-            CancelledCompletedTransactions => {
+            CancelledCompletedTransactions(_) => {
                 write!(f, "CancelledCompletedTransactions")
             },
             CancelledPendingOutboundTransaction(tx_id) => {
@@ -353,6 +398,10 @@ where T: TransactionBackend + 'static
                 tx_id,
                 Box::new(transaction),
             )))
+    }
+
+    pub fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError> {
+        self.db.get_last_scanned_height()
     }
 
     pub fn get_pending_outbound_transaction(
@@ -489,10 +538,14 @@ where T: TransactionBackend + 'static
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t =
-            self.db
-                .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash, block_height)?;
+        let t = self.db.find_completed_transactions_filter_payment_id_block_hash(
+            payment_id,
+            block_hash,
+            block_height,
+            max_limit,
+        )?;
         Ok(t)
     }
 
@@ -510,6 +563,26 @@ where T: TransactionBackend + 'static
     /// This method returns all completed transactions that must be broadcast
     pub fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.db.get_transactions_to_be_broadcast()
+    }
+
+    pub fn get_transaction_to_be_broadcast(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
+        let key = DbKey::CompletedTransaction(tx_id);
+        let t = match self.db.fetch(&DbKey::CompletedTransaction(tx_id)) {
+            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::CompletedTransaction(pt))) => {
+                if pt.status == LegacyTransactionStatus::Completed || pt.status == LegacyTransactionStatus::Broadcast {
+                    Ok(pt)
+                } else {
+                    Err(TransactionStorageError::ValueNotFound(key))
+                }
+            },
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        }?;
+        Ok(*t)
     }
 
     pub fn get_completed_transaction_cancelled_or_not(
@@ -607,12 +680,25 @@ where T: TransactionBackend + 'static
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash, block_height)
+        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash, block_height, max_limit)
     }
 
-    pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(None, true, None, None)
+    pub fn get_completed_transactions_by_addresses(
+        &self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db
+            .find_completed_transactions_filter_addresses(source_address, destination_address)
+    }
+
+    pub fn get_cancelled_completed_transactions(
+        &self,
+        max_limit: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.get_completed_transactions_by_cancelled(None, true, None, None, max_limit)
     }
 
     pub fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
@@ -640,11 +726,12 @@ where T: TransactionBackend + 'static
         cancelled: bool,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let key = if cancelled {
-            DbKey::CancelledCompletedTransactions
+            DbKey::CancelledCompletedTransactions(max_limit)
         } else {
-            DbKey::CompletedTransactions
+            DbKey::CompletedTransactions(max_limit)
         };
         match (payment_id.is_none(), block_hash.is_none(), block_height.is_none()) {
             (true, true, true) => {
@@ -661,10 +748,12 @@ where T: TransactionBackend + 'static
                 }?;
                 Ok(t)
             },
-            (_, _, _) => {
-                self.db
-                    .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash, block_height)
-            },
+            (_, _, _) => self.db.find_completed_transactions_filter_payment_id_block_hash(
+                payment_id,
+                block_hash,
+                block_height,
+                max_limit,
+            ),
         }
     }
 
@@ -718,19 +807,22 @@ where T: TransactionBackend + 'static
         amount: MicroMinotari,
         source_address: TariAddress,
         destination_address: TariAddress,
-        status: TransactionStatus,
+        status: LegacyTransactionStatus,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
-        let transaction = CompletedTransaction::new(
+        let hash = scanned_output.hash();
+        let fee = payment_id.get_fee().unwrap_or_default();
+        let sent_hashes = payment_id.get_sent_hashes().unwrap_or_default();
+        let transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             source_address,
             destination_address,
             amount,
-            MicroMinotari::from(0),
+            fee,
             Transaction::new(
                 Vec::new(),
                 vec![scanned_output],
@@ -744,6 +836,9 @@ where T: TransactionBackend + 'static
             current_height,
             mined_timestamp,
             payment_id,
+            sent_hashes,
+            vec![hash],
+            vec![],
         )?;
 
         self.db
@@ -766,22 +861,24 @@ where T: TransactionBackend + 'static
         self.db.mark_all_non_coinbases_transactions_as_unvalidated()
     }
 
+    pub fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        self.db.mark_all_rejected_transactions_as_unvalidated()
+    }
+
     pub fn set_transaction_mined_height(
         &self,
         tx_id: TxId,
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
-        num_confirmations: u64,
         must_be_confirmed: bool,
-        status: &TransactionStatus,
+        status: LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,
             mined_height,
             mined_in_block,
             mined_timestamp,
-            num_confirmations,
             must_be_confirmed,
             status,
         )
@@ -796,6 +893,48 @@ where T: TransactionBackend + 'static
         }?;
         Ok(t)
     }
+
+    pub fn get_transaction_with_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
+        self.db.get_transaction_with_payref(payref)
+    }
+
+    pub fn get_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db
+            .find_completed_transactions_paginated(offset, limit, status_filter)
+    }
+
+    pub fn insert_burn_proof(
+        &self,
+        output_hash: FixedHash,
+        proof: &BurnClaimProof,
+        kernel: &TransactionKernel,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.insert_burn_proof(output_hash, proof, kernel)
+    }
+
+    pub fn update_burn_proof_set_merkle_proof(
+        &self,
+        output_hash: &FixedHash,
+        merkle_proof: &EncodedMerkleProof,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.update_burn_proof_set_merkle_proof(output_hash, merkle_proof)
+    }
+
+    pub fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError> {
+        self.db.fetch_burn_proof(output_hash)
+    }
+
+    pub fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {
+        self.db.process_reorg(reorg_height)
+    }
 }
 
 impl Display for DbKey {
@@ -807,10 +946,10 @@ impl Display for DbKey {
             DbKey::CompletedTransaction(_) => f.write_str("Completed Transaction"),
             DbKey::PendingOutboundTransactions => f.write_str("All Pending Outbound Transactions"),
             DbKey::PendingInboundTransactions => f.write_str("All Pending Inbound Transactions"),
-            DbKey::CompletedTransactions => f.write_str("All Complete Transactions"),
+            DbKey::CompletedTransactions(_) => f.write_str("All Complete Transactions"),
             DbKey::CancelledPendingOutboundTransactions => f.write_str("All Cancelled Pending Inbound Transactions"),
             DbKey::CancelledPendingInboundTransactions => f.write_str("All Cancelled Pending Outbound Transactions"),
-            DbKey::CancelledCompletedTransactions => f.write_str("All Cancelled Complete Transactions"),
+            DbKey::CancelledCompletedTransactions(_) => f.write_str("All Cancelled Complete Transactions"),
             DbKey::CancelledPendingOutboundTransaction(_) => f.write_str("Cancelled Pending Outbound Transaction"),
             DbKey::CancelledPendingInboundTransaction(_) => f.write_str("Cancelled Pending Inbound Transaction"),
             DbKey::AnyTransaction(_) => f.write_str("Any Transaction"),
@@ -835,15 +974,13 @@ impl Display for DbValue {
 fn log_error<T>(req: DbKey, err: TransactionStorageError) -> Result<T, TransactionStorageError> {
     error!(
         target: LOG_TARGET,
-        "Database access error on request: {}: {}",
-        req,
-        err.to_string()
+        "Database access error on request: {req}: {err}"
     );
     Err(err)
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, TransactionStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
-    error!(target: LOG_TARGET, "{}", msg);
+    let msg = format!("Unexpected result for database query {req}. Respreqonse: {res}");
+    error!(target: LOG_TARGET, "{msg}");
     Err(TransactionStorageError::UnexpectedResult(msg))
 }

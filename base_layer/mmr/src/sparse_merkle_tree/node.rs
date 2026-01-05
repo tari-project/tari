@@ -111,7 +111,7 @@ hash_type!(ValueHash);
 hash_type!(NodeKey);
 
 impl NodeKey {
-    pub fn as_directions(&self) -> PathIterator {
+    pub fn as_directions(&self) -> PathIterator<'_> {
         PathIterator::new(self)
     }
 }
@@ -126,7 +126,7 @@ pub struct PathIterator<'a> {
 }
 
 impl PathIterator<'_> {
-    pub fn new(key: &NodeKey) -> PathIterator {
+    pub fn new(key: &NodeKey) -> PathIterator<'_> {
         PathIterator {
             cursor_front: 0,
             // KEY_LENGTH is currently 32 bytes, so this will not overflow
@@ -143,7 +143,7 @@ impl Iterator for PathIterator<'_> {
         if self.cursor_front >= self.cursor_back {
             return None;
         }
-        let bit = get_bit(self.key.as_slice(), self.cursor_front);
+        let bit = get_bit(self.key.as_slice(), self.cursor_front)?;
         self.cursor_front += 1;
         Some(bit_to_dir(bit))
     }
@@ -161,7 +161,7 @@ impl DoubleEndedIterator for PathIterator<'_> {
             return None;
         }
         self.cursor_back = self.cursor_back.checked_sub(1)?;
-        let bit = get_bit(self.key.as_slice(), self.cursor_back);
+        let bit = get_bit(self.key.as_slice(), self.cursor_back)?;
         Some(bit_to_dir(bit))
     }
 
@@ -354,7 +354,7 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
                 return Err(SMTError::InvalidBranch(msg));
             },
         };
-        let root_key = height_key(&self.key, height);
+        let root_key = height_key(&self.key, height).ok_or(SMTError::InvalidBranch("Invalid index".to_string()))?;
         if num_branches == 1 {
             let (left, right) = if self.key < sibling.key {
                 (Leaf(self), Leaf(sibling))
@@ -364,7 +364,7 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
             let root = BranchNode::new(height, root_key, left, right)?;
             Ok(root)
         } else {
-            let (left, right) = if get_bit(self.key.as_slice(), height) == 0 {
+            let (left, right) = if get_bit(self.key.as_slice(), height) == Some(0) {
                 (Branch(self.build_tree(height + 1, sibling)?), Empty(EmptyNode {}))
             } else {
                 (Empty(EmptyNode {}), Branch(self.build_tree(height + 1, sibling)?))

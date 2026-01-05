@@ -102,9 +102,7 @@ where
 
     /// This function returns the hash of the node index provided indexed from 0
     pub fn get_node_hash(&self, node_index: usize) -> Result<Option<Hash>, MerkleMountainRangeError> {
-        self.hashes
-            .get(node_index)
-            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
+        Ok(self.hashes.get(node_index))
     }
 
     /// Returns the number of leaf nodes in the MMR.
@@ -155,12 +153,7 @@ where
         .ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         Ok(peaks
             .into_iter()
-            .map(|i| {
-                self.hashes
-                    .get(i)
-                    .unwrap()
-                    .expect("find_peaks returned invalid indexes")
-            })
+            .map(|i| self.hashes.get(i).expect("find_peaks returned invalid indexes"))
             .fold(hasher, |hasher, h| hasher.chain_update(h)))
     }
 
@@ -188,11 +181,7 @@ where
                 left_sibling < pos,
                 "left_sibling was greater than the reported number of elements contained in the impl of ArrayLike"
             );
-            let left_hash = self
-                .hashes
-                .get(left_sibling)
-                .map_err(|error| MerkleMountainRangeError::backend_error(&error))?
-                .unwrap();
+            let left_hash = self.hashes.get(left_sibling).unwrap();
             peak *= 2;
             pos += 1;
             let new_hash = hash_together::<D>(&left_hash, &last_hash);
@@ -242,14 +231,12 @@ where
     }
 
     /// Search for the leaf index of the given hash in the leaf nodes of the MMR.
-    pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<u32>, MerkleMountainRangeError> {
+    pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<LeafIndex>, MerkleMountainRangeError> {
         Ok(match self.find_node_index(hash)? {
             Some(node_index) => {
                 if is_leaf(node_index) {
-                    let node_index = node_index
-                        .try_into()
-                        .map_err(|_| MerkleMountainRangeError::MaximumSizeReached)?;
-                    Some(leaf_index(node_index))
+                    let leaf_index = leaf_index(node_index).ok_or(MerkleMountainRangeError::InvalidLeafIndex)?;
+                    Some(LeafIndex(leaf_index))
                 } else {
                     None
                 }

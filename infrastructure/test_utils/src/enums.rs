@@ -87,7 +87,7 @@ macro_rules! unpack_enum {
             v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
         };
     };
-    ($( $pattern:pat )|+ = $enum:expr) => {
+    ($( $pattern:pat_param )|+ = $enum:expr) => {
          match $enum {
             $( $pattern )|+ => {},
             v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),

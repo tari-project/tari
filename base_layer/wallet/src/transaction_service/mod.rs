@@ -22,27 +22,9 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use futures::{Stream, StreamExt};
 use log::*;
 use tari_common::configuration::Network;
-use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
-use tari_comms_dht::Dht;
-use tari_core::{
-    consensus::ConsensusManager,
-    proto::base_node as base_node_proto,
-    transactions::{
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::proto::protocol as proto,
-        CryptoFactories,
-    },
-};
-use tari_p2p::{
-    comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
-    services::utils::map_decode,
-    tari_message::TariMessageType,
-};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -50,13 +32,18 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
+};
 use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::handle::OutputManagerHandle,
-    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -72,147 +59,67 @@ pub mod handle;
 pub mod protocols;
 pub mod service;
 pub mod storage;
-pub mod tasks;
 mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
-const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
-pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface>
+pub struct TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
-    W: WalletBackend,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     config: TransactionServiceConfig,
-    subscription_factory: Arc<SubscriptionFactory>,
     tx_backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     network: Network,
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
-    wallet_database: Option<WalletDatabase<W>>,
-    wallet_type: Arc<WalletType>,
-    _phantom_data: PhantomData<TKeyManagerInterface>,
+    wallet_type: Arc<LegacyWalletType>,
+    _phantom_data_key_manager: PhantomData<TKeyManagerInterface>,
+    _phantom_data_http_interface: PhantomData<THttpClientFactory>,
 }
 
-impl<T, W, TKeyManagerInterface> TransactionServiceInitializer<T, W, TKeyManagerInterface>
+impl<T, TKeyManagerInterface, THttpClientFactory>
+    TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
-    W: WalletBackend,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     pub fn new(
         config: TransactionServiceConfig,
-        subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
         node_identity: Arc<NodeIdentity>,
         network: Network,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
-        wallet_database: WalletDatabase<W>,
-        wallet_type: Arc<WalletType>,
+        wallet_type: Arc<LegacyWalletType>,
     ) -> Self {
         Self {
             config,
-            subscription_factory,
             tx_backend: Some(backend),
             node_identity,
             network,
             consensus_manager,
             factories,
-            wallet_database: Some(wallet_database),
             wallet_type,
-            _phantom_data: Default::default(),
+            _phantom_data_key_manager: Default::default(),
+            _phantom_data_http_interface: Default::default(),
         }
-    }
-
-    /// Get a stream of inbound Text messages
-    fn transaction_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::SenderPartialTransaction
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionSenderMessage>)
-    }
-
-    fn transaction_reply_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::ReceiverPartialTransactionReply
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::RecipientSignedMessage>)
-    }
-
-    fn transaction_finalized_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionFinalized
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionFinalizedMessage>)
-    }
-
-    fn base_node_response_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::BaseNodeResponse
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
-    }
-
-    fn transaction_cancelled_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionCancelled
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionCancelledMessage>)
     }
 }
 
 #[async_trait]
-impl<T, W, TKeyManagerInterface> ServiceInitializer for TransactionServiceInitializer<T, W, TKeyManagerInterface>
+impl<T, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
+    for TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend + 'static,
-    W: WalletBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
-        let transaction_stream = self.transaction_stream();
-        let transaction_reply_stream = self.transaction_reply_stream();
-        let transaction_finalized_stream = self.transaction_finalized_stream();
-        let base_node_response_stream = self.base_node_response_stream();
-        let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
         let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
 
@@ -226,11 +133,6 @@ where
             .take()
             .expect("Cannot start Transaction Service without providing a backend");
 
-        let wallet_database = self
-            .wallet_database
-            .take()
-            .expect("Cannot start Transaction Service without providing a wallet database");
-
         let node_identity = self.node_identity.clone();
         let consensus_manager = self.consensus_manager.clone();
         let factories = self.factories.clone();
@@ -239,26 +141,18 @@ where
         let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
-            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
-            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
-            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
 
             let result = TransactionService::new(
                 config,
                 TransactionDatabase::new(tx_backend),
-                wallet_database,
                 receiver,
-                transaction_stream,
-                transaction_reply_stream,
-                transaction_finalized_stream,
-                base_node_response_stream,
-                transaction_cancelled_stream,
                 output_manager_service,
                 core_key_manager_service,
-                outbound_message_service,
                 connectivity,
                 publisher,
                 node_identity,
@@ -276,7 +170,7 @@ where
             .await;
 
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Transaction Service error: {}", e);
+                error!(target: LOG_TARGET, "Transaction Service error: {e}");
             }
             info!(target: LOG_TARGET, "Transaction Service shutdown");
         });

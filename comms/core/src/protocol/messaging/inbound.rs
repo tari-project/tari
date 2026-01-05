@@ -66,6 +66,7 @@ impl InboundMessaging {
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = self.connection.peer_node_id();
+
         #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         debug!(

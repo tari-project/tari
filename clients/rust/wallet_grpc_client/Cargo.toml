@@ -1,21 +1,22 @@
 [package]
 name = "minotari_wallet_grpc_client"
-version = "0.1.0"
-edition = "2021"
 description = "Base node GRPC client"
-authors = ["The Tari Development Community"]
-repository = "https://github.com/tari-project/tari"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
 homepage = "https://tari.com"
 readme = "README.md"
-license = "BSD-3-Clause"
+license.workspace = true
 
 [dependencies]
-minotari_app_grpc = { path = "../../../applications/minotari_app_grpc" }
-tari_common_types = { path = "../../../base_layer/common_types" }
-tari_common = { path = "../../../common" }
+minotari_app_grpc = { workspace = true }
+tari_common_types = { workspace = true }
+tari_common = { workspace = true }
 
-thiserror = "1.0.35"
+thiserror = { workspace = true }
 tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros"] }
+tokio = { workspace = true, features = ["macros"] }

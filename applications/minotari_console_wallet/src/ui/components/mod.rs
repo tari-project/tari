@@ -25,7 +25,6 @@ pub mod base_node;
 mod component;
 pub mod log_tab;
 pub(crate) mod menu;
-pub mod network_tab;
 pub mod notification_tab;
 pub mod receive_tab;
 pub mod send_tab;
@@ -34,9 +33,7 @@ pub mod tabs_container;
 pub mod transactions_tab;
 pub use self::component::*;
 pub mod burn_tab;
-pub mod contacts_tab;
 pub mod events_component;
-pub mod register_template_tab;
 
 #[derive(PartialEq, Eq)]
 pub enum KeyHandled {

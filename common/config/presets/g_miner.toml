@@ -48,5 +48,5 @@
 # Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
 #range_proof_type = "revealed_value"
 
-# mine sha3x, or set to RandomXT to mine randomx using tari randomx
+# The mining algorithm to use - options are Sha3x or RandomXT (the Tari version of RandomX). (default = "Sha3X")
 #proof_of_work_algo = "Sha3X"

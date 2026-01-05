@@ -1,0 +1,280 @@
+// Copyright 2019. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    cmp::Ordering,
+    fmt,
+    fmt::{Display, Formatter},
+};
+
+use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, PrivateKey},
+};
+use tari_max_size::MaxSizeBytes;
+use tari_sidechain::EvictionProof;
+
+use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
+use crate::transaction_components::{
+    range_proof_type::RangeProofType,
+    side_chain::SideChainFeature,
+    CodeTemplateRegistration,
+    ConfidentialOutputData,
+    OutputType,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
+};
+
+/// Coinbase outputs are allowed to have metadata, but it has the following length limit
+pub type CoinBaseExtra = MaxSizeBytes<258>;
+
+/// Options for UTXO's
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
+pub struct OutputFeatures {
+    pub version: OutputFeaturesVersion,
+    /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
+    pub output_type: OutputType,
+    /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
+    /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
+    pub maturity: u64,
+    /// Additional data for coinbase transactions. This field MUST be empty if the output is not a coinbase
+    /// transaction. This is enforced in [AggregatedBody::check_output_features].
+    ///
+    /// For coinbase outputs, the maximum length of this field is determined by the consensus constant,
+    /// `coinbase_output_features_extra_max_length`.
+    #[serde(with = "tari_utilities::serde::hex")]
+    pub coinbase_extra: CoinBaseExtra,
+    /// Features that are specific to a side chain
+    pub sidechain_feature: Option<SideChainFeature>,
+    /// The type of range proof used in the output
+    pub range_proof_type: RangeProofType,
+}
+
+impl OutputFeatures {
+    pub fn new(
+        version: OutputFeaturesVersion,
+        output_type: OutputType,
+        maturity: u64,
+        coinbase_extra: CoinBaseExtra,
+        sidechain_feature: Option<SideChainFeature>,
+        range_proof_type: RangeProofType,
+    ) -> OutputFeatures {
+        OutputFeatures {
+            version,
+            output_type,
+            maturity,
+            coinbase_extra,
+            sidechain_feature,
+            range_proof_type,
+        }
+    }
+
+    pub fn new_current_version(
+        flags: OutputType,
+        maturity: u64,
+        coinbase_extra: CoinBaseExtra,
+        sidechain_feature: Option<SideChainFeature>,
+        range_proof_type: RangeProofType,
+    ) -> OutputFeatures {
+        OutputFeatures::new(
+            OutputFeaturesVersion::get_current_version(),
+            flags,
+            maturity,
+            coinbase_extra,
+            sidechain_feature,
+            range_proof_type,
+        )
+    }
+
+    pub fn create_coinbase(
+        maturity_height: u64,
+        extra: Option<CoinBaseExtra>,
+        range_proof_type: RangeProofType,
+    ) -> OutputFeatures {
+        let coinbase_extra = extra.unwrap_or_default();
+        OutputFeatures {
+            output_type: OutputType::Coinbase,
+            maturity: maturity_height,
+            coinbase_extra,
+            range_proof_type,
+            ..Default::default()
+        }
+    }
+
+    /// creates output features for a burned output
+    pub fn create_burn_output() -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::Burn,
+            ..Default::default()
+        }
+    }
+
+    /// creates output features for a burned output with confidential output data
+    pub fn create_burn_confidential_output(
+        claim_public_key: CompressedPublicKey,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let output_data = ConfidentialOutputData { claim_public_key };
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, output_data.sidechain_id_message()));
+
+        OutputFeatures {
+            output_type: OutputType::Burn,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ConfidentialOutput(output_data),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// Creates template registration output features
+    pub fn for_template_registration(
+        template_registration: CodeTemplateRegistration,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let sidechain_id =
+            sidechain_deployment_key.map(|k| SideChainId::sign(k, template_registration.sidechain_id_message()));
+
+        OutputFeatures {
+            output_type: OutputType::CodeTemplateRegistration,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::CodeTemplateRegistration(template_registration),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_validator_node_registration(
+        signature: ValidatorNodeSignature,
+        claim_public_key: CompressedPublicKey,
+        sidechain_deployment_key: Option<&PrivateKey>,
+        vn_epoch: VnEpoch,
+    ) -> OutputFeatures {
+        let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key, vn_epoch);
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, vn_reg.sidechain_id_message()));
+        OutputFeatures {
+            output_type: OutputType::ValidatorNodeRegistration,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ValidatorNodeRegistration(Box::new(vn_reg)),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_validator_node_exit(
+        signature: ValidatorNodeSignature,
+        sidechain_deployment_key: Option<&PrivateKey>,
+        max_epoch: VnEpoch,
+    ) -> OutputFeatures {
+        let exit = ValidatorNodeExit::new(signature, max_epoch);
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
+
+        OutputFeatures {
+            output_type: OutputType::ValidatorNodeExit,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ValidatorNodeExit(exit),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_validator_node_eviction(
+        eviction_proof: EvictionProof,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let sidechain_id =
+            sidechain_deployment_key.map(|k| SideChainId::sign(k, eviction_proof.sidechain_id_message()));
+        OutputFeatures {
+            output_type: OutputType::SidechainProof,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::EvictionProof(Box::new(eviction_proof)),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn sidechain_id(&self) -> Option<&SideChainId> {
+        self.sidechain_feature.as_ref().and_then(|s| s.sidechain_id())
+    }
+
+    pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.validator_node_registration())
+    }
+
+    pub fn code_template_registration(&self) -> Option<&CodeTemplateRegistration> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.code_template_registration())
+    }
+
+    pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.confidential_output_data())
+    }
+
+    pub fn is_coinbase(&self) -> bool {
+        matches!(self.output_type, OutputType::Coinbase)
+    }
+}
+
+impl Default for OutputFeatures {
+    fn default() -> Self {
+        OutputFeatures::new_current_version(
+            OutputType::default(),
+            0,
+            CoinBaseExtra::default(),
+            None,
+            RangeProofType::default(),
+        )
+    }
+}
+
+impl PartialOrd for OutputFeatures {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OutputFeatures {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.maturity.cmp(&other.maturity)
+    }
+}
+
+impl Display for OutputFeatures {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "OutputFeatures: Flags = {:?}, Maturity = {}",
+            self.output_type, self.maturity
+        )
+    }
+}

@@ -26,13 +26,18 @@ use multiaddr::Multiaddr;
 use tokio::net::TcpStream;
 
 use super::Transport;
-use crate::transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport};
+use crate::{
+    transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport},
+    types::TransportProtocol,
+    utils::network::supports_ipv6,
+};
 
 /// Transport implementation for TCP with Tor support
 #[derive(Clone, Default)]
 pub struct TcpWithTorTransport {
     socks_transport: Option<SocksTransport>,
     tcp_transport: TcpTransport,
+    supported_protocols: Vec<TransportProtocol>,
 }
 
 impl TcpWithTorTransport {
@@ -41,6 +46,9 @@ impl TcpWithTorTransport {
         self.socks_transport = Some(SocksTransport::new(socks_config.clone()));
         // Resolve DNS using the tor proxy
         self.tcp_transport.set_dns_resolver(TorDnsResolver::new(socks_config));
+        if !self.supported_protocols.contains(&TransportProtocol::Onion) {
+            self.supported_protocols.push(TransportProtocol::Onion);
+        }
         self
     }
 
@@ -53,7 +61,14 @@ impl TcpWithTorTransport {
 
     /// Create a new TcpTransport
     pub fn new() -> Self {
-        Default::default()
+        let mut supported_protocols = vec![TransportProtocol::Ipv4];
+        if supports_ipv6() {
+            supported_protocols.push(TransportProtocol::Ipv6);
+        }
+        Self {
+            supported_protocols,
+            ..Default::default()
+        }
     }
 
     pub fn tcp_transport_mut(&mut self) -> &mut TcpTransport {
@@ -75,7 +90,7 @@ impl Transport for TcpWithTorTransport {
         if addr.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("Invalid address '{}'", addr),
+                format!("Invalid address '{addr}'"),
             ));
         }
 
@@ -85,8 +100,7 @@ impl Transport for TcpWithTorTransport {
                     let socket = transport.dial(addr).await?;
                     Ok(socket)
                 },
-                None => Err(io::Error::new(
-                    io::ErrorKind::Other,
+                None => Err(io::Error::other(
                     "Tor SOCKS proxy is not set for TCP transport. Cannot dial peer with onion addresses.".to_owned(),
                 )),
             }
@@ -94,5 +108,9 @@ impl Transport for TcpWithTorTransport {
             let socket = self.tcp_transport.dial(addr).await?;
             Ok(socket)
         }
+    }
+
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        self.supported_protocols.clone()
     }
 }

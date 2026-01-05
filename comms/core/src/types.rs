@@ -22,6 +22,8 @@
 
 //! Common Tari comms types
 
+use multiaddr::{Multiaddr, Protocol};
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     compressed_key::CompressedKey,
     dhke::DiffieHellmanSharedSecret,
@@ -31,12 +33,8 @@ use tari_crypto::{
     signatures::{CompressedSchnorrSignature, SchnorrSignature},
 };
 use tari_storage::lmdb_store::LMDBStore;
-#[cfg(test)]
-use tari_storage::HashmapDatabase;
-#[cfg(not(test))]
-use tari_storage::LMDBWrapper;
 
-use crate::peer_manager::{Peer, PeerId};
+use crate::peer_manager::database::PeerDatabaseSql;
 
 /// Public key type
 pub type CommsPublicKey = CompressedKey<RistrettoPublicKey>;
@@ -56,9 +54,74 @@ pub type CommsRng = rand::rngs::OsRng;
 /// Datastore and Database used for persistence storage
 pub type CommsDataStore = LMDBStore;
 
-#[cfg(not(test))]
-pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
-#[cfg(test)]
-pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
+pub type CommsDatabase = PeerDatabaseSql;
+
+/// Specify the address protocol
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum TransportProtocol {
+    Ipv4,
+    Ipv6,
+    Onion,
+    Memory,
+}
+
+impl TransportProtocol {
+    pub fn get_all() -> Vec<TransportProtocol> {
+        vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+            TransportProtocol::Onion,
+            TransportProtocol::Memory,
+        ]
+    }
+
+    pub fn get_prefix(&self) -> &str {
+        match self {
+            TransportProtocol::Ipv4 => "/ip4",
+            TransportProtocol::Ipv6 => "/ip6",
+            TransportProtocol::Onion => "/onion",
+            TransportProtocol::Memory => "/memory",
+        }
+    }
+}
+
+impl From<Multiaddr> for TransportProtocol {
+    fn from(addr: Multiaddr) -> Self {
+        match addr.iter().next() {
+            Some(Protocol::Ip4(_)) => TransportProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => TransportProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => TransportProtocol::Onion,
+            Some(Protocol::Onion3(_)) => TransportProtocol::Onion,
+            Some(Protocol::Memory(_)) => TransportProtocol::Memory,
+            _ => TransportProtocol::Ipv4,
+        }
+    }
+}
+
+impl From<&Multiaddr> for TransportProtocol {
+    fn from(addr: &Multiaddr) -> Self {
+        match addr.iter().next() {
+            Some(Protocol::Ip4(_)) => TransportProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => TransportProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => TransportProtocol::Onion,
+            Some(Protocol::Onion3(_)) => TransportProtocol::Onion,
+            Some(Protocol::Memory(_)) => TransportProtocol::Memory,
+            _ => TransportProtocol::Ipv4,
+        }
+    }
+}
+
+impl From<&Multiaddr> for &TransportProtocol {
+    fn from(addr: &Multiaddr) -> Self {
+        match addr.iter().next() {
+            Some(Protocol::Ip4(_)) => &TransportProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => &TransportProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => &TransportProtocol::Onion,
+            Some(Protocol::Onion3(_)) => &TransportProtocol::Onion,
+            Some(Protocol::Memory(_)) => &TransportProtocol::Memory,
+            _ => &TransportProtocol::Ipv4,
+        }
+    }
+}
 
 hash_domain!(CommsCoreHashDomain, "com.tari.comms.core", 0);

@@ -20,12 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
+pub use lmdb_db::{
+    create_lmdb_database,
+    create_lmdb_database_with_stats_channel,
+    create_readonly_lmdb_environment,
+    create_recovery_lmdb_database,
+    get_all_database_names,
+    LMDBDatabase,
+};
 use serde::{Deserialize, Serialize};
+pub use stats_collector::DatabaseStats;
 use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
-
-use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 mod composite_key;
 pub(crate) mod cursors;
@@ -33,8 +40,19 @@ pub(crate) mod helpers;
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
+pub mod row_data;
+pub use lmdb_db::{
+    AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    BlockchainCheckStatus,
+    CheckFailure,
+    PayrefRebuildStatus,
+    BREATHING_TIME_MS_MAX,
+    BREATHING_TIME_MS_MIN,
+};
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
+mod stats_collector;
 mod validator_node_store;
 
 #[derive(Serialize, Deserialize, Debug)]

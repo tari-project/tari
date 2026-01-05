@@ -23,17 +23,26 @@ use std::cmp::Ordering;
 
 use log::*;
 use primitive_types::U512;
-use tari_common_types::types::HashOutput;
+use tari_common_types::types::{FixedHash, HashOutput};
+use tari_node_components::blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader};
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     base_node::sync::{header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS, BlockHeaderSyncError},
-    blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
+    blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
-    consensus::ConsensusManager,
-    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator, ValidationError},
+    consensus::BaseNodeConsensusManager,
+    proof_of_work::randomx_factory::RandomXFactory,
+    validation::{
+        header::HeaderFullValidator,
+        tari_rx_vm_key_height,
+        DifficultyCalculator,
+        HeaderChainLinkedValidator,
+        ValidationError,
+        TARI_RX_VM_KEY_BLOCK_SWAP,
+    },
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -42,7 +51,7 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 pub struct BlockHeaderSyncValidator<B> {
     db: AsyncBlockchainDb<B>,
     state: Option<State>,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseNodeConsensusManager,
     validator: HeaderFullValidator,
 }
 
@@ -54,10 +63,15 @@ struct State {
     previous_accum: BlockHeaderAccumulatedData,
     previous_header: BlockHeader,
     valid_headers: Vec<ChainHeader>,
+    vm_key: Vec<(u64, FixedHash)>,
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, consensus_rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
+    pub fn new(
+        db: AsyncBlockchainDb<B>,
+        consensus_rules: BaseNodeConsensusManager,
+        randomx_factory: RandomXFactory,
+    ) -> Self {
         let difficulty_calculator = DifficultyCalculator::new(consensus_rules.clone(), randomx_factory);
         let validator = HeaderFullValidator::new(consensus_rules.clone(), difficulty_calculator);
         Self {
@@ -94,6 +108,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             target_difficulties.get(PowAlgorithm::RandomXM).map(|t| t.len()).unwrap_or(0),
             target_difficulties.get(PowAlgorithm::RandomXT).map(|t| t.len()).unwrap_or(0),
         );
+
+        let gen_hash = *self.consensus_rules.get_genesis_block().hash();
         self.state = Some(State {
             current_height: start_header.height,
             timestamps,
@@ -102,6 +118,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             previous_header: start_header,
             // One large allocation is usually better even if it is not always used.
             valid_headers: Vec::with_capacity(HEADER_SYNC_INITIAL_MAX_HEADERS),
+            vm_key: vec![(0, gen_hash)],
         });
 
         Ok(())
@@ -112,8 +129,18 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     }
 
     pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
+        let constants = self.consensus_rules.consensus_constants(header.height).clone();
+        if constants.effective_from_height() == header.height {
+            if let Some(&mut ref mut mut_state) = self.state.as_mut() {
+                // We need to update the target difficulties for the new algorithm
+                mut_state
+                    .target_difficulties
+                    .update_algos(&self.consensus_rules, header.height)
+                    .map_err(BlockHeaderSyncError::TargetDifficultiesError)?;
+            }
+        }
+
         let state = self.state();
-        let constants = self.consensus_rules.consensus_constants(header.height);
 
         let target_difficulty = state
             .target_difficulties
@@ -126,12 +153,30 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
         let result = {
             let txn = self.db.inner().db_read_access()?;
+            let vm_key_height = tari_rx_vm_key_height(header.height);
+            let vm_key = match txn.fetch_chain_header_by_height(vm_key_height) {
+                Ok(header) => *header.hash(),
+                Err(_) => {
+                    // header not found, lets search our cached headers
+                    let mut vm_key = None;
+                    for (height, hash) in &state.vm_key {
+                        if *height == vm_key_height {
+                            vm_key = Some(*hash);
+                            break;
+                        }
+                    }
+                    vm_key.ok_or(ChainStorageError::UnexpectedResult(
+                        "Could not find header in database or cache".to_string(),
+                    ))?
+                },
+            };
             self.validator.validate(
                 &*txn,
                 &header,
                 &state.previous_header,
                 &state.timestamps,
                 Some(target_difficulty),
+                vm_key,
             )
         };
         let achieved_target = match result {
@@ -181,17 +226,21 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .add_back(&header, target_difficulty)
             .map_err(ChainStorageError::UnexpectedResult)?;
 
-        let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
+        let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(&state.previous_accum)
             .with_hash(header.hash())
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())
-            .build()?;
+            .build(&constants)?;
 
         let total_accumulated_difficulty = accumulated_data.total_accumulated_difficulty;
         // NOTE: accumulated_data constructed from header so they are guaranteed to correspond
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
         state.previous_accum = chain_header.accumulated_data().clone();
+        if chain_header.header().height.is_multiple_of(TARI_RX_VM_KEY_BLOCK_SWAP) {
+            // we need to save the hash of this header and height
+            state.vm_key.push((chain_header.header().height, *chain_header.hash()));
+        }
         state.valid_headers.push(chain_header);
 
         Ok(total_accumulated_difficulty)
@@ -245,20 +294,17 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
-    use crate::{
-        blocks::BlockHeader,
-        proof_of_work::PowAlgorithm,
-        test_helpers::blockchain::{create_new_blockchain, TempDatabase},
-    };
+    use crate::test_helpers::blockchain::{create_new_blockchain, TempDatabase};
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,
         AsyncBlockchainDb<TempDatabase>,
-        ConsensusManager,
+        BaseNodeConsensusManager,
     ) {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let randomx_factory = RandomXFactory::default();
         let db = create_new_blockchain();
         (
@@ -279,14 +325,11 @@ mod test {
         let mut tip = db.fetch_tip_header().await.unwrap();
         for _ in 0..n {
             let mut header = BlockHeader::from_previous(tip.header());
-            header.version = cm.consensus_constants(header.height).blockchain_version();
+            header.version = cm.consensus_constants(header.height).blockchain_version().into();
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
             header.output_smt_size += 1;
-            let acc_data = BlockHeaderAccumulatedData {
-                hash: header.hash(),
-                ..Default::default()
-            };
+            let acc_data = BlockHeaderAccumulatedData::genesis(header.hash(), header.total_kernel_offset.clone());
 
             let chain_header = ChainHeader::try_construct(header.clone(), acc_data.clone()).unwrap();
             db.insert_valid_headers(vec![chain_header.clone()]).await.unwrap();

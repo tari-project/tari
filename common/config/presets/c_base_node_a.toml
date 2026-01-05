@@ -5,9 +5,11 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-# If you are not running a Minotari Base node, you can simply leave everything in this section commented out. Base nodes
-# help maintain the security of the Minotari token and are the surest way to preserve your privacy and be 100% sure that
-# no-one is cheating you out of your money.
+# A Minotari base node is core to the network, providing several functions such as propogation, validation and management.
+# These options configure how the base node operates (e.g. gRPC settings, database type, timeout periods, etc.)
+# All base node configuration options can be commented out if you do not wish to run a base node.
+# While users can use remote nodes, running your own base node adds resilience to the network, provides additional security,
+# and direct access to the blockchain.
 
 [igor.base_node]
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")

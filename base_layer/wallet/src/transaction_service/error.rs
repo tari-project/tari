@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{io, path::PathBuf};
+
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -31,15 +33,15 @@ use tari_common_types::{
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{
-    transaction_components::{EncryptedDataError, TransactionError},
-    transaction_key_manager::error::KeyManagerServiceError,
-    transaction_protocol::TransactionProtocolError,
-};
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_transaction_components::{
+    key_manager::error::KeyManagerError,
+    transaction_components::{EncryptedDataError, TransactionError},
+    TransactionBuilderError,
+};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
@@ -55,14 +57,14 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
     #[error("Transaction is sending to a network different than ours")]
     InvalidNetwork,
     #[error("One-sided transaction error: `{0}`")]
     OneSidedTransactionError(String),
-    #[error("Transaction Protocol Error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("The message being processed is not recognized by the Transaction Manager")]
     InvalidMessageTypeError,
     #[error("A message for a specific tx_id has been repeated")]
@@ -71,8 +73,8 @@ pub enum TransactionServiceError {
     TransactionDoesNotExistError,
     #[error("The Outbound Message Service is not initialized")]
     OutboundMessageServiceNotInitialized,
-    #[error("Received an unexpected API response")]
-    UnexpectedApiResponse,
+    #[error("Unexpected API response with `{0}`")]
+    UnexpectedApiResponse(String),
     #[error("Failed to send from API")]
     ApiSendFailed,
     #[error("Failed to receive in API from service")]
@@ -86,6 +88,8 @@ pub enum TransactionServiceError {
     InvalidSourcePublicKey,
     #[error("The transaction does not contain the receivers output")]
     ReceiverOutputNotFound,
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String },
     #[error("Outbound Service send failed")]
     OutboundSendFailure,
     #[error(
@@ -103,10 +107,6 @@ pub enum TransactionServiceError {
     BaseNodeChanged { task_name: &'static str },
     #[error("Error sending data to Protocol via registered channels")]
     ProtocolChannelError,
-    #[error("Transaction detected as rejected by mempool")]
-    MempoolRejection,
-    #[error("Mempool response key does not match on that is expected")]
-    UnexpectedMempoolResponse,
     #[error("Base Node response key does not match on that is expected")]
     UnexpectedBaseNodeResponse,
     #[error("The current transaction has been cancelled")]
@@ -145,12 +145,20 @@ pub enum TransactionServiceError {
     Shutdown,
     #[error("Transaction detected as rejected by mempool due to containing time-locked input")]
     MempoolRejectionTimeLocked,
-    #[error("Transaction detected as rejected by mempool due to containing  orphan input")]
+    #[error("Transaction detected as rejected by mempool due to containing orphan input")]
     MempoolRejectionOrphan,
     #[error("Transaction detected as rejected by mempool due to containing double spend")]
     MempoolRejectionDoubleSpend,
     #[error("Transaction detected as rejected by mempool due to invalid transaction")]
     MempoolRejectionInvalidTransaction,
+    #[error("Transaction detected as rejected by mempool due to fee too low")]
+    MempoolRejectionFeeTooLow,
+    #[error("Transaction detected as rejected by mempool due to already mined")]
+    MempoolRejectionAlreadyMined,
+    #[error("Transaction detected as rejected by mempool")]
+    MempoolRejection { reason: String },
+    #[error("Mempool response key does not match on that is expected")]
+    UnexpectedMempoolResponse,
     #[error("Transaction is malformed")]
     InvalidTransaction,
     #[error("RpcError: `{0}`")]
@@ -185,7 +193,7 @@ pub enum TransactionServiceError {
     #[error("Key manager error: `{0}`")]
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Serialization error: `{0}`")]
     SerializationError(String),
     #[error("Transaction exceed maximum byte size. Expected < {expected} but got {got}.")]
@@ -200,6 +208,30 @@ pub enum TransactionServiceError {
     ScriptError(#[from] ScriptError),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Other error: `{0}`")]
+    Other(String),
+    #[error("Could not read file {file_path} - {err}.")]
+    FileReadError { file_path: PathBuf, err: io::Error },
+    #[error("Failed to write to file {file_path} - {err}.")]
+    FileWriteError { file_path: PathBuf, err: io::Error },
+    #[error("Transaction with id {0} has been already mined")]
+    TransactionAlreadyMined(String),
+    #[error("Transaction inputs were invalid")]
+    InvalidTransactionInputs,
+    #[error("Fee increase is zero")]
+    ZeroFeeIncrease,
+    #[error("Error signing sidechain data: `{0}`")]
+    SidechainSigningError(String),
+    #[error("Invalid data for a burn transaction: `{0}`")]
+    InvalidBurnTransaction(String),
+    #[error("Invalid validator node signature")]
+    InvalidValidatorNodeSignature,
+    #[error("Invalid payment ID: {0}")]
+    InvalidPaymentId(String),
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+    #[error("Failed to cancel one sided transaction: {0}")]
+    FailedToCancelTransaction(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {
@@ -286,6 +318,8 @@ pub enum TransactionStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Coinbase transactions are not supported in the wallet")]
     CoinbaseNotSupported,
+    #[error("Failed to calculate transaction fee: {0}")]
+    FailedToCalculateTransactionFee(String),
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

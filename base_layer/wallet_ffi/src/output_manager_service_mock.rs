@@ -30,6 +30,7 @@ use minotari_wallet::output_manager_service::{
 };
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.
@@ -73,15 +74,17 @@ impl ResponseState {
     }
 }
 
-pub struct MockOutputManagerService {
-    request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+pub struct MockOutputManagerService<KM> {
+    request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>>,
     state: ResponseState,
     shutdown_signal: Option<ShutdownSignal>,
 }
 
-impl MockOutputManagerService {
+impl<KM> MockOutputManagerService<KM>
+where KM: TransactionKeyManagerInterface
+{
     pub fn new(
-        request_stream: Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+        request_stream: Receiver<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -113,12 +116,14 @@ impl MockOutputManagerService {
         Ok(())
     }
 
-    fn handle_request(&mut self, request: OutputManagerRequest) -> Result<OutputManagerResponse, OutputManagerError> {
+    fn handle_request(
+        &mut self,
+        request: OutputManagerRequest,
+    ) -> Result<OutputManagerResponse<KM>, OutputManagerError> {
         match request {
             OutputManagerRequest::GetBalance => Ok(OutputManagerResponse::Balance(self.state.get_balance())),
             _ => Err(OutputManagerError::InvalidResponseError(format!(
-                "Request '{}' not defined for MockOutputManagerService!",
-                request
+                "Request '{request}' not defined for MockOutputManagerService!"
             ))),
         }
     }

@@ -94,7 +94,7 @@ async fn run_stress_test(test_params: Params) {
 
     node1
         .peer_manager()
-        .add_peer(node2.node_identity().to_peer())
+        .add_or_update_peer(node2.node_identity().to_peer())
         .await
         .unwrap();
 
@@ -279,7 +279,7 @@ async fn run() {
 
 async fn log_timing<R, F: Future<Output = R>>(name: &str, fut: F) -> R {
     let t = Instant::now();
-    println!("'{}' is running...", name);
+    println!("'{name}' is running...");
     let ret = fut.await;
     let elapsed = t.elapsed();
     println!("'{}' completed in {:.2}s", name, elapsed.as_secs_f32());

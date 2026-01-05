@@ -30,17 +30,17 @@ use tari_comms::{
 };
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::error::MerkleMountainRangeError;
+use tari_transaction_components::{
+    transaction_components::TransactionError,
+    validation::AggregatedBodyValidationError,
+    BanPeriod,
+    BanReason,
+};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
-use crate::{
-    chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    transactions::transaction_components::TransactionError,
-    validation::ValidationError,
-    MrHashError,
-};
+use crate::{chain_storage::ChainStorageError, validation::ValidationError, MrHashError};
 
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {
@@ -103,6 +103,8 @@ pub enum HorizonSyncError {
     ByteArrayError(String),
     #[error("FixedHash size error: {0}")]
     MrHashError(#[from] MrHashError),
+    #[error("Validation error: {0}")]
+    AggregatedBodyValidation(#[from] AggregatedBodyValidationError),
 }
 
 impl From<ByteArrayError> for HorizonSyncError {
@@ -141,7 +143,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::MaxLatencyExceeded { .. } |
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),
 
@@ -156,8 +158,9 @@ impl HorizonSyncError {
             err @ HorizonSyncError::MerkleMountainRangeError(_) |
             err @ HorizonSyncError::FixedHashSizeError(_) |
             err @ HorizonSyncError::TransactionError(_) |
+            err @ HorizonSyncError::AggregatedBodyValidation(_) |
             err @ HorizonSyncError::ByteArrayError(_) => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,
             }),
 

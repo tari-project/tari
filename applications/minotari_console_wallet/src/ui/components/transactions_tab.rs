@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local};
@@ -8,9 +9,9 @@ use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::{
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{LegacyTransactionStatus, TransactionDirection},
 };
-use tari_core::transactions::transaction_components::encrypted_data::{PaymentId, TxType};
+use tari_transaction_components::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -29,6 +30,8 @@ use crate::ui::{
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::transaction_tab";
+const ADDRESS_DISPLAY_SIZE: u16 = 95;
+const MAX_ADDRESS_LENGTH: u16 = ADDRESS_DISPLAY_SIZE - 1 - 3; // column border: 1 space, selection arrows: 3 spaces
 
 pub struct TransactionsTab {
     balance: Balance,
@@ -38,6 +41,8 @@ pub struct TransactionsTab {
     detailed_transaction: Option<CompletedTransactionInfo>,
     error_message: Option<String>,
     confirmation_dialog: bool,
+    payref_search: String,
+    payref_search_active: bool,
 }
 
 impl TransactionsTab {
@@ -50,6 +55,8 @@ impl TransactionsTab {
             detailed_transaction: None,
             error_message: None,
             confirmation_dialog: false,
+            payref_search: String::new(),
+            payref_search_active: false,
         }
     }
 
@@ -114,7 +121,7 @@ impl TransactionsTab {
 
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(t.destination_address.to_base58()),
+                    get_alias_and_clip(t.destination_address.to_base58(), MAX_ADDRESS_LENGTH),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -126,7 +133,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(t.source_address.to_base58()),
+                    get_alias_and_clip(t.source_address.to_base58(), MAX_ADDRESS_LENGTH),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -151,7 +158,7 @@ impl TransactionsTab {
             )));
 
             column3_items.push(ListItem::new(Span::styled(
-                t.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                t.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                 Style::default().fg(text_color),
             )));
         }
@@ -160,7 +167,11 @@ impl TransactionsTab {
             .highlight_style(styles::highlight())
             .heading_style(styles::header_row())
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination address"), Some(95), column0_items)
+            .add_column(
+                Some("Source/Destination address"),
+                Some(ADDRESS_DISPLAY_SIZE),
+                column0_items,
+            )
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Payment ID"), None, column3_items);
@@ -214,24 +225,26 @@ impl TransactionsTab {
             let cancelled = tx.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
 
-            let mut transaction_status = tx.status.clone();
+            let mut transaction_status = tx.status;
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
-            if let Some(
-                PaymentId::Open { tx_type, .. } |
-                PaymentId::AddressAndData { tx_type, .. } |
-                PaymentId::TransactionInfo { tx_type, .. },
-            ) = tx.payment_id.clone()
-            {
+            if let Some(tx_type) = tx.payment_id.as_ref().and_then(|p| p.get_tx_type()) {
                 match tx.status {
-                    TransactionStatus::OneSidedUnconfirmed => transaction_status = TransactionStatus::MinedUnconfirmed,
-                    TransactionStatus::OneSidedConfirmed => transaction_status = TransactionStatus::MinedConfirmed,
+                    LegacyTransactionStatus::OneSidedUnconfirmed => {
+                        transaction_status = LegacyTransactionStatus::MinedUnconfirmed
+                    },
+                    LegacyTransactionStatus::OneSidedConfirmed => {
+                        transaction_status = LegacyTransactionStatus::MinedConfirmed
+                    },
                     _ => {},
                 }
-                transaction_type = tx_type.clone();
+                transaction_type = tx_type;
             };
 
-            if let Some(PaymentId::Open { .. } | PaymentId::AddressAndData { .. }) = tx.payment_id.clone() {
-                if transaction_type == TxType::PaymentToSelf && tx.source_address != tx.destination_address {
+            if let Some(payment_id) = tx.payment_id.as_ref() {
+                if (payment_id.is_open() || payment_id.is_address_and_data()) &&
+                    transaction_type == TxType::PaymentToSelf &&
+                    tx.source_address != tx.destination_address
+                {
                     transaction_type = TxType::PaymentToOther;
                 }
                 if transaction_type == TxType::Burn && tx.destination_address != TariAddress::default() {
@@ -250,11 +263,11 @@ impl TransactionsTab {
                 (_, _, TxType::CodeTemplateRegistration) => "Code template registration",
                 (_, _, TxType::HtlcAtomicSwapRefund) => "HTLC atomic swap refund",
                 (_, _, TxType::ClaimAtomicSwap) => "Claim atomic swap",
-                (TransactionDirection::Outbound, _, _) => &app_state.get_alias(tx.destination_address.to_base58()),
-                _ => &app_state.get_alias(tx.source_address.to_base58()),
+                (TransactionDirection::Outbound, _, _) => &tx.destination_address.to_base58(),
+                _ => &tx.source_address.to_base58(),
             };
             column0_items.push(ListItem::new(Span::styled(
-                app_state.get_alias(address_text.to_string()),
+                get_alias_and_clip(address_text.to_string(), MAX_ADDRESS_LENGTH),
                 Style::default().fg(text_color),
             )));
             if tx.direction == TransactionDirection::Outbound {
@@ -308,7 +321,11 @@ impl TransactionsTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Address"), Some(95), column0_items)
+            .add_column(
+                Some("Source/Destination Address"),
+                Some(ADDRESS_DISPLAY_SIZE),
+                column0_items,
+            )
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
@@ -332,9 +349,10 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 13];
+        let constraints = [Constraint::Length(1); 14];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
+        let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));
         let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
@@ -350,107 +368,108 @@ impl TransactionsTab {
         let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
-        let paragraph = Paragraph::new(excess_sig).wrap(trim);
+        let paragraph = Paragraph::new(payment_ref).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
-        let paragraph = Paragraph::new(source_address).wrap(trim);
+        let paragraph = Paragraph::new(excess_sig).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
-        let paragraph = Paragraph::new(destination_address).wrap(trim);
+        let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[2]);
-        let paragraph = Paragraph::new(direction).wrap(trim);
+        let paragraph = Paragraph::new(destination_address).wrap(trim);
         f.render_widget(paragraph, label_layout[3]);
-        let paragraph = Paragraph::new(amount).wrap(trim);
+        let paragraph = Paragraph::new(direction).wrap(trim);
         f.render_widget(paragraph, label_layout[4]);
-        let paragraph = Paragraph::new(fee).wrap(trim);
+        let paragraph = Paragraph::new(amount).wrap(trim);
         f.render_widget(paragraph, label_layout[5]);
-        let paragraph = Paragraph::new(status).wrap(trim);
+        let paragraph = Paragraph::new(fee).wrap(trim);
         f.render_widget(paragraph, label_layout[6]);
-        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(status).wrap(trim);
         f.render_widget(paragraph, label_layout[7]);
-        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[8]);
-        let paragraph = Paragraph::new(confirmations).wrap(trim);
+        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
         f.render_widget(paragraph, label_layout[10]);
-        let paragraph = Paragraph::new(maturity).wrap(trim);
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
         f.render_widget(paragraph, label_layout[11]);
-        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
         f.render_widget(paragraph, label_layout[12]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[13]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 13];
+            let constraints = [Constraint::Length(1); 14];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
             let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
-                if let Some(PaymentId::TransactionInfo { fee, .. }) = tx.payment_id.clone() {
+                if let Some(fee) = tx.payment_id.as_ref().and_then(|p| p.get_fee()) {
                     let status = match tx.status {
-                        TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
-                        TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
-                        _ => tx.status.clone(),
+                        LegacyTransactionStatus::OneSidedUnconfirmed => LegacyTransactionStatus::MinedUnconfirmed,
+                        LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::MinedConfirmed,
+                        _ => tx.status,
                     };
 
                     (
                         status,
-                        tx.direction.clone(),
+                        tx.direction,
                         tx.amount,
                         fee,
                         tx.weight,
                         tx.inputs_count,
                         tx.outputs_count,
-                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),
                     )
                 } else {
                     (
-                        tx.status.clone(),
-                        tx.direction.clone(),
+                        tx.status,
+                        tx.direction,
                         tx.amount,
                         tx.fee,
                         tx.weight,
                         tx.inputs_count,
                         tx.outputs_count,
-                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),
                     )
                 };
 
             let source_address =
-                if tx.status == TransactionStatus::Pending && direction == TransactionDirection::Outbound {
+                if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Outbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{}", source), Style::default().fg(Color::White))
+                    let address = clip_address(format!("{source}"), 69);
+                    Span::styled(address, Style::default().fg(Color::White))
                 };
             let destination_address =
-                if tx.status == TransactionStatus::Pending && direction == TransactionDirection::Inbound {
+                if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Inbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{}", destination), Style::default().fg(Color::White))
+                    let address = clip_address(format!("{destination}"), 69);
+                    Span::styled(address, Style::default().fg(Color::White))
                 };
 
-            let direction = Span::styled(format!("{}", direction), Style::default().fg(Color::White));
+            let direction = Span::styled(format!("{direction}"), Style::default().fg(Color::White));
             let amount = amount.to_string();
             let content = &amount;
             let amount = Span::styled(content, Style::default().fg(Color::White));
             let fee_details = {
                 Span::styled(
-                    format!(
-                        " (weight: {}g, #inputs: {}, #outputs: {})",
-                        weight, inputs_count, outputs_count
-                    ),
+                    format!(" (weight: {weight}g, #inputs: {inputs_count}, #outputs: {outputs_count})"),
                     Style::default().fg(Color::Gray),
                 )
             };
             let fee = Spans::from(vec![
-                Span::styled(format!("{}", fee), Style::default().fg(Color::White)),
+                Span::styled(format!("{fee}"), Style::default().fg(Color::White)),
                 fee_details,
             ]);
             let status_msg = if let Some(reason) = tx.cancelled {
-                format!("Cancelled: {}", reason)
+                format!("Cancelled: {reason}")
             } else {
                 status.to_string()
             };
@@ -479,19 +498,19 @@ impl TransactionsTab {
             );
 
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
-            let confirmations_msg = if (tx.status == TransactionStatus::MinedConfirmed ||
-                tx.status == TransactionStatus::OneSidedConfirmed ||
-                tx.status == TransactionStatus::CoinbaseConfirmed) &&
+            let confirmations_msg = if (tx.status == LegacyTransactionStatus::MinedConfirmed ||
+                tx.status == LegacyTransactionStatus::OneSidedConfirmed ||
+                tx.status == LegacyTransactionStatus::CoinbaseConfirmed) &&
                 tx.cancelled.is_none()
             {
-                format!("{} required confirmations met", required_confirmations)
-            } else if (tx.status == TransactionStatus::MinedUnconfirmed ||
-                tx.status == TransactionStatus::OneSidedUnconfirmed ||
-                tx.status == TransactionStatus::CoinbaseUnconfirmed) &&
+                format!("{required_confirmations} required confirmations met")
+            } else if (tx.status == LegacyTransactionStatus::MinedUnconfirmed ||
+                tx.status == LegacyTransactionStatus::OneSidedUnconfirmed ||
+                tx.status == LegacyTransactionStatus::CoinbaseUnconfirmed) &&
                 tx.cancelled.is_none()
             {
                 if let Some(count) = confirmation_count {
-                    format!("{} of {} required confirmations met", count, required_confirmations)
+                    format!("{count} of {required_confirmations} required confirmations met")
                 } else {
                     "N/A".to_string()
                 }
@@ -514,33 +533,78 @@ impl TransactionsTab {
 
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let paragraph = Paragraph::new(excess_sig).wrap(trim);
+            let payment_ref_content = {
+                let payref_text = match (&tx.payment_reference_hex, &tx.payment_reference_status) {
+                    (Some(hex), Some(status)) => format!("{hex} Status: {status}"),
+                    (None, Some(status)) => format!("PayRef: N/A Status: {status}"),
+                    (Some(hex), None) => hex.clone(),
+                    (None, None) => "N/A".to_string(),
+                };
+
+                // Color code based on status
+                let color = match &tx.payment_reference_status {
+                    Some(status) if status.starts_with("Available") => Color::Green,
+                    Some(status) if status.starts_with("Pending") => Color::Yellow,
+                    Some(status) if status.contains("Not mined") => Color::Gray,
+                    _ => Color::White,
+                };
+
+                Span::styled(payref_text, Style::default().fg(color))
+            };
+
+            let paragraph = Paragraph::new(payment_ref_content).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
-            let paragraph = Paragraph::new(source_address).wrap(trim);
+            let paragraph = Paragraph::new(excess_sig).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
-            let paragraph = Paragraph::new(destination_address).wrap(trim);
+            let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[2]);
-            let paragraph = Paragraph::new(direction).wrap(trim);
+            let paragraph = Paragraph::new(destination_address).wrap(trim);
             f.render_widget(paragraph, content_layout[3]);
-            let paragraph = Paragraph::new(amount).wrap(trim);
+            let paragraph = Paragraph::new(direction).wrap(trim);
             f.render_widget(paragraph, content_layout[4]);
-            let paragraph = Paragraph::new(fee).wrap(trim);
+            let paragraph = Paragraph::new(amount).wrap(trim);
             f.render_widget(paragraph, content_layout[5]);
-            let paragraph = Paragraph::new(status).wrap(trim);
+            let paragraph = Paragraph::new(fee).wrap(trim);
             f.render_widget(paragraph, content_layout[6]);
-            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+            let paragraph = Paragraph::new(status).wrap(trim);
             f.render_widget(paragraph, content_layout[7]);
-            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[8]);
-            let paragraph = Paragraph::new(confirmations).wrap(trim);
+            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
             f.render_widget(paragraph, content_layout[10]);
-            let paragraph = Paragraph::new(maturity).wrap(trim);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
             f.render_widget(paragraph, content_layout[11]);
-            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
             f.render_widget(paragraph, content_layout[12]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[13]);
         }
+    }
+
+    fn search_by_payref(&mut self, app_state: &AppState) {
+        let search_term = self.payref_search.trim().replace(' ', "").to_lowercase();
+
+        // Search in completed transactions
+        let completed_txs = app_state.get_completed_txs();
+        for (index, tx) in completed_txs.iter().enumerate() {
+            if let Some(payref_hex) = &tx.payment_reference_hex {
+                if payref_hex.to_lowercase().contains(&search_term) {
+                    // Found a match - select this transaction
+                    self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                    self.completed_list_state.select(Some(index));
+                    self.pending_list_state.select(None);
+                    self.detailed_transaction = Some((*tx).clone());
+                    return;
+                }
+            }
+        }
+
+        // If no match found, show error
+        self.error_message = Some(format!(
+            "No transaction found with PayRef containing '{search_term}'\nPress Enter to continue."
+        ));
     }
 }
 
@@ -552,7 +616,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(15),
+                    Constraint::Length(16),
                 ]
                 .as_ref(),
             )
@@ -580,6 +644,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::raw(" show/hide mining "));
         span_vec.push(Span::styled("(R)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" rebroadcast Txs "));
+        span_vec.push(Span::styled("(S)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" search PayRef "));
         span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" exit list"));
 
@@ -604,8 +670,26 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 9,
             );
         }
+
+        // Draw PayRef search input if active
+        if self.payref_search_active {
+            let search_prompt = format!(
+                "Enter PayRef to search (partial match supported):\n{}\n\nPress Enter to search, Esc to cancel",
+                self.payref_search
+            );
+            draw_dialog(
+                f,
+                area,
+                "PayRef Search".to_string(),
+                search_prompt,
+                Color::Yellow,
+                120,
+                9,
+            );
+        }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
         if self.error_message.is_some() && '\n' == c {
             self.error_message = None;
@@ -622,8 +706,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                         if let Some(pending_tx) = app_state.get_pending_tx(i).cloned() {
                             if let Err(e) = Handle::current().block_on(app_state.cancel_transaction(pending_tx.tx_id)) {
                                 self.error_message = Some(format!(
-                                    "Could not cancel pending transaction.\n{}\nPress Enter to continue.",
-                                    e
+                                    "Could not cancel pending transaction.\n{e}\nPress Enter to continue."
                                 ));
                             }
                         }
@@ -636,11 +719,43 @@ impl<B: Backend> Component<B> for TransactionsTab {
             }
         }
 
+        // Handle PayRef search input mode
+        if self.payref_search_active {
+            match c {
+                '\n' => {
+                    // Perform search
+                    if !self.payref_search.is_empty() {
+                        self.search_by_payref(app_state);
+                    }
+                    self.payref_search_active = false;
+                },
+                '\u{1b}' => {
+                    // Escape key - cancel search
+                    self.payref_search_active = false;
+                    self.payref_search.clear();
+                },
+                '\u{7f}' => {
+                    // Backspace
+                    self.payref_search.pop();
+                },
+                c if c.is_ascii_hexdigit() || c == ' ' => {
+                    // Only allow hex characters and spaces
+                    self.payref_search.push(c);
+                },
+                _ => {
+                    // Ignore other characters
+                },
+            }
+            return;
+        }
+
         match c {
+            's' => {
+                // Activate PayRef search mode
+                self.payref_search_active = true;
+                self.payref_search.clear();
+            },
             'p' => {
-                if let Err(e) = Handle::current().block_on(app_state.restart_transaction_protocols()) {
-                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
-                }
                 self.completed_list_state.select(None);
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
                 self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
@@ -675,7 +790,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
             // Rebroadcast
             'r' => {
                 if let Err(e) = Handle::current().block_on(app_state.rebroadcast_all()) {
-                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
+                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {e}");
                 }
             },
             'a' => app_state.toggle_abandoned_coinbase_filter(),
@@ -764,4 +879,33 @@ pub enum SelectedTransactionList {
     None,
     PendingTxs,
     CompletedTxs,
+}
+
+// Return alias or pub key if the contact is not in the list, clipping the address in the middle if needed.
+fn get_alias_and_clip(address_string: String, max_len: u16) -> String {
+    let address = if address_string == TariAddress::default().to_base58() {
+        "Offline payment".to_string()
+    } else {
+        address_string
+    };
+    clip_address(address, max_len)
+}
+
+// Clip the emoji address in the middle if needed.
+fn clip_address(address: String, max_len: u16) -> String {
+    let max_len = max_len as usize;
+    if address.chars().count() > max_len {
+        let display_portion = (max_len - 4) / 2;
+        let chars: Vec<char> = address.chars().collect();
+        let adjust_odd = usize::from(!max_len.is_multiple_of(2));
+        format!(
+            "{}....{}",
+            chars[..display_portion].iter().collect::<String>(),
+            chars[chars.len() - display_portion - adjust_odd..]
+                .iter()
+                .collect::<String>()
+        )
+    } else {
+        address
+    }
 }

@@ -20,34 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
-    types::{BlockHash, Signature},
+    transaction::{LegacyTransactionStatus, TxId},
+    types::{BlockHash, CompressedSignature, FixedHash},
 };
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
-use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
-    blocks::BlockHeader,
-    proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
-};
-use tari_utilities::hex::Hex;
+use tari_transaction_components::rpc::models::TxLocation;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
         handle::{TransactionEvent, TransactionEventSender},
+        protocols::{check_faux_transaction_status::check_detected_transactions, fetch_claim_burn_merkle_proofs},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
             sqlite_db::UnconfirmedTransactionInfo,
@@ -59,19 +51,22 @@ use crate::{
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
 #[derive(Clone)]
-pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity> {
+pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface> {
     operation_id: OperationId,
     db: TransactionDatabase<TTransactionBackend>,
     connectivity: TWalletConnectivity,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
+    output_manager: OutputManagerHandle<TKeyManagerInterface>,
 }
 
 #[allow(unused_variables)]
-impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
+impl<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TTransactionBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(
         operation_id: OperationId,
@@ -79,6 +74,7 @@ where
         connectivity: TWalletConnectivity,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
+        output_manager: OutputManagerHandle<TKeyManagerInterface>,
     ) -> Self {
         Self {
             operation_id,
@@ -86,33 +82,70 @@ where
             connectivity,
             config,
             event_publisher,
+            output_manager,
         }
     }
 
     pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
-        let mut base_node_wallet_client = self
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .ok_or(TransactionServiceError::Shutdown)
-            .for_protocol(self.operation_id)?;
+        let base_node_wallet_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
-        self.check_for_reorgs(&mut base_node_wallet_client).await?;
+        self.check_for_reorgs(&base_node_wallet_client).await?;
         debug!(
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
         // Fetch completed but unconfirmed transactions that were not imported
+        let (state_changed, tip, confirmed_burnt) = self.check_unconfirmed(base_node_wallet_client).await?;
+        debug!(target: LOG_TARGET, "Using tip height {tip} for validation");
+        check_detected_transactions(
+            self.output_manager.clone(),
+            self.db.clone(),
+            self.event_publisher.clone(),
+            self.config.clone(),
+            tip,
+        )
+        .await;
+
+        if !confirmed_burnt.is_empty() {
+            tokio::spawn(fetch_claim_burn_merkle_proofs::execute(
+                self.db.clone(),
+                self.output_manager.clone(),
+                self.connectivity.clone(),
+                confirmed_burnt,
+            ));
+        }
+
+        if state_changed {
+            self.publish_event(TransactionEvent::TransactionValidationStateChanged {
+                faux: false,
+                id: self.operation_id,
+            });
+        }
+        self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
+        Ok(self.operation_id)
+    }
+
+    async fn check_unconfirmed(
+        &mut self,
+        base_node_wallet_client: <TWalletConnectivity as WalletConnectivityInterface>::BaseNodeClient,
+    ) -> Result<(bool, u64, Vec<FixedHash>), TransactionServiceProtocolError<OperationId>> {
+        debug!(
+            target: LOG_TARGET,
+            "Checking unconfirmed transactions against base node (Operation ID: {})", self.operation_id
+        );
         let unconfirmed_transactions = self
             .db
             .fetch_unconfirmed_transactions_info()
-            .for_protocol(self.operation_id)
-            .unwrap();
-
+            .for_protocol(self.operation_id)?;
         let mut state_changed = false;
+        let tip_info = base_node_wallet_client.get_tip_info().await.map_err(|e| {
+            TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Other(e.to_string()))
+        })?;
+        let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+        let mut confirmed_burns = vec![];
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
-            let (mined, unmined, tip_info) = self
-                .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
+            let (mined, unmined) = self
+                .query_base_node_for_transactions(batch, &base_node_wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
             debug!(
@@ -122,55 +155,58 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (mined_tx, mined_height, mined_in_block, num_confirmations, mined_timestamp) in &mined {
+            for (mined_tx, mined_height, mined_in_block, mined_timestamp) in mined {
+                let UnconfirmedTransactionInfo {
+                    tx_id,
+                    status,
+                    burnt_outputs,
+                    ..
+                } = mined_tx;
                 debug!(
                     target: LOG_TARGET,
-                    "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
-                    mined_tx.tx_id,
-                    *num_confirmations >= self.config.num_confirmations_required,
+                    "Updating transaction {} as mined (Operation ID: {})",
+                    tx_id,
                     self.operation_id
                 );
+
+                let num_confirmations = tip.saturating_sub(mined_height);
+                if num_confirmations >= self.config.num_confirmations_required {
+                    confirmed_burns.extend(burnt_outputs);
+                }
                 self.update_transaction_as_mined(
-                    mined_tx.tx_id,
-                    &mined_tx.status,
-                    mined_in_block,
-                    *mined_height,
-                    *num_confirmations,
-                    *mined_timestamp,
-                )
-                .await?;
+                    tx_id,
+                    status,
+                    &mined_in_block,
+                    mined_height,
+                    num_confirmations,
+                    mined_timestamp,
+                )?;
                 state_changed = true;
             }
-            if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
-                for unmined_tx in &unmined {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
-                    );
-                    self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
-                        .await?;
-                }
+            for unmined_tx in &unmined {
+                debug!(
+                    target: LOG_TARGET,
+                    "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
+                );
+                self.update_transaction_as_unmined(unmined_tx.tx_id, unmined_tx.status)?;
             }
         }
-        if state_changed {
-            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
-        }
-        self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
-        Ok(self.operation_id)
+
+        Ok((state_changed, tip, confirmed_burns))
     }
 
     fn publish_event(&self, event: TransactionEvent) {
         if let Err(e) = self.event_publisher.send(Arc::new(event)) {
             debug!(
                 target: LOG_TARGET,
-                "Error sending event because there are no subscribers: {:?}", e
+                "Error sending event because there are no subscribers: {e:?}"
             );
         }
     }
 
     async fn check_for_reorgs(
         &mut self,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         debug!(
             target: LOG_TARGET,
@@ -178,7 +214,22 @@ where
             self.operation_id
         );
         let op_id = self.operation_id;
+        let last_mined_transaction = self.db.fetch_last_mined_transaction().for_protocol(op_id)?;
+        if last_mined_transaction.is_none() {
+            debug!(
+                target: LOG_TARGET,
+                "No last mined transaction found, skipping reorg check (Operation ID: {})", self.operation_id
+            );
+            return Ok(());
+        }
         while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().for_protocol(op_id)? {
+            debug!(
+                target: LOG_TARGET,
+                "Checking last mined transaction with ID {}, mined in {:?} for reorgs (Operation ID: {})",
+                last_mined_transaction.tx_id,
+                last_mined_transaction.mined_height,
+                self.operation_id
+            );
             let mined_height = last_mined_transaction
                 .mined_height
                 .ok_or_else(|| {
@@ -218,9 +269,8 @@ where
                         .unwrap_or_else(|| "{No Kernel found}".to_string()),
                     self.operation_id
                 );
-                self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
-                    .await?;
-                self.publish_event(TransactionEvent::TransactionValidationStateChanged(op_id));
+                self.update_transaction_as_unmined(last_mined_transaction.tx_id, last_mined_transaction.status)?;
+                self.publish_event(TransactionEvent::TransactionValidationStateChanged { faux: false, id: op_id });
             } else {
                 debug!(
                     target: LOG_TARGET,
@@ -236,12 +286,11 @@ where
     async fn query_base_node_for_transactions(
         &self,
         batch: &[UnconfirmedTransactionInfo],
-        base_node_client: &mut BaseNodeWalletRpcClient,
+        base_node_client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<
         (
-            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64, u64)>,
+            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64)>,
             Vec<UnconfirmedTransactionInfo>,
-            Option<(u64, BlockHash, u64)>,
         ),
         TransactionServiceError,
     > {
@@ -251,7 +300,7 @@ where
         let mut batch_signatures = HashMap::new();
         for tx_info in batch {
             // Imported transactions do not have a signature; this is represented by the default signature in info
-            if tx_info.signature != Signature::default() {
+            if tx_info.signature != CompressedSignature::default() {
                 batch_signatures.insert(tx_info.signature.clone(), tx_info);
             }
         }
@@ -261,7 +310,7 @@ where
                 target: LOG_TARGET,
                 "No transactions needed to query with the base node (Operation ID: {})", self.operation_id
             );
-            return Ok((mined, unmined, None));
+            return Ok((mined, unmined));
         }
 
         info!(
@@ -271,60 +320,61 @@ where
             self.operation_id
         );
 
-        let batch_response = base_node_client
-            .transaction_batch_query(SignaturesProto {
-                sigs: batch_signatures
-                    .keys()
-                    .map(|s| SignatureProto::from(s.clone()))
-                    .collect(),
-            })
-            .await?;
-
-        for response_proto in batch_response.responses {
-            let response = TxQueryBatchResponse::try_from(response_proto)
-                .map_err(TransactionServiceError::ProtobufConversionError)?;
-            let sig = response.signature;
-            if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
-                if response.location == TxLocation::Mined &&
-                    response.best_block_hash.is_some() &&
-                    response.mined_timestamp.is_some()
-                {
-                    mined.push((
-                        (*unconfirmed_tx).clone(),
-                        response.best_block_height,
-                        response.best_block_hash.unwrap(),
-                        response.confirmations,
-                        response.mined_timestamp.unwrap(),
-                    ));
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Transaction {} is unmined (Operation ID: {})",
-                        &unconfirmed_tx.tx_id,
-                        self.operation_id,
-                    );
-                    unmined.push((*unconfirmed_tx).clone());
-                }
+        let tip_mined_timestamp = 0;
+        for (sig, unconfirmed_tx) in batch_signatures {
+            let response = base_node_client
+                .transaction_query(
+                    sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                    sig.get_signature().as_bytes().to_vec(),
+                )
+                .await
+                .map_err(|e| TransactionServiceError::Other(e.to_string()))?;
+            if response.location == TxLocation::Mined {
+                let (mined_height, mined_hash, timestamp) = match response.mined_height {
+                    Some(height) => {
+                        let hash = response.mined_header_hash.ok_or_else(|| {
+                            TransactionServiceError::Other("Mined header hash is missing".to_string())
+                        })?;
+                        let timestamp = response
+                            .mined_timestamp
+                            .ok_or_else(|| TransactionServiceError::Other("Mined timestamp is missing".to_string()))?;
+                        (
+                            height,
+                            hash.try_into().map_err(|e| {
+                                TransactionServiceError::Other(format!("Could not convert best block hash: {e}"))
+                            })?,
+                            timestamp,
+                        )
+                    },
+                    None => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Transaction {} is mined but has no height (Operation ID: {})",
+                            &unconfirmed_tx.tx_id,
+                            self.operation_id,
+                        );
+                        continue;
+                    },
+                };
+                mined.push(((*unconfirmed_tx).clone(), mined_height, mined_hash, timestamp));
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Transaction {} is unmined (Operation ID: {})",
+                    &unconfirmed_tx.tx_id,
+                    self.operation_id,
+                );
+                unmined.push((*unconfirmed_tx).clone());
             }
         }
 
-        let tip = batch_response.best_block_hash.try_into()?;
-
-        Ok((
-            mined,
-            unmined,
-            Some((
-                batch_response.best_block_height,
-                tip,
-                batch_response.tip_mined_timestamp,
-            )),
-        ))
+        Ok((mined, unmined))
     }
 
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<Option<BlockHash>, TransactionServiceError> {
         let result = match client.get_header_by_height(height).await {
             Ok(r) => r,
@@ -333,32 +383,19 @@ where
                     target: LOG_TARGET,
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
-                match &rpc_error {
-                    RequestFailed(status) => {
-                        if status.as_status_code() == NotFound {
-                            return Ok(None);
-                        } else {
-                            return Err(rpc_error.into());
-                        }
-                    },
-                    _ => {
-                        return Err(rpc_error.into());
-                    },
-                }
+                return Err(TransactionServiceError::Other(format!(
+                    "Error asking base node for header at height {height}: {rpc_error}"
+                )));
             },
         };
 
-        let block_header: BlockHeader = result.try_into().map_err(|s| {
-            TransactionServiceError::InvalidMessageError(format!("Could not convert block header: {}", s))
-        })?;
-        Ok(Some(block_header.hash()))
+        Ok(result.map(|x| x.hash))
     }
 
-    #[allow(clippy::ptr_arg)]
-    async fn update_transaction_as_mined(
+    fn update_transaction_as_mined(
         &mut self,
         tx_id: TxId,
-        status: &TransactionStatus,
+        status: LegacyTransactionStatus,
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
@@ -370,7 +407,6 @@ where
                 mined_height,
                 *mined_in_block,
                 mined_timestamp,
-                num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 status,
             )
@@ -399,10 +435,10 @@ where
         Ok(())
     }
 
-    async fn update_transaction_as_unmined(
+    fn update_transaction_as_unmined(
         &mut self,
         tx_id: TxId,
-        status: &TransactionStatus,
+        status: LegacyTransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_as_unmined(tx_id)

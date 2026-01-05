@@ -70,6 +70,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     shutdown_signal: ShutdownSignal,
     monitored_peers: Arc<RwLock<Vec<NodeId>>>,
     peer_manager: Arc<PeerManager>,
+    seeds: Vec<NodeId>,
 }
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
@@ -99,6 +100,7 @@ where
             config: config.clone(),
             monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
             peer_manager,
+            seeds: Vec::new(),
         }
     }
 
@@ -120,6 +122,18 @@ where
             None => Either::Right(futures::stream::iter(iter::empty())),
         };
 
+        self.seeds = self
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or_else(|_| {
+                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
+                vec![]
+            })
+            .iter()
+            .map(|s| s.node_id.clone())
+            .collect();
+
         loop {
             tokio::select! {
                 // Requests from the handle
@@ -131,7 +145,7 @@ where
                 // Tick events
                 Some(_) = ping_tick.next() => {
                     if let Err(err) = self.start_ping_round().await {
-                        warn!(target: LOG_TARGET, "Error when pinging peers: {}", err);
+                        warn!(target: LOG_TARGET, "Error when pinging peers: {err}");
                     }
                     if self.config.max_allowed_ping_failures > 0 {
                         self.disconnect_failed_peers().await;
@@ -141,7 +155,7 @@ where
                 // Incoming messages from the Comms layer
                 Some(msg) = ping_stream.next() => {
                     if let Err(err) = self.handle_incoming_message(msg).await {
-                        warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {}", err);
+                        warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {err}");
                     }
                 },
 
@@ -170,10 +184,7 @@ where
             Ok(p) => p,
             Err(e) => {
                 self.connectivity
-                    .ban_peer(
-                        node_id.clone(),
-                        format!("Peer sent a badly formed PingPongMessage:{}", e),
-                    )
+                    .ban_peer(node_id.clone(), format!("Peer sent a badly formed PingPongMessage:{e}"))
                     .await?;
                 return Err(e.into());
             },
@@ -215,7 +226,7 @@ where
                     node_id.short_str(),
                     source_peer.user_agent,
                     maybe_latency
-                        .map(|latency| format!("Latency: {:.2?}", latency))
+                        .map(|latency| format!("Latency: {latency:.2?}"))
                         .unwrap_or_default(),
                     message_tag,
                 );
@@ -229,9 +240,12 @@ where
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
                 if let Some(address) = source_peer.last_address_used() {
-                    self.peer_manager
-                        .update_peer_address_latency_and_last_seen(&public_key, &address, maybe_latency)
-                        .await?;
+                    let mut peer_to_update = source_peer.clone();
+                    if let Some(val) = maybe_latency {
+                        peer_to_update.addresses.update_latency(&address, val);
+                    }
+                    peer_to_update.addresses.mark_last_seen_now(&address);
+                    self.peer_manager.add_or_update_peer(peer_to_update).await?;
                 }
             },
         }
@@ -327,25 +341,44 @@ where
     }
 
     async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
-        let monitored_peers = { self.monitored_peers.read().await.clone() };
-        let selected_peers = self
+        let mut monitored_peers = { self.monitored_peers.read().await.clone() };
+        // Try to select connections that exclude seed nodes
+        let mut selected_peers = self
             .connectivity
             .select_connections(ConnectivitySelection::random_nodes(
                 self.config.num_peers_per_round,
-                Default::default(),
+                self.seeds.clone(),
             ))
             .await?
             .into_iter()
             .map(|c| c.peer_node_id().clone())
-            .chain(monitored_peers)
             .collect::<Vec<_>>();
 
-        if selected_peers.is_empty() {
-            debug!(
-                target: LOG_TARGET,
-                "Cannot broadcast pings because there are no broadcast peers available"
-            )
+        // If not enough connections were selected, use potentially connected seed nodes as a fallback
+        if selected_peers.len() < self.config.num_peers_per_round {
+            selected_peers = self
+                .connectivity
+                .select_connections(ConnectivitySelection::random_nodes(
+                    self.config.num_peers_per_round,
+                    vec![],
+                ))
+                .await?
+                .into_iter()
+                .map(|c| c.peer_node_id().clone())
+                .collect::<Vec<_>>();
+            if selected_peers.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Cannot broadcast pings because there are no connected broadcast peers available"
+                )
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding seed peers to ping round as there are no other connected broadcast peers available"
+                )
+            }
         }
+        selected_peers.append(&mut monitored_peers);
 
         let len_peers = selected_peers.len();
 
@@ -382,14 +415,17 @@ where
             if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone()).await {
                 debug!(
                     target: LOG_TARGET,
-                    "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
+                    "Disconnecting peer {node_id} that failed {max_allowed_ping_failures} rounds of pings"
                 );
-                match conn.disconnect(Minimized::No).await {
+                match conn
+                    .disconnect(Minimized::No, "LivenessService disconnect failed peers")
+                    .await
+                {
                     Ok(_) => {
                         node_ids.push(node_id.clone());
                     },
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", node_id, err);
+                        warn!(target: LOG_TARGET, "Failed to disconnect peer {node_id} ({err})");
                     },
                 }
             }
@@ -421,12 +457,18 @@ mod test {
 
     use futures::stream;
     use rand::rngs::OsRng;
+    use tari_common_sqlite::connection::DbConnection;
     use tari_comms::{
         message::MessageTag,
         net_address::MultiaddressesWithStats,
-        peer_manager::{Peer, PeerFeatures, PeerFlags},
+        peer_manager::{
+            database::{PeerDatabaseSql, MIGRATIONS},
+            Peer,
+            PeerFeatures,
+            PeerFlags,
+        },
         test_utils::mocks::create_connectivity_mock,
-        types::CommsDatabase,
+        types::TransportProtocol,
     };
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
@@ -435,8 +477,6 @@ mod test {
     };
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-    use tari_test_utils::{paths::create_temporary_data_path, random};
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,
@@ -444,26 +484,15 @@ mod test {
 
     use super::*;
     use crate::{
+        create_test_peer,
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
 
     pub fn build_peer_manager() -> Arc<PeerManager> {
-        let database_name = random::string(8);
-        let path = create_temporary_data_path();
-        let datastore = LMDBBuilder::new()
-            .set_path(path.to_str().unwrap())
-            .set_env_config(LMDBConfig::default())
-            .set_max_number_of_databases(1)
-            .add_database(&database_name, lmdb_zero::db::CREATE)
-            .build()
-            .unwrap();
-
-        let peer_database = datastore.get_handle(&database_name).unwrap();
-
-        PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None, None)
-            .map(Arc::new)
-            .unwrap()
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+        Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap())
     }
 
     #[tokio::test]

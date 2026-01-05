@@ -158,7 +158,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let Some(authenticated_pk) = authenticated_origin else {
             warn!(
                 target: LOG_TARGET,
-                "Received JoinMessage that did not have an authenticated origin from source peer {}. Banning source", source_peer
+                "Received JoinMessage that did not have an authenticated origin from source peer {source_peer}. Banning source"
             );
 
             self.dht
@@ -212,7 +212,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         debug!(
             target: LOG_TARGET,
-            "Received join Message from '{}' {}", authenticated_pk, join_msg
+            "Received join Message from '{authenticated_pk}' {join_msg}"
         );
 
         let validator = PeerValidator::new(&self.config);
@@ -230,7 +230,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let valid_peer_node_id = valid_peer.node_id.clone();
         let valid_peer_public_key = valid_peer.public_key.clone();
         // Update peer details. If the peer is banned we preserve the ban but still allow them to update their claims.
-        self.peer_manager.add_peer(valid_peer).await?;
+        self.peer_manager.add_or_update_peer(valid_peer).await?;
 
         // DO NOT propagate this peer if this node has banned them
         if is_banned {
@@ -294,7 +294,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let Some(authenticated_origin) = message.authenticated_origin.as_ref() else {
             warn!(
                 target: LOG_TARGET,
-                "Received DiscoveryResponseMessage that did not have an authenticated origin: {}. Banning source", message
+                "Received DiscoveryResponseMessage that did not have an authenticated origin: {message}. Banning source"
             );
             self.dht
                 .ban_peer(
@@ -399,14 +399,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let peer_validator = PeerValidator::new(&self.config);
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
         let peer = peer_validator.validate_peer(new_peer, maybe_existing_peer)?;
-        self.peer_manager.add_peer(peer).await?;
-        let origin_peer = self.peer_manager.find_by_node_id(&node_id).await.or_not_found()?;
+        self.peer_manager.add_or_update_peer(peer).await?;
+        let origin_peer = self
+            .peer_manager
+            .find_by_node_id(&node_id)
+            .await
+            .or_not_found(&node_id)?;
 
         // Don't send a join request to the origin peer if they are banned
         if origin_peer.is_banned() {
             warn!(
                 target: LOG_TARGET,
-                "Received Discovery request for banned peer '{}'. Not propagating further.", node_id
+                "Received Discovery request for banned peer '{node_id}'. Not propagating further."
             );
             return Ok(());
         }
@@ -437,7 +441,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
         };
 
-        trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);
+        trace!(target: LOG_TARGET, "Sending discovery response to {dest_public_key}");
         self.outbound_service
             .send_message_no_header_no_wait(
                 SendMessageParams::new()

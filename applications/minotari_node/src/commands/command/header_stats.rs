@@ -26,10 +26,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Utc;
 use clap::Parser;
-use tari_core::{
-    chain_storage::ChainStorageError,
-    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm},
-};
+use tari_core::{chain_storage::ChainStorageError, proof_of_work::lwma_diff::LinearWeightedMovingAverage};
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::hex::Hex;
 use tokio::{
     fs::File,
@@ -65,6 +63,7 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_lines)]
     pub async fn save_header_stats(
         &self,
         start_height: u64,
@@ -79,7 +78,7 @@ impl CommandContext {
             start_height,
             end_height,
             filename,
-            pow_algo.map(|a| format!(" PoW algo = {}", a)).unwrap_or_default()
+            pow_algo.map(|a| format!(" PoW algo = {a}")).unwrap_or_default()
         );
 
         let start_height = cmp::max(start_height, 1);
@@ -89,7 +88,7 @@ impl CommandContext {
         writeln!(
             buff,
             "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
-             Window,Acc.Monero,Acc.Sha3"
+             Window,Acc.Monero,Acc.Sha3, Acc.Rxt, Acc.Cuckaroo"
         )?;
         output.write_all(&buff).await?;
 
@@ -132,14 +131,15 @@ impl CommandContext {
                 )
                 .map_err(Error::msg)?,
             );
-            let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty;
-            let acc_monero = header.accumulated_data().accumulated_monero_randomx_difficulty;
-            let acc_tari_rx = header.accumulated_data().accumulated_tari_randomx_difficulty;
+            let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty();
+            let acc_monero = header.accumulated_data().accumulated_monero_randomx_difficulty();
+            let acc_tari_rx = header.accumulated_data().accumulated_tari_randomx_difficulty();
+            let acc_cuckaroo = header.accumulated_data().accumulated_cuckaroo_difficulty();
 
             buff.clear();
             writeln!(
                 buff,
-                "{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{},{}, {}",
                 height,
                 achieved.as_u64(),
                 existing_target_difficulty.as_u64(),
@@ -156,6 +156,7 @@ impl CommandContext {
                 acc_monero,
                 acc_tari_rx,
                 acc_sha3,
+                acc_cuckaroo,
             )?;
             output.write_all(&buff).await?;
 
@@ -170,12 +171,12 @@ impl CommandContext {
 
             if existing_target_difficulty != calculated_target_difficulty {
                 eprintln!(
-                    "Difference at {}! existing = {} and calculated = {}",
-                    height, existing_target_difficulty, calculated_target_difficulty
+                    "Difference at {height}! existing = {existing_target_difficulty} and calculated = \
+                     {calculated_target_difficulty}"
                 );
             }
 
-            print!("{}", height);
+            print!("{height}");
             io::stdout().flush().await?;
             print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
             prev_header = header;

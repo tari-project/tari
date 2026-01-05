@@ -24,11 +24,11 @@ use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
-};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
+    MicroMinotari,
+};
 use tari_utilities::ByteArray;
 use zeroize::Zeroize;
 
@@ -42,7 +42,7 @@ impl TryFrom<UnblindedOutput> for grpc::UnblindedOutput {
         BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
         Ok(grpc::UnblindedOutput {
             value: u64::from(output.value),
-            spending_key: output.spending_key.as_bytes().to_vec(),
+            spending_key: output.commitment_mask_key.as_bytes().to_vec(),
             features: Some(output.features.into()),
             script: output.script.to_bytes(),
             input_data: output.input_data.to_bytes(),
@@ -76,24 +76,24 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
     fn try_from(mut output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
         let spending_key = PrivateKey::from_canonical_bytes(output.spending_key.as_bytes())
-            .map_err(|e| format!("spending_key: {:?}", e))?;
+            .map_err(|e| format!("spending_key: {e:?}"))?;
 
         let features = output
             .features
             .map(TryInto::try_into)
             .ok_or_else(|| "output features not provided".to_string())??;
 
-        let script = TariScript::from_bytes(output.script.as_bytes()).map_err(|e| format!("script: {:?}", e))?;
+        let script = TariScript::from_bytes(output.script.as_bytes()).map_err(|e| format!("script: {e:?}"))?;
 
         let input_data =
-            ExecutionStack::from_bytes(output.input_data.as_bytes()).map_err(|e| format!("input_data: {:?}", e))?;
+            ExecutionStack::from_bytes(output.input_data.as_bytes()).map_err(|e| format!("input_data: {e:?}"))?;
 
         let script_private_key = PrivateKey::from_canonical_bytes(output.script_private_key.as_bytes())
-            .map_err(|e| format!("script_private_key: {:?}", e))?;
+            .map_err(|e| format!("script_private_key: {e:?}"))?;
 
         let sender_offset_public_key =
             CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-                .map_err(|err| format!("sender_offset_public_key {:?}", err))?;
+                .map_err(|err| format!("sender_offset_public_key {err:?}"))?;
 
         let metadata_signature = output
             .metadata_signature
@@ -113,7 +113,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
                 None
             } else {
                 let proof =
-                    RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {}", e))?;
+                    RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {e}"))?;
                 Some(proof)
             }
         } else {

@@ -30,14 +30,9 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
-use tari_contacts::contacts_service::error::ContactsServiceError;
-use tari_core::transactions::{
-    transaction_components::TransactionError,
-    transaction_key_manager::error::KeyManagerServiceError,
-};
-use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
-use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
+use tari_service_framework::ServiceInitializationError;
+use tari_transaction_components::{key_manager::error::KeyManagerError, transaction_components::TransactionError};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -47,7 +42,6 @@ use crate::{
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
-    utxo_scanner_service::error::UtxoScannerError,
 };
 
 #[derive(Debug, Error)]
@@ -72,8 +66,6 @@ pub enum WalletError {
     WalletStorageError(#[from] WalletStorageError),
     #[error("Set logger error: `{0}`")]
     SetLoggerError(#[from] SetLoggerError),
-    #[error("Contacts service error: `{0}`")]
-    ContactsServiceError(#[from] ContactsServiceError),
     #[error("Liveness service error: `{0}`")]
     LivenessServiceError(#[from] LivenessError),
     #[error("Connectivity error: `{0}`")]
@@ -93,19 +85,21 @@ pub enum WalletError {
     #[error("Byte array error")]
     ByteArrayError(String),
     #[error("Utxo Scanner Error: {0}")]
-    UtxoScannerError(#[from] UtxoScannerError),
-    #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    UtxoScannerError(String),
+    #[error("Cipher error: `{0}`")]
+    CipherError(#[from] tari_common_types::seeds::error::CipherError),
     #[error("Key manager service error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
-    #[error("Transport channel error: `{0}`")]
-    TransportChannelError(#[from] TransportChannelError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
     UnexpectedApiResponse { method: String, api: String },
     #[error("Public address not set for this wallet")]
     PublicAddressNotSet,
     #[error("Wallet connectivity error: `{0}`")]
     WalletConnectivityError(#[from] WalletConnectivityError),
+    #[error("Invalid http node url: `{0}`")]
+    InvalidHttpNodeUrl(String),
+    #[error("Tari address error: `{0}`")]
+    AddressError(#[from] tari_common_types::tari_address::TariAddressError),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";
@@ -117,7 +111,7 @@ impl From<ByteArrayError> for WalletError {
 
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
-        log::error!(target: LOG_TARGET, "{}", err);
+        log::error!(target: LOG_TARGET, "{err}");
         Self::new(ExitCode::WalletError, err.to_string())
     }
 }
@@ -146,8 +140,8 @@ pub enum WalletStorageError {
     DatabaseMigrationError(String),
     #[error("Value not found: `{}`", .0.to_key_string())]
     ValueNotFound(DbKey),
-    #[error("Burnt proof not found: `{0}`")]
-    BurntProofNotFound(u32),
+    #[error("Burn proof not found: `{0}`")]
+    BurnProofNotFound(i32),
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
     #[error("Blocking task spawn error: `{0}`")]
@@ -180,8 +174,8 @@ pub enum WalletStorageError {
     NoPasswordError,
     #[error("Deprecated operation error")]
     DeprecatedOperation,
-    #[error("Key Manager Error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    #[error("Cipher error: `{0}`")]
+    CipherError(#[from] tari_common_types::seeds::error::CipherError),
     #[error("Recovery Seed Error: {0}")]
     RecoverySeedError(String),
     #[error("Bad encryption version: `{0}`")]

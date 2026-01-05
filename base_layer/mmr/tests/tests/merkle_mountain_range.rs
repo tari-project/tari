@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
+
 use tari_mmr::common::LeafIndex;
 
 use crate::support::{combine_hashes, create_mmr, int_to_hash, MmrTestHasherBlake256, TestMmr};
@@ -168,10 +170,10 @@ fn find_leaf_index() {
     assert!(mmr.push(h4.clone()).is_ok());
     assert_eq!(mmr.len(), Ok(8));
 
-    assert_eq!(mmr.find_leaf_index(&h0), Ok(Some(0)));
-    assert_eq!(mmr.find_leaf_index(&h1), Ok(Some(1)));
-    assert_eq!(mmr.find_leaf_index(&h2), Ok(Some(2)));
-    assert_eq!(mmr.find_leaf_index(&h3), Ok(Some(3)));
-    assert_eq!(mmr.find_leaf_index(&h4), Ok(Some(4)));
+    assert_eq!(mmr.find_leaf_index(&h0), Ok(Some(LeafIndex(0))));
+    assert_eq!(mmr.find_leaf_index(&h1), Ok(Some(LeafIndex(1))));
+    assert_eq!(mmr.find_leaf_index(&h2), Ok(Some(LeafIndex(2))));
+    assert_eq!(mmr.find_leaf_index(&h3), Ok(Some(LeafIndex(3))));
+    assert_eq!(mmr.find_leaf_index(&h4), Ok(Some(LeafIndex(4))));
     assert_eq!(mmr.find_leaf_index(&h5), Ok(None));
 }

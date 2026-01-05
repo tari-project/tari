@@ -23,9 +23,9 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::CompressedCommitment;
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
+use tari_transaction_components::{
     transaction_components::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
+    MicroMinotari,
 };
 use tari_utilities::ByteArray;
 
@@ -36,7 +36,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
 
     fn try_from(kernel: grpc::TransactionKernel) -> Result<Self, Self::Error> {
         let excess = CompressedCommitment::from_canonical_bytes(&kernel.excess)
-            .map_err(|err| format!("Excess could not be converted:{}", err))?;
+            .map_err(|err| format!("Excess could not be converted:{err}"))?;
 
         let excess_sig = kernel
             .excess_sig
@@ -50,7 +50,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
         } else {
             Some(
                 CompressedCommitment::from_canonical_bytes(&kernel.burn_commitment)
-                    .map_err(|err| format!("Burn commitment could not be converted:{}", err))?,
+                    .map_err(|err| format!("Burn commitment could not be converted:{err}"))?,
             )
         };
 

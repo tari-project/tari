@@ -22,47 +22,38 @@
 
 // non-64-bit not supported
 minotari_app_utilities::deny_non_64_bit_archs!();
-
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 mod automation;
 mod cli;
 mod config;
 mod grpc;
-mod init;
+pub mod init;
 mod notifier;
 mod recovery;
 mod ui;
 mod utils;
 mod wallet_modes;
 pub use cli::{
-    BurnMinotariArgs,
     Cli,
     CliCommands,
     CoinSplitArgs,
-    DiscoverPeerArgs,
     ExportUtxosArgs,
+    ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,
     WhoisArgs,
 };
-use init::{
-    change_password,
-    init_wallet,
-    set_peer_and_get_base_node_peer_config,
-    start_wallet,
-    tari_splash_screen,
-    WalletBoot,
-};
+use init::{change_password, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
+use recovery::get_seed_from_seed_words;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::wallet_types::WalletType;
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_common_types::seeds::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
@@ -71,7 +62,10 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, prompt_wallet_type, wallet_mode};
+use crate::{
+    init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, prompt_wallet_type, wallet_mode},
+    recovery::prompt_private_key_from_seed_words,
+};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -109,6 +103,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         spend_key: None,
         birthday: None,
         libtor_data_dir: None,
+        skip_recovery: false,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -182,7 +177,7 @@ pub fn run_wallet_with_cli(
 
     let on_init = matches!(boot_mode, WalletBoot::New);
     let not_recovery = recovery_seed.is_none();
-    let hardware_wallet = matches!(wallet_type, Some(WalletType::Ledger(_)));
+    let hardware_wallet = matches!(wallet_type, Some(LegacyWalletType::Ledger(_)));
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
@@ -224,43 +219,28 @@ pub fn run_wallet_with_cli(
     }
 
     // Check if there is an in progress recovery in the wallet's database
-    if wallet.is_recovery_in_progress()? {
+    if !cli.skip_recovery && wallet.is_recovery_in_progress()? {
         println!("A Wallet Recovery was found to be in progress, continuing.");
         boot_mode = WalletBoot::Recovery;
     }
 
-    // get base node/s
-    let base_node_config = runtime.block_on(set_peer_and_get_base_node_peer_config(
-        &config.wallet,
-        &mut wallet,
-        cli.non_interactive_mode,
-    ))?;
-    let base_nodes_peers = base_node_config.get_base_node_peers()?;
-
     let wallet_mode = wallet_mode(&cli, boot_mode);
 
     // start wallet
-    runtime.block_on(start_wallet(&mut wallet, &base_nodes_peers, &wallet_mode))?;
+    runtime.block_on(start_wallet(&mut wallet, &wallet_mode))?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
 
     let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(handle, &config.wallet, &base_node_config, wallet.clone()),
+        WalletMode::Tui => tui_mode(handle, &config.wallet, wallet.clone()),
         WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone()),
-        WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), path),
-        WalletMode::Command(command) => command_mode(
-            handle,
-            &cli,
-            &config.wallet,
-            &base_node_config,
-            wallet.clone(),
-            *command,
-        ),
+        WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, wallet.clone(), path),
+        WalletMode::Command(command) => command_mode(handle, &cli, &config.wallet, wallet.clone(), *command),
 
         WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
-            recovery_mode(handle, &base_node_config, &config.wallet, wallet_mode, wallet.clone())
+            recovery_mode(handle, &config.wallet, wallet_mode, wallet.clone(), cli.skip_recovery)
         },
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
@@ -287,9 +267,9 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
 fn get_recovery_seed(
     boot_mode: WalletBoot,
     cli: &Cli,
-    wallet_type: &Option<WalletType>,
+    wallet_type: &Option<LegacyWalletType>,
 ) -> Result<Option<CipherSeed>, ExitError> {
-    if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(WalletType::Ledger(_))) {
+    if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(LegacyWalletType::Ledger(_))) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words, None)?
         } else {

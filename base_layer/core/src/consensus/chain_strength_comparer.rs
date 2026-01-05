@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, fmt::Debug};
 
-use crate::blocks::ChainHeader;
+use tari_node_components::blocks::ChainHeader;
 
 pub trait ChainStrengthComparer: Debug {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering;
@@ -51,8 +51,8 @@ pub struct MoneroRandomxDifficultyComparer {}
 impl ChainStrengthComparer for MoneroRandomxDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_monero_randomx_difficulty
-            .cmp(&b.accumulated_data().accumulated_monero_randomx_difficulty)
+            .accumulated_monero_randomx_difficulty()
+            .cmp(&b.accumulated_data().accumulated_monero_randomx_difficulty())
     }
 }
 
@@ -62,8 +62,8 @@ pub struct TariRandomxDifficultyComparer {}
 impl ChainStrengthComparer for TariRandomxDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_tari_randomx_difficulty
-            .cmp(&b.accumulated_data().accumulated_tari_randomx_difficulty)
+            .accumulated_tari_randomx_difficulty()
+            .cmp(&b.accumulated_data().accumulated_tari_randomx_difficulty())
     }
 }
 
@@ -73,11 +73,20 @@ pub struct Sha3xDifficultyComparer {}
 impl ChainStrengthComparer for Sha3xDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_sha3x_difficulty
-            .cmp(&b.accumulated_data().accumulated_sha3x_difficulty)
+            .accumulated_sha3x_difficulty()
+            .cmp(&b.accumulated_data().accumulated_sha3x_difficulty())
     }
 }
+#[derive(Default, Debug)]
+pub struct CuckarooCycleDifficultyComparer {}
 
+impl ChainStrengthComparer for CuckarooCycleDifficultyComparer {
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
+        a.accumulated_data()
+            .accumulated_cuckaroo_difficulty()
+            .cmp(&b.accumulated_data().accumulated_cuckaroo_difficulty())
+    }
+}
 #[derive(Default, Debug)]
 pub struct HeightComparer {}
 
@@ -118,6 +127,10 @@ impl ChainStrengthComparerBuilder {
 
     pub fn by_sha3x_difficulty(self) -> Self {
         self.add_comparer_as_then(Box::<Sha3xDifficultyComparer>::default())
+    }
+
+    pub fn by_cuckaroo_cycle_difficulty(self) -> Self {
+        self.add_comparer_as_then(Box::<CuckarooCycleDifficultyComparer>::default())
     }
 
     pub fn by_height(self) -> Self {

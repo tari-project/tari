@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
@@ -42,7 +43,7 @@ use tari_core::{
         StateMachineHandle,
     },
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
-    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
+    consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{
         service::{LocalMempoolService, MempoolHandle},
         Mempool,
@@ -69,6 +70,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
+use tari_transaction_components::consensus::NetworkConsensus;
 
 use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 
@@ -86,6 +88,7 @@ pub struct NodeInterfaces {
     pub local_mp_interface: LocalMempoolService,
     pub chain_metadata_handle: ChainMetadataHandle,
     pub liveness_handle: LivenessHandle,
+    pub dht: Dht,
     pub comms: CommsNode,
     pub mock_base_node_state_machine: MockBaseNodeStateMachine,
     pub state_machine_handle: StateMachineHandle,
@@ -111,7 +114,7 @@ pub struct BaseNodeBuilder {
     liveness_service_config: Option<LivenessConfig>,
     p2p_config: Option<P2pConfig>,
     validators: Option<Validators<TempDatabase>>,
-    consensus_manager: Option<ConsensusManager>,
+    consensus_manager: Option<BaseNodeConsensusManager>,
     network: NetworkConsensus,
 }
 
@@ -180,7 +183,7 @@ impl BaseNodeBuilder {
     }
 
     /// Set the configuration of the Consensus Manager
-    pub fn with_consensus_manager(mut self, consensus_manager: ConsensusManager) -> Self {
+    pub fn with_consensus_manager(mut self, consensus_manager: BaseNodeConsensusManager) -> Self {
         self.consensus_manager = Some(consensus_manager);
         self
     }
@@ -191,7 +194,7 @@ impl BaseNodeBuilder {
         self,
         data_path: &str,
         blockchain_db_config: BlockchainDatabaseConfig,
-    ) -> (NodeInterfaces, ConsensusManager) {
+    ) -> (NodeInterfaces, BaseNodeConsensusManager) {
         let validators = self.validators.unwrap_or_else(|| {
             Validators::new(
                 MockValidator::new(true),
@@ -202,7 +205,7 @@ impl BaseNodeBuilder {
         let network = self.network.as_network();
         let consensus_manager = self
             .consensus_manager
-            .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
+            .unwrap_or_else(|| BaseNodeConsensusManagerBuilder::new(network).build().unwrap());
         let blockchain_db = create_store_with_consensus_and_validators_and_config(
             consensus_manager.clone(),
             validators,
@@ -249,10 +252,10 @@ pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>
     liveness_service_configs: Vec<LivenessConfig>,
     blockchain_db_configs: Vec<BlockchainDatabaseConfig>,
     p2p_configs: Vec<P2pConfig>,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     data_path: P,
     network: Network,
-) -> (Vec<NodeInterfaces>, ConsensusManager) {
+) -> (Vec<NodeInterfaces>, BaseNodeConsensusManager) {
     let num_of_nodes = mempool_service_configs.len();
     if num_of_nodes != liveness_service_configs.len() ||
         num_of_nodes != blockchain_db_configs.len() ||
@@ -298,7 +301,7 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        format!("/memory/{}", next_port).parse().unwrap(),
+        format!("/memory/{next_port}").parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ))
 }
@@ -334,7 +337,7 @@ async fn setup_base_node_services(
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<TempDatabase>,
     mempool: Mempool,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     liveness_service_config: LivenessConfig,
     p2p_config: P2pConfig,
     data_path: &str,
@@ -404,7 +407,7 @@ async fn setup_base_node_services(
     let chain_metadata_handle = handles.expect_handle::<ChainMetadataHandle>();
     let liveness_handle = handles.expect_handle::<LivenessHandle>();
     let state_machine_handle = handles.expect_handle::<StateMachineHandle>();
-
+    let dht_handle = handles.expect_handle::<Dht>();
     NodeInterfaces {
         node_identity,
         outbound_nci,
@@ -418,6 +421,7 @@ async fn setup_base_node_services(
         chain_metadata_handle,
         liveness_handle,
         comms,
+        dht: dht_handle,
         messaging_events,
         mock_base_node_state_machine: mock_state_machine,
         shutdown,

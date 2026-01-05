@@ -25,6 +25,7 @@ use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
+    conversions::transaction_output::grpc_output_with_payref,
     tari_rpc::{
         base_node_client::BaseNodeClient,
         pow_algo::PowAlgos,
@@ -34,7 +35,6 @@ use minotari_app_grpc::{
         PowAlgo,
         SubmitBlockRequest,
         SubmitBlockResponse,
-        TransactionOutput as GrpcTransactionOutput,
     },
 };
 use minotari_app_utilities::parse_miner_input::{
@@ -55,19 +55,17 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{FixedHash, UncompressedPublicKey},
 };
-use tari_core::{
-    blocks::BlockHeader,
-    consensus::ConsensusManager,
-    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    transactions::{
-        generate_coinbase,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
+use tari_node_components::blocks::BlockHeader;
+use tari_transaction_components::{
+    generate_coinbase,
+    key_manager::KeyManager,
+    tari_proof_of_work::PowAlgorithm,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
     },
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};
@@ -97,8 +95,8 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
 
-    debug!(target: LOG_TARGET_FILE, "{:?}", config);
-    let key_manager = create_memory_db_key_manager().map_err(|err| {
+    debug!(target: LOG_TARGET_FILE, "{config:?}");
+    let key_manager = KeyManager::new_random().map_err(|err| {
         ExitError::new(
             ExitCode::KeyManagerServiceError,
             "'wallet_payment_address' ".to_owned() + &err.to_string(),
@@ -111,8 +109,8 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 "'wallet_payment_address' ".to_owned() + &err.to_string(),
             )
         })?;
-    debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {}", wallet_payment_address);
-    let consensus_manager = ConsensusManager::builder(config.network)
+    debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {wallet_payment_address}");
+    let consensus_manager = BaseNodeConsensusManager::builder(config.network)
         .build()
         .map_err(|err| ExitError::new(ExitCode::ConsensusManagerBuilderError, err.to_string()))?;
 
@@ -129,22 +127,16 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             miner_address += &format!("{}{}", ".", config.mining_worker_name);
         }
         let mut mc = Controller::new(config.num_mining_threads).map_err(|e| {
-            debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {}", e);
-            ExitError::new(
-                ExitCode::UnknownError,
-                format!("Error loading mining controller: {}", e),
-            )
+            debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {e}");
+            ExitError::new(ExitCode::UnknownError, format!("Error loading mining controller: {e}"))
         })?;
         let cc = crate::stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone())
             .map_err(|e| {
                 debug!(
                     target: LOG_TARGET_FILE,
-                    "Error loading stratum client controller: {:?}", e
+                    "Error loading stratum client controller: {e:?}"
                 );
-                ExitError::new(
-                    ExitCode::UnknownError,
-                    format!("Error loading mining controller: {}", e),
-                )
+                ExitError::new(ExitCode::UnknownError, format!("Error loading mining controller: {e}"))
             })?;
         mc.set_client_tx(cc.tx.clone());
 
@@ -156,7 +148,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         mc.run()
             .await
-            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {:?}", err)))?;
+            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {err:?}")))?;
 
         Ok(())
     } else {
@@ -168,13 +160,13 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         if let Err(e) = verify_base_node_responses(&mut base_node_client, &config).await {
             if let MinerError::BaseNodeNotResponding(_) = e {
-                error!(target: LOG_TARGET, "{}", e.to_string());
+                error!(target: LOG_TARGET, "{e}");
                 println!();
                 let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods allowed in \
                            its 'config.toml'? Please ensure these methods are enabled in:\n  \
                            'grpc_server_allow_methods': \"get_new_block_template\", \"get_tip_info\", \
                            \"get_new_block\", \"submit_block\"";
-                println!("{}", msg);
+                println!("{msg}");
                 println!();
                 return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
             }
@@ -196,7 +188,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             {
                 err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
                     // Any GRPC error we will try to reconnect with a standard delay
-                    error!(target: LOG_TARGET, "Connection error: {:?}", err);
+                    error!(target: LOG_TARGET, "Connection error: {err:?}");
                     loop {
                         info!(target: LOG_TARGET, "Holding for {:?}", config.wait_timeout());
                         sleep(config.wait_timeout()).await;
@@ -207,7 +199,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                                 break;
                             },
                             Err(err) => {
-                                error!(target: LOG_TARGET, "Connection error: {:?}", err);
+                                error!(target: LOG_TARGET, "Connection error: {err:?}");
                                 continue;
                             },
                         }
@@ -216,18 +208,18 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 Err(MinerError::MineUntilHeightReached(h)) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Prescribed blockchain height {} reached. Aborting ...", h
+                        "Prescribed blockchain height {h} reached. Aborting ..."
                     );
                     return Ok(());
                 },
                 Err(MinerError::MinerLostBlock(h)) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Height {} already mined by other node. Restarting ...", h
+                        "Height {h} already mined by other node. Restarting ..."
                     );
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Error: {:?}", err);
+                    error!(target: LOG_TARGET, "Error: {err:?}");
                     sleep(config.wait_timeout()).await;
                 },
                 Ok(submitted) => {
@@ -256,10 +248,10 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
     let base_node_client = match connect_base_node(config).await {
         Ok(client) => client,
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
+            error!(target: LOG_TARGET, "Could not connect to base node: {e}");
             let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
                        `--enable-grpc` or enable it in the config.";
-            println!("{}", msg);
+            println!("{msg}");
             return Err(e);
         },
     };
@@ -270,10 +262,10 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
         p2pool_node_client = match connect_sha_p2pool(config).await {
             Ok(client) => Some(client),
             Err(e) => {
-                error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
+                error!(target: LOG_TARGET, "Could not connect to base node: {e}");
                 let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
                            `--enable-grpc` or enable it in the config.";
-                println!("{}", msg);
+                println!("{msg}");
                 return Err(e);
             },
         };
@@ -293,7 +285,7 @@ async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient,
         p2pool_node_addr = prompt_for_p2pool_address()?;
     }
 
-    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", p2pool_node_addr);
+    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
     let mut endpoint = Endpoint::new(p2pool_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
@@ -330,7 +322,7 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
         base_node_addr = prompt_for_base_node_address(config.network)?;
     }
 
-    info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
+    info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
     let mut endpoint = Endpoint::new(base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
@@ -381,9 +373,9 @@ async fn get_new_block(
     sha_p2pool_client: Arc<Mutex<Option<ShaP2PoolGrpcClient>>>,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     wallet_payment_address: &TariAddress,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
     if config.sha_p2pool_enabled {
         if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
@@ -406,9 +398,9 @@ async fn get_new_block_base_node(
     base_node_client: &mut BaseNodeGrpcClient,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     wallet_payment_address: &TariAddress,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
     debug!(target: LOG_TARGET, "Getting new block template");
     let template_response = base_node_client
@@ -447,21 +439,18 @@ async fn get_new_block_base_node(
         true,
         consensus_manager.consensus_constants(height),
         config.range_proof_type,
-        PaymentId::Open {
-            user_data: vec![],
-            tx_type: TxType::Coinbase,
-        },
+        MemoField::open_unchecked(vec![], TxType::Coinbase),
     )
-    .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
-    debug!(target: LOG_TARGET, "Coinbase kernel: {}", coinbase_kernel);
-    debug!(target: LOG_TARGET, "Coinbase output: {}", coinbase_output);
+    debug!(target: LOG_TARGET, "Coinbase kernel: {coinbase_kernel}");
+    debug!(target: LOG_TARGET, "Coinbase output: {coinbase_output}");
 
     let body = block_template
         .body
         .as_mut()
         .ok_or_else(|| err_empty("new_block_template.body"))?;
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output.clone()).map_err(MinerError::Conversion)?;
+    let grpc_output =
+        grpc_output_with_payref(coinbase_output.clone(), None).map_err(|e| MinerError::Conversion(e.to_string()))?;
 
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
@@ -522,7 +511,7 @@ async fn submit_block(
                     wallet_payment_address: wallet_payment_address.to_hex(),
                 })
                 .await
-                .map_err(MinerError::GrpcStatus)?
+                .map_err(MinerError::from)?
                 .into_inner());
         }
     }
@@ -530,7 +519,7 @@ async fn submit_block(
     Ok(base_node_client
         .submit_block(block)
         .await
-        .map_err(MinerError::GrpcStatus)?
+        .map_err(MinerError::from)?
         .into_inner())
 }
 
@@ -540,9 +529,9 @@ async fn mining_cycle(
     sha_p2pool_client: Option<ShaP2PoolGrpcClient>,
     config: &MinerConfig,
     cli: &Cli,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KeyManager,
     wallet_payment_address: &TariAddress,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<bool, MinerError> {
     let sha_p2pool_client = Arc::new(Mutex::new(sha_p2pool_client));
     let block_result = get_new_block(

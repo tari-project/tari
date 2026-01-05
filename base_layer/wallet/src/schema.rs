@@ -1,11 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    burnt_proofs (id) {
+    burn_proofs (id) {
         id -> Integer,
-        reciprocal_claim_public_key -> Text,
-        payload -> Text,
-        burned_at -> Timestamp,
+        output_hash -> Binary,
+        commitment -> Binary,
+        burn_proof -> Binary,
+        kernel -> Binary,
+        kernel_merkle_proof -> Nullable<Binary>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
 
@@ -37,6 +41,9 @@ diesel::table! {
         transaction_signature_nonce -> Binary,
         transaction_signature_key -> Binary,
         payment_id -> Nullable<Binary>,
+        sent_output_hashes -> Nullable<Binary>,
+        received_output_hashes -> Nullable<Binary>,
+        change_output_hashes -> Nullable<Binary>,
         user_payment_id -> Nullable<Binary>,
     }
 }
@@ -53,6 +60,7 @@ diesel::table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
+        received_output_hashes -> Nullable<Binary>,
         user_payment_id -> Nullable<Binary>,
     }
 }
@@ -80,6 +88,7 @@ diesel::table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
+        sent_output_hashes -> Nullable<Binary>,
         user_payment_id -> Nullable<Binary>,
     }
 }
@@ -126,6 +135,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    payrefs (output_hash) {
+        output_hash -> Binary,
+        payref -> Binary,
+        tx_id -> BigInt,
+    }
+}
+
+diesel::table! {
     scanned_blocks (header_hash) {
         header_hash -> Binary,
         height -> BigInt,
@@ -143,13 +160,14 @@ diesel::table! {
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
-    burnt_proofs,
+    burn_proofs,
     client_key_values,
     completed_transactions,
     inbound_transactions,
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
+    payrefs,
     scanned_blocks,
     wallet_settings,
 );

@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::Utc;
-use minotari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
+#![allow(clippy::indexing_slicing)]
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -48,104 +47,43 @@ impl<B: Backend> Component<B> for BaseNode {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let title = Spans::from(vec![Span::styled(
-            " Base Node Status  -  ",
+            " Base Node Status  -     ",
             Style::default().fg(Color::White),
         )]);
 
-        let current_online_status = app_state.get_wallet_connectivity().get_connectivity_status();
-        let mut base_node_id_color = Color::White;
-        let chain_info = match current_online_status {
-            OnlineStatus::Connecting => Spans::from(vec![
-                Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
-                Span::raw(" "),
-                Span::styled("Connecting...", Style::default().fg(Color::Reset)),
-            ]),
-            OnlineStatus::Offline => Spans::from(vec![
-                Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
-                Span::raw(" "),
-                Span::styled("Offline", Style::default().fg(Color::Red)),
-            ]),
-            OnlineStatus::Online => {
-                let base_node_state = app_state.get_base_node_state();
-                if let Some(ref metadata) = base_node_state.chain_metadata {
-                    let tip = metadata.best_block_height();
-                    let scanned_height = match app_state.get_wallet_scanned_height() {
-                        0 => "*",
-                        v => &v.to_string(),
-                    };
+        let scanned_height = app_state.get_wallet_scanned_height();
+        let tip_height = app_state.get_wallet_tip_height();
+        let mut chain_info = vec![
+            Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            Span::styled(
+                format!("#{tip_height}({scanned_height})"),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw("   "),
+        ];
 
-                    let synced = base_node_state.is_synced.unwrap_or_default();
-                    let (tip_color, sync_text) = if synced {
-                        (
-                            {
-                                base_node_id_color = Color::Green;
-                                base_node_id_color
-                            },
-                            "Synced.",
-                        )
-                    } else {
-                        (
-                            {
-                                base_node_id_color = Color::Yellow;
-                                base_node_id_color
-                            },
-                            "Syncing...",
-                        )
-                    };
-
-                    let updated = base_node_state.updated.unwrap_or(Utc::now());
-
-                    let latency = base_node_state.latency.unwrap_or_default().as_millis();
-                    let latency_color = match latency {
-                        0 => Color::Gray, // offline? default duration is 0
-                        1..=800 => Color::Green,
-                        801..=1200 => Color::Yellow,
-                        _ => Color::Red,
-                    };
-
-                    let mut tip_info = vec![
-                        Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
-                        Span::raw(" "),
-                        Span::styled(format!("#{}({})", tip, scanned_height), Style::default().fg(tip_color)),
-                        Span::raw("  "),
-                        Span::styled(sync_text.to_string(), Style::default().fg(Color::White)),
-                        Span::raw("  "),
-                    ];
-
-                    let mut latency_span = if Utc::now().timestamp() - updated.timestamp() > 15 * 60 {
-                        vec![
-                            Span::styled("Last updated", Style::default().fg(Color::Red)),
-                            Span::raw(" "),
-                            Span::styled(updated.to_string(), Style::default().fg(Color::Red)),
-                            Span::styled(" s", Style::default().fg(Color::Red)),
-                        ]
-                    } else {
-                        vec![
-                            Span::styled("Latency", Style::default().fg(Color::White)),
-                            Span::raw(" "),
-                            Span::styled(latency.to_string(), Style::default().fg(latency_color)),
-                            Span::styled(" ms", Style::default().fg(Color::DarkGray)),
-                        ]
-                    };
-                    tip_info.append(&mut latency_span);
-
-                    Spans::from(tip_info)
-                } else {
-                    Spans::from(vec![
-                        Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
-                        Span::raw(" "),
-                        Span::styled("Waiting for data...", Style::default().fg(Color::DarkGray)),
-                    ])
-                }
-            },
+        let latency = app_state.get_base_node_latency().unwrap_or_default().as_millis();
+        let latency_color = match latency {
+            0 => Color::Gray, // offline? default duration is 0
+            1..=800 => Color::Green,
+            801..=1200 => Color::Yellow,
+            _ => Color::Red,
         };
+
+        let mut latency_span = vec![
+            Span::styled("Latency", Style::default().fg(Color::White)),
+            Span::raw(" "),
+            Span::styled(latency.to_string(), Style::default().fg(latency_color)),
+            Span::styled(" ms", Style::default().fg(Color::DarkGray)),
+        ];
+        chain_info.append(&mut latency_span);
+
+        let chain_info = Spans::from(chain_info);
 
         let base_node_id = Spans::from(vec![
             Span::styled(" Connected Base Node ID: ", Style::default().fg(Color::Magenta)),
-            Span::styled(
-                format!("{}", app_state.get_selected_base_node().node_id.clone()),
-                Style::default().fg(base_node_id_color),
-            ),
+            Span::styled(app_state.get_http_node_url(), Style::default().fg(Color::White)),
             Span::styled(" ", Style::default().fg(Color::White)),
         ]);
 
@@ -172,6 +110,7 @@ impl<B: Backend> Component<B> for BaseNode {
         f.render_widget(paragraph, columns[0]);
         let paragraph = Paragraph::new(chain_info).block(Block::default());
         f.render_widget(paragraph, columns[1]);
+
         let paragraph = Paragraph::new(base_node_id).block(Block::default());
         f.render_widget(paragraph, columns[2]);
 

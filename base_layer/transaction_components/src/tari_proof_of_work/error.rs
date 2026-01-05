@@ -1,0 +1,77 @@
+// Copyright 2019. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use thiserror::Error;
+
+use crate::{tari_proof_of_work::difficulty::Difficulty, BanPeriod, BanReason};
+
+/// Errors that can occur when validating a proof of work
+#[derive(Debug, Error)]
+pub enum PowError {
+    #[error("ProofOfWorkFailed")]
+    InvalidProofOfWork,
+    #[error("Achieved difficulty is below the minimum({minimum}) , block achieved: {achieved}")]
+    AchievedDifficultyBelowMin { minimum: Difficulty, achieved: Difficulty },
+    #[error("Proof of work data must be empty for Sha3 blocks")]
+    Sha3HeaderNonEmptyPowBytes,
+    #[error("Proof of work data is too long. Max allowed is 32 bytes")]
+    RandomxTPowDataTooLong,
+    #[error("Target difficulty {target} not achieved. Achieved difficulty: {achieved}")]
+    AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
+    #[error("Invalid target difficulty (expected: {expected}, got: {got})")]
+    InvalidTargetDifficulty { expected: Difficulty, got: Difficulty },
+    #[error("Cuckaroo proof of work data size mismatch (expected: {expected}, got: {actual})")]
+    CuckarooPowDataSizeMismatch { expected: usize, actual: usize },
+    #[error("Cuckaroo proof of work data has non-zero padding (padding: {padding})")]
+    CuckarooPowDataNonZeroPadding { padding: u8 },
+}
+
+impl PowError {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            err @ PowError::InvalidProofOfWork |
+            err @ PowError::AchievedDifficultyBelowMin { .. } |
+            err @ PowError::Sha3HeaderNonEmptyPowBytes |
+            err @ PowError::RandomxTPowDataTooLong |
+            err @ PowError::AchievedDifficultyTooLow { .. } |
+            err @ PowError::CuckarooPowDataSizeMismatch { .. } |
+            err @ PowError::CuckarooPowDataNonZeroPadding { .. } |
+            err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+        }
+    }
+}
+
+/// Errors that can occur when converting a difficulty
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DifficultyError {
+    #[error("Difficulty conversion less than the minimum difficulty")]
+    InvalidDifficulty,
+    #[error("Maximum block time overflowed u64")]
+    MaxBlockTimeOverflow,
+    #[error("Divide by zero")]
+    DivideByZero,
+    #[error("Overflow")]
+    Overflow,
+}

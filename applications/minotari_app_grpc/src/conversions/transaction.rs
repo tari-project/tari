@@ -25,12 +25,12 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
-use tari_core::transactions::transaction_components::Transaction;
+use tari_common_types::transaction::{LegacyTransactionStatus, TransactionDirection, TransactionStatus, TxId};
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
+use crate::{conversions::aggregate_body::grpc_aggregate_body_with_payrefs, tari_rpc as grpc};
 
 impl TryFrom<Transaction> for grpc::Transaction {
     type Error = String;
@@ -38,7 +38,7 @@ impl TryFrom<Transaction> for grpc::Transaction {
     fn try_from(source: Transaction) -> Result<Self, Self::Error> {
         Ok(Self {
             offset: Vec::from(source.offset.as_bytes()),
-            body: Some(source.body.try_into()?),
+            body: Some(grpc_aggregate_body_with_payrefs(source.body, None)?),
             script_offset: Vec::from(source.script_offset.as_bytes()),
         })
     }
@@ -52,7 +52,7 @@ impl TryFrom<Arc<Transaction>> for grpc::Transaction {
             Ok(tx) => tx.try_into(),
             Err(tx) => Ok(Self {
                 offset: Vec::from(tx.offset.as_bytes()),
-                body: Some(tx.body.clone().try_into()?),
+                body: Some(grpc_aggregate_body_with_payrefs(tx.body.clone(), None)?),
                 script_offset: Vec::from(tx.script_offset.as_bytes()),
             }),
         }
@@ -65,13 +65,13 @@ impl TryFrom<grpc::Transaction> for Transaction {
     fn try_from(source: grpc::Transaction) -> Result<Self, Self::Error> {
         Ok(Self {
             offset: RistrettoSecretKey::from_canonical_bytes(&source.offset)
-                .map_err(|e| format!("Offset is not valid:{}", e))?,
+                .map_err(|e| format!("Offset is not valid:{e}"))?,
             body: source
                 .body
                 .ok_or_else(|| "Transaction body not provided".to_string())?
                 .try_into()?,
             script_offset: RistrettoSecretKey::from_canonical_bytes(&source.script_offset)
-                .map_err(|e| format!("Script offset is not valid:{}", e))?,
+                .map_err(|e| format!("Script offset is not valid:{e}"))?,
         })
     }
 }
@@ -87,10 +87,10 @@ impl From<TransactionDirection> for grpc::TransactionDirection {
     }
 }
 
-impl From<TransactionStatus> for grpc::TransactionStatus {
-    fn from(status: TransactionStatus) -> Self {
+impl From<LegacyTransactionStatus> for grpc::TransactionStatus {
+    fn from(status: LegacyTransactionStatus) -> Self {
         #[allow(clippy::enum_glob_use)]
-        use TransactionStatus::*;
+        use LegacyTransactionStatus::*;
         match status {
             Completed => grpc::TransactionStatus::Completed,
             Broadcast => grpc::TransactionStatus::Broadcast,
@@ -106,6 +106,20 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             CoinbaseConfirmed => grpc::TransactionStatus::CoinbaseConfirmed,
             CoinbaseNotInBlockChain => grpc::TransactionStatus::CoinbaseNotInBlockChain,
             Queued => grpc::TransactionStatus::Queued,
+        }
+    }
+}
+
+impl From<TransactionStatus> for grpc::TransactionStatus {
+    fn from(status: TransactionStatus) -> Self {
+        #[allow(clippy::enum_glob_use)]
+        use TransactionStatus::*;
+        match status {
+            Completed => grpc::TransactionStatus::Completed,
+            Broadcast => grpc::TransactionStatus::Broadcast,
+            MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
+            MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
+            Rejected => grpc::TransactionStatus::Rejected,
         }
     }
 }

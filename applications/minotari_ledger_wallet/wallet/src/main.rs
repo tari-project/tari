@@ -6,8 +6,8 @@
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
-mod hashing;
 mod crypto;
+mod hashing;
 pub mod utils;
 
 mod app_ui {
@@ -45,8 +45,8 @@ use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::common_types::{
     AppSW as AppSWMapping,
-    Branch as BranchMapping,
     Instruction as InstructionMapping,
+    LedgerKeyBranch as BranchMapping,
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
@@ -129,10 +129,9 @@ impl KeyType {
             match branch {
                 BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
                 BranchMapping::Spend => Ok(Self::Spend),
-                BranchMapping::RandomKey => Ok(Self::Random),
+                BranchMapping::Random => Ok(Self::Random),
                 BranchMapping::PreMine => Ok(Self::PreMine),
                 BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
-                _ => Err(AppSW::BadBranchKey),
             }
         } else {
             return Err(AppSW::BadBranchKey);

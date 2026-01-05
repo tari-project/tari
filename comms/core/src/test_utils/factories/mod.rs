@@ -45,7 +45,9 @@ pub enum TestFactoryError {
 
 impl TestFactoryError {
     pub fn build_failed<E>() -> impl Fn(E) -> Self
-    where E: Debug {
-        |err| TestFactoryError::BuildFailed(format!("Factory failed to build: {:?}", err))
+    where
+        E: Debug,
+    {
+        |err| TestFactoryError::BuildFailed(format!("Factory failed to build: {err:?}"))
     }
 }

@@ -36,17 +36,12 @@ use thiserror::Error;
 
 use super::command::Command;
 
-#[derive(Debug, Display, EnumString)]
+#[derive(Debug, Display, EnumString, Default)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Format {
     Json,
+    #[default]
     Text,
-}
-
-impl Default for Format {
-    fn default() -> Self {
-        Self::Text
-    }
 }
 
 #[derive(Debug)]
@@ -58,7 +53,7 @@ impl<T: Hex> FromStr for FromHex<T> {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         T::from_hex(s)
             .map(Self)
-            .map_err(|e| ParserError::HexError(format!("{}", e)))
+            .map_err(|e| ParserError::HexError(format!("{e}")))
     }
 }
 

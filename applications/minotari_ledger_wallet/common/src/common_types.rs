@@ -1,10 +1,15 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::string::String;
+use alloc::{
+    fmt,
+    string::{String, ToString},
+};
+use core::str::FromStr;
+
+use serde::{Deserialize, Serialize};
 
 use crate::utils;
-
 /// Ledger application status words.
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -97,39 +102,60 @@ impl Instruction {
 
 /// Key manager branches shared by the Ledger application and the wallet.
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Branch {
-    DataEncryption = 0x00,
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LedgerKeyBranch {
     MetadataEphemeralNonce = 0x01,
-    CommitmentMask = 0x02,
-    Nonce = 0x03,
-    KernelNonce = 0x04,
-    SenderOffset = 0x05,
     OneSidedSenderOffset = 0x06,
-    Spend = 0x07,
-    RandomKey = 0x08,
+    Random = 0x08,
     PreMine = 0x09,
+    Spend = 0x07,
 }
 
-impl Branch {
+impl LedgerKeyBranch {
     pub fn as_byte(self) -> u8 {
         self as u8
     }
 
     pub fn from_byte(value: u8) -> Option<Self> {
         match value {
-            0x00 => Some(Branch::DataEncryption),
-            0x01 => Some(Branch::MetadataEphemeralNonce),
-            0x02 => Some(Branch::CommitmentMask),
-            0x03 => Some(Branch::Nonce),
-            0x04 => Some(Branch::KernelNonce),
-            0x05 => Some(Branch::SenderOffset),
-            0x06 => Some(Branch::OneSidedSenderOffset),
-            0x07 => Some(Branch::Spend),
-            0x08 => Some(Branch::RandomKey),
-            0x09 => Some(Branch::PreMine),
+            0x01 => Some(LedgerKeyBranch::MetadataEphemeralNonce),
+            0x06 => Some(LedgerKeyBranch::OneSidedSenderOffset),
+            0x08 => Some(LedgerKeyBranch::Random),
+            0x09 => Some(LedgerKeyBranch::PreMine),
+            0x07 => Some(LedgerKeyBranch::Spend),
             _ => None,
         }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            LedgerKeyBranch::OneSidedSenderOffset => "OneSidedSenderOffset",
+            LedgerKeyBranch::Random => "Random",
+            LedgerKeyBranch::PreMine => "PreMine",
+            LedgerKeyBranch::Spend => "Spend",
+            LedgerKeyBranch::MetadataEphemeralNonce => "MetadataEphemeralNonce",
+        }
+    }
+}
+
+impl FromStr for LedgerKeyBranch {
+    type Err = String;
+
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        match id {
+            "OneSidedSenderOffset" => Ok(LedgerKeyBranch::OneSidedSenderOffset),
+            "Random" => Ok(LedgerKeyBranch::Random),
+            "PreMine" => Ok(LedgerKeyBranch::PreMine),
+            "Spend" => Ok(LedgerKeyBranch::Spend),
+            "MetadataEphemeralNonce" => Ok(LedgerKeyBranch::MetadataEphemeralNonce),
+            _ => Err("Invalid ledger key branch".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for LedgerKeyBranch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -278,69 +304,6 @@ mod test {
                 Instruction::GetScriptSignatureManaged => {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
-                },
-            }
-        }
-    }
-
-    #[test]
-    fn test_branch_conversion() {
-        use crate::common_types::Branch;
-
-        let mappings = [
-            (0x00, Branch::DataEncryption),
-            (0x01, Branch::MetadataEphemeralNonce),
-            (0x02, Branch::CommitmentMask),
-            (0x03, Branch::Nonce),
-            (0x04, Branch::KernelNonce),
-            (0x05, Branch::SenderOffset),
-            (0x06, Branch::OneSidedSenderOffset),
-            (0x07, Branch::Spend),
-            (0x08, Branch::RandomKey),
-            (0x09, Branch::PreMine),
-        ];
-
-        for (expected_byte, branch) in &mappings {
-            match branch {
-                Branch::DataEncryption => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::MetadataEphemeralNonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::CommitmentMask => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::Nonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::KernelNonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::SenderOffset => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::OneSidedSenderOffset => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::Spend => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::RandomKey => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
-                },
-                Branch::PreMine => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
                 },
             }
         }

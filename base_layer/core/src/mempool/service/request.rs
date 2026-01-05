@@ -23,10 +23,11 @@
 use core::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::Signature;
+use tari_common_types::types::CompressedSignature;
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::{common::waiting_requests::RequestKey, transactions::transaction_components::Transaction};
+use crate::common::RequestKey;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,7 +35,7 @@ use crate::{common::waiting_requests::RequestKey, transactions::transaction_comp
 pub enum MempoolRequest {
     GetStats,
     GetState,
-    GetTxStateByExcessSig(Signature),
+    GetTxStateByExcessSig(CompressedSignature),
     SubmitTransaction(Transaction),
     GetFeePerGramStats { count: usize, tip_height: u64 },
 }
@@ -52,7 +53,7 @@ impl Display for MempoolRequest {
                     .first_kernel_excess_sig()
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "No kernels!".to_string());
-                write!(f, "SubmitTransaction ({})", sig_hex)
+                write!(f, "SubmitTransaction ({sig_hex})")
             },
             MempoolRequest::GetFeePerGramStats { count, tip_height } => {
                 write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)

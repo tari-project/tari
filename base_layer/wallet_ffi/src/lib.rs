@@ -46,22 +46,19 @@
 //!    to the `AvailableBalance`.
 
 #![recursion_limit = "1024"]
-
+#![allow(clippy::indexing_slicing)]
 use core::ptr;
 use std::{
     convert::{TryFrom, TryInto},
     ffi::{CStr, CString},
     fmt::{Display, Formatter},
     mem::ManuallyDrop,
-    num::NonZeroU16,
     path::PathBuf,
     slice,
     str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 
-use chrono::{DateTime, Local};
 use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
 use itertools::Itertools;
@@ -80,8 +77,6 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use minotari_wallet::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -94,7 +89,6 @@ use minotari_wallet::{
     },
     storage::{
         database::WalletDatabase,
-        sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
     },
     transaction_service::{
@@ -105,86 +99,70 @@ use minotari_wallet::{
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
-    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
-    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
+    utxo_scanner_service::RECOVERY_KEY,
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
 };
 use num_traits::FromPrimitive;
-use rand::{prelude::SliceRandom, rngs::OsRng};
+use rand::rngs::OsRng;
 use tari_common::{
-    configuration::{DnsNameServerList, MultiaddrList, StringList},
+    configuration::{MultiaddrList, Network},
     network_check::set_network_if_choice_valid,
 };
-use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
-    tari_address::{TariAddress, TariAddressError},
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    payment_reference::generate_payment_reference,
+    seeds::{
+        cipher_seed::CipherSeed,
+        mnemonic::{Mnemonic, MnemonicLanguage},
+        mnemonic_wordlists,
+        seed_words::SeedWords,
+    },
+    tari_address::TariAddress,
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         RangeProof,
         SignatureWithDomain,
         UncompressedPublicKey,
     },
-    wallet_types::WalletType,
 };
-use tari_comms::{
-    multiaddr::Multiaddr,
-    net_address::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE},
-    peer_manager::{NodeIdentity, PeerQuery},
-    transports::MemoryTransport,
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
-use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
-use tari_core::{
-    borsh::FromBytes,
-    consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            UnblindedOutput,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
-        CryptoFactories,
-    },
-};
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{ByteArray, Hidden},
 };
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    mnemonic::{Mnemonic, MnemonicLanguage},
-    SeedWords,
-};
-use tari_p2p::{
-    auto_update::AutoUpdateConfig,
-    transport::MemoryTransportConfig,
-    Network,
-    PeerSeedsConfig,
-    SocksAuthentication,
-    TcpTransportConfig,
-    TorControlAuthentication,
-    TorTransportConfig,
-    TransportConfig,
-    TransportType,
-};
+use tari_hashing::WalletMessageSigningDomain;
+use tari_p2p::auto_update::AutoUpdateConfig;
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    crypto_factories::CryptoFactories,
+    helpers::borsh::FromBytes,
+    key_manager::TransactionKeyManagerInterface,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        UnblindedOutput,
+    },
+    MicroMinotari,
+};
+use tari_transaction_key_manager::legacy_key_manager::{
+    wallet_types::LegacyWalletType,
+    LegacyTransactionKeyManagerInterface,
+};
 use tari_utilities::{
     encoding::MBase58,
-    hex,
     hex::{Hex, HexError},
     SafePassword,
 };
@@ -215,7 +193,6 @@ mod consts {
 
 const LOG_TARGET: &str = "wallet_ffi";
 
-pub type TariTransportConfig = TransportConfig;
 pub type TariPublicKey = CompressedPublicKey;
 pub type UncompressedTariPublicKey = UncompressedPublicKey;
 pub type TariWalletAddress = TariAddress;
@@ -223,22 +200,40 @@ pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariRangeProof = RangeProof;
 pub type TariOutputFeatures = OutputFeatures;
-pub type TariCommsConfig = tari_p2p::P2pConfig;
-pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
-pub type TariCovenant = tari_core::covenants::Covenant;
-pub type TariEncryptedOpenings = tari_core::transactions::transaction_components::EncryptedData;
+
+pub type TariTransactionKernel = tari_transaction_components::transaction_components::TransactionKernel;
+pub type TariCovenant = tari_transaction_components::transaction_components::covenants::Covenant;
+pub type TariEncryptedOpenings = tari_transaction_components::transaction_components::EncryptedData;
 pub type TariComAndPubSignature = ComAndPubSignature;
 pub type TariUnblindedOutput = UnblindedOutput;
 pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
 
-pub struct TariContacts(Vec<TariContact>);
+/// A minimal configuration for the Tari wallet db
+#[derive(Clone)]
+pub struct TariWalletDbConfig {
+    /// Path to the SQLite data files.
+    pub datastore_path: PathBuf,
+    /// Name to use for the peer database
+    pub database_name: String,
+}
 
-pub type TariContact = Contact;
+/// Payment Record FFI Types
+#[derive(Clone)]
+#[repr(C)]
+pub struct TariPaymentRecord {
+    pub payment_reference: [c_uchar; 32],
+    pub amount: c_ulonglong,
+    pub block_height: c_ulonglong,
+    pub mined_timestamp: c_ulonglong,
+    pub direction: c_uint, // 0=Inbound, 1=Outbound
+}
+
+pub struct TariPaymentRecords(Vec<TariPaymentRecord>);
+
 pub type TariCompletedTransaction = CompletedTransaction;
 pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
-pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
-pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
+pub type TariFeePerGramStat = tari_transaction_components::rpc::models::FeePerGramStat;
 pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = MnemonicLanguage;
 
@@ -260,11 +255,8 @@ pub struct EmojiSet(Vec<ByteVector>);
 #[derive(Debug, PartialEq)]
 pub struct TariSeedWords(SeedWords);
 
-#[derive(Debug, PartialEq)]
-pub struct TariPublicKeys(Vec<TariPublicKey>);
-
 pub struct TariWallet {
-    wallet: WalletSqlite,
+    pub wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
     context: Context,
@@ -318,7 +310,8 @@ pub struct TariUtxo {
     pub lock_height: u64,
     pub status: u8,
     pub coinbase_extra: *const c_char,
-    pub payment_id: *const c_char,
+    pub raw_payment_id: *const c_char,
+    pub user_payment_id: *const c_char,
     pub mined_in_block: *const c_char,
 }
 
@@ -328,30 +321,21 @@ impl From<DbWalletOutput> for TariUtxo {
             commitment: CString::new(x.commitment.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            value: x.wallet_output.value.as_u64(),
+            value: x.wallet_output.value().as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
-            lock_height: x.wallet_output.features.maturity,
+            lock_height: x.wallet_output.features().maturity,
             mined_timestamp: x
                 .mined_timestamp
                 .map(|ts| ts.timestamp_millis() as u64)
                 .unwrap_or_default(),
-            status: match x.status {
-                OutputStatus::Unspent => 0,
-                OutputStatus::Spent => 1,
-                OutputStatus::EncumberedToBeReceived => 2,
-                OutputStatus::EncumberedToBeSpent => 3,
-                OutputStatus::Invalid => 4,
-                OutputStatus::CancelledInbound => 5,
-                OutputStatus::UnspentMinedUnconfirmed => 6,
-                OutputStatus::ShortTermEncumberedToBeReceived => 7,
-                OutputStatus::ShortTermEncumberedToBeSpent => 8,
-                OutputStatus::SpentMinedUnconfirmed => 9,
-                OutputStatus::NotStored => 10,
-            },
-            coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
+            status: x.status.as_u8(),
+            coinbase_extra: CString::new(x.wallet_output.features().coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            payment_id: CString::new(format!("{}", x.payment_id))
+            raw_payment_id: CString::new(format!("{}", x.payment_id))
+                .expect("failed to obtain string from a payment id")
+                .into_raw(),
+            user_payment_id: CString::new(x.payment_id.payment_id_as_string())
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
             mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
@@ -492,7 +476,7 @@ impl TariVector {
             .into_iter()
             .map(|x| {
                 CompressedCommitment::from_hex(x.as_str())
-                    .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {:?}", e)))
+                    .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {e:?}")))
             })
             .try_collect::<CompressedCommitment, Vec<CompressedCommitment>, InterfaceError>()
     }
@@ -569,7 +553,7 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
     let mut v = match (*tv).to_string_vec() {
         Ok(v) => v,
         Err(e) => {
-            error!(target: LOG_TARGET, "{:#?}", e);
+            error!(target: LOG_TARGET, "{e:#?}");
             *error_ptr = LibWalletError::from(e).code;
             return;
         },
@@ -578,7 +562,7 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
     let s = match CStr::from_ptr(s).to_str() {
         Ok(cs) => cs.to_string(),
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to convert `s` into native string {:#?}", e);
+            error!(target: LOG_TARGET, "failed to convert `s` into native string {e:#?}");
             *error_ptr = LibWalletError::from(InterfaceError::PointerError("invalid string".to_string())).code;
             return;
         },
@@ -868,7 +852,7 @@ pub unsafe extern "C" fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, err
     CString::into_raw(result)
 }
 
-/// Get the payment id from a TariUtxo
+/// Get the raw payment id from a TariUtxo
 ///
 /// ## Arguments
 /// `utxo` - The pointer to a TariUtxo.
@@ -882,7 +866,49 @@ pub unsafe extern "C" fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, err
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn tari_utxo_get_raw_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if utxo.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        return result.into_raw();
+    }
+
+    if (*utxo).raw_payment_id.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("raw_payment_id".to_string())).code;
+        return CString::into_raw(result);
+    }
+
+    let payment_id_str = match CStr::from_ptr((*utxo).raw_payment_id).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::PointerError("payment_id".to_string())).code;
+            return CString::into_raw(result);
+        },
+    };
+    let result = CString::new(payment_id_str).expect("Commitment will not fail.");
+    CString::into_raw(result)
+}
+
+/// Get the user payment id from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array (that contains the payment id). Note that it returns empty if
+/// there was an error
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_user_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -894,7 +920,7 @@ pub unsafe extern "C" fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_o
         return ptr::null_mut();
     }
 
-    let payment_id_str = match CStr::from_ptr((*utxo).payment_id).to_str() {
+    let payment_id_str = match CStr::from_ptr((*utxo).user_payment_id).to_str() {
         Ok(s) => s,
         Err(_) => {
             *error_out = LibWalletError::from(InterfaceError::PointerError("payment_id".to_string())).code;
@@ -1163,7 +1189,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return 0;
     }
-    (*ptr).0[position as usize]
+    (&(*ptr).0)[position as usize]
 }
 
 /// Gets the number of elements in a ByteVector
@@ -1247,23 +1273,6 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
         drop(Box::from_raw(pk))
-    }
-}
-
-/// Frees memory for TariPublicKeys
-///
-/// ## Arguments
-/// `pks` - The pointer to TariPublicKeys
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
-    if !pks.is_null() {
-        drop(Box::from_raw(pks))
     }
 }
 
@@ -1396,7 +1405,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
     match public_key {
         Ok(public_key) => Box::into_raw(Box::new(public_key)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {e:?}");
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
         },
@@ -1417,7 +1426,8 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 /// if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```public_key_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariWalletAddress {
     if error_out.is_null() {
@@ -1432,6 +1442,105 @@ pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: 
     let v = (*bytes).0.clone();
     let address = TariWalletAddress::from_bytes(&v);
     match address {
+        Ok(address) => Box::into_raw(Box::new(address)),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a ByteVector
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `bytes` - The pointer to a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+/// if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_create_with_payment_id_bytes(
+    address: *mut TariWalletAddress,
+    bytes: *mut ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariWalletAddress {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return ptr::null_mut();
+    }
+    if bytes.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
+        return ptr::null_mut();
+    }
+    let v = (*bytes).0.clone();
+    let new_address = (*address).with_memo_field_payment_id(v);
+    match new_address {
+        Ok(address) => Box::into_raw(Box::new(address)),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a utf8 string
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `utf8string` - The pointer to a char array which is base58 encoded
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+/// if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_create_with_payment_id_utf8(
+    address: *mut TariWalletAddress,
+    utf8string: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariWalletAddress {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    if utf8string.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("utf8string".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let utf8_str = match CStr::from_ptr(utf8string).to_str() {
+        Ok(v) => v.to_owned(),
+        _ => {
+            *error_out = LibWalletError::from(InterfaceError::PointerError("utf8 string".to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    let v = utf8_str.as_bytes().to_vec();
+    let new_address = (*address).with_memo_field_payment_id(v);
+    match new_address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -1492,7 +1601,7 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 /// Creates a TariWalletAddress from a char array
 ///
 /// ## Arguments
-/// `address` - The pointer to a char array which is hex encoded
+/// `address` - The pointer to a char array which is base58 encoded
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -1501,7 +1610,7 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 /// if key is null or if there was an error creating the TariWalletAddress from key
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_from_base58(
     address: *const c_char,
@@ -1532,7 +1641,7 @@ pub unsafe extern "C" fn tari_address_from_base58(
     match address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Tari Address from Base58 string: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Tari Address from Base58 string: {e:?}");
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
         },
@@ -1795,6 +1904,80 @@ pub unsafe extern "C" fn tari_address_spend_key(
     Box::into_raw(Box::new(spend_key.clone()))
 }
 
+/// Gets the user payment ID of a TariAddress in string format
+///
+/// ## Arguments
+/// `address` - The pointer to a TariAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+/// to an empty char array if address is null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_get_user_payment_id(
+    address: *mut TariWalletAddress,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return result.into_raw();
+    }
+    let payment_id = (*address).get_memo_field_payment_id_bytes();
+    match CString::new(payment_id) {
+        Ok(v) => result = v,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
+        },
+    }
+
+    result.into_raw()
+}
+
+/// Gets the user payment ID of a TariAddress as bytes
+///
+/// ## Arguments
+/// `address` - The pointer to a TariAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created or the address does not have a user payment ID.
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_get_user_payment_id_as_bytes(
+    address: *mut TariWalletAddress,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*address).get_memo_field_payment_id_bytes();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id;
+
+    Box::into_raw(Box::new(bytes))
+}
+
 /// Creates a TariWalletAddress from a char array in emoji format
 ///
 /// ## Arguments
@@ -1806,7 +1989,7 @@ pub unsafe extern "C" fn tari_address_spend_key(
 /// `*mut c_char` - Returns a pointer to a TariWalletAddress. Note that it returns null on error.
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn emoji_id_to_tari_address(
     emoji: *const c_char,
@@ -1822,11 +2005,14 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
         return ptr::null_mut();
     }
 
-    match CStr::from_ptr(emoji)
-        .to_str()
-        .map_err(|_| TariAddressError::InvalidEmoji)
-        .and_then(TariAddress::from_emoji_string)
-    {
+    let cstring = match CStr::from_ptr(emoji).to_str() {
+        Ok(v) => v.to_owned(),
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
+            return ptr::null_mut();
+        },
+    };
+    match TariAddress::from_emoji_string(&cstring) {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(_) => {
             *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
@@ -1914,7 +2100,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Error creating a ephemeral commitment from bytes: {:?}", e
+                    "Error creating a ephemeral commitment from bytes: {e:?}"
                 );
                 *error_out = LibWalletError::from(e).code;
                 return ptr::null_mut();
@@ -1925,7 +2111,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a ephemeral pubkey from bytes: {:?}", e
+                "Error creating a ephemeral pubkey from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -1937,7 +2123,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Private Key (u_a) from bytes: {:?}", e
+                "Error creating a Private Key (u_a) from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -1948,7 +2134,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Private Key (u_x) from bytes: {:?}", e
+                "Error creating a Private Key (u_x) from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -1959,7 +2145,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Private Key (u_y) from bytes: {:?}", e
+                "Error creating a Private Key (u_y) from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -2250,7 +2436,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
     match output {
         Ok(output) => Box::into_raw(Box::new(output)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a output from json: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a output from json: {e:?}");
 
             *error_out = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::null_mut()
@@ -2306,7 +2492,8 @@ pub unsafe extern "C" fn unblinded_outputs_get_length(
 /// TariUnblindedOutputs is null or position is invalid
 ///
 /// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+/// The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutputs to prevent a
+/// memory leak
 // converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
@@ -2329,7 +2516,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*outputs).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariUnblindedOutputs
@@ -2385,10 +2572,8 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
     match received_outputs {
         Ok(rec_outputs) => {
             for output in rec_outputs {
-                let unblinded = (*wallet).runtime.block_on(UnblindedOutput::from_wallet_output(
-                    output.wallet_output,
-                    &(*wallet).wallet.key_manager_service,
-                ));
+                let unblinded =
+                    UnblindedOutput::from_wallet_output(output.wallet_output, &(*wallet).wallet.key_manager_service);
                 match unblinded {
                     Ok(uo) => {
                         outputs.push(uo);
@@ -2476,13 +2661,20 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
             },
         }
     };
+    let memo = match MemoField::new_open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable) {
+        Ok(v) => v,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument(e)).code;
+            return 0;
+        },
+    };
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
-            (*output).clone(),
-            source_address,
-            PaymentId::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
-        )) {
+        .block_on(
+            (*wallet)
+                .wallet
+                .import_unblinded_output_as_non_rewindable((*output).clone(), source_address, memo),
+        ) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -2631,7 +2823,7 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
     match secret_key {
         Ok(secret_key) => Box::into_raw(Box::new(secret_key)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {e:?}");
 
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
@@ -2767,7 +2959,7 @@ pub unsafe extern "C" fn range_proof_from_hex(char_ptr: *const c_char, error_out
     match range_proof {
         Ok(proof) => Box::into_raw(Box::new(proof)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a range proof from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a range proof from Hex: {e:?}");
 
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
@@ -2859,7 +3051,7 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
     match TariCovenant::borsh_from_bytes(&mut decoded_covenant_bytes) {
         Ok(covenant) => Box::into_raw(Box::new(covenant)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Covenant: {e:?}");
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("covenant_bytes".to_string())).code;
             ptr::null_mut()
         },
@@ -2918,7 +3110,7 @@ pub unsafe extern "C" fn encrypted_data_create_from_bytes(
     match TariEncryptedOpenings::from_bytes(&decoded_encrypted_data_bytes) {
         Ok(encrypted_data) => Box::into_raw(Box::new(encrypted_data)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating an encrypted_data: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating an encrypted_data: {e:?}");
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("encrypted_data_bytes".to_string())).code;
             ptr::null_mut()
         },
@@ -2970,31 +3162,27 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
     } else {
         match CompressedCommitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
             Ok(commitment) => {
-                match (*wallet).runtime.block_on(
-                    (*wallet)
-                        .wallet
-                        .key_manager_service
-                        .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None),
-                ) {
+                match (*wallet)
+                    .wallet
+                    .key_manager_service
+                    .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None)
+                {
                     Ok(payment_id) => {
-                        if let PaymentId::Open { tx_type, .. } |
-                        PaymentId::AddressAndData { tx_type, .. } |
-                        PaymentId::TransactionInfo { tx_type, .. } = payment_id
-                        {
+                        if let Some(tx_type) = payment_id.get_tx_type() {
                             transaction_type = c_uint::from(tx_type.as_u8());
                         }
                     },
                     Err(e) => {
-                        error!(target: LOG_TARGET, "Error extracting payment id from encrypted data: {:?}", e);
+                        error!(target: LOG_TARGET, "Error extracting payment id from encrypted data: {e:?}");
                         *error_out = LibWalletError::from(WalletError::TransactionServiceError(
-                            TransactionServiceError::TransactionError(e),
+                            TransactionServiceError::KeyManagerServiceError(e),
                         ))
                         .code;
                     },
                 }
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Error creating a commitment from bytes: {:?}", e);
+                error!(target: LOG_TARGET, "Error creating a commitment from bytes: {e:?}");
                 *error_out = LibWalletError::from(e).code;
             },
         }
@@ -3099,7 +3287,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         Err(message) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a OutputFeaturesVersion: {:?}", message
+                "Error creating a OutputFeaturesVersion: {message:?}"
             );
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("version".to_string())).code;
             return ptr::null_mut();
@@ -3127,7 +3315,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     let decoded_metadata = match CoinBaseExtra::try_from((*metadata).0.clone()) {
         Ok(v) => v,
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a metadata: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a metadata: {e:?}");
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("metadata".to_string())).code;
             return ptr::null_mut();
         },
@@ -3273,8 +3461,6 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
     language: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariSeedWords {
-    use tari_key_manager::mnemonic_wordlists;
-
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -3305,11 +3491,10 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
             Err(_) => {
                 error!(
                     target: LOG_TARGET,
-                    "Mnemonic wordlist - '{}' language not supported", language_string
+                    "Mnemonic wordlist - '{language_string}' language not supported"
                 );
                 *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!(
-                    "mnemonic wordlist - '{}' language not supported",
-                    language_string
+                    "mnemonic wordlist - '{language_string}' language not supported"
                 )))
                 .code;
                 [""; 2048]
@@ -3317,7 +3502,7 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
         };
         info!(
             target: LOG_TARGET,
-            "Retrieved mnemonic wordlist for'{}'", language_string
+            "Retrieved mnemonic wordlist for'{language_string}'"
         );
         let mnemonic_word_list_vec =
             SeedWords::new(mnemonic_word_list.iter().map(|s| Hidden::hide(s.to_string())).collect());
@@ -3434,8 +3619,6 @@ pub unsafe extern "C" fn seed_words_push_word(
     passphrase: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
-    use tari_key_manager::mnemonic::Mnemonic;
-
     if error_out.is_null() {
         return SeedWordPushResult::InvalidErrorPointer as u8;
     }
@@ -3477,7 +3660,7 @@ pub unsafe extern "C" fn seed_words_push_word(
         Ok(language) => {
             if (*seed_words).0.len() >= MnemonicLanguage::word_count(&language) {
                 let error_msg = "Invalid seed words object, i.e. the entire mnemonic word list, is being used";
-                log::error!(target: LOG_TARGET, "{}", error_msg);
+                log::error!(target: LOG_TARGET, "{error_msg}");
                 *error_out = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
                 return SeedWordPushResult::InvalidObject as u8;
             }
@@ -3485,9 +3668,7 @@ pub unsafe extern "C" fn seed_words_push_word(
         Err(e) => {
             log::error!(
                 target: LOG_TARGET,
-                "{} is not a valid mnemonic seed word ({:?})",
-                word_string,
-                e
+                "{word_string} is not a valid mnemonic seed word ({e:?})",
             );
             return SeedWordPushResult::InvalidSeedWord as u8;
         },
@@ -3508,10 +3689,9 @@ pub unsafe extern "C" fn seed_words_push_word(
                 if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, passphrase) {
                     log::error!(
                         target: LOG_TARGET,
-                        "Problem building valid private seed from seed phrase: {:?}",
-                        e
+                        "Problem building valid private seed from seed phrase: {e:?}"
                     );
-                    *error_out = LibWalletError::from(WalletError::KeyManagerError(e)).code;
+                    *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return SeedWordPushResult::InvalidSeedPhrase as u8;
                 };
             }
@@ -3527,10 +3707,8 @@ pub unsafe extern "C" fn seed_words_push_word(
         } else {
             log::error!(
                 target: LOG_TARGET,
-                "Words in seed phrase do not match any language after trying to add word: `{:?}`, previously words \
-                 were detected to be in: `{:?}`",
-                word_string,
-                language
+                "Words in seed phrase do not match any language after trying to add word: `{word_string:?}`, previously words \
+                 were detected to be in: `{language:?}`"
             );
             SeedWordPushResult::NoLanguageMatch as u8
         }
@@ -3538,11 +3716,10 @@ pub unsafe extern "C" fn seed_words_push_word(
         // Seed words are invalid, shouldn't normally be reachable
         log::error!(
             target: LOG_TARGET,
-            "Words in seed phrase do not match any language prior to adding word: `{:?}`",
-            word_string
+            "Words in seed phrase do not match any language prior to adding word: `{word_string:?}`"
         );
         let error_msg = "Invalid seed words object, no language can be detected.";
-        log::error!(target: LOG_TARGET, "{}", error_msg);
+        log::error!(target: LOG_TARGET, "{error_msg}");
         *error_out = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
         SeedWordPushResult::InvalidObject as u8
     }
@@ -3565,470 +3742,6 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Contact -------------------------------------------------///
-/// Creates a TariContact
-///
-/// ## Arguments
-/// `alias` - The pointer to a char array
-/// `address` - The pointer to a TariWalletAddress
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariContact` - Returns a pointer to a TariContact. Note that it returns ptr::null_mut()
-/// if alias is null or if pk is null
-///
-/// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact
-#[no_mangle]
-pub unsafe extern "C" fn contact_create(
-    alias: *const c_char,
-    address: *mut TariWalletAddress,
-    favourite: bool,
-    error_out: *mut c_int,
-) -> *mut TariContact {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let alias_string;
-    if alias.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("alias".to_string())).code;
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(alias).to_str() {
-            Ok(v) => {
-                alias_string = v.to_owned();
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("alias".to_string())).code;
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    if address.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let contact = Contact::new(alias_string, (*address).clone(), None, None, favourite);
-    Box::into_raw(Box::new(contact))
-}
-
-/// Gets the alias of the TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns an error if the pointer is null.
-///
-/// ## Returns
-/// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
-/// contact is null
-///
-/// # Safety
-/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out: *mut c_int) -> *mut c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        ptr::null_mut()
-    } else {
-        let mut a = CString::new("").expect("Blank CString will not fail.");
-        match CString::new((*contact).alias.clone()) {
-            Ok(v) => a = v,
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("contact".to_string())).code;
-            },
-        }
-        CString::into_raw(a)
-    }
-}
-
-/// Gets the favourite status of the TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if the pointer is null.
-///
-/// ## Returns
-/// `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
-/// null as well.
-///
-/// # Safety
-/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn contact_get_favourite(contact: *mut TariContact, error_out: *mut c_int) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    let mut favourite = false;
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-    } else {
-        favourite = (*contact).favourite;
-    }
-
-    favourite
-}
-
-/// Gets the TariWalletAddress of the TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if contact is null.
-///
-/// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns
-/// ptr::null_mut() if contact is null
-///
-/// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn contact_get_tari_address(
-    contact: *mut TariContact,
-    error_out: *mut c_int,
-) -> *mut TariWalletAddress {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new((*contact).address.clone()))
-}
-
-/// Frees memory for a TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
-    if !contact.is_null() {
-        drop(Box::from_raw(contact))
-    }
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Contacts -------------------------------------------------///
-/// Gets the length of TariContacts
-///
-/// ## Arguments
-/// `contacts` - The pointer to a TariContacts
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `c_uint` - Returns number of elements in the contacts, zero if any pointer is null.
-///
-/// # Safety
-/// None
-// casting here is okay as we dont have more thant u32 contacts
-#[allow(clippy::cast_possible_truncation)]
-#[no_mangle]
-pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    let mut len = 0;
-    if contacts.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contacts".to_string())).code;
-    } else {
-        len = (*contacts).0.len();
-    }
-    len as c_uint
-}
-
-/// Gets a TariContact from TariContacts at position
-///
-/// ## Arguments
-/// `contacts` - The pointer to a TariContacts
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariContact` - Returns a TariContact, note that it returns ptr::null_mut() if contacts is
-/// null or position is invalid
-///
-/// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
-// converting between here is fine as its used to clamp the array to length
-#[allow(clippy::cast_possible_wrap)]
-#[no_mangle]
-pub unsafe extern "C" fn contacts_get_at(
-    contacts: *mut TariContacts,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariContact {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if contacts.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contacts".to_string())).code;
-        return ptr::null_mut();
-    }
-    let len = contacts_get_length(contacts, error_out) as c_int - 1;
-    if len < 0 || position > len as c_uint {
-        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new((*contacts).0[position as usize].clone()))
-}
-
-/// Frees memory for a TariContacts
-///
-/// ## Arguments
-/// `contacts` - The pointer to a TariContacts
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
-    if !contacts.is_null() {
-        drop(Box::from_raw(contacts))
-    }
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Contacts Liveness Data ----------------------------------///
-/// Gets the public_key from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut() if
-/// liveness_data is null.
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_public_key(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *mut TariWalletAddress {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new((*liveness_data).address().clone()))
-}
-
-/// Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
-/// value of '0' if it is None. Note that it also returns '0' if any pointer is null.
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_latency(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> c_uint {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return 0;
-    }
-    if let Some(latency) = (*liveness_data).latency() {
-        latency as c_uint
-    } else {
-        0
-    }
-}
-
-/// Gets the last_seen time (in local time) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns an error if the pointer is null.
-///
-/// ## Returns
-/// `*mut c_char` - Returns a pointer to a char array if the optional last_seen data exists, with a value of '?' if it
-/// is None. Note that it returns ptr::null_mut() if liveness_data is null.
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_last_seen(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *mut c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return ptr::null_mut();
-    }
-    if let Some(last_seen) = (*liveness_data).last_ping_pong_received() {
-        let last_seen_local_time = DateTime::<Local>::from(last_seen).format("%FT%T").to_string();
-        let mut return_value = CString::new("").expect("Blank CString will not fail.");
-        match CString::new(last_seen_local_time) {
-            Ok(val) => {
-                return_value = val;
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("liveness_data".to_string())).code;
-            },
-        }
-        CString::into_raw(return_value)
-    } else {
-        CString::into_raw(CString::new("?").expect("Single character CString will not fail."))
-    }
-}
-
-/// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a 0 if any pointer argument is null.
-///
-/// ## Returns
-/// `c_int` - Returns the status which corresponds to:
-/// | Value | Interpretation |
-/// |---|---|
-/// |  -1 | NullError        |
-/// |   0 | Ping             |
-/// |   1 | Pong             |
-/// |   2 | NoMessage        |
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_message_type(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> c_int {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return -1;
-    }
-    let status = (*liveness_data).message_type();
-    status as c_int
-}
-
-/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `c_int` - Returns the status which corresponds to:
-/// | Value | Interpretation |
-/// |---|---|
-/// |  -1 | NullError        |
-/// |   0 | Online           |
-/// |   1 | Offline          |
-/// |   2 | NeverSeen        |
-/// |   3 | Banned           |
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_online_status(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *const c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let mut result = CString::new("").expect("Blank CString will not fail.");
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return ptr::null_mut();
-    }
-    let status = (*liveness_data).online_status();
-    match CString::new(status.to_string()) {
-        Ok(v) => result = v,
-        _ => {
-            *error_out = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
-        },
-    }
-    result.into_raw()
-}
-
-/// Frees memory for a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsLivenessData) {
-    if !liveness_data.is_null() {
-        drop(Box::from_raw(liveness_data))
-    }
-}
 /// -------------------------------------------------------------------------------------------- ///
 /// ----------------------------------- CompletedTransactions ----------------------------------- ///
 /// Gets the length of a TariCompletedTransactions
@@ -4102,7 +3815,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*transactions).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariCompletedTransactions
@@ -4196,7 +3909,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*transactions).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariPendingOutboundTransactions
@@ -4289,7 +4002,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*transactions).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariPendingInboundTransactions
@@ -4404,7 +4117,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
     // check the tx is not in pending state
     if matches!(
         (*transaction).status,
-        TransactionStatus::Pending | TransactionStatus::Imported
+        LegacyTransactionStatus::Pending | LegacyTransactionStatus::Imported
     ) {
         let msg = format!("Incorrect transaction status: {}", (*transaction).status);
         *error_out = LibWalletError::from(TransactionError::StatusError(msg)).code;
@@ -4492,7 +4205,7 @@ pub unsafe extern "C" fn completed_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -4678,7 +4391,7 @@ pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
     CString::into_raw(result)
 }
 
-/// Gets the payment ID of a TariCompletedTransaction
+/// Gets the user payment ID of a TariCompletedTransaction in string format
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
@@ -4692,7 +4405,7 @@ pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_payment_id(
+pub unsafe extern "C" fn completed_transaction_get_user_payment_id(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
 ) -> *mut c_char {
@@ -4701,20 +4414,90 @@ pub unsafe extern "C" fn completed_transaction_get_payment_id(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return result.into_raw();
     }
-    match CString::new(payment_id.user_data_as_string()) {
+    let payment_id = (*transaction).payment_id.clone();
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
-        _ => {
-            *error_out = LibWalletError::from(InterfaceError::PointerError("payment id".to_string())).code;
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
         },
     }
 
     result.into_raw()
+}
+
+/// Gets the user payment ID of a TariCompletedTransaction as bytes
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_user_payment_id_as_bytes(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if transaction.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*transaction).payment_id.clone();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id.payment_id_as_bytes();
+
+    Box::into_raw(Box::new(bytes))
+}
+
+/// Gets the payment ID of a TariCompletedTransaction as bytes
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_payment_id_as_bytes(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if transaction.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*transaction).payment_id.clone();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id.to_bytes();
+
+    Box::into_raw(Box::new(bytes))
 }
 
 /// Extract the transaction type from a TariCompletedTransaction
@@ -4755,10 +4538,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_type(
         *error_out = LibWalletError::from(InterfaceError::NullError("completed_transaction".to_string())).code;
     } else {
         let payment_id = (*transaction).payment_id.clone();
-        if let PaymentId::Open { tx_type, .. } |
-        PaymentId::AddressAndData { tx_type, .. } |
-        PaymentId::TransactionInfo { tx_type, .. } = payment_id
-        {
+        if let Some(tx_type) = payment_id.get_tx_type() {
             transaction_type = c_uint::from(tx_type.as_u8());
         }
     }
@@ -4798,36 +4578,6 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
     }
 
     false
-}
-
-/// Gets the number of confirmations of a TariCompletedTransaction
-///
-/// ## Arguments
-/// `tx` - The TariCompletedTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a 0 if any pointer argument is null.
-///
-/// ## Returns
-/// `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_confirmations(
-    tx: *mut TariCompletedTransaction,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if tx.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
-        return 0;
-    }
-
-    (*tx).confirmations.unwrap_or(0)
 }
 
 /// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
@@ -4961,7 +4711,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
     match tx {
         Ok(tx) => Box::into_raw(Box::new(tx)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a transaction from json: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a transaction from json: {e:?}");
 
             *error_out = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::null_mut()
@@ -5159,21 +4909,91 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return result.into_raw();
     }
 
-    match CString::new(payment_id.user_data_as_string()) {
+    let payment_id = (*transaction).payment_id.clone();
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
-        _ => {
-            *error_out = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
         },
     }
 
     result.into_raw()
+}
+
+/// Gets the user payment ID of a TariPendingOutboundTransaction as bytes
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn pending_outbound_transaction_get_user_payment_id_as_bytes(
+    transaction: *mut TariPendingOutboundTransaction,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if transaction.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*transaction).payment_id.clone();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id.payment_id_as_bytes();
+
+    Box::into_raw(Box::new(bytes))
+}
+
+/// Gets the payment ID of a TariPendingOutboundTransaction as bytes
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id_as_bytes(
+    transaction: *mut TariPendingOutboundTransaction,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if transaction.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*transaction).payment_id.clone();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id.to_bytes();
+
+    Box::into_raw(Box::new(bytes))
 }
 
 /// Gets the status of a TariPendingOutboundTransaction
@@ -5210,7 +5030,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -5377,21 +5197,91 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return result.into_raw();
     }
+    let payment_id = (*transaction).payment_id.clone();
 
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
-        _ => {
-            *error_out = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
         },
     }
 
     result.into_raw()
+}
+
+/// Gets the user payment ID of a TariPendingInboundTransaction as bytes
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn pending_inbound_transaction_get_user_payment_id_as_bytes(
+    transaction: *mut TariPendingInboundTransaction,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if transaction.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*transaction).payment_id.clone();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id.payment_id_as_bytes();
+
+    Box::into_raw(Box::new(bytes))
+}
+
+/// Gets the payment ID of a TariPendingInboundTransaction as bytes
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id_as_bytes(
+    transaction: *mut TariPendingInboundTransaction,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if transaction.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*transaction).payment_id.clone();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id.to_bytes();
+
+    Box::into_raw(Box::new(bytes))
 }
 
 /// Gets the status of a TariPendingInboundTransaction
@@ -5428,7 +5318,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -5521,343 +5411,35 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Transport Types -----------------------------------------///
-/// Creates a memory transport type
+/// ----------------------------------- WalletDbConfig ------------------------------------------///
+/// Creates a TariWalletDbConfig. The result from this function is required when initializing a TariWallet.
 ///
 /// ## Arguments
-/// `()` - Does not take any arguments
-///
-/// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
-///
-/// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
-/// leak
-#[no_mangle]
-pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
-    let port = MemoryTransport::acquire_next_memsocket_port();
-    let listener_address: Multiaddr = format!("/memory/{}", port)
-        .parse()
-        .expect("Should be able to create memory address");
-    let transport = TransportConfig {
-        transport_type: TransportType::Memory,
-        memory: MemoryTransportConfig { listener_address },
-        ..Default::default()
-    };
-    Box::into_raw(Box::new(transport))
-}
-
-/// Creates a tcp transport type
-///
-/// ## Arguments
-/// `listener_address` - The pointer to a char array
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
-///
-/// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
-/// leak
-#[no_mangle]
-pub unsafe extern "C" fn transport_tcp_create(
-    listener_address: *const c_char,
-    error_out: *mut c_int,
-) -> *mut TariTransportConfig {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let listener_address_str;
-    if listener_address.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("listener_address".to_string())).code;
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(listener_address).to_str() {
-            Ok(v) => {
-                listener_address_str = v.to_owned();
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("listener_address".to_string())).code;
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    match listener_address_str.parse() {
-        Ok(v) => {
-            let transport = TariTransportConfig {
-                transport_type: TransportType::Tcp,
-                tcp: TcpTransportConfig {
-                    listener_address: v,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            Box::into_raw(Box::new(transport))
-        },
-        Err(_) => {
-            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("listener_address".to_string())).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Creates a tor transport type
-///
-/// ## Arguments
-/// `control_server_address` - The pointer to a char array
-/// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
-/// `tor_port` - The tor port
-/// `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
-/// the tor proxy if tcp is available, if not it has no effect
-/// `socks_password` - The pointer to a char array containing the socks password, can be null
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
-///
-/// # Safety
-/// The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn transport_tor_create(
-    control_server_address: *const c_char,
-    tor_cookie: *const ByteVector,
-    tor_port: c_ushort,
-    tor_proxy_bypass_for_outbound: bool,
-    socks_username: *const c_char,
-    socks_password: *const c_char,
-    error_out: *mut c_int,
-) -> *mut TariTransportConfig {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let control_address_str;
-    if control_server_address.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("control_server_address".to_string())).code;
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(control_server_address).to_str() {
-            Ok(v) => {
-                control_address_str = v.to_owned();
-            },
-            _ => {
-                *error_out =
-                    LibWalletError::from(InterfaceError::PointerError("control_server_address".to_string())).code;
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    let username_str;
-    let password_str;
-    let socks_authentication = if !socks_username.is_null() && !socks_password.is_null() {
-        match CStr::from_ptr(socks_username).to_str() {
-            Ok(v) => {
-                username_str = v.to_owned();
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("socks_username".to_string())).code;
-                return ptr::null_mut();
-            },
-        }
-        match CStr::from_ptr(socks_password).to_str() {
-            Ok(v) => {
-                password_str = v.to_owned();
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("socks_password".to_string())).code;
-                return ptr::null_mut();
-            },
-        };
-        SocksAuthentication::UsernamePassword {
-            username: username_str,
-            password: password_str,
-        }
-    } else {
-        SocksAuthentication::None
-    };
-
-    let tor_authentication = if tor_cookie.is_null() {
-        TorControlAuthentication::None
-    } else {
-        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
-        TorControlAuthentication::hex(cookie_hex)
-    };
-
-    let onion_port = match NonZeroU16::new(tor_port) {
-        Some(p) => p,
-        None => {
-            *error_out = LibWalletError::from(InterfaceError::InvalidArgument(
-                "onion_port must be greater than 0".to_string(),
-            ))
-            .code;
-            return ptr::null_mut();
-        },
-    };
-
-    match control_address_str.parse() {
-        Ok(v) => {
-            let transport = TariTransportConfig {
-                transport_type: TransportType::Tor,
-                tor: TorTransportConfig {
-                    control_address: v,
-                    control_auth: tor_authentication,
-                    // The wallet will populate this from the db
-                    identity: None,
-                    onion_port,
-                    socks_auth: socks_authentication,
-                    proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-
-            Box::into_raw(Box::new(transport))
-        },
-        Err(_) => {
-            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("control_address".to_string())).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Gets the address for a memory transport type
-///
-/// ## Arguments
-/// `transport` - Pointer to a TariTransportConfig
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer is null.
-///
-/// ## Returns
-/// `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
-///
-/// # Safety
-/// Can only be used with a memory transport type, will crash otherwise
-#[no_mangle]
-pub unsafe extern "C" fn transport_memory_get_address(
-    transport: *const TariTransportConfig,
-    error_out: *mut c_int,
-) -> *mut c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if transport.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-        ptr::null_mut()
-    } else {
-        let mut address = CString::new("").expect("Blank CString will not fail.");
-        match (*transport).transport_type {
-            TransportType::Memory => match CString::new((*transport).memory.listener_address.to_string()) {
-                Ok(v) => address = v,
-                _ => {
-                    *error_out = LibWalletError::from(InterfaceError::PointerError("transport".to_string())).code;
-                },
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-            },
-        }
-
-        address.into_raw()
-    }
-}
-
-/// Frees memory for a TariTransportConfig
-///
-/// ## Arguments
-/// `transport` - The pointer to a TariTransportConfig
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-#[no_mangle]
-#[deprecated(note = "use transport_config_destroy instead")]
-pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportConfig) {
-    transport_config_destroy(transport);
-}
-
-/// Frees memory for a TariTransportConfig
-///
-/// ## Arguments
-/// `transport` - The pointer to a TariTransportConfig
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-#[no_mangle]
-pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportConfig) {
-    if !transport.is_null() {
-        drop(Box::from_raw(transport))
-    }
-}
-
-/// ---------------------------------------------------------------------------------------------///
-/// ----------------------------------- CommsConfig ---------------------------------------------///
-/// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
-///
-/// ## Arguments
-/// `public_address` - The public address char array pointer. This is the address that the wallet advertises publicly to
-/// peers
-/// `transport` - TariTransportConfig that specifies the type of comms transport to be used.
-/// connections are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections
-/// from all IP address on port 7898
 /// `database_name` - The database name char array pointer. This is the unique name of this
 /// wallet's database
 /// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
-/// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
-/// `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `*mut TariCommsConfig` - Returns a pointer to a TariCommsConfig, if any of the parameters are
+/// `*mut TariWalletDbConfig` - Returns a pointer to a TariWalletDbConfig, if any of the parameters are
 /// null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
 ///
 /// # Safety
-/// The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
+/// The ```wallet_db_config_destroy``` method must be called when finished with a TariWalletDbConfig to prevent a memory
+/// leak
 #[no_mangle]
 #[allow(clippy::too_many_lines)]
-pub unsafe extern "C" fn comms_config_create(
-    public_address: *const c_char,
-    transport: *const TariTransportConfig,
+pub unsafe extern "C" fn wallet_db_config_create(
     database_name: *const c_char,
     datastore_path: *const c_char,
-    discovery_timeout_in_secs: c_ulonglong,
-    exclude_dial_test_addresses: bool,
     error_out: *mut c_int,
-) -> *mut TariCommsConfig {
+) -> *mut TariWalletDbConfig {
     if error_out.is_null() {
         return ptr::null_mut();
     }
     *error_out = 0;
-
-    let public_address_str;
-    if public_address.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_address".to_string())).code;
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(public_address).to_str() {
-            Ok(v) => {
-                public_address_str = v.to_owned();
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("public_address".to_string())).code;
-                return ptr::null_mut();
-            },
-        }
-    }
 
     let database_name_string;
     if database_name.is_null() {
@@ -5892,87 +5474,18 @@ pub unsafe extern "C" fn comms_config_create(
     }
     let datastore_path = PathBuf::from(datastore_path_string);
 
-    if transport.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-        return ptr::null_mut();
-    }
+    let config = TariWalletDbConfig {
+        datastore_path,
+        database_name: database_name_string,
+    };
 
-    let dht_database_path = datastore_path.join("dht.db");
-
-    let public_address = public_address_str.parse::<Multiaddr>();
-
-    match public_address {
-        Ok(public_address) => {
-            let addresses = if (*transport).transport_type == TransportType::Tor {
-                MultiaddrList::default()
-            } else {
-                MultiaddrList::from(vec![public_address])
-            };
-
-            let excluded_dial_addresses = if exclude_dial_test_addresses {
-                let multi_addr_range = match MultiaddrRange::from_str(IP4_TCP_TEST_ADDR_RANGE) {
-                    Ok(val) => val,
-                    Err(e) => {
-                        *error_out = LibWalletError::from(InterfaceError::InternalError(e)).code;
-                        return ptr::null_mut();
-                    },
-                };
-                MultiaddrRangeList::from(vec![multi_addr_range])
-            } else {
-                MultiaddrRangeList::from(vec![])
-            };
-
-            let config = TariCommsConfig {
-                override_from: None,
-                public_addresses: addresses,
-                transport: (*transport).clone(),
-                auxiliary_tcp_listener_address: None,
-                datastore_path,
-                peer_database_name: database_name_string,
-                max_concurrent_inbound_tasks: 25,
-                max_concurrent_outbound_tasks: 50,
-                dht: DhtConfig {
-                    num_neighbouring_nodes: 5,
-                    num_random_nodes: 1,
-                    minimize_connections: true,
-                    discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                    database_url: DbConnectionUrl::File(dht_database_path),
-                    auto_join: true,
-                    network_discovery: NetworkDiscoveryConfig {
-                        min_desired_peers: 16,
-                        initial_peer_sync_delay: Some(Duration::from_secs(25)),
-                        ..Default::default()
-                    },
-                    connectivity: DhtConnectivityConfig {
-                        update_interval: Duration::from_secs(5 * 60),
-                        minimum_desired_tcpv4_node_ratio: 0.0,
-                        ..Default::default()
-                    },
-                    excluded_dial_addresses,
-                    ..Default::default()
-                },
-                allow_test_addresses: true,
-                listener_liveness_allowlist_cidrs: StringList::new(),
-                listener_liveness_max_sessions: 0,
-                rpc_max_simultaneous_sessions: 0,
-                rpc_max_sessions_per_peer: 0,
-                listener_self_liveness_check_interval: None,
-                cull_oldest_peer_rpc_connection_on_full: true,
-            };
-
-            Box::into_raw(Box::new(config))
-        },
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
+    Box::into_raw(Box::new(config))
 }
 
-/// Frees memory for a TariCommsConfig
+/// Frees memory for a TariWalletDbConfig
 ///
 /// ## Arguments
-/// `wc` - The TariCommsConfig pointer
+/// `wc` - The TariWalletDbConfig pointer
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -5980,128 +5493,13 @@ pub unsafe extern "C" fn comms_config_create(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
+pub unsafe extern "C" fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig) {
     if !wc.is_null() {
         drop(Box::from_raw(wc))
     }
 }
 
-/// This function lists the public keys of all connected peers
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
-///
-/// # Safety
-/// The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
-#[no_mangle]
-pub unsafe extern "C" fn comms_list_connected_public_keys(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> *mut TariPublicKeys {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let mut connectivity = (*wallet).wallet.comms.connectivity();
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
-
-    #[allow(clippy::blocks_in_conditions)]
-    match (*wallet).runtime.block_on(async move {
-        let connections = connectivity.get_active_connections().await?;
-        let mut public_keys = Vec::with_capacity(connections.len());
-        for conn in connections {
-            if let Some(peer) = peer_manager.find_by_node_id(conn.peer_node_id()).await? {
-                public_keys.push(peer.public_key);
-            }
-        }
-        Result::<_, WalletError>::Ok(public_keys)
-    }) {
-        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Gets the length of the public keys vector
-///
-/// ## Arguments
-/// `public_keys` - Pointer to TariPublicKeys
-///
-/// ## Returns
-/// `c_uint` - Length of the TariPublicKeys vector, 0 if is null
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// # Safety
-/// None
-// casting here is okay as we wont have more than u32 public keys
-#[allow(clippy::cast_possible_truncation)]
-#[no_mangle]
-pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if public_keys.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
-        return 0;
-    }
-    (*public_keys).0.len() as c_uint
-}
-
-/// Gets a ByteVector at position in a EmojiSet
-///
-/// ## Arguments
-/// `public_keys` - The pointer to a TariPublicKeys
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
-/// is null or if the position is invalid
-///
-/// # Safety
-/// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
-#[no_mangle]
-pub unsafe extern "C" fn public_keys_get_at(
-    public_keys: *const TariPublicKeys,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariPublicKey {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if public_keys.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
-        return ptr::null_mut();
-    }
-    let last_index = public_keys_get_length(public_keys, error_out) - 1;
-    if position > last_index {
-        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-        return ptr::null_mut();
-    }
-    let result = (*public_keys).0[position as usize].clone();
-    Box::into_raw(Box::new(result))
-}
-
-/// ---------------------------------------------------------------------------------------------- ///
+/// -------------------------------------------------------------------------------------------- ///
 /// ------------------------------------- Wallet -------------------------------------------------///
 /// Inits logging, this function is deliberately not exposed externally in the header
 ///
@@ -6156,7 +5554,7 @@ unsafe fn init_logging(
         } else {
             pattern = split_str[0].to_string();
             for part in split_str.iter().take(split_str.len() - 1).skip(1) {
-                pattern = format!("{}.{}", pattern, part);
+                pattern = format!("{pattern}.{part}");
             }
 
             pattern = format!("{}{}", pattern, ".{}.");
@@ -6250,11 +5648,20 @@ unsafe fn init_logging(
     }
 }
 
+/// Helper function to create the main wallet database path.
+pub(crate) fn get_wallet_database_path(config: &TariWalletDbConfig) -> PathBuf {
+    config
+        .datastore_path
+        .join(config.database_name.clone())
+        // This extention is used in the mobile wallet code - do not change it without updating the mobile code
+        .with_extension("sqlite3")
+}
+
 /// Creates a TariWallet
 ///
 /// ## Arguments
 /// Context - a pointer to some context used by all the callbacks
-/// `config` - The TariCommsConfig pointer
+/// `config` - The TariWalletDbConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
 /// `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
@@ -6276,6 +5683,7 @@ unsafe fn init_logging(
 /// If this is null, then a new master key is created for the wallet.
 /// `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
 /// `use_dns_sec` - Use DNSSEC when querying the DNS servers.
+/// `wallet_birthday_offset` - The offest that the wallet should use to start scanning is starting from its birthday.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
 /// called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function
@@ -6322,7 +5730,6 @@ unsafe fn init_logging(
 ///     TxoValidationAlreadyBusy            // 1
 ///     TxoValidationInternalFailure        // 2
 ///     TxoValidationCommunicationFailure   // 3
-/// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
 /// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
@@ -6333,16 +5740,14 @@ unsafe fn init_logging(
 ///         ValidationAlreadyBusy            // 1
 ///         ValidationInternalFailure        // 2
 ///         ValidationCommunicationFailure   // 3
-/// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
-/// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
-/// for it.
-/// `callback_connectivity_status` -  This callback is called when the status of connection to the set base node
-/// changes. it will return an enum encoded as an integer as follows:
-/// pub enum OnlineStatus {
-///     Connecting,     // 0
-///     Online,         // 1
-///     Offline,        // 2
-/// }
+/// `callback_connectivity_status` - This callback is called when the status of connection to the base node changes.
+/// It will return an enum encoded as an integer as the first parameter and latency in ms as the second as follows:
+///   status (u64)    | latency in ms (u64)
+///   ------------    | -------------------
+///   Connecting => 0 | 0
+///   Online => 1     | <measured latency>
+///   Offline => 2    | u64::MAX
+///   Degraded => 3   | <measured latency>
 /// `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
 /// that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -6359,7 +5764,7 @@ unsafe fn init_logging(
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_create(
     context: *mut c_void,
-    config: *mut TariCommsConfig,
+    config: *mut TariWalletDbConfig,
     log_path: *const c_char,
     log_verbosity: c_int,
     num_rolling_log_files: c_uint,
@@ -6368,10 +5773,8 @@ pub unsafe extern "C" fn wallet_create(
     seed_passphrase: *const c_char,
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
-    dns_seeds_str: *const c_char,
-    dns_seed_name_servers_str: *const c_char,
-    use_dns_sec: bool,
-
+    http_base_node: *const c_char,
+    wallet_birthday_offset: c_int,
     callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
@@ -6395,27 +5798,18 @@ pub unsafe extern "C" fn wallet_create(
     ),
     callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
-    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
-    use tari_key_manager::mnemonic::Mnemonic;
-
     if error_out.is_null() {
         return ptr::null_mut();
     }
     *error_out = 0;
-
-    if config.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
-        return ptr::null_mut();
-    }
 
     if !log_path.is_null() {
         init_logging(
@@ -6447,32 +5841,6 @@ pub unsafe extern "C" fn wallet_create(
         SafePassword::from(pf)
     };
 
-    let dns_seeds = if dns_seeds_str.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("peer seeds".to_string())).code;
-        return ptr::null_mut();
-    } else {
-        let peer_seed = CStr::from_ptr(dns_seeds_str)
-            .to_str()
-            .expect("A non-null peer seed should be able to be converted to string");
-        info!(target: LOG_TARGET, "peer seed dns '{}'", peer_seed);
-        peer_seed
-    };
-
-    let dns_seed_name_servers = if dns_seed_name_servers_str.is_null() {
-        PeerSeedsConfig::default().dns_seed_name_servers
-    } else {
-        let list = CStr::from_ptr(dns_seed_name_servers_str)
-            .to_str()
-            .expect("A non-null peer seed should be able to be converted to string");
-        match DnsNameServerList::from_str(list) {
-            Ok(dns) => dns,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!("dns_list_str: {}", e))).code;
-                return ptr::null_mut();
-            },
-        }
-    };
-
     let seed_passphrase = if seed_passphrase.is_null() {
         None
     } else {
@@ -6490,7 +5858,7 @@ pub unsafe extern "C" fn wallet_create(
             Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
-                *error_out = LibWalletError::from(WalletError::KeyManagerError(e)).code;
+                *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                 return ptr::null_mut();
             },
         }
@@ -6503,7 +5871,7 @@ pub unsafe extern "C" fn wallet_create(
         let network = CStr::from_ptr(network_str)
             .to_str()
             .expect("A non-null network should be able to be converted to string");
-        info!(target: LOG_TARGET, "network set to {}", network);
+        info!(target: LOG_TARGET, "network set to {network}");
 
         match Network::from_str(network) {
             Ok(n) => n,
@@ -6520,6 +5888,16 @@ pub unsafe extern "C" fn wallet_create(
         return ptr::null_mut();
     };
 
+    let http_base_node = if http_base_node.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::InvalidArgument("base node url".to_string())).code;
+        return ptr::null_mut();
+    } else {
+        CStr::from_ptr(http_base_node)
+            .to_str()
+            .expect("A non-null base node should be able to be converted to string")
+            .to_owned()
+    };
+
     let runtime = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
@@ -6529,16 +5907,13 @@ pub unsafe extern "C" fn wallet_create(
     };
     let factories = CryptoFactories::default();
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+    let main_wallet_database_sql_database_path = get_wallet_database_path(&*config);
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
-        match initialize_sqlite_database_backends(sql_database_path, passphrase, 16) {
-            Ok((w, t, o, c, x)) => (w, t, o, c, x),
+    let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
+        match initialize_sqlite_database_backends(main_wallet_database_sql_database_path, passphrase, 16) {
+            Ok((t, o, c, x)) => (t, o, c, x),
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
                 return ptr::null_mut();
@@ -6550,12 +5925,6 @@ pub unsafe extern "C" fn wallet_create(
 
     debug!(target: LOG_TARGET, "Databases Initialized");
 
-    // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
-    let mut comms_config = (*config).clone();
-    if let TransportType::Tor = comms_config.transport.transport_type {
-        comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
-    }
-
     let result = runtime.block_on(async {
         let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
@@ -6563,17 +5932,13 @@ pub unsafe extern "C" fn wallet_create(
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
 
         let node_features = wallet_database.get_node_features()?.unwrap_or_default();
-        let node_addresses = if comms_config.public_addresses.is_empty() {
-            match wallet_database.get_node_address()? {
-                Some(addr) => MultiaddrList::from(vec![addr]),
-                None => MultiaddrList::default(),
-            }
-        } else {
-            comms_config.public_addresses.clone()
+        let node_addresses = match wallet_database.get_node_address()? {
+            Some(addr) => MultiaddrList::from(vec![addr]),
+            None => MultiaddrList::default(),
         };
         debug!(target: LOG_TARGET, "We have the following addresses");
         for address in &node_addresses {
-            debug!(target: LOG_TARGET, "Address: {}", address);
+            debug!(target: LOG_TARGET, "Address: {address}");
         }
         let identity_sig = wallet_database.get_comms_identity_signature()?;
 
@@ -6615,16 +5980,19 @@ pub unsafe extern "C" fn wallet_create(
         },
     };
 
+    let wallet_birthday_offset = if wallet_birthday_offset < 0 {
+        0
+    } else {
+        u16::try_from(wallet_birthday_offset as u64).unwrap_or(2)
+    };
+
     let shutdown = Shutdown::new();
     let wallet_config = WalletConfig {
         override_from: None,
-        p2p: comms_config,
-        transaction_service_config: TransactionServiceConfig {
-            direct_send_timeout: (*config).dht.discovery_request_timeout,
-            ..Default::default()
-        },
-        base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
+        transaction_service_config: TransactionServiceConfig { ..Default::default() },
         network,
+        http_server_url: http_base_node,
+        birthday_offset: wallet_birthday_offset,
         ..Default::default()
     };
 
@@ -6634,118 +6002,12 @@ pub unsafe extern "C" fn wallet_create(
         Ok(Some(_)) => true,
     };
     ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
-    #[cfg(tari_target_network_mainnet)]
-    let list_manual_seeds = vec![
-        "b2744acc55f0a597b96429705484dde96c0be195b937d838c3bacc14f8cd2d3b::/ip4/54.36.119.1/tcp/18189".to_string(),
-        "b2744acc55f0a597b96429705484dde96c0be195b937d838c3bacc14f8cd2d3b::/onion3/\
-         azg76bk4p3ztxw2kck5bw6tkywdbgyntytbzjrkswffhgkuy6vkecyid:18141"
-            .to_string(),
-        "ec6b3922ab1f4dbca95ae704e1ce60ca18b22d721467f78c4114d0b08ef90214::/ip4/54.36.114.21/tcp/18189".to_string(),
-        "ec6b3922ab1f4dbca95ae704e1ce60ca18b22d721467f78c4114d0b08ef90214::/onion3/\
-         xuiorerzfylnlyeuoao3ppk4gbcadjlmw4zun66oj2qglz3pp2v6kbqd:18141"
-            .to_string(),
-        "be6585a0946eabc10616a6a820cba7c7cdcef5b877617e8b046ddd29d708aa1e::/ip4/54.36.116.90/tcp/18189".to_string(),
-        "be6585a0946eabc10616a6a820cba7c7cdcef5b877617e8b046ddd29d708aa1e::/onion3/\
-         sx72tjr74hwfsydolv2frt4x5xuvuq75szviqlr6tl5tj3whmgbgpdid:18141"
-            .to_string(),
-        "546ce9364590d20228338a3fcfe7c895dd8f69198cfa52202e95668389283f57::/ip4/54.36.116.173/tcp/18189".to_string(),
-        "546ce9364590d20228338a3fcfe7c895dd8f69198cfa52202e95668389283f57::/onion3/\
-         4ylrhzarvowgqr4qyif3gbb2j7xwzmeyffqjml2zidomleecgfiektyd:18141"
-            .to_string(),
-        "78cb875b3cd2a939dd92ab2b62780395e0bf53afc335ce599c7282d83a4d5a15::/ip4/54.36.114.124/tcp/18189".to_string(),
-        "78cb875b3cd2a939dd92ab2b62780395e0bf53afc335ce599c7282d83a4d5a15::/onion3/\
-         5njg35ipbflj2vec6nhq3d2233whx7w4ue6n4vhdm4vt7qkxt776payd:18141"
-            .to_string(),
-        "b4cd2ab0cdbe6dc56c86022eb1ba0a2a83967b10f3767bccd9e89dde35fa1739::/ip4/54.36.118.20/tcp/18189".to_string(),
-        "b4cd2ab0cdbe6dc56c86022eb1ba0a2a83967b10f3767bccd9e89dde35fa1739::/onion3/\
-         ip2r5e5lb3e22dymruy36jzqck5ta3z5hy7e7kelcp6ush52kqwiabyd:18141"
-            .to_string(),
-        "1e38a02acc0d1270f6f12b9d6820013de6aafa9290c86ffd2f2acbde6e36df3d::/ip4/54.36.113.176/tcp/18189".to_string(),
-        "1e38a02acc0d1270f6f12b9d6820013de6aafa9290c86ffd2f2acbde6e36df3d::/onion3/\
-         bfv4su44a4tgoq5sdflpvquw7pzpmeadqen5u2qc6o75h5tiz5lxchyd:18141"
-            .to_string(),
-        "3a23674a9a359aa911538f3c3cdac42d39fac27781467bc398d436d7152a1739::/ip4/54.36.119.24/tcp/18189".to_string(),
-        "3a23674a9a359aa911538f3c3cdac42d39fac27781467bc398d436d7152a1739::/onion3/\
-         2zdhljqr2g3c5ejrxumaqlxdfpd773hr4jjey5dhx447iw4s5xwkcuyd:18141"
-            .to_string(),
-        "e86256a75abed136dd93377839d1806799f94847714bcb9f5aead68ef4af8c20::/ip4/54.36.116.59/tcp/18189".to_string(),
-        "e86256a75abed136dd93377839d1806799f94847714bcb9f5aead68ef4af8c20::/onion3/\
-         gwvdr6k5tow4e6xqvsfh6he46z7dnkqz6rtjg6dzjzjfdcrqo5i4hfad:18141"
-            .to_string(),
-        "f40330bd2b9e1a24c312c6019187e3625d26b6eb5466437c9d7a78177c6edd56::/ip4/54.36.117.25/tcp/18189".to_string(),
-        "f40330bd2b9e1a24c312c6019187e3625d26b6eb5466437c9d7a78177c6edd56::/onion3/\
-         afjwehcxtltxdxrcmsigt7bwwpeqf66if37yh4kg74gb27jdqe5wi3ad:18141"
-            .to_string(),
-        "9072c33e8bfac3a0568e80083039827659ca18a180421c925d64264cd91b6704::/ip4/91.134.99.17/tcp/18189".to_string(),
-        "9072c33e8bfac3a0568e80083039827659ca18a180421c925d64264cd91b6704::/onion3/\
-         fg4frfj5urn3ykzpvryclccmcnvy77marzzzn5hr2kw5pie6ogs2ciad:18141"
-            .to_string(),
-        "0a38da9d89c8cf1f266711c803e48b6ecd663585a6f581b92cc4a3c67b600718::/ip4/91.134.100.211/tcp/18189".to_string(),
-        "0a38da9d89c8cf1f266711c803e48b6ecd663585a6f581b92cc4a3c67b600718::/onion3/\
-         tkmhfiycus7f3tumzrlfs6hqq7gsrtuenwgmrn2okctdejjnvrny4zad:18141"
-            .to_string(),
-        "ec308230a6dd243e905a4b07c9a4ea17be5a303177039d6f43c4d5c4df2aa511::/ip4/91.134.98.223/tcp/18189".to_string(),
-        "ec308230a6dd243e905a4b07c9a4ea17be5a303177039d6f43c4d5c4df2aa511::/onion3/\
-         436iqc55d3ynctwz64abucfkcgvb55uptfw6vk5w2td5ud7seh4tkuad:18141"
-            .to_string(),
-        "7e56cdd3ffb7d35e040bd97fac91ff8f7354f4eb36a88d27cc59e75f20c66367::/ip4/91.134.99.90/tcp/18189".to_string(),
-        "7e56cdd3ffb7d35e040bd97fac91ff8f7354f4eb36a88d27cc59e75f20c66367::/onion3/\
-         6wh6iay5c4xb43xesepy62bidicw7p5ke5deflrzpvq3u5jynuammwid:18141"
-            .to_string(),
-        "848cb54e0353c378005f8503da361974a9b52da1d4b0ea0298ff16a0696c1373::/ip4/91.134.97.1/tcp/18189".to_string(),
-        "848cb54e0353c378005f8503da361974a9b52da1d4b0ea0298ff16a0696c1373::/onion3/\
-         figkspyidhnysf3bla4tallsu57d6dfhnkwfbwhlgex6spo3gnchbryd:18141"
-            .to_string(),
-        "0c8b2e6f8d21ea82bcd975f60f22c2d3caa48034abd9d87cdf1b5ea86260b917::/ip4/91.134.101.33/tcp/18189".to_string(),
-        "0c8b2e6f8d21ea82bcd975f60f22c2d3caa48034abd9d87cdf1b5ea86260b917::/onion3/\
-         oqpik7hmf7y7vh3vjubdep665woppy472gkb2j5ox72tfbsngkt2wwid:18141"
-            .to_string(),
-        "ecfc505fedca07f7f81211c1398cdae9fbfdd02146d0ca7baa2569f4b519dd36::/ip4/91.134.97.172/tcp/18189".to_string(),
-        "ecfc505fedca07f7f81211c1398cdae9fbfdd02146d0ca7baa2569f4b519dd36::/onion3/\
-         ikkwg7ow52hlzfiezf42rlyd4rtgxivzzysuqzs6ojcjzwyxwzejjxad:18141"
-            .to_string(),
-        "5c4679b2181100580c65da56d9a0821863e2841d1fa63caa5ca2a3c1115f8779::/ip4/91.134.99.136/tcp/18189".to_string(),
-        "5c4679b2181100580c65da56d9a0821863e2841d1fa63caa5ca2a3c1115f8779::/onion3/\
-         5hi4bcknxh7kjt7yi6zoagj7lchpclyqgxhdnk3nh3c2tu5etpf34yyd:18141"
-            .to_string(),
-        "c287b50d2a4117f9a5843b3e4f93ba8784abdb5571672c88faa9de17f8731d76::/ip4/91.134.100.1/tcp/18189".to_string(),
-        "c287b50d2a4117f9a5843b3e4f93ba8784abdb5571672c88faa9de17f8731d76::/onion3/\
-         zqeq5slxldt3esmxel2fmvfiwzkeq7xfnlqgelb5hck74fumijidmdid:18141"
-            .to_string(),
-        "f8d35955082eaea3d7de37516d899b2fc46ed27612f71d4d0e153ba99bc4f216::/ip4/91.134.99.55/tcp/18189".to_string(),
-        "f8d35955082eaea3d7de37516d899b2fc46ed27612f71d4d0e153ba99bc4f216::/onion3/\
-         ksubnwhtf2qhlcaowhmu64zustvbhlw7muptatwgv75nlnwadj54biqd:18141"
-            .to_string(),
-        "1a5e52c6bf781ecf429ab83b91e249c68c265d490f65cdc6f8a34f1875e6a240::/ip4/51.38.54.165/tcp/18189".to_string(),
-        "1a5e52c6bf781ecf429ab83b91e249c68c265d490f65cdc6f8a34f1875e6a240::/onion3/\
-         n5uhezqlrzaoigjca6uvijdbbtcaggoclieces3tlzvvmasxgsm7nkad:18141"
-            .to_string(),
-    ];
-
-    #[cfg(not(tari_target_network_mainnet))]
-    let list_manual_seeds = vec![];
-
-    let peer_seeds = PeerSeedsConfig {
-        dns_seed_name_servers,
-        dns_seeds_use_dnssec: use_dns_sec,
-        dns_seeds: StringList::from(vec![dns_seeds.to_string()]),
-        peer_seeds: list_manual_seeds.into(),
-        ..Default::default()
-    };
 
     let auto_update = AutoUpdateConfig::default();
-    let consensus_manager = match ConsensusManager::builder(network).build() {
-        Ok(cm) => cm,
-        Err(_) => {
-            *error_out = 10;
-            return ptr::null_mut();
-        },
-    };
+    let consensus_manager = ConsensusManager::builder(network).build();
 
-    let user_agent = format!("tari/wallet_ffi/{}", env!("CARGO_PKG_VERSION"));
     let w = runtime.block_on(Wallet::start(
         wallet_config,
-        peer_seeds,
         auto_update,
         node_identity,
         consensus_manager,
@@ -6754,17 +6016,15 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_database,
         transaction_backend.clone(),
         output_manager_backend,
-        contacts_backend,
         key_manager_backend,
         shutdown.to_signal(),
         master_seed,
-        Some(WalletType::default()),
-        user_agent,
+        Some(LegacyWalletType::default()),
     ));
 
     match w {
-        Ok(mut w) => {
-            let wallet_address = match runtime.block_on(async { w.get_wallet_interactive_address().await }) {
+        Ok(w) => {
+            let wallet_address = match w.get_wallet_interactive_address() {
                 Ok(address) => address,
                 Err(e) => {
                     *error_out = LibWalletError::from(e).code;
@@ -6772,46 +6032,18 @@ pub unsafe extern "C" fn wallet_create(
                 },
             };
 
-            // Lets set the base node peers
-            let peer_manager = w.comms.peer_manager();
-            let query = PeerQuery::new().select_where(|p| p.is_seed());
-            let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
-
-            if !peers.is_empty() {
-                let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
-                let net_address = selected_base_node.addresses.best().expect("No addresses for base node");
-                match runtime.block_on(async {
-                    w.set_base_node_peer(
-                        selected_base_node.public_key.clone(),
-                        Some(net_address.address().clone()),
-                        Some(peers.to_vec()),
-                    )
-                    .await
-                }) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        *error_out = LibWalletError::from(e).code;
-                        return ptr::null_mut();
-                    },
-                }
-            }
-
             let mut utxo_scanner = w.utxo_scanner_service.clone();
             let context = Context(context);
             // Start Callback Handler
             let callback_handler = CallbackHandler::new(
                 context,
                 TransactionDatabase::new(transaction_backend),
-                w.base_node_service.get_event_stream(),
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
                 w.output_manager_service.clone(),
                 utxo_scanner.get_event_receiver(),
-                w.dht_service.subscribe_dht_events(),
-                w.comms.shutdown_signal(),
+                w.shutdown_signal.clone(),
                 wallet_address,
-                w.wallet_connectivity.get_connectivity_status_watch(),
-                w.contacts_service.get_contacts_liveness_event_stream(),
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -6823,10 +6055,8 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
-                callback_contacts_liveness_data_updated,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
-                callback_saf_messages_received,
                 callback_connectivity_status,
                 callback_wallet_scanned_height,
                 callback_base_node_state,
@@ -6853,17 +6083,21 @@ pub unsafe extern "C" fn wallet_create(
 /// Retrieves the version of an app that last accessed the wallet database
 ///
 /// ## Arguments
-/// `config` - The TariCommsConfig pointer
+/// `config` - The TariWalletDbConfig pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+/// `*mut c_char` - Returns a newly allocated UTF-8 string containing the last network version, or null on error/if
+/// not available.
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn wallet_get_last_version(
+    config: *mut TariWalletDbConfig,
+    error_out: *mut c_int,
+) -> *mut c_char {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -6874,10 +6108,7 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
         return ptr::null_mut();
     }
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+    let sql_database_path = get_wallet_database_path(&*config);
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(version)) => {
@@ -6894,17 +6125,21 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
 /// Retrieves the network of an app that last accessed the wallet database
 ///
 /// ## Arguments
-/// `config` - The TariCommsConfig pointer
+/// `config` - The TariWalletDbConfig pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+/// `*mut c_char` - Returns a newly allocated UTF-8 string containing the last network name, or null on error/if not
+/// available.
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn wallet_get_last_network(
+    config: *mut TariWalletDbConfig,
+    error_out: *mut c_int,
+) -> *mut c_char {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -6915,10 +6150,7 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
         return ptr::null_mut();
     }
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+    let sql_database_path = get_wallet_database_path(&*config);
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -7039,14 +6271,18 @@ pub unsafe extern "C" fn wallet_get_utxos(
         }],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by_query(q) {
+    match (*wallet)
+        .wallet
+        .output_db
+        .fetch_outputs_by_query(q, &(*wallet).wallet.key_manager_service)
+    {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
             Box::into_raw(Box::new(TariVector::from(outputs)))
         },
 
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to obtain outputs: {e:#?}");
             ptr::replace(
                 error_ptr,
                 LibWalletError::from(WalletError::OutputManagerError(
@@ -7109,14 +6345,18 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
         sorting: vec![],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by_query(q) {
+    match (*wallet)
+        .wallet
+        .output_db
+        .fetch_outputs_by_query(q, &(*wallet).wallet.key_manager_service)
+    {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
             Box::into_raw(Box::new(TariVector::from(outputs)))
         },
 
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to obtain outputs: {e:#?}");
             ptr::replace(
                 error_ptr,
                 LibWalletError::from(WalletError::OutputManagerError(
@@ -7174,10 +6414,24 @@ pub unsafe extern "C" fn wallet_coin_split(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return 0;
             },
+        },
+    };
+    let memo = match MemoField::new_open_from_string(
+        &format!("{number_of_splits} even coin splits"),
+        if number_of_splits > 1 {
+            TxType::CoinSplit
+        } else {
+            TxType::CoinJoin
+        },
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Invalid payment id: {e:#?}");
+            return 0;
         },
     };
 
@@ -7185,21 +6439,14 @@ pub unsafe extern "C" fn wallet_coin_split(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        PaymentId::open_from_string(
-            &format!("{} even coin splits", number_of_splits),
-            if number_of_splits > 1 {
-                TxType::CoinSplit
-            } else {
-                TxType::CoinJoin
-            },
-        ),
+        memo,
     )) {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
             tx_id.as_u64()
         },
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to join outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to join outputs: {e:#?}");
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             0
         },
@@ -7250,29 +6497,33 @@ pub unsafe extern "C" fn wallet_coin_join(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return 0;
             },
         },
     };
-
     let commitments_len = commitments.len();
-    match (*wallet).runtime.block_on((*wallet).wallet.coin_join(
-        commitments,
-        fee_per_gram.into(),
-        Some(PaymentId::open_from_string(
-            &format!("Coin join {} outputs", commitments_len),
-            TxType::CoinJoin,
-        )),
-    )) {
+    let memo = match MemoField::new_open_from_string(&format!("Coin join {commitments_len} outputs"), TxType::CoinJoin)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Invalid payment id: {e:#?}");
+            return 0;
+        },
+    };
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.coin_join(commitments, fee_per_gram.into(), Some(memo)))
+    {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
             tx_id.as_u64()
         },
 
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to join outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to join outputs: {e:#?}");
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             0
         },
@@ -7322,7 +6573,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return ptr::null_mut();
             },
@@ -7351,7 +6602,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "failed to preview coin join with commitments: {:#?}", e
+                "failed to preview coin join with commitments: {e:#?}"
             );
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             ptr::null_mut()
@@ -7404,7 +6655,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return ptr::null_mut();
             },
@@ -7435,7 +6686,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "failed to preview split with commitments outputs (no amount): {:#?}", e
+                "failed to preview split with commitments outputs (no amount): {e:#?}"
             );
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             ptr::null_mut()
@@ -7478,7 +6729,7 @@ pub unsafe extern "C" fn wallet_sign_message(
     }
 
     let mut result = CString::new("").expect("Blank CString will not fail.");
-    let secret = (*wallet).wallet.comms.node_identity().secret_key().clone();
+    let secret = (*wallet).wallet.node_identity.secret_key().clone();
     let message = CStr::from_ptr(msg)
         .to_str()
         .expect("CString should not fail here.")
@@ -7490,7 +6741,7 @@ pub unsafe extern "C" fn wallet_sign_message(
         Ok(s) => {
             let hex_sig = s.get_signature().to_hex();
             let hex_nonce = s.get_public_nonce().to_hex();
-            let hex_return = format!("{}|{}", hex_sig, hex_nonce);
+            let hex_return = format!("{hex_sig}|{hex_nonce}");
             result = CString::new(hex_return).expect("CString should not fail here.");
         },
         Err(e) => {
@@ -7597,113 +6848,6 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
     result
 }
 
-/// Adds a base node peer to the TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `public_key` - The TariPublicKey pointer
-/// `address` - The pointer to a char array
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if any pointer argument is null.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_set_base_node_peer(
-    wallet: *mut TariWallet,
-    public_key: *mut TariPublicKey,
-    address: *const c_char,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-
-    if public_key.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_key".to_string())).code;
-        return false;
-    }
-
-    let parsed_addr = if address.is_null() {
-        None
-    } else {
-        match CStr::from_ptr(address).to_str() {
-            Ok(v) => match Multiaddr::from_str(v) {
-                Ok(v) => Some(v),
-                Err(_) => {
-                    *error_out =
-                        LibWalletError::from(InterfaceError::InvalidArgument("address is invalid".to_string())).code;
-                    return false;
-                },
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("address".to_string())).code;
-                return false;
-            },
-        }
-    };
-
-    if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.set_base_node_peer(
-        (*public_key).clone(),
-        parsed_addr,
-        None,
-    )) {
-        *error_out = LibWalletError::from(e).code;
-        return false;
-    }
-    true
-}
-/// Gets all seed peers known by the wallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `TariPublicKeys` - Returns a list of all known public keys
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKeys {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
-    #[allow(clippy::blocks_in_conditions)]
-    match (*wallet).runtime.block_on(async move {
-        let peers = peer_manager.perform_query(query).await?;
-        let mut public_keys = Vec::with_capacity(peers.len());
-        for peer in peers {
-            public_keys.push(peer.public_key);
-        }
-        Result::<_, WalletError>::Ok(public_keys)
-    }) {
-        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
-}
-
 /// Gets the private view key of the wallet
 ///
 /// ## Arguments
@@ -7731,16 +6875,8 @@ pub unsafe extern "C" fn wallet_get_private_view_key(
         return ptr::null_mut();
     }
 
-    let private_key = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.key_manager_service.get_private_view_key());
-    match private_key {
-        Ok(private_key) => Box::into_raw(Box::new(private_key)),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
+    let private_key = (*wallet).wallet.key_manager_service.get_private_view_key();
+    Box::into_raw(Box::new(private_key))
 }
 
 /// Gets the public spend key of the wallet
@@ -7770,109 +6906,8 @@ pub unsafe extern "C" fn wallet_get_public_spend_key(
         return ptr::null_mut();
     }
 
-    let public_key = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.key_manager_service.clone().get_spend_key());
-    match public_key {
-        Ok(private_key) => Box::into_raw(Box::new(private_key.pub_key)),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
-/// Alias will be updated.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `contact` - The TariContact pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if any pointer argument is null.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_upsert_contact(
-    wallet: *mut TariWallet,
-    contact: *mut TariContact,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        return false;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.contacts_service.upsert_contact((*contact).clone()))
-    {
-        Ok(_) => true,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
-            false
-        },
-    }
-}
-
-/// Removes a TariContact from the TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `tx` - The TariPendingInboundTransaction pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if any pointer argument is null.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_remove_contact(
-    wallet: *mut TariWallet,
-    contact: *mut TariContact,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        return false;
-    }
-
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .contacts_service
-            .remove_contact((*contact).address.clone()),
-    ) {
-        Ok(_) => true,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
-            false
-        },
-    }
+    let public_key = (*wallet).wallet.key_manager_service.clone().get_spend_key();
+    Box::into_raw(Box::new(public_key.pub_key))
 }
 
 /// Gets the available balance from a TariBalance. This is the balance the user can spend.
@@ -8030,7 +7065,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
-    one_sided: bool,
     payment_id_string: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
@@ -8053,7 +7087,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => UtxoSelectionCriteria::specific(cs),
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_out, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -8061,10 +7095,16 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     let payment_id = if payment_id_string.is_null() {
-        PaymentId::open_from_string("", TxType::PaymentToOther)
+        MemoField::new_open_from_string("", TxType::PaymentToOther).expect("Cannot fail with empty string")
     } else {
         match CStr::from_ptr(payment_id_string).to_str() {
-            Ok(v) => PaymentId::open_from_string(v, TxType::PaymentToOther),
+            Ok(v) => match MemoField::new_open_from_string(v, TxType::PaymentToOther) {
+                Ok(v) => v,
+                Err(e) => {
+                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument(e)).code;
+                    return 0;
+                },
+            },
             _ => {
                 *error_out = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 return 0;
@@ -8072,43 +7112,24 @@ pub unsafe extern "C" fn wallet_send_transaction(
         }
     };
 
-    if one_sided {
-        match (*wallet).runtime.block_on(
-            (*wallet)
-                .wallet
-                .transaction_service
-                .send_one_sided_to_stealth_address_transaction(
-                    (*destination).clone(),
-                    MicroMinotari::from(amount),
-                    selection_criteria,
-                    OutputFeatures::default(),
-                    MicroMinotari::from(fee_per_gram),
-                    payment_id,
-                ),
-        ) {
-            Ok(tx_id) => tx_id.as_u64(),
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                0
-            },
-        }
-    } else {
-        match (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.send_transaction(
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .send_one_sided_to_stealth_address_transaction(
                 (*destination).clone(),
                 MicroMinotari::from(amount),
                 selection_criteria,
                 OutputFeatures::default(),
                 MicroMinotari::from(fee_per_gram),
                 payment_id,
-            )) {
-            Ok(tx_id) => tx_id.as_u64(),
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                0
-            },
-        }
+            ),
+    ) {
+        Ok(tx_id) => tx_id.as_u64(),
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            0
+        },
     }
 }
 
@@ -8204,7 +7225,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => UtxoSelectionCriteria::specific(cs),
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_out, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -8220,7 +7241,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
             num_kernels as usize,
             num_outputs as usize,
         )) {
-        Ok(fee) => fee.into(),
+        Ok((fee, _, _)) => fee.into(),
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             0
@@ -8304,51 +7325,11 @@ pub unsafe extern "C" fn wallet_set_num_confirmations_required(
     }
 }
 
-/// Get the TariContacts from a TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariContacts` - returns the contacts, note that it returns ptr::null_mut() if
-/// wallet is null
-///
-/// # Safety
-/// The ```contacts_destroy``` method must be called when finished with a TariContacts to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariContacts {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let mut contacts = Vec::new();
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let retrieved_contacts = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.contacts_service.get_contacts());
-    match retrieved_contacts {
-        Ok(mut retrieved_contacts) => {
-            contacts.append(&mut retrieved_contacts);
-            Box::into_raw(Box::new(TariContacts(contacts)))
-        },
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
-            ptr::null_mut()
-        },
-    }
-}
-
 /// Get the TariCompletedTransactions from a TariWallet
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8362,6 +7343,7 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_completed_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransactions {
     if error_out.is_null() {
@@ -8375,12 +7357,15 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
         return ptr::null_mut();
     }
 
-    let completed_transactions = (*wallet).runtime.block_on(
+    let completed_transactions =
         (*wallet)
-            .wallet
-            .transaction_service
-            .get_completed_transactions(None, None, None),
-    );
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                None,
+                None,
+                None,
+                max_search_limit,
+            ));
     match completed_transactions {
         Ok(completed_transactions) => {
             // The frontend specification calls for completed transactions that have not yet been mined to be
@@ -8389,9 +7374,9 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
             // the Completed and Broadcast states from the list returned by this FFI function
             for tx in completed_transactions
                 .iter()
-                .filter(|ct| ct.status != TransactionStatus::Completed)
-                .filter(|ct| ct.status != TransactionStatus::Broadcast)
-                .filter(|ct| ct.status != TransactionStatus::Imported)
+                .filter(|ct| ct.status != LegacyTransactionStatus::Completed)
+                .filter(|ct| ct.status != LegacyTransactionStatus::Broadcast)
+                .filter(|ct| ct.status != LegacyTransactionStatus::Imported)
             {
                 completed.push(tx.clone());
             }
@@ -8410,6 +7395,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8423,6 +7409,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransactions {
     if error_out.is_null() {
@@ -8446,12 +7433,16 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 pending.push(tx.clone());
             }
 
-            if let Ok(completed_txs) = (*wallet).runtime.block_on(
+            if let Ok(completed_txs) =
                 (*wallet)
-                    .wallet
-                    .transaction_service
-                    .get_completed_transactions(None, None, None),
-            ) {
+                    .runtime
+                    .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                        None,
+                        None,
+                        None,
+                        max_search_limit,
+                    ))
+            {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
@@ -8459,9 +7450,9 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 for ct in completed_txs
                     .iter()
                     .filter(|ct| {
-                        ct.status == TransactionStatus::Completed ||
-                            ct.status == TransactionStatus::Broadcast ||
-                            ct.status == TransactionStatus::Imported
+                        ct.status == LegacyTransactionStatus::Completed ||
+                            ct.status == LegacyTransactionStatus::Broadcast ||
+                            ct.status == LegacyTransactionStatus::Imported
                     })
                     .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
@@ -8484,6 +7475,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8497,6 +7489,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransactions {
     if error_out.is_null() {
@@ -8518,19 +7511,26 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
             for tx in &pending_transactions {
                 pending.push(tx.clone());
             }
-            if let Ok(completed_txs) = (*wallet).runtime.block_on(
+            if let Ok(completed_txs) =
                 (*wallet)
-                    .wallet
-                    .transaction_service
-                    .get_completed_transactions(None, None, None),
-            ) {
+                    .runtime
+                    .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                        None,
+                        None,
+                        None,
+                        max_search_limit,
+                    ))
+            {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
                 // list here in the FFI interface
                 for ct in completed_txs
                     .iter()
-                    .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
+                    .filter(|ct| {
+                        ct.status == LegacyTransactionStatus::Completed ||
+                            ct.status == LegacyTransactionStatus::Broadcast
+                    })
                     .filter(|ct| ct.direction == TransactionDirection::Outbound)
                 {
                     pending.push(OutboundTransaction::from(ct.clone()));
@@ -8550,6 +7550,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8563,6 +7564,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransactions {
     if error_out.is_null() {
@@ -8579,7 +7581,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         (*wallet)
             .wallet
             .transaction_service
-            .get_cancelled_completed_transactions(),
+            .get_cancelled_completed_transactions(max_search_limit),
     ) {
         Ok(txs) => txs,
         Err(e) => {
@@ -8616,14 +7618,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     for tx in &completed_transactions {
         completed.push(tx.clone());
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return ptr::null_mut();
-        },
-    };
-    let wallet_address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+    let wallet_address = match (*wallet).wallet.get_wallet_interactive_address() {
         Ok(address) => address,
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -8636,7 +7631,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         completed.push(inbound_tx);
     }
     for tx in &outbound_transactions {
-        let mut outbound_tx = CompletedTransaction::from(tx.clone());
+        let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
         outbound_tx.source_address = wallet_address.clone();
         completed.push(outbound_tx);
     }
@@ -8679,27 +7674,23 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
         (*wallet)
             .wallet
             .transaction_service
-            .get_completed_transactions(None, None, None),
+            .get_completed_transaction(transaction_id.into()),
     );
 
     match completed_transactions {
-        Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions
-                .iter()
-                .find(|tx| tx.tx_id == TxId::from(transaction_id))
+        Ok(completed_transaction) => {
+            if completed_transaction.status != LegacyTransactionStatus::Completed &&
+                completed_transaction.status != LegacyTransactionStatus::Broadcast
             {
-                if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
-                    let completed = tx.clone();
-                    return Box::into_raw(Box::new(completed));
-                }
+                let completed = completed_transaction.clone();
+                return Box::into_raw(Box::new(completed));
             }
-            *error_out = 108;
         },
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
         },
     }
-
+    *error_out = 108;
     ptr::null_mut()
 }
 
@@ -8708,6 +7699,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8722,6 +7714,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction {
     if error_out.is_null() {
@@ -8739,17 +7732,20 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
         .runtime
         .block_on((*wallet).wallet.transaction_service.get_pending_inbound_transactions());
 
-    let completed_transactions = (*wallet).runtime.block_on(
+    let completed_transactions =
         (*wallet)
-            .wallet
-            .transaction_service
-            .get_completed_transactions(None, None, None),
-    );
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                None,
+                None,
+                None,
+                max_search_limit,
+            ));
 
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                if (tx.status == LegacyTransactionStatus::Broadcast || tx.status == LegacyTransactionStatus::Completed) &&
                     tx.direction == TransactionDirection::Inbound
                 {
                     let completed = tx.clone();
@@ -8784,6 +7780,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8798,6 +7795,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction {
     if error_out.is_null() {
@@ -8815,17 +7813,20 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
         .runtime
         .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
 
-    let completed_transactions = (*wallet).runtime.block_on(
+    let completed_transactions =
         (*wallet)
-            .wallet
-            .transaction_service
-            .get_completed_transactions(None, None, None),
-    );
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                None,
+                None,
+                None,
+                max_search_limit,
+            ));
 
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                if (tx.status == LegacyTransactionStatus::Broadcast || tx.status == LegacyTransactionStatus::Completed) &&
                     tx.direction == TransactionDirection::Outbound
                 {
                     let completed = tx.clone();
@@ -8894,7 +7895,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
         (*wallet)
             .wallet
             .transaction_service
-            .get_cancelled_completed_transactions(),
+            .get_cancelled_completed_transactions(0),
     ) {
         Ok(txs) => txs,
         Err(e) => {
@@ -8918,14 +7919,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                 return ptr::null_mut();
             },
         };
-        let runtime = match Runtime::new() {
-            Ok(r) => r,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-                return ptr::null_mut();
-            },
-        };
-        let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+        let address = match (*wallet).wallet.get_wallet_interactive_address() {
             Ok(address) => address,
             Err(e) => {
                 *error_out = LibWalletError::from(e).code;
@@ -8933,7 +7927,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
             },
         };
         if let Some(tx) = outbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-            let mut outbound_tx = CompletedTransaction::from(tx.clone());
+            let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
             outbound_tx.source_address = address;
             transaction = Some(outbound_tx);
         } else {
@@ -8999,14 +7993,7 @@ pub unsafe extern "C" fn wallet_get_tari_interactive_address(
         *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         return ptr::null_mut();
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return ptr::null_mut();
-        },
-    };
-    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+    let address = match (*wallet).wallet.get_wallet_interactive_address() {
         Ok(address) => address,
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -9043,14 +8030,7 @@ pub unsafe extern "C" fn wallet_get_tari_one_sided_address(
         *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         return ptr::null_mut();
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return ptr::null_mut();
-        },
-    };
-    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_one_sided_address().await }) {
+    let address = match (*wallet).wallet.get_wallet_one_sided_address() {
         Ok(address) => address,
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -9093,12 +8073,159 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
         (*wallet)
             .wallet
             .transaction_service
-            .cancel_transaction(TxId::from(transaction_id)),
+            .cancel_pending_transaction(TxId::from(transaction_id)),
     ) {
         Ok(_) => true,
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             false
+        },
+    }
+}
+
+/// Get all PayRefs (payment references) for a specific transaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `transaction_id` - The transaction ID to get PayRefs for
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut TariPaymentRecords` - returns a vector of TariPaymentRecords containing the PayRefs for the transaction,
+///
+/// # Safety
+/// The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory
+/// leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_transaction_payrefs(
+    wallet: *mut TariWallet,
+    transaction_id: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecords {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+    let mut records = Vec::new();
+    let tx_id = TxId::from(transaction_id);
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.get_completed_transaction(tx_id))
+    {
+        Ok(tx) => {
+            for hash in tx.sent_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 1,
+                });
+            }
+            for hash in tx.received_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 0,
+                });
+            }
+            for hash in tx.change_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 2,
+                });
+            }
+            Box::into_raw(Box::new(TariPaymentRecords(records)))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get payment details for a specific PayRef (payment reference)
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `payref` - The 32-byte ByteVector of the payment reference
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut TariCompletedTransaction` - returns the transaction details for the PayRef,
+/// note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
+///
+/// # Safety
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
+/// The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_transaction_by_payref(
+    wallet: *mut TariWallet,
+    payref: *mut ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransaction {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    if payref.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payref".to_string())).code;
+        return ptr::null_mut();
+    }
+    let vec_bytes = (*payref).0.clone();
+    let payref_fixedhash = match FixedHash::try_from(vec_bytes) {
+        Ok(hash) => hash,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("payref".to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_transaction_by_payref(payref_fixedhash),
+    ) {
+        Ok(tx) => Box::into_raw(Box::new(tx)),
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
         },
     }
 }
@@ -9543,46 +8670,32 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
-/// `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
 /// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
-/// progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
+/// progress to the client. The first argument of the callback is an event enum encoded as a u8, and the second and
+/// third arguments are u64 values that will contain different information depending on the event
+/// that triggered the callback, as follows:
 /// ```
 /// enum RecoveryEvent {
-///     ConnectingToBaseNode,       // 0
-///     ConnectedToBaseNode,        // 1
-///     ConnectionToBaseNodeFailed, // 2
-///     Progress,                   // 3
-///     Completed,                  // 4
-///     ScanningRoundFailed,        // 5
-///     RecoveryFailed,             // 6
+///     Progress,                   // 0
+///        current_height: u64,             - 1st argument
+///        tip_height: u64,                 - 2nd argument
+///     Completed,                  // 1
+///        num_recovered: u64,              - 1st argument
+///        value_recovered: u64,            - 2nd argument (representing MicroMinotari)
+///     ScanningRoundFailed,        // 2
+///        num_retries: u64,                - 1st argument
+///        retry_limit: u64,                - 2nd argument
 /// }
 /// ```
-/// The second and third arguments are u64 values that will contain different information depending on the event
-/// that triggered the callback. The meaning of the second and third argument for each event are as follows:
-///     - ConnectingToBaseNode, 0, 0
-///     - ConnectedToBaseNode, 0, 1
-///     - ConnectionToBaseNodeFailed, number of retries, retry limit
-///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
-///     - ScanningRoundFailed, number of retries, retry limit
-///     - RecoveryFailed, 0, 0
 ///
 /// If connection to a base node is successful the flow of callbacks should be:
-///     - The process will start with a callback with `ConnectingToBaseNode` showing a connection is being attempted
-///       this could be repeated multiple times until a connection is made.
-///     - The next a callback with `ConnectedToBaseNode` indicate a successful base node connection and process has
-///       started
-///     - In Progress callbacks will be of the form (n, m) where n < m
-///     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
-///       scanned and how much MicroMinotari was recovered
-///     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
+///     - The process will start with a callback with `Progress`, and will be repeated as long as the recovery is in
+///       progress.
+///     - The `Progress` callbacks will be of the form (n, m) where n < m
+///     - If the process completed successfully then the `Completed` callback will return how many UTXO's were scanned
+///       and how much MicroMinotari was recovered
 ///     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
 ///       attempt will be made
-///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
-///       a new process.
-///
-/// `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the
-/// default     message will be used
 ///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -9597,9 +8710,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
-    base_node_public_keys: *mut TariPublicKeys,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
-    recovered_output_message: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
     if error_out.is_null() {
@@ -9612,69 +8723,11 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
-    let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_public_keys = if base_node_public_keys.is_null() {
-        let peer_manager = (*wallet).wallet.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_seed());
-        #[allow(clippy::blocks_in_conditions)]
-        match (*wallet).runtime.block_on(async move {
-            let peers = peer_manager.perform_query(query).await?;
-            let mut public_keys = Vec::with_capacity(peers.len());
-            for peer in peers {
-                public_keys.push(peer.public_key);
-            }
-            Result::<_, WalletError>::Ok(public_keys)
-        }) {
-            Ok(public_keys) => public_keys,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::NullError(format!("{}", e))).code;
-                return false;
-            },
-        }
-    } else {
-        (*base_node_public_keys).0.clone()
-    };
-    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
-
-    if !recovered_output_message.is_null() {
-        let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
-            Ok(v) => v.to_owned(),
-            _ => {
-                *error_out =
-                    LibWalletError::from(InterfaceError::PointerError("recovered_output_message".to_string())).code;
-                return false;
-            },
-        };
-        recovery_task_builder.with_recovery_message(message_str);
-    }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return false;
-        },
-    };
-    let mut recovery_task = match runtime.block_on(async {
-        recovery_task_builder
-            .with_peers(peer_public_keys)
-            .with_retry_limit(10)
-            .build_with_wallet(&(*wallet).wallet, shutdown_signal)
-            .await
-    }) {
-        Ok(v) => v,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::KeyManagerServiceError(e)).code;
-            return false;
-        },
-    };
-
-    let event_stream = recovery_task.get_event_receiver();
-    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());
+    let event_stream = (*wallet).wallet.utxo_scanner_service.clone().get_event_receiver();
 
     // Spawn a task to monitor the recovery process events and call the callback appropriately
     (*wallet).runtime.spawn(recovery_event_monitoring(
         event_stream,
-        recovery_join_handle,
         recovery_progress_callback,
         (*wallet).context,
     ));
@@ -9822,7 +8875,7 @@ pub unsafe extern "C" fn emoji_set_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    let result = (*emoji_set).0[position as usize].clone();
+    let result = (&(*emoji_set).0)[position as usize].clone();
     Box::into_raw(Box::new(result))
 }
 
@@ -9859,22 +8912,8 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
         debug!(target: LOG_TARGET, "Wallet pointer not yet destroyed, shutting down now");
         let mut w = Box::from_raw(wallet);
-        let wallet_comms = w.wallet.comms.clone();
         w.shutdown.trigger();
         w.runtime.block_on(w.wallet.wait_until_shutdown());
-        // The wallet should be shutdown by now; these are just additional confirmations
-        loop {
-            if w.shutdown.is_triggered() &&
-                wallet_comms.shutdown_signal().is_triggered() &&
-                w.runtime
-                    .block_on(wallet_comms.connectivity().get_connectivity_status())
-                    .is_err()
-            {
-                break;
-            };
-            w.runtime
-                .block_on(async { tokio::time::sleep(Duration::from_millis(250)).await });
-        }
     }
 }
 
@@ -9906,7 +8945,7 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
                 return;
             },
         }
-        debug!(target: LOG_TARGET, "{}", message);
+        debug!(target: LOG_TARGET, "{message}");
     }
 }
 
@@ -9931,7 +8970,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
     wallet: *mut TariWallet,
     count: c_uint,
     error_out: *mut c_int,
-) -> *mut TariFeePerGramStats {
+) -> *mut TariFeePerGramStat {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -9946,11 +8985,11 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
         (*wallet)
             .wallet
             .transaction_service
-            .get_fee_per_gram_stats_per_block(count as usize),
+            .get_fee_per_gram_stats_per_block(u64::from(count)),
     ) {
         Ok(estimates) => Box::into_raw(Box::new(estimates)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error getting the fee estimates: {:?}", e);
+            error!(target: LOG_TARGET, "Error getting the fee estimates: {e:?}");
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::null_mut()
         },
@@ -10028,7 +9067,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*fee_per_gram_stats).stats[position as usize].clone()))
+    Box::into_raw(Box::new((&(*fee_per_gram_stats).stats)[position as usize].clone()))
 }
 
 /// Frees memory for a TariFeePerGramStats
@@ -10191,72 +9230,135 @@ pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariF
     }
 }
 
-/// Returns a ptr to the ContactsServiceHandle for use with chat
-///
-/// ## Arguments
-/// `wallet` - The wallet instance
-/// `error_out` - Pointer to an int which will be modified
-///
+/// Destroy TariPaymentRecords
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_destroy(records: *mut TariPaymentRecords) {
+    if !records.is_null() {
+        drop(Box::from_raw(records));
+    }
+}
+
+/// Get length of TariPaymentRecords
 /// ## Returns
-/// `*mut ContactsServiceHandle` an opaque pointer used in chat sideloading initialization
+/// `c_uint` - length of stats in TariFeePerGramStats
 ///
 /// # Safety
-/// You should release the returned pointer after it's been used to initialize chat using `contacts_handle_destroy`
+/// None
 #[no_mangle]
-pub unsafe extern "C" fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut ContactsServiceHandle {
+#[allow(clippy::cast_possible_truncation)]
+pub unsafe extern "C" fn payment_records_get_length(
+    records: *const TariPaymentRecords,
+    error_out: *mut c_int,
+) -> c_uint {
+    if error_out.is_null() {
+        return 0;
+    }
+    *error_out = 0;
+
+    if records.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("records".to_string())).code;
+        return 0;
+    }
+
+    (*records).0.len() as c_uint
+}
+
+/// Get TariPaymentRecord at index
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_get_at(
+    records: *const TariPaymentRecords,
+    index: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecord {
     if error_out.is_null() {
         return ptr::null_mut();
     }
     *error_out = 0;
 
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+    if records.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("records".to_string())).code;
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new((*wallet).wallet.contacts_service.clone()))
+    let length = (*records).0.len();
+    if index as usize >= length {
+        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        return ptr::null_mut();
+    }
+
+    Box::into_raw(Box::new((&(*records).0)[index as usize].clone()))
 }
 
-/// Frees memory for a ContactsServiceHandle
-///
-/// ## Arguments
-/// `contacts_handle` - The pointer to a ContactsServiceHandle
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
+/// Destroy TariPaymentRecord
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsServiceHandle) {
-    if !contacts_handle.is_null() {
-        drop(Box::from_raw(contacts_handle))
+pub unsafe extern "C" fn payment_record_destroy(record: *mut TariPaymentRecord) {
+    if !record.is_null() {
+        drop(Box::from_raw(record));
+    }
+}
+/// Rescan the wallet from the specified height. If height is 0, rescan from birthday.
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_rescan(
+    wallet: *mut TariWallet,
+    from_height: c_ulonglong,
+    error_out: *mut c_int,
+) -> bool {
+    if error_out.is_null() {
+        return false;
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return false;
+    }
+    let result = if from_height == 0 {
+        (*wallet).wallet.db.clear_scanned_blocks()
+    } else {
+        (*wallet).wallet.db.clear_scanned_blocks_from_and_higher(from_height)
+    };
+
+    match result {
+        Ok(_) => true,
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            false
+        },
     }
 }
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
-    use std::{ffi::c_void, path::Path, str::from_utf8, sync::Mutex};
+    use std::{ffi::c_void, str::from_utf8, sync::Mutex};
 
     use minotari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+        storage::{
+            sqlite_db::wallet::WalletSqliteDatabase,
+            sqlite_utilities::run_migration_and_create_sqlite_connection,
+        },
         transaction_service::handle::TransactionSendStatus,
     };
     use once_cell::sync::Lazy;
-    use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
-    use tari_comms::peer_manager::PeerFeatures;
-    use tari_contacts::contacts_service::types::{ChatBody, Direction, Message, MessageId, MessageMetadata};
-    use tari_core::{
-        covenant,
-        transactions::{
-            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
-            transaction_key_manager::{create_memory_db_key_manager, SecretTransactionKeyManagerInterface},
-        },
-    };
-    use tari_key_manager::mnemonic_wordlists;
-    use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
+    use tari_common_types::{emoji, seeds::mnemonic_wordlists, tari_address::TariAddressFeatures, types::PrivateKey};
+    use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, transports::MemoryTransport};
     use tari_script::script;
     use tari_test_utils::random;
+    use tari_transaction_components::{
+        covenant,
+        key_manager::{KeyManager, SecretTransactionKeyManagerInterface},
+        test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
+    };
     use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 
@@ -10281,7 +9383,6 @@ mod test {
         pub transaction_send_result_callback: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
-        pub callback_contacts_liveness_data_updated: bool,
         pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
         pub callback_basenode_state_updated: bool,
@@ -10301,7 +9402,6 @@ mod test {
                 transaction_send_result_callback: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
-                callback_contacts_liveness_data_updated: false,
                 callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
                 callback_basenode_state_updated: false,
@@ -10329,7 +9429,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Completed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::Completed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.received_tx_reply_callback_called = true;
         drop(lock);
@@ -10342,7 +9442,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Completed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::Completed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.received_finalized_tx_callback_called = true;
         drop(lock);
@@ -10358,7 +9458,7 @@ mod test {
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.broadcast_tx_callback_called = true;
         drop(lock);
-        assert_eq!((*tx).status, TransactionStatus::Broadcast);
+        assert_eq!((*tx).status, LegacyTransactionStatus::Broadcast);
         completed_transaction_destroy(tx);
     }
 
@@ -10368,7 +9468,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_callback_called = true;
         drop(lock);
@@ -10385,7 +9485,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = true;
         let mut error = 0;
@@ -10414,7 +9514,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::OneSidedConfirmed);
+        assert_eq!((*tx).status, LegacyTransactionStatus::OneSidedConfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.scanned_tx_callback_called = true;
         drop(lock);
@@ -10432,8 +9532,8 @@ mod test {
             std::any::type_name::<TariCompletedTransaction>()
         );
         match (*tx).status {
-            TransactionStatus::Imported => {},
-            TransactionStatus::OneSidedUnconfirmed => {
+            LegacyTransactionStatus::Imported => {},
+            LegacyTransactionStatus::OneSidedUnconfirmed => {
                 let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
                 lock.scanned_tx_unconfirmed_callback_called = true;
                 let mut error = 0;
@@ -10489,13 +9589,6 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn contacts_liveness_data_updated_callback(
-        _context: *mut c_void,
-        _balance: *mut TariContactsLivenessData,
-    ) {
-        // assert!(true); //optimized out by compiler
-    }
-
     unsafe extern "C" fn balance_updated_callback(_context: *mut c_void, _balance: *mut TariBalance) {
         // assert!(true); //optimized out by compiler
     }
@@ -10508,11 +9601,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn saf_messages_received_callback(_context: *mut c_void) {
-        // assert!(true); //optimized out by compiler
-    }
-
-    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, _status: u64) {
+    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, _status: u64, _latency: u64) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -10567,6 +9656,23 @@ mod test {
                 LibWalletError::from(InterfaceError::NullError("bytes_ptr".to_string())).code
             );
             byte_vector_destroy(bytes_ptr);
+        }
+    }
+
+    #[test]
+    fn test_emoji_string() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let emoji_string = "🐢🐋🏦💤🐣👣📱🚜🍍🍉🎺🥊📖🔦😷👾🐺🐬👗🔱🌻💍🎢🎪🛵🐋🐊👞🥝🐍🌸📷🔧🎭🐮⏰🍇💯🐛🌴💨🔌🍪📟🎲🐝🤢🎉🔑🌵🚒🐙😍🐝🍑🐜👂🧩⏰🎀🚀🍵👑💐🎮🎮🎣🎒🍬🍳🍸🍷🍶🍯🍵🥄🍭🥐💣";
+
+            let _tari_address = TariAddress::from_emoji_string(emoji_string).unwrap();
+
+            let cstring = CString::new(emoji_string).unwrap();
+            let cstring_ptr: *const c_char = CString::into_raw(cstring) as *const c_char;
+
+            let _result = emoji_id_to_tari_address(cstring_ptr, error_ptr);
+            assert_eq!(*error_ptr, 0, "No error expected");
         }
     }
 
@@ -10632,7 +9738,7 @@ mod test {
     #[allow(clippy::cast_possible_truncation)]
     fn test_seed_words_create() {
         unsafe {
-            let cipher = CipherSeed::new();
+            let cipher = CipherSeed::random();
             let ciper_bytes = cipher.encipher(None).unwrap();
             let cipher_string = ciper_bytes.to_monero_base58();
 
@@ -10681,18 +9787,6 @@ mod test {
                 assert!(compare);
             }
             emoji_set_destroy(emoji_set);
-        }
-    }
-
-    #[test]
-    fn test_transport_type_memory() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let transport = transport_memory_create();
-            let _address = transport_memory_get_address(transport, error_ptr);
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
         }
     }
 
@@ -10781,54 +9875,6 @@ mod test {
             transaction_send_status_destroy(status);
             assert_eq!(error, 1);
             assert_eq!(transaction_status, 4);
-        }
-    }
-
-    #[test]
-    fn test_transport_type_tcp() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let address_listener = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
-            let address_listener_str: *const c_char = CString::into_raw(address_listener) as *const c_char;
-            let transport = transport_tcp_create(address_listener_str, error_ptr);
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
-        }
-    }
-
-    #[test]
-    fn test_transport_type_tor() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
-            let mut bypass = false;
-            let address_control_str: *const c_char = CString::into_raw(address_control) as *const c_char;
-            let mut transport = transport_tor_create(
-                address_control_str,
-                ptr::null(),
-                8080,
-                bypass,
-                ptr::null(),
-                ptr::null(),
-                error_ptr,
-            );
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
-
-            bypass = true;
-            transport = transport_tor_create(
-                address_control_str,
-                ptr::null(),
-                8080,
-                bypass,
-                ptr::null(),
-                ptr::null(),
-                error_ptr,
-            );
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
         }
     }
 
@@ -10936,7 +9982,7 @@ mod test {
                 &commitment,
                 amount,
                 &spending_key,
-                PaymentId::Empty,
+                MemoField::new_empty(),
             )
             .unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
@@ -10986,7 +10032,8 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert!((*output_features).coinbase_extra.is_empty());
+            let features = &*output_features;
+            assert!(features.coinbase_extra.is_empty());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -11078,94 +10125,6 @@ mod test {
     }
 
     #[test]
-    fn test_contact() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let test_contact_private_key = private_key_generate();
-            let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
-            let test_address = Box::into_raw(Box::new(
-                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()).unwrap(),
-            ));
-            let test_str = "Test Contact";
-            let test_contact_str = CString::new(test_str).unwrap();
-            let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let test_contact = contact_create(test_contact_alias, test_address, true, error_ptr);
-            let favourite = contact_get_favourite(test_contact, error_ptr);
-            assert!(favourite);
-            let alias = contact_get_alias(test_contact, error_ptr);
-            let alias_string = CString::from_raw(alias).to_str().unwrap().to_owned();
-            assert_eq!(alias_string, test_str);
-            let contact_address = contact_get_tari_address(test_contact, error_ptr);
-            let contact_key_bytes = tari_address_get_bytes(contact_address, error_ptr);
-            let contact_bytes_len = byte_vector_get_length(contact_key_bytes, error_ptr);
-            assert_eq!(contact_bytes_len, 35);
-            contact_destroy(test_contact);
-            tari_address_destroy(test_address);
-            private_key_destroy(test_contact_private_key);
-            string_destroy(test_contact_alias as *mut c_char);
-            byte_vector_destroy(contact_key_bytes);
-        }
-    }
-
-    #[test]
-    fn test_contact_dont_panic() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let test_contact_private_key = private_key_generate();
-            let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
-            let test_contact_address = Box::into_raw(Box::new(
-                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()).unwrap(),
-            ));
-            let test_str = "Test Contact";
-            let test_contact_str = CString::new(test_str).unwrap();
-            let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let mut _test_contact = contact_create(ptr::null_mut(), test_contact_address, false, error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("alias_ptr".to_string())).code
-            );
-            _test_contact = contact_create(test_contact_alias, ptr::null_mut(), false, error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("public_key_ptr".to_string())).code
-            );
-            let _alias = contact_get_alias(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let _contact_address = contact_get_tari_address(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let _contact_address = contact_get_favourite(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let contact_key_bytes = public_key_get_bytes(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let contact_bytes_len = byte_vector_get_length(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            assert_eq!(contact_bytes_len, 0);
-            contact_destroy(_test_contact);
-            tari_address_destroy(test_contact_address);
-            private_key_destroy(test_contact_private_key);
-            string_destroy(test_contact_alias as *mut c_char);
-            byte_vector_destroy(contact_key_bytes);
-        }
-    }
-
-    #[test]
     #[allow(clippy::too_many_lines)]
     fn test_master_private_key_persistence() {
         unsafe {
@@ -11182,33 +10141,17 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
-
-            let sql_database_path = Path::new(alice_temp_dir.path().to_str().unwrap())
-                .join(db_name)
-                .with_extension("sqlite3");
 
             let alice_network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Hello from Alasca").unwrap()) as *const c_char;
 
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
-
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -11221,9 +10164,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 alice_network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11235,10 +10177,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -11249,6 +10189,7 @@ mod test {
             assert_eq!(*error_ptr, 0, "No error expected");
             wallet_destroy(alice_wallet);
 
+            let sql_database_path = get_wallet_database_path(&*alice_config);
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(
@@ -11259,6 +10200,8 @@ mod test {
 
             drop(wallet_backend);
 
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             // Check that the same key is returned when the wallet is started a second time
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet2 = wallet_create(
@@ -11272,9 +10215,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 alice_network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11286,10 +10228,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -11321,7 +10261,7 @@ mod test {
             let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
             let original_path_str: *const c_char = CString::into_raw(original_path_cstring) as *const c_char;
 
-            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
+            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("db");
             let connection =
                 run_migration_and_create_sqlite_connection(sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend =
@@ -11335,13 +10275,11 @@ mod test {
             string_destroy(alice_network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             string_destroy(backup_path_alice_str as *mut c_char);
             string_destroy(original_path_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
         }
     }
 
@@ -11360,27 +10298,16 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
@@ -11392,9 +10319,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11406,10 +10332,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -11470,12 +10394,10 @@ mod test {
             string_destroy(k_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             string_destroy(passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
 
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11594,27 +10516,16 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address = transport_memory_get_address(transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(
-                address_str,
-                transport_type,
-                db_name_str,
-                db_path_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let config = wallet_db_config_create(db_name_str, db_path_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let wallet = wallet_create(
                 void_ptr,
                 config,
@@ -11626,9 +10537,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11640,10 +10550,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -11663,20 +10571,8 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address = transport_memory_get_address(transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
-            let config = comms_config_create(
-                address_str,
-                transport_type,
-                db_name_str,
-                db_path_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let config = wallet_db_config_create(db_name_str, db_path_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
@@ -11684,8 +10580,8 @@ mod test {
             let log_path: *const c_char =
                 CString::into_raw(CString::new(temp_dir.path().join("asdf").to_str().unwrap()).unwrap())
                     as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
-
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let recovered_wallet = wallet_create(
                 void_ptr,
@@ -11698,9 +10594,8 @@ mod test {
                 ptr::null(),
                 seed_words,
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11712,10 +10607,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -11749,26 +10642,15 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -11781,9 +10663,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11795,10 +10676,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -11806,18 +10685,18 @@ mod test {
                 error_ptr,
             );
             let alice_wallet_runtime = &(*alice_wallet).runtime;
-            let key_manager = &(*alice_wallet).wallet.key_manager_service;
+            let key_manager = &mut (*alice_wallet).wallet.key_manager_service;
 
             assert_eq!(error, 0);
             let mut test_outputs = Vec::with_capacity(10);
             for i in 0..10u8 {
-                let uout = alice_wallet_runtime.block_on(create_test_input(
+                let uout = create_test_input(
                     (1000u64 * u64::from(i)).into(),
                     0,
-                    key_manager,
+                    key_manager.key_manager(),
                     vec![i, i + 1, i + 2, i + 3, i + 4],
                     None,
-                ));
+                );
                 test_outputs.push(uout.clone());
                 alice_wallet_runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
@@ -11848,18 +10727,12 @@ mod test {
             for utxo in utxos {
                 let output = test_outputs
                     .iter()
-                    .find(|val| {
-                        alice_wallet_runtime
-                            .block_on(val.commitment(key_manager))
-                            .unwrap()
-                            .to_hex() ==
-                            CStr::from_ptr(utxo.commitment).to_str().unwrap()
-                    })
+                    .find(|val| val.commitment().to_hex() == CStr::from_ptr(utxo.commitment).to_str().unwrap())
                     .unwrap();
-                assert_eq!(output.value.as_u64(), utxo.value);
-                assert_eq!(output.features.maturity, utxo.lock_height);
+                assert_eq!(output.value().as_u64(), utxo.value);
+                assert_eq!(output.features().maturity, utxo.lock_height);
                 assert_eq!(
-                    output.features.coinbase_extra.to_hex(),
+                    output.features().coinbase_extra.to_hex(),
                     CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
                 );
 
@@ -11886,10 +10759,10 @@ mod test {
                     CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
                 );
                 string_destroy(coinbase_extra);
-                let payment_id = tari_utxo_get_payment_id(utxo, error_ptr);
+                let payment_id = tari_utxo_get_raw_payment_id(utxo, error_ptr);
                 assert_eq!(
                     CStr::from_ptr(payment_id).to_str().unwrap(),
-                    CStr::from_ptr(utxo.payment_id).to_str().unwrap()
+                    CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap()
                 );
                 string_destroy(payment_id);
                 let mined_in_block = tari_utxo_get_mined_in_block(utxo, error_ptr);
@@ -11944,10 +10817,8 @@ mod test {
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11967,26 +10838,15 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -11999,9 +10859,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12013,10 +10872,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -12026,13 +10883,13 @@ mod test {
             assert_eq!(error, 0);
 
             for i in 0..10 {
-                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                let uo = create_test_input(
                     (1000 * i).into(),
                     0,
-                    &(*alice_wallet).wallet.key_manager_service,
+                    (*alice_wallet).wallet.key_manager_service.key_manager(),
                     vec![],
                     None,
-                ));
+                );
                 (*alice_wallet)
                     .runtime
                     .block_on(
@@ -12045,13 +10902,7 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_outputs_as_unspent(vec![(
-                        (*alice_wallet)
-                            .runtime
-                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
-                            .unwrap(),
-                        true,
-                    )])
+                    .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
                     .unwrap();
             }
 
@@ -12087,10 +10938,8 @@ mod test {
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -12110,26 +10959,15 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12142,9 +10980,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12156,10 +10993,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -12183,41 +11018,35 @@ mod test {
                 TxType::ImportedUtxoNoneRewindable,
             ] {
                 for payment_id in [
-                    PaymentId::Open {
-                        user_data: "hallo world".as_bytes().to_vec(),
-                        tx_type: tx_type.clone(),
-                    },
-                    PaymentId::AddressAndData {
-                        sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
-                            .unwrap(),
-                        sender_one_sided: false,
-                        amount: MicroMinotari::from(123456),
-                        fee: MicroMinotari::from(123),
-                        tx_type: tx_type.clone(),
-                        user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                    },
-                    PaymentId::TransactionInfo {
-                        recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
-                            .unwrap(),
-                        sender_one_sided: false,
-                        amount: MicroMinotari::from(123456),
-                        fee: MicroMinotari::from(123),
-                        tx_type: tx_type.clone(),
-                        user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                    },
+                    MemoField::new_open("hallo world".as_bytes().to_vec(), tx_type).unwrap(),
+                    MemoField::new_address_and_data(
+                        TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                        MicroMinotari::from(123),
+                        false,
+                        tx_type,
+                        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    )
+                    .unwrap(),
+                    MemoField::new_transaction_info(
+                        TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                        MicroMinotari::from(123456),
+                        MicroMinotari::from(123),
+                        false,
+                        tx_type,
+                        vec![],
+                        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    )
+                    .unwrap(),
                 ] {
-                    let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(
+                    let wallet_output = create_test_input(
                         15000.into(),
                         0,
-                        &(*alice_wallet).wallet.key_manager_service,
+                        (*alice_wallet).wallet.key_manager_service.key_manager(),
                         vec![],
                         Some(payment_id.clone()),
-                    ));
-                    assert_eq!(wallet_output.payment_id, payment_id);
-                    let utxo = (*alice_wallet)
-                        .runtime
-                        .block_on(wallet_output.to_transaction_output(&(*alice_wallet).wallet.key_manager_service))
-                        .unwrap();
+                    );
+                    assert_eq!(*wallet_output.payment_id(), payment_id);
+                    let utxo = wallet_output.to_transaction_output().unwrap();
                     let commitment_bytes = Box::into_raw(Box::new(ByteVector(utxo.commitment.to_vec())));
                     let encrypted_data_ptr = Box::into_raw(Box::new(utxo.encrypted_data));
                     let transaction_type_extracted = transaction_type_from_encrypted_data(
@@ -12237,10 +11066,8 @@ mod test {
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -12260,26 +11087,15 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12292,9 +11108,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12306,10 +11121,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -12319,13 +11132,13 @@ mod test {
 
             assert_eq!(error, 0);
             for i in 1..=5 {
-                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                let uo = create_test_input(
                     (15000 * i).into(),
                     0,
-                    &(*alice_wallet).wallet.key_manager_service,
+                    (*alice_wallet).wallet.key_manager_service.key_manager(),
                     vec![],
                     None,
-                ));
+                );
                 (*alice_wallet)
                     .runtime
                     .block_on(
@@ -12338,13 +11151,7 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_outputs_as_unspent(vec![(
-                        (*alice_wallet)
-                            .runtime
-                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
-                            .unwrap(),
-                        true,
-                    )])
+                    .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
                     .unwrap();
             }
 
@@ -12403,24 +11210,19 @@ mod test {
             let utxos_from_db = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by_query(OutputBackendQuery {
-                    status: vec![OutputStatus::EncumberedToBeReceived],
-                    ..Default::default()
-                })
+                .fetch_outputs_by_query(
+                    OutputBackendQuery {
+                        status: vec![OutputStatus::EncumberedToBeReceived],
+                        ..Default::default()
+                    },
+                    &(*alice_wallet).wallet.key_manager_service,
+                )
                 .unwrap();
             for utxo in &utxos_from_db {
                 let extracted_payment_id = (*alice_wallet)
-                    .runtime
-                    .block_on(
-                        (*alice_wallet)
-                            .wallet
-                            .key_manager_service
-                            .extract_payment_id_from_encrypted_data(
-                                &utxo.wallet_output.encrypted_data,
-                                &utxo.commitment,
-                                None,
-                            ),
-                    )
+                    .wallet
+                    .key_manager_service
+                    .extract_payment_id_from_encrypted_data(utxo.wallet_output.encrypted_data(), &utxo.commitment, None)
                     .unwrap();
                 assert_eq!(utxo.payment_id, extracted_payment_id);
             }
@@ -12428,25 +11230,31 @@ mod test {
             let unspent_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by_query(OutputBackendQuery {
-                    status: vec![OutputStatus::Unspent],
-                    ..Default::default()
-                })
+                .fetch_outputs_by_query(
+                    OutputBackendQuery {
+                        status: vec![OutputStatus::Unspent],
+                        ..Default::default()
+                    },
+                    &(*alice_wallet).wallet.key_manager_service,
+                )
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<MicroMinotari>>();
 
             let new_pending_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by_query(OutputBackendQuery {
-                    status: vec![OutputStatus::EncumberedToBeReceived],
-                    ..Default::default()
-                })
+                .fetch_outputs_by_query(
+                    OutputBackendQuery {
+                        status: vec![OutputStatus::EncumberedToBeReceived],
+                        ..Default::default()
+                    },
+                    &(*alice_wallet).wallet.key_manager_service,
+                )
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<MicroMinotari>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -12492,7 +11300,7 @@ mod test {
             );
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
-                let payment_id_c_str: &str = CStr::from_ptr(utxo.payment_id).to_str().unwrap();
+                let payment_id_c_str: &str = CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap();
                 assert_eq!(
                     OutputStatus::try_from(i32::from(utxo.status)).unwrap(),
                     OutputStatus::EncumberedToBeReceived
@@ -12508,10 +11316,8 @@ mod test {
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -12531,25 +11337,14 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
 
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
@@ -12563,9 +11358,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12577,10 +11371,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -12589,13 +11381,13 @@ mod test {
             );
             assert_eq!(error, 0);
             for i in 1..=5 {
-                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                let uo = create_test_input(
                     (15000 * i).into(),
                     0,
-                    &(*alice_wallet).wallet.key_manager_service,
+                    (*alice_wallet).wallet.key_manager_service.key_manager(),
                     vec![],
                     None,
-                ));
+                );
                 (*alice_wallet)
                     .runtime
                     .block_on(
@@ -12608,13 +11400,7 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_outputs_as_unspent(vec![(
-                        (*alice_wallet)
-                            .runtime
-                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
-                            .unwrap(),
-                        true,
-                    )])
+                    .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
                     .unwrap();
             }
 
@@ -12676,24 +11462,19 @@ mod test {
             let utxos_from_db = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by_query(OutputBackendQuery {
-                    status: vec![OutputStatus::EncumberedToBeReceived],
-                    ..Default::default()
-                })
+                .fetch_outputs_by_query(
+                    OutputBackendQuery {
+                        status: vec![OutputStatus::EncumberedToBeReceived],
+                        ..Default::default()
+                    },
+                    &(*alice_wallet).wallet.key_manager_service,
+                )
                 .unwrap();
             for utxo in &utxos_from_db {
                 let extracted_payment_id = (*alice_wallet)
-                    .runtime
-                    .block_on(
-                        (*alice_wallet)
-                            .wallet
-                            .key_manager_service
-                            .extract_payment_id_from_encrypted_data(
-                                &utxo.wallet_output.encrypted_data,
-                                &utxo.commitment,
-                                None,
-                            ),
-                    )
+                    .wallet
+                    .key_manager_service
+                    .extract_payment_id_from_encrypted_data(utxo.wallet_output.encrypted_data(), &utxo.commitment, None)
                     .unwrap();
                 assert_eq!(utxo.payment_id, extracted_payment_id);
             }
@@ -12701,25 +11482,31 @@ mod test {
             let unspent_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by_query(OutputBackendQuery {
-                    status: vec![OutputStatus::Unspent],
-                    ..Default::default()
-                })
+                .fetch_outputs_by_query(
+                    OutputBackendQuery {
+                        status: vec![OutputStatus::Unspent],
+                        ..Default::default()
+                    },
+                    &(*alice_wallet).wallet.key_manager_service,
+                )
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<_>>();
 
             let new_pending_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by_query(OutputBackendQuery {
-                    status: vec![OutputStatus::EncumberedToBeReceived],
-                    ..Default::default()
-                })
+                .fetch_outputs_by_query(
+                    OutputBackendQuery {
+                        status: vec![OutputStatus::EncumberedToBeReceived],
+                        ..Default::default()
+                    },
+                    &(*alice_wallet).wallet.key_manager_service,
+                )
                 .unwrap()
                 .into_iter()
-                .map(|x| x.wallet_output.value)
+                .map(|x| x.wallet_output.value())
                 .collect::<Vec<_>>();
 
             let post_split_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -12771,7 +11558,7 @@ mod test {
             );
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
-                let payment_id_c_str: &str = CStr::from_ptr(utxo.payment_id).to_str().unwrap();
+                let payment_id_c_str: &str = CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap();
                 assert_eq!(
                     OutputStatus::try_from(i32::from(utxo.status)).unwrap(),
                     OutputStatus::EncumberedToBeReceived
@@ -12787,10 +11574,8 @@ mod test {
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -12810,25 +11595,14 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12841,9 +11615,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12855,10 +11628,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -12867,33 +11638,29 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            let key_manager = &(*alice_wallet).wallet.key_manager_service;
+            let key_manager = &mut (*alice_wallet).wallet.key_manager_service;
             for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        (*alice_wallet).runtime.block_on(create_test_input(
-                            (15000 * i).into(),
-                            0,
-                            key_manager,
-                            vec![],
-                            None,
-                        )),
+                        create_test_input((15000 * i).into(), 0, key_manager.key_manager(), vec![], None),
                         None,
                     ))
                     .unwrap();
             }
 
             // obtaining network and version
-            let _ = wallet_get_last_version(alice_config, &mut error as *mut c_int);
-            let _ = wallet_get_last_network(alice_config, &mut error as *mut c_int);
+            let version_ptr = wallet_get_last_version(alice_config, &mut error as *mut c_int);
+            assert!(!version_ptr.is_null(), "Failed to retrieve version.");
+            let network_ptr = wallet_get_last_network(alice_config, &mut error as *mut c_int);
+            assert!(!network_ptr.is_null(), "Failed to retrieve network.");
 
+            string_destroy(network_ptr);
+            string_destroy(version_ptr);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
-            string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -12984,41 +11751,36 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_create_external_utxo() {
-        let runtime = Runtime::new().unwrap();
+    #[tokio::test]
+    pub async fn test_create_external_utxo() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let key_manager = create_memory_db_key_manager().unwrap();
-            let utxo_1 = runtime
-                .block_on(create_wallet_output_with_data(
-                    script!(Nop).unwrap(),
-                    OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroMinotari(1234u64),
-                    &key_manager,
-                ))
-                .unwrap();
-            let amount = utxo_1.value.as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
-                .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
-                .unwrap();
+            let key_manager = KeyManager::new_random().unwrap();
+            let utxo_1 = create_wallet_output_with_data(
+                script!(Nop).unwrap(),
+                OutputFeatures::default(),
+                &TestParams::new(&key_manager),
+                MicroMinotari(1234u64),
+                &key_manager,
+            )
+            .unwrap();
+            let amount = utxo_1.value().as_u64();
+            let spending_key = key_manager.get_private_key(utxo_1.commitment_mask_key_id()).unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
-            let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
-            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features().clone()));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature().clone()));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key().clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
-            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant().clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data().clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise().as_u64();
             let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
-            let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr =
+                CString::into_raw(CString::new(utxo_1.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(
                 amount,
@@ -13038,7 +11800,10 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            assert_eq!((*tari_utxo).sender_offset_public_key, utxo_1.sender_offset_public_key);
+            assert_eq!(
+                (*tari_utxo).sender_offset_public_key,
+                *utxo_1.sender_offset_public_key()
+            );
             tari_unblinded_output_destroy(tari_utxo);
 
             // Cleanup
@@ -13055,13 +11820,12 @@ mod test {
 
     fn get_next_memory_address() -> Multiaddr {
         let port = MemoryTransport::acquire_next_memsocket_port();
-        format!("/memory/{}", port).parse().unwrap()
+        format!("/memory/{port}").parse().unwrap()
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
     pub fn test_import_external_utxo() {
-        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -13074,24 +11838,13 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address = transport_memory_get_address(transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(
-                address_str,
-                transport_type,
-                db_name_str,
-                db_path_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let config = wallet_db_config_create(db_name_str, db_path_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::new("http://127.0.0.1:2222").unwrap().into_raw() as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let wallet_ptr = wallet_create(
                 void_ptr,
@@ -13104,9 +11857,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13118,10 +11870,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -13129,49 +11879,39 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            let key_manager = &(*wallet_ptr).wallet.key_manager_service;
+            let key_manager = &mut (*wallet_ptr).wallet.key_manager_service;
 
             let node_identity =
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
-            let base_node_peer_address_ptr =
-                CString::into_raw(CString::new(node_identity.first_public_address().unwrap().to_string()).unwrap())
-                    as *const c_char;
-            wallet_set_base_node_peer(
-                wallet_ptr,
-                base_node_peer_public_key_ptr,
-                base_node_peer_address_ptr,
-                error_ptr,
-            );
 
             let source_address_ptr = Box::into_raw(Box::default());
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
 
             // Test import with bulletproof range proof
-            let utxo_1 = runtime
-                .block_on(create_wallet_output_with_data(
-                    script!(Nop).unwrap(),
-                    OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(key_manager)),
-                    MicroMinotari(1234u64),
-                    key_manager,
-                ))
-                .unwrap();
+            let utxo_1 = create_wallet_output_with_data(
+                script!(Nop).unwrap(),
+                OutputFeatures::default(),
+                &TestParams::new(key_manager),
+                MicroMinotari(1234u64),
+                key_manager,
+            )
+            .unwrap();
             // Test all range proof methods; convenient because we have the data
             {
                 // - Range proof from hex
                 let proof_char_ptr =
-                    CString::into_raw(CString::new(utxo_1.range_proof.as_ref().unwrap().to_hex()).unwrap())
+                    CString::into_raw(CString::new(utxo_1.range_proof().as_ref().unwrap().to_hex()).unwrap())
                         as *const c_char;
                 let ptr_a = range_proof_from_hex(proof_char_ptr, error_ptr);
                 // - Range proof from bytes
                 let proof_bytes_ptr =
-                    Box::into_raw(Box::new(ByteVector(utxo_1.range_proof.as_ref().unwrap().to_vec())));
+                    Box::into_raw(Box::new(ByteVector(utxo_1.range_proof().as_ref().unwrap().to_vec())));
                 let ptr_b = range_proof_from_bytes(proof_bytes_ptr, error_ptr);
                 // - Verify
                 let ptr_a_bytes = range_proof_get_bytes(ptr_a, error_ptr);
                 let ptr_b_bytes = range_proof_get_bytes(ptr_b, error_ptr);
-                for i in 0..utxo_1.range_proof.as_ref().unwrap().0.len() {
+                for i in 0..utxo_1.range_proof().as_ref().unwrap().0.len() {
                     let byte_a = byte_vector_get_at(ptr_a_bytes, i.try_into().unwrap(), error_ptr);
                     let byte_b = byte_vector_get_at(ptr_b_bytes, i.try_into().unwrap(), error_ptr);
                     assert_eq!(byte_a, byte_b);
@@ -13185,26 +11925,22 @@ mod test {
                 range_proof_destroy(ptr_b);
             };
 
-            let amount = utxo_1.value.as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
-                .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
-                .unwrap();
+            let amount = utxo_1.value().as_u64();
+            let spending_key = key_manager.get_private_key(utxo_1.commitment_mask_key_id()).unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).unwrap();
             let spending_key_ptr_1 = Box::into_raw(Box::new(spending_key));
-            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
-            let features_ptr_1 = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let metadata_signature_ptr_1 = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr_1 = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
+            let features_ptr_1 = Box::into_raw(Box::new(utxo_1.features().clone()));
+            let metadata_signature_ptr_1 = Box::into_raw(Box::new(utxo_1.metadata_signature().clone()));
+            let sender_offset_public_key_ptr_1 = Box::into_raw(Box::new(utxo_1.sender_offset_public_key().clone()));
             let script_private_key_ptr_1 = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data));
-            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant().clone()));
+            let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data().clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise().as_u64();
             let script_ptr_1 =
                 CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_1 =
-                CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+                CString::into_raw(CString::new(utxo_1.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo_ptr_1 = create_tari_unblinded_output(
                 amount,
@@ -13242,36 +11978,31 @@ mod test {
                 sidechain_feature: None,
                 range_proof_type: RangeProofType::RevealedValue,
             };
-            let utxo_2 = runtime
-                .block_on(create_wallet_output_with_data(
-                    script!(Nop).unwrap(),
-                    features,
-                    &runtime.block_on(TestParams::new(key_manager)),
-                    MicroMinotari(12345u64),
-                    key_manager,
-                ))
-                .unwrap();
+            let utxo_2 = create_wallet_output_with_data(
+                script!(Nop).unwrap(),
+                features,
+                &TestParams::new(key_manager),
+                MicroMinotari(12345u64),
+                key_manager,
+            )
+            .unwrap();
 
-            let amount = utxo_2.value.as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_2.spending_key_id))
-                .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_2.script_key_id))
-                .unwrap();
+            let amount = utxo_2.value().as_u64();
+            let spending_key = key_manager.get_private_key(utxo_2.commitment_mask_key_id()).unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_2.script_key_id()).unwrap();
             let spending_key_ptr_2 = Box::into_raw(Box::new(spending_key));
-            let features_ptr_2 = Box::into_raw(Box::new(utxo_2.features.clone()));
+            let features_ptr_2 = Box::into_raw(Box::new(utxo_2.features().clone()));
             let proof_ptr_2 = range_proof_default();
-            let metadata_signature_ptr_2 = Box::into_raw(Box::new(utxo_2.metadata_signature.clone()));
-            let sender_offset_public_key_ptr_2 = Box::into_raw(Box::new(utxo_2.sender_offset_public_key.clone()));
+            let metadata_signature_ptr_2 = Box::into_raw(Box::new(utxo_2.metadata_signature().clone()));
+            let sender_offset_public_key_ptr_2 = Box::into_raw(Box::new(utxo_2.sender_offset_public_key().clone()));
             let script_private_key_ptr_2 = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant.clone()));
-            let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data));
-            let minimum_value_promise = utxo_2.minimum_value_promise.as_u64();
+            let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant().clone()));
+            let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data().clone()));
+            let minimum_value_promise = utxo_2.minimum_value_promise().as_u64();
             let script_ptr_2 =
                 CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_2 =
-                CString::into_raw(CString::new(utxo_2.input_data.to_hex()).unwrap()) as *const c_char;
+                CString::into_raw(CString::new(utxo_2.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo_ptr_2 = create_tari_unblinded_output(
                 amount,
@@ -13310,13 +12041,19 @@ mod test {
             let unblinded_output_ptr_2 = unblinded_outputs_get_at(unspent_outputs_ptr, 1, error_ptr);
             let range_proof_ptr_2 = range_proof_get(unblinded_output_ptr_2, error_ptr);
 
-            assert_eq!((*tari_utxo_ptr_1).spending_key, (*unblinded_output_ptr_1).spending_key);
+            assert_eq!(
+                (*tari_utxo_ptr_1).commitment_mask_key,
+                (*unblinded_output_ptr_1).commitment_mask_key
+            );
             assert_eq!(
                 (*tari_utxo_ptr_1).encrypted_data,
                 (*unblinded_output_ptr_1).encrypted_data
             );
             assert_eq!((*proof_ptr_1).0, (*range_proof_ptr_1).0);
-            assert_eq!((*tari_utxo_ptr_2).spending_key, (*unblinded_output_ptr_2).spending_key);
+            assert_eq!(
+                (*tari_utxo_ptr_2).commitment_mask_key,
+                (*unblinded_output_ptr_2).commitment_mask_key
+            );
             assert_eq!(
                 (*tari_utxo_ptr_2).encrypted_data,
                 (*unblinded_output_ptr_2).encrypted_data
@@ -13355,56 +12092,48 @@ mod test {
             unblinded_outputs_destroy(unspent_outputs_ptr);
 
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
-            string_destroy(base_node_peer_address_ptr as *mut c_char);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_str as *mut c_char);
             string_destroy(db_path_str as *mut c_char);
-            string_destroy(address_str as *mut c_char);
-            transport_config_destroy(transport_type);
 
-            comms_config_destroy(config);
+            wallet_db_config_destroy(config);
             wallet_destroy(wallet_ptr);
         }
     }
 
-    #[test]
-    pub fn test_utxo_json() {
-        let runtime = Runtime::new().unwrap();
+    #[tokio::test]
+    pub async fn test_utxo_json() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let key_manager = create_memory_db_key_manager().unwrap();
-            let utxo_1 = runtime
-                .block_on(create_wallet_output_with_data(
-                    script!(Nop).unwrap(),
-                    OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroMinotari(1234u64),
-                    &key_manager,
-                ))
-                .unwrap();
-            let amount = utxo_1.value.as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
-                .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
-                .unwrap();
+            let key_manager = KeyManager::new_random().unwrap();
+            let utxo_1 = create_wallet_output_with_data(
+                script!(Nop).unwrap(),
+                OutputFeatures::default(),
+                &TestParams::new(&key_manager),
+                MicroMinotari(1234u64),
+                &key_manager,
+            )
+            .unwrap();
+            let amount = utxo_1.value().as_u64();
+            let spending_key = key_manager.get_private_key(utxo_1.commitment_mask_key_id()).unwrap();
+            let script_private_key = key_manager.get_private_key(utxo_1.script_key_id()).unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
-            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
-            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
+            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof().clone().unwrap_or_default()));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features().clone()));
             let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
-            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature().clone()));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key().clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
-            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant().clone()));
+            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data().clone()));
+            let minimum_value_promise = utxo_1.minimum_value_promise().as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
             let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
-            let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr =
+                CString::into_raw(CString::new(utxo_1.input_data().to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(
                 amount,
@@ -13458,25 +12187,14 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let alice_db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let alice_transport_type = transport_memory_create();
-            let address = transport_memory_get_address(alice_transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let alice_address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                alice_address_str,
-                alice_transport_type,
-                alice_db_name_str,
-                alice_db_path_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let alice_config = wallet_db_config_create(alice_db_name_str, alice_db_path_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::new("http://127.0.0.1:2222").unwrap().into_raw() as *const c_char;
             let alice_wallet_ptr = wallet_create(
                 void_ptr,
                 alice_config,
@@ -13488,9 +12206,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 alice_network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13502,10 +12219,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -13516,9 +12231,7 @@ mod test {
             string_destroy(alice_network_str as *mut c_char);
             string_destroy(alice_db_name_str as *mut c_char);
             string_destroy(alice_db_path_str as *mut c_char);
-            string_destroy(alice_address_str as *mut c_char);
-            transport_config_destroy(alice_transport_type);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
 
             // Create a new wallet for bob
             let db_name = CString::new(random::string(8).as_str()).unwrap();
@@ -13526,25 +12239,14 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let bob_db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let bob_transport_type = transport_memory_create();
-            let address = transport_memory_get_address(bob_transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let bob_address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let bob_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let bob_config = comms_config_create(
-                bob_address_str,
-                bob_transport_type,
-                bob_db_name_str,
-                bob_db_path_str,
-                20,
-                false,
-                error_ptr,
-            );
+            let bob_config = wallet_db_config_create(bob_db_name_str, bob_db_path_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::new("http://127.0.1:2222").unwrap().into_raw() as *const c_char;
             let bob_wallet_ptr = wallet_create(
                 void_ptr,
                 bob_config,
@@ -13556,9 +12258,8 @@ mod test {
                 ptr::null(),
                 ptr::null(),
                 bob_network_str,
-                dns_string,
-                ptr::null(),
-                true,
+                http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13570,10 +12271,8 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
-                saf_messages_received_callback,
                 connectivity_status_callback,
                 wallet_scanned_height_callback,
                 base_node_state_callback,
@@ -13584,182 +12283,10 @@ mod test {
             string_destroy(bob_network_str as *mut c_char);
             string_destroy(bob_db_name_str as *mut c_char);
             string_destroy(bob_db_path_str as *mut c_char);
-            string_destroy(bob_address_str as *mut c_char);
-            transport_config_destroy(bob_transport_type);
-            comms_config_destroy(bob_config);
+            wallet_db_config_destroy(bob_config);
 
-            // Add some peers
-            // - Wallet peer for Alice (add Bob as a base node peer; not how it will be done in production but good
-            //   enough for the test as we just need to make sure the wallet can connect to a peer)
-            let bob_wallet_comms = (*bob_wallet_ptr).wallet.comms.clone();
-            let bob_node_identity = bob_wallet_comms.node_identity();
-            let bob_peer_public_key_ptr = Box::into_raw(Box::new(bob_node_identity.public_key().clone()));
-            let bob_peer_address_ptr =
-                CString::into_raw(CString::new(bob_node_identity.first_public_address().unwrap().to_string()).unwrap())
-                    as *const c_char;
-            wallet_set_base_node_peer(
-                alice_wallet_ptr,
-                bob_peer_public_key_ptr,
-                bob_peer_address_ptr,
-                error_ptr,
-            );
-            string_destroy(bob_peer_address_ptr as *mut c_char);
-            let _destroyed = Box::from_raw(bob_peer_public_key_ptr);
-            // - Wallet peer for Bob (add Alice as a base node peer; same as above)
-            let alice_wallet_comms = (*alice_wallet_ptr).wallet.comms.clone();
-            let alice_node_identity = alice_wallet_comms.node_identity();
-            let alice_peer_public_key_ptr = Box::into_raw(Box::new(alice_node_identity.public_key().clone()));
-            let alice_peer_address_ptr = CString::into_raw(
-                CString::new(alice_node_identity.first_public_address().unwrap().to_string()).unwrap(),
-            ) as *const c_char;
-            wallet_set_base_node_peer(
-                bob_wallet_ptr,
-                alice_peer_public_key_ptr,
-                alice_peer_address_ptr,
-                error_ptr,
-            );
-            string_destroy(alice_peer_address_ptr as *mut c_char);
-            let _destroyed = Box::from_raw(alice_peer_public_key_ptr);
-
-            // Add some contacts
-            // - Contact for Alice
-            let bob_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
-                bob_node_identity.public_key().clone(),
-                Network::LocalNet,
-            )
-            .unwrap();
-            let alice_contact_alias_ptr: *const c_char =
-                CString::into_raw(CString::new("bob").unwrap()) as *const c_char;
-            let alice_contact_address_ptr = Box::into_raw(Box::new(bob_wallet_address.clone()));
-            let alice_contact_ptr = contact_create(alice_contact_alias_ptr, alice_contact_address_ptr, true, error_ptr);
-            tari_address_destroy(alice_contact_address_ptr);
-            assert!(wallet_upsert_contact(alice_wallet_ptr, alice_contact_ptr, error_ptr));
-            contact_destroy(alice_contact_ptr);
-            // - Contact for Bob
-            let alice_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
-                alice_node_identity.public_key().clone(),
-                Network::LocalNet,
-            )
-            .unwrap();
-            let bob_contact_alias_ptr: *const c_char =
-                CString::into_raw(CString::new("alice").unwrap()) as *const c_char;
-            let bob_contact_address_ptr = Box::into_raw(Box::new(alice_wallet_address.clone()));
-            let bob_contact_ptr = contact_create(bob_contact_alias_ptr, bob_contact_address_ptr, true, error_ptr);
-            tari_address_destroy(bob_contact_address_ptr);
-            assert!(wallet_upsert_contact(bob_wallet_ptr, bob_contact_ptr, error_ptr));
-            contact_destroy(bob_contact_ptr);
-
-            // Use comms service - do `dial_peer` for both wallets (we do not 'assert!' here to not make the test flaky)
-            // Note: This loop is just to make sure we actually connect as the first attempts do not always succeed
-            let alice_wallet_runtime = &(*alice_wallet_ptr).runtime;
-            let bob_wallet_runtime = &(*bob_wallet_ptr).runtime;
-            let mut alice_dialed_bob = false;
-            let mut bob_dialed_alice = false;
-            let mut dial_count = 0;
-            loop {
-                dial_count += 1;
-                if !alice_dialed_bob {
-                    alice_dialed_bob = alice_wallet_runtime
-                        .block_on(
-                            alice_wallet_comms
-                                .connectivity()
-                                .dial_peer(bob_node_identity.node_id().clone()),
-                        )
-                        .is_ok();
-                }
-                if !bob_dialed_alice {
-                    bob_dialed_alice = bob_wallet_runtime
-                        .block_on(
-                            bob_wallet_comms
-                                .connectivity()
-                                .dial_peer(alice_node_identity.node_id().clone()),
-                        )
-                        .is_ok();
-                }
-                if alice_dialed_bob && bob_dialed_alice || dial_count > 10 {
-                    break;
-                }
-                // Wait a bit before the next attempt
-                alice_wallet_runtime.block_on(async { tokio::time::sleep(Duration::from_millis(500)).await });
-            }
-
-            // Use contacts service - send some messages for both wallets
-            let mut alice_wallet_contacts_service = (*alice_wallet_ptr).wallet.contacts_service.clone();
-            let mut bob_wallet_contacts_service = (*bob_wallet_ptr).wallet.contacts_service.clone();
-            let mut alice_msg_count = 0;
-            let mut bob_msg_count = 0;
-            // Note: This loop is just to make sure we actually send a couple of messages as the first attempts do not
-            // always succeed (we do not 'assert!' here to not make the test flaky)
-            for i in 0..60 {
-                if alice_msg_count < 5 {
-                    let alice_message_result =
-                        alice_wallet_runtime.block_on(alice_wallet_contacts_service.send_message(Message {
-                            body: ChatBody::try_from(vec![i]).unwrap(),
-                            metadata: vec![MessageMetadata::default()],
-                            receiver_address: alice_wallet_address.clone(),
-                            sender_address: bob_wallet_address.clone(),
-                            direction: Direction::Outbound,
-                            stored_at: u64::from(i),
-                            sent_at: u64::from(i),
-                            delivery_confirmation_at: None,
-                            read_confirmation_at: None,
-                            message_id: MessageId::try_from(vec![i]).unwrap(),
-                        }));
-                    if alice_message_result.is_ok() {
-                        alice_msg_count += 1;
-                    }
-                }
-                if bob_msg_count < 5 {
-                    let bob_message_result =
-                        bob_wallet_runtime.block_on(bob_wallet_contacts_service.send_message(Message {
-                            body: ChatBody::try_from(vec![i]).unwrap(),
-                            metadata: vec![MessageMetadata::default()],
-                            sender_address: alice_wallet_address.clone(),
-                            receiver_address: bob_wallet_address.clone(),
-                            direction: Direction::Outbound,
-                            stored_at: u64::from(i),
-                            sent_at: u64::from(i),
-                            delivery_confirmation_at: None,
-                            read_confirmation_at: None,
-                            message_id: MessageId::try_from(vec![i]).unwrap(),
-                        }));
-                    if bob_message_result.is_ok() {
-                        bob_msg_count += 1;
-                    }
-                }
-                if alice_msg_count >= 5 && bob_msg_count >= 5 {
-                    break;
-                }
-                // Wait a bit before the next attempt
-                alice_wallet_runtime.block_on(async { tokio::time::sleep(Duration::from_millis(500)).await });
-            }
-
-            // Trigger Alice wallet shutdown (same as `pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet)`
+            // Trigger wallet shutdown (same as `pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet)`
             wallet_destroy(alice_wallet_ptr);
-
-            // Bob's peer connection to Alice will still be active for a short while until Bob figures out Alice is
-            // gone, and a 'dial_peer' command to Alice from Bob may return the previous connection state, but it
-            // should not be possible to do anything with the connection.
-            let bob_comms_dial_peer = bob_wallet_runtime.block_on(
-                bob_wallet_comms
-                    .connectivity()
-                    .dial_peer(alice_node_identity.node_id().clone()),
-            );
-            if let Ok(mut connection_to_alice) = bob_comms_dial_peer {
-                if bob_wallet_runtime
-                    .block_on(connection_to_alice.open_substream(&MESSAGING_PROTOCOL_ID.clone()))
-                    .is_ok()
-                {
-                    panic!("Connection to Alice should not be active!");
-                }
-            }
-
-            // - Bob can still retrieve messages Alice sent
-            let bob_contacts_get_messages =
-                bob_wallet_runtime.block_on(bob_wallet_contacts_service.get_messages(alice_wallet_address, 1, 1));
-            assert!(bob_contacts_get_messages.is_ok());
-
-            // Cleanup
             wallet_destroy(bob_wallet_ptr);
         }
     }

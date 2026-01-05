@@ -26,7 +26,6 @@ use cucumber::{given, then, when};
 use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
 use tari_common_types::types::BlockHash;
-use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::spawn_base_node,
     miner::{
@@ -39,13 +38,20 @@ use tari_integration_tests::{
     wallet_process::{create_wallet_client, spawn_wallet},
     TariWorld,
 };
+use tari_node_components::blocks::Block;
 
 use crate::steps::{node_steps::submit_transaction_to, wallet_steps::create_tx_spending_coinbase};
 
-#[when(expr = "I have mine-before-tip mining node {word} connected to base node {word} and wallet {word}")]
-#[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
-pub async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
-    register_miner_process(world, miner_name, bn_name, wallet_name, false);
+#[when(expr = "I have {word} mining node {word} connected to base node {word} and wallet {word}")]
+#[then(expr = "I have {word} mining node {word} connected to base node {word} and wallet {word}")]
+pub async fn create_miner(
+    world: &mut TariWorld,
+    pow_algo: String,
+    miner_name: String,
+    bn_name: String,
+    wallet_name: String,
+) {
+    register_miner_process(world, miner_name, bn_name, wallet_name, false, pow_algo);
 }
 
 #[when(expr = "mining node {word} mines {int} blocks")]
@@ -127,7 +133,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     let peers = base_node.seed_nodes.clone();
     world.wallet_connected_to_base_node.insert(miner.clone(), miner.clone());
     spawn_wallet(world, miner.clone(), Some(miner.clone()), peers, None, None).await;
-    register_miner_process(world, miner.clone(), miner.clone(), miner, false);
+    register_miner_process(world, miner.clone(), miner.clone(), miner, false, "Sha3x".to_string());
 }
 
 #[then(
@@ -140,7 +146,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
-        panic!("Wallet {} has no available transactions", wallet);
+        panic!("Wallet {wallet} has no available transactions");
     }
 
     let miner_ps = world.miners.get(&miner).unwrap();
@@ -161,24 +167,15 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
             if tx_status == grpc::TransactionStatus::MinedConfirmed as i32 ||
                 tx_status == grpc::TransactionStatus::OneSidedConfirmed as i32
             {
-                println!(
-                    "Wallet transaction with id {} has been detected with status Mined_or_OneSidedConfirmed",
-                    tx_id
-                );
+                println!("Wallet transaction with id {tx_id} has been detected with status Mined_or_OneSidedConfirmed");
                 break 'inner;
             }
 
             if retry == num_retries {
-                panic!(
-                    "Unable to have wallet transaction with tx_id = {} with status Mined_or_OneSidedConfirmed",
-                    tx_id
-                );
+                panic!("Unable to have wallet transaction with tx_id = {tx_id} with status Mined_or_OneSidedConfirmed");
             }
 
-            println!(
-                "Mine a block for tx_id {} to have status Mined_or_OneSidedConfirmed",
-                tx_id
-            );
+            println!("Mine a block for tx_id {tx_id} to have status Mined_or_OneSidedConfirmed");
             miner_ps.mine(world, Some(1), None, None).await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -200,7 +197,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
-        panic!("Wallet {} on node {} has no available transactions", &wallet, &node);
+        panic!("Wallet {wallet} on node {node} has no available transactions");
     }
 
     let mut node_client = world.get_node_client(&node).await.unwrap();
@@ -208,14 +205,13 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     let mut mined_status_flag = false;
 
     println!(
-        "Detecting transactions on wallet {}, while mining on node {}, to be Mined_or_OneSidedConfirmed",
-        &wallet, &node
+        "Detecting transactions on wallet {wallet}, while mining on node {node}, to be Mined_or_OneSidedConfirmed"
     );
 
     for tx_id in wallet_tx_ids {
         println!(
-            "Waiting for transaction with id {} to have status Mined_or_OneSidedConfirmed, while mining on node {}",
-            tx_id, &node
+            "Waiting for transaction with id {tx_id} to have status Mined_or_OneSidedConfirmed, while mining on node \
+             {node}"
         );
 
         'inner: for _ in 0..num_retries {
@@ -227,15 +223,12 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             if tx_status == grpc::TransactionStatus::MinedConfirmed as i32 ||
                 tx_status == grpc::TransactionStatus::OneSidedConfirmed as i32
             {
-                println!("Transaction with id {} has been Mined_or_OneSidedConfirmed", tx_id);
+                println!("Transaction with id {tx_id} has been Mined_or_OneSidedConfirmed");
                 mined_status_flag = true;
                 break 'inner;
             }
 
-            println!(
-                "Mine a block for tx_id {} to have status Mined_or_OneSidedConfirmed",
-                tx_id
-            );
+            println!("Mine a block for tx_id {tx_id} to have status Mined_or_OneSidedConfirmed");
             mine_block(
                 &mut node_client,
                 &world.key_manager,
@@ -251,17 +244,13 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
 
         if !mined_status_flag {
             panic!(
-                "Failed to have transaction with id {} on wallet {}, while mining on node {}, to be \
-                 Mined_or_OneSidedConfirmed",
-                tx_id, &wallet, &node
+                "Failed to have transaction with id {tx_id} on wallet {wallet}, while mining on node {node}, to be \
+                 Mined_or_OneSidedConfirmed"
             );
         }
     }
 
-    println!(
-        "Wallet {} has all transactions Mined_or_OneSidedConfirmed, while mining on node {}",
-        &wallet, &node
-    );
+    println!("Wallet {wallet} has all transactions Mined_or_OneSidedConfirmed, while mining on node {node}");
 }
 
 #[when(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
@@ -278,7 +267,14 @@ async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_mine
     )
     .await;
 
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, false);
+    register_miner_process(
+        world,
+        sha3_miner.clone(),
+        sha3_miner.clone(),
+        sha3_miner,
+        false,
+        "Sha3x".to_string(),
+    );
 }
 
 #[when(expr = "I have a stealth SHA3 miner {word} connected to all seed nodes")]
@@ -295,7 +291,14 @@ async fn stealth_sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, s
     )
     .await;
 
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, true);
+    register_miner_process(
+        world,
+        sha3_miner.clone(),
+        sha3_miner.clone(),
+        sha3_miner,
+        true,
+        "Sha3x".to_string(),
+    );
 }
 
 #[given(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
@@ -316,16 +319,30 @@ async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: St
     .await;
 
     println!("Register SHA3 miner {}", &sha3_miner);
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, false);
+    register_miner_process(
+        world,
+        sha3_miner.clone(),
+        sha3_miner.clone(),
+        sha3_miner,
+        false,
+        "Sha3x".to_string(),
+    );
 }
 
-#[when(expr = "I have individual mining nodes connected to each wallet and base node {word}")]
+#[when(expr = "I have SHA3X individual mining nodes connected to each wallet and base node {word}")]
 async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWorld, base_node: String) {
     let wallets = world.wallets.clone();
 
     for (ind, wallet_name) in wallets.keys().enumerate() {
-        let miner = format!("Miner_{}", ind);
-        register_miner_process(world, miner, base_node.clone(), wallet_name.clone(), false);
+        let miner = format!("Miner_{ind}");
+        register_miner_process(
+            world,
+            miner,
+            base_node.clone(),
+            wallet_name.clone(),
+            false,
+            "Sha3x".to_string(),
+        );
     }
 }
 
@@ -333,7 +350,7 @@ async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWor
 async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
     let miners = world.miners.clone();
     for (miner, miner_ps) in miners {
-        println!("Miner {} is mining {} blocks", miner, blocks);
+        println!("Miner {miner} is mining {blocks} blocks");
         miner_ps.mine(world, Some(blocks), None, None).await;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
@@ -389,15 +406,21 @@ async fn submit_block_after(world: &mut TariWorld, block_name: String, node: Str
 #[when(expr = "I spend outputs {word} via {word}")]
 async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) {
     let num = rand::thread_rng().gen::<u8>();
-    let tx_name = format!("TX-{}", num);
-    let utxo_name = format!("UTXO-{}", num);
+    let tx_name = format!("TX-{num}");
+    let utxo_name = format!("UTXO-{num}");
 
-    create_tx_spending_coinbase(world, tx_name.clone(), inputs, utxo_name.clone()).await;
+    create_tx_spending_coinbase(world, tx_name.clone(), inputs, utxo_name.clone());
     submit_transaction_to(world, tx_name, node).await.unwrap();
 }
 
-#[when(expr = "I mine {int} blocks with difficulty {int} on {word}")]
-async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, difficulty: u64, node: String) {
+#[when(expr = "I mine {int} blocks with difficulty {int} on {word} using {word}")]
+async fn num_blocks_with_difficulty(
+    world: &mut TariWorld,
+    num_blocks: u64,
+    difficulty: u64,
+    node: String,
+    pow_algo: String,
+) {
     let wallet_name = format!("wallet-{}", &node);
     if world.wallets.get(&wallet_name).is_none() {
         spawn_wallet(world, wallet_name.clone(), Some(node.clone()), vec![], None, None).await;
@@ -405,7 +428,14 @@ async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, diff
 
     let miner_name = format!("miner-{}", &node);
     if world.miners.get(&miner_name).is_none() {
-        register_miner_process(world, miner_name.clone(), node.clone(), wallet_name.clone(), false);
+        register_miner_process(
+            world,
+            miner_name.clone(),
+            node.clone(),
+            wallet_name.clone(),
+            false,
+            pow_algo,
+        );
     }
 
     let miner = world.miners.get(&miner_name).unwrap();

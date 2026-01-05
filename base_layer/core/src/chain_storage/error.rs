@@ -23,21 +23,19 @@
 use lmdb_zero::error;
 use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
+use tari_node_components::blocks::BlockError;
 use tari_storage::lmdb_store::LMDBError;
+use tari_transaction_components::{
+    tari_proof_of_work::PowError,
+    transaction_components::TransactionError,
+    BanPeriod,
+    BanReason,
+};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
-use crate::{
-    blocks::BlockError,
-    chain_storage::MmrTree,
-    common::{BanPeriod, BanReason},
-    proof_of_work::PowError,
-    transactions::transaction_components::TransactionError,
-    validation::ValidationError,
-    MrHashError,
-};
-
+use crate::{chain_storage::MmrTree, validation::ValidationError, MrHashError};
 #[derive(Debug, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed: {0}")]
@@ -66,6 +64,14 @@ pub enum ChainStorageError {
     InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
+    #[error(
+        "PayRef index not available: current `{current_height}`, start `{start_height}`, target `{target_height}`"
+    )]
+    PayRefIndexNotAvailable {
+        current_height: u64,
+        start_height: u64,
+        target_height: u64,
+    },
     #[error("Invalid argument `{arg}` in `{func}`: {message}")]
     InvalidArguments {
         func: &'static str,
@@ -149,6 +155,8 @@ pub enum ChainStorageError {
     InvalidSerializedPublicKey(String),
     #[error("JellyfishMerkleTree error: {0}")]
     JellyfishMerkleTreeError(anyhow::Error),
+    #[error("Cannot perform accumulated difficulty check while its migration task is still in progress")]
+    AccDataMigrationStillInProgress,
 }
 
 impl ChainStorageError {
@@ -204,7 +212,9 @@ impl ChainStorageError {
             _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange |
             _err @ ChainStorageError::MrHashError(_) |
-            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) |
+            _err @ ChainStorageError::PayRefIndexNotAvailable { .. } |
+            _err @ ChainStorageError::AccDataMigrationStillInProgress => None,
         }
     }
 }

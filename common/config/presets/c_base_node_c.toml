@@ -16,7 +16,7 @@
 # The relative path to store persistent data (default = "data/base_node")
 #data_dir = "data/base_node"
 
-# The relative path to store the lmbd data (default = "db")
+# The relative path to store the lmdb blockchain data (default = "db")
 #lmdb_path = "db"
 
 # The maximum amount of VMs that RandomX will be use (default = 5)
@@ -28,6 +28,9 @@
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
 # couple of nodes that you always want to have in sync. If set this node will only sync to the nodes in this set.
 # force_sync_peers = ["public_key1::address1", "public_key2::address2",... ]
+
+# This allowlist provides a method to keep a connection open to the spesified nodes in this list.
+#monitored_peers= ["public_key1::address1", "public_key2::address2",... ]
 
 # The maximum amount of seconds wait for remote base node responses for messaging-based requests.
 #messaging_request_timeout = 60
@@ -48,13 +51,17 @@
 # Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
 # tari_pulse_interval = 120
 
-# Interval which the node will use to discover and dial the seed peers.
+# Interval which the node will use to discover and dial the seed peers (Default: Disabled).
 # tari_pulse_health_check = 600 # 10 mins
 
 [base_node.lmdb]
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
 #grow_size_bytes = 16_777_216 # 16 *1024 * 1024
 #resize_threshold_bytes = 4_194_304 # 4 *1024 * 1024
+# Turn off readahead. Most operating systems perform readahead on read requests by default. This option turns it
+# off if the OS supports it. Turning it off may help random read performance when the DB is larger than RAM and system
+# RAM is full. The option is not implemented on Windows. (Default: false)
+#no_read_ahead = false
 
 [base_node.storage]
 # The maximum number of orphans that can be stored in the Orphan block pool.
@@ -66,7 +73,8 @@
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command. Default = false
 track_reorgs = true
 # Clean out
-#cleanup_orphans_at_startup = false
+#cleanup_orphans_at_startup = true
+#clear_bad_blocks_at_startup = true
 
 [base_node.mempool]
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
@@ -108,6 +116,8 @@ blockchain_sync_config.max_latency_increase = 10
 # The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
 # [default = 240]
 blockchain_sync_config.rpc_deadline = 240
+# The maximum allowed reorg depth which a node will accept
+# blockchain_sync_config.max_reorg_depth_allowed = 1000
 
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0
@@ -141,7 +151,7 @@ blockchain_sync_config.rpc_deadline = 240
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# Path to the LMDB data files
+# Path to the SQLite databasse (relative to data_dir) used for the peer database.
 #datastore_path = "peer_db"
 
 # Name to use for the peer database
@@ -171,7 +181,7 @@ listener_self_liveness_check_interval = 15
 # If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
-#pub cull_oldest_peer_rpc_connection_on_full = true
+#cull_oldest_peer_rpc_connection_on_full = true
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -294,8 +304,8 @@ database_url = "data/base_node/dht.db"
 #network_discovery.min_desired_peers = 50
 # The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
 #network_discovery.idle_period = 1_800 # 30 * 60
-#  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
-#  than `min_desired_peers` then the actual number of rounds performed will exceed this value. Default: 10
+# The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
+# than `min_desired_peers` then the actual number of rounds performed will exceed this value. Default: 10
 #network_discovery.idle_after_num_rounds = 10
 # Time to idle after a failed round. Default: 5 secs
 #network_discovery.on_failure_idle_period = 5
@@ -304,8 +314,32 @@ database_url = "data/base_node/dht.db"
 #network_discovery.max_sync_peers = 5
 # The maximum number of peers we allow per round of sync. (Default: 500)
 #network_discovery.max_peers_to_sync_per_round = 500
+# Maximum number of seed peers to try during bootstrap phase (Default: 5)
+#network_discovery.max_seed_peer_sync_count = 5
 # Initial refresh sync peers delay period, when a configured connection needs preference. (Default: Disabled)
 #network_discovery.initial_peer_sync_delay = 0
+# The minimum number of peers to attempt to sync with during each seed peer sync operation.
+# If this many peers are successfully added to the peer DB (across all seed peers attempted
+# in one round), the current seed_strap round will end early, provided that
+# `min_successful_seed_contacts_for_early_exit` is also met.
+# Set to 0 to disable this early exit condition (it will always try up to `max_seed_peer_sync_count`
+# seed peers unless an error occurs or `max_peers_to_sync_per_round` is hit repeatedly). (Default: 15)
+#network_discovery.seed_peer_min_initial_sync_peers_needed = 15
+# The minimum number of seed peers that must be successfully contacted (i.e., returned at least one peer)
+# before an early exit due to `seed_peer_min_initial_sync_peers_needed` can occur.(Default: 5)
+#network_discovery.min_successful_seed_contacts_for_early_exit = 5
+# Maximum time to wait for a dial during bootstrap before abandoning the attempt. (Default: 30 seconds)
+#network_discovery.bootstrap_dial_peer_timeout = 30
+# Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt. (Default: 15 seconds)
+#network_discovery.bootstrap_rpc_connect_timeout = 10
+# Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
+# (Default: 15 seconds)
+#network_discovery.bootstrap_rpc_get_peers_stream_timeout = 5
+# Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
+# (Default: 10 seconds)
+#network_discovery.bootstrap_rpc_streaming_timeout = 5
+# Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
+#network_discovery.bootstrap_timeout = 300 # 5 * 60
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60
@@ -328,7 +362,52 @@ database_url = "data/base_node/dht.db"
 #                or
 #   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
 excluded_dial_addresses = []
+# Enables the DHT to forward messages to other nodes in the network - communication nodes only (Default: false)
+#enable_forwarding = false
 
 # setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
 # peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
 #peer_validator_config.min_peer_version = ""
+
+# Wallet Query HTTP service details
+# `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
+# This address must be accessible by the wallet (on a global scale over the internet).
+[base_node.http_wallet_query_service]
+#port = 9000
+#listen_ip = "0.0.0.0"
+#external_address = "http://127.0.0.1:9000"
+
+# If not enabled (false), no Cache-Control header is set anywhere. [Default: true]
+#http_cache.enabled - true
+
+# The Cache-Control string to use for the 'get_tip_info' handler.
+# [Default: "public, max-age=15, s-maxage=15, stale-while-revalidate=15"]
+#http_cache.get_tip_info = "public, max-age=15, s-maxage=15, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_header_by_height' handler.
+# [Default: "public, max-age=120, s-maxage=60, stale-while-revalidate=15"]
+#http_cache.get_header_by_height = "public, max-age=120, s-maxage=60, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.get_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'sync_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.sync_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'get_height_at_time' handler.
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_height_at_time = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'transaction_query' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.transaction_query = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_deleted_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_deleted_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_mined_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_mined_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"

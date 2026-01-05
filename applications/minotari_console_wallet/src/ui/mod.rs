@@ -22,7 +22,6 @@
 
 use crossterm::terminal::SetTitle;
 use log::error;
-use minotari_app_utilities::consts;
 use tari_common::exit_codes::{ExitCode, ExitError};
 
 use crate::utils::crossterm_events::CrosstermEvents;
@@ -30,7 +29,6 @@ mod app;
 mod components;
 pub mod state;
 mod ui_burnt_proof;
-mod ui_contact;
 mod ui_error;
 mod widgets;
 
@@ -57,14 +55,8 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
         .block_on(async {
             trace!(target: LOG_TARGET, "Refreshing transaction state");
             app.app_state.refresh_transaction_state().await?;
-            trace!(target: LOG_TARGET, "Refreshing contacts state");
-            app.app_state.refresh_contacts_state().await?;
-            trace!(target: LOG_TARGET, "Refreshing burnt proofs state");
+            trace!(target: LOG_TARGET, "Refreshing burn proofs state");
             app.app_state.refresh_burnt_proofs_state().await?;
-            trace!(target: LOG_TARGET, "Refreshing connected peers state");
-            app.app_state.refresh_connected_peers_state().await?;
-            trace!(target: LOG_TARGET, "Checking connectivity");
-            app.app_state.check_connectivity().await;
             trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");
             app.app_state.start_balance_enquiry_debouncer().await?;
             trace!(target: LOG_TARGET, "Starting app state event monitor");
@@ -80,28 +72,28 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
 fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
     let events = CrosstermEvents::new();
     enable_raw_mode().map_err(|e| {
-        error!(target: LOG_TARGET, "Error enabling Raw Mode {}", e);
+        error!(target: LOG_TARGET, "Error enabling Raw Mode {e}");
         ExitCode::InterfaceError
     })?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen).map_err(|e| {
-        error!(target: LOG_TARGET, "Error creating stdout context. {}", e);
+        error!(target: LOG_TARGET, "Error creating stdout context. {e}");
         ExitCode::InterfaceError
     })?;
-    let terminal_title = format!("Minotari Console Wallet - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Minotari Console Wallet - Version {}", env!("CARGO_PKG_VERSION"));
     if let Err(e) = execute!(stdout, SetTitle(terminal_title.as_str())) {
-        println!("Error setting terminal title. {}", e)
+        println!("Error setting terminal title. {e}")
     }
 
     let backend = CrosstermBackend::new(stdout);
 
     let mut terminal = Terminal::new(backend).map_err(|e| {
-        error!(target: LOG_TARGET, "Error creating Terminal context. {}", e);
+        error!(target: LOG_TARGET, "Error creating Terminal context. {e}");
         ExitCode::InterfaceError
     })?;
 
     terminal.clear().map_err(|e| {
-        error!(target: LOG_TARGET, "Error clearing interface. {}", e);
+        error!(target: LOG_TARGET, "Error clearing interface. {e}");
         ExitCode::InterfaceError
     })?;
 
@@ -109,13 +101,13 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
     let (mut key_press, mut previous_code, mut previous_kind) = (None, None, None);
     loop {
         terminal.draw(|f| app.draw(f)).map_err(|e| {
-            error!(target: LOG_TARGET, "Error drawing interface. {}", e);
+            error!(target: LOG_TARGET, "Error drawing interface. {e}");
             ExitCode::InterfaceError
         })?;
         let event = events.next();
         #[allow(clippy::blocks_in_conditions)]
         match event.map_err(|e| {
-            error!(target: LOG_TARGET, "Error reading input event: {}", e);
+            error!(target: LOG_TARGET, "Error reading input event: {e}");
             ExitCode::InterfaceError
         })? {
             Event::Input(event) => {
@@ -177,7 +169,7 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
                             } else {
                                 c_new = c_new.to_uppercase().next().unwrap_or(c_new);
                             }
-                            trace!(target: LOG_TARGET, "Inconsistent case detected; '{}' changed to '{}'", c, c_new);
+                            trace!(target: LOG_TARGET, "Inconsistent case detected; '{c}' changed to '{c_new}'");
                         }
                         app.on_key(c_new)
                     },
@@ -204,20 +196,20 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
     }
 
     terminal.clear().map_err(|e| {
-        error!(target: LOG_TARGET, "Error clearing interface. {}", e);
+        error!(target: LOG_TARGET, "Error clearing interface. {e}");
         ExitCode::InterfaceError
     })?;
 
     disable_raw_mode().map_err(|e| {
-        error!(target: LOG_TARGET, "Error disabling Raw Mode {}", e);
+        error!(target: LOG_TARGET, "Error disabling Raw Mode {e}");
         ExitCode::InterfaceError
     })?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen).map_err(|e| {
-        error!(target: LOG_TARGET, "Error releasing stdout {}", e);
+        error!(target: LOG_TARGET, "Error releasing stdout {e}");
         ExitCode::InterfaceError
     })?;
     terminal.show_cursor().map_err(|e| {
-        error!(target: LOG_TARGET, "Error showing cursor: {}", e);
+        error!(target: LOG_TARGET, "Error showing cursor: {e}");
         ExitCode::InterfaceError
     })?;
 

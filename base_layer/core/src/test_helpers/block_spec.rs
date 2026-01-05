@@ -20,15 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    proof_of_work::Difficulty,
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction},
-};
+use tari_transaction_components::{transaction_components::Transaction, MicroMinotari};
 
 pub struct BlockSpecs {
     specs: Vec<BlockSpec>,
 }
 
+use tari_transaction_components::tari_proof_of_work::Difficulty;
 impl BlockSpecs {
     pub fn len(&self) -> usize {
         self.specs.len()

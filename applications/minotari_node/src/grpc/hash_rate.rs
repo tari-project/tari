@@ -22,24 +22,28 @@
 
 use std::collections::VecDeque;
 
-use tari_core::{
-    consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm},
-};
+use minotari_app_grpc::tari_rpc;
+use tari_core::consensus::BaseNodeConsensusManager;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
 const HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
+/// Number of nanos in one unit number
+pub const NANOS_PER_UNIT: u64 = 1_000_000_000;
+// Maximum number of nanos we choose to represented in a decimal
+const MAX_NANOS_PER_DECIMAL: u32 = 999_999_999;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
     pow_algo: PowAlgorithm,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     window_size: usize,
     hash_rates: VecDeque<u64>,
     average: u64,
+    use_scaling: bool,
 }
 
 impl HashRateMovingAverage {
-    pub fn new(pow_algo: PowAlgorithm, consensus_manager: ConsensusManager) -> Self {
+    pub fn new(pow_algo: PowAlgorithm, consensus_manager: BaseNodeConsensusManager, use_scaling: bool) -> Self {
         let window_size = HASH_RATE_MOVING_AVERAGE_WINDOW;
         let hash_rates = VecDeque::with_capacity(window_size);
 
@@ -49,24 +53,35 @@ impl HashRateMovingAverage {
             window_size,
             hash_rates,
             average: 0,
+            use_scaling,
         }
     }
 
     /// Adds a new hash rate entry in the moving average and recalculates the average
     pub fn add(&mut self, height: u64, difficulty: Difficulty) {
+        let consensus_constants = self.consensus_manager.consensus_constants(height);
         // target block time for the current block is provided by the consensus rules
-        let target_time = self
-            .consensus_manager
-            .consensus_constants(height)
-            .pow_target_block_interval(self.pow_algo);
+        let target_time = consensus_constants.pow_target_block_interval(self.pow_algo);
 
         // remove old entries if we are at max block window
         if self.is_full() {
             self.hash_rates.pop_back();
         }
 
+        let additional_multiplier = match self.pow_algo {
+            // Cuckaroo is special as we need to multiply by the cycle length to get the hash rate
+            PowAlgorithm::Cuckaroo => u128::from(consensus_constants.cuckaroo_cycle_length()),
+            _ => 1,
+        };
         // add the new hash rate to the list
-        let current_hash_rate = difficulty.as_u64() / target_time;
+        let nominator = if self.use_scaling {
+            u128::from(difficulty.as_u64())
+                .saturating_mul(u128::from(NANOS_PER_UNIT))
+                .saturating_mul(additional_multiplier)
+        } else {
+            u128::from(difficulty.as_u64()).saturating_mul(additional_multiplier)
+        };
+        let current_hash_rate = u64::try_from(nominator / u128::from(target_time)).unwrap_or(u64::MAX);
         self.hash_rates.push_front(current_hash_rate);
 
         // after adding the hash rate we need to recalculate the average
@@ -90,19 +105,54 @@ impl HashRateMovingAverage {
     }
 
     pub fn average(&self) -> u64 {
-        self.average
+        if self.use_scaling {
+            self.average / NANOS_PER_UNIT
+        } else {
+            self.average
+        }
+    }
+
+    pub fn u_decimal_average(&self) -> tari_rpc::UDecimalValue {
+        if self.use_scaling {
+            HashRateMovingAverage::average_as_u_decimal(self.average)
+        } else {
+            tari_rpc::UDecimalValue {
+                units: self.average,
+                nanos: 0,
+            }
+        }
+    }
+
+    pub fn average_as_u_decimal(average: u64) -> tari_rpc::UDecimalValue {
+        tari_rpc::UDecimalValue {
+            units: average / NANOS_PER_UNIT,
+            nanos: u32::try_from(average % NANOS_PER_UNIT).unwrap_or(MAX_NANOS_PER_DECIMAL),
+        }
+    }
+}
+
+/// Display a UDecimalValue as a string
+pub(crate) fn display_u_decimal_value(value: &tari_rpc::UDecimalValue) -> String {
+    if value.nanos == 0 {
+        format!("{}", value.units)
+    } else {
+        format!("{}.{:09}", value.units, value.nanos)
+            .trim_end_matches('0')
+            .to_string()
     }
 }
 
 #[cfg(test)]
 mod test {
-    use tari_core::{
-        consensus::{ConsensusConstants, ConsensusManagerBuilder},
-        proof_of_work::{Difficulty, PowAlgorithm},
-    };
+    #![allow(clippy::indexing_slicing)]
+    use tari_core::consensus::BaseNodeConsensusManagerBuilder;
     use tari_p2p::Network;
+    use tari_transaction_components::{
+        consensus::ConsensusConstants,
+        tari_proof_of_work::{Difficulty, PowAlgorithm},
+    };
 
-    use super::HashRateMovingAverage;
+    use super::{display_u_decimal_value, HashRateMovingAverage, NANOS_PER_UNIT};
 
     #[test]
     fn window_is_empty() {
@@ -176,11 +226,11 @@ mod test {
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
         let mut constants = ConsensusConstants::esmeralda()[0].clone();
         constants.set_pow_target_block_interval(pow_algo, 240);
-        let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda)
+        let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(constants)
             .build()
             .unwrap();
-        HashRateMovingAverage::new(pow_algo, consensus_manager)
+        HashRateMovingAverage::new(pow_algo, consensus_manager, false)
     }
 
     fn assert_hash_rate(
@@ -191,5 +241,123 @@ mod test {
     ) {
         moving_average.add(height, Difficulty::from_u64(difficulty).unwrap());
         assert_eq!(moving_average.average(), expected_hash_rate);
+    }
+
+    #[test]
+    fn scaling_is_applied_correctly() {
+        // Set up consensus manager
+        let mut constants = ConsensusConstants::esmeralda()[ConsensusConstants::esmeralda().len() - 1].clone();
+        constants.set_pow_target_block_interval(PowAlgorithm::Sha3x, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::RandomXM, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::RandomXT, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::Cuckaroo, 100);
+        let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::Esmeralda)
+            .add_consensus_constants(constants)
+            .build()
+            .unwrap();
+
+        let mut sha_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::Sha3x, consensus_manager.clone(), false);
+        let mut rxm_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::RandomXM, consensus_manager.clone(), false);
+        let mut rxt_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::RandomXT, consensus_manager.clone(), true);
+        let mut c29_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, consensus_manager.clone(), true);
+
+        let start_height = 100_000;
+        assert_eq!(consensus_manager.consensus_constants(start_height).pow_algo_count(), 4);
+        for i in 0..20 {
+            sha_hash_rate_ma.add(
+                start_height + i,
+                Difficulty::from_u64(1 + (i % 10) * 1_100_000).unwrap(),
+            );
+            rxm_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 10_000).unwrap());
+            rxt_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 100).unwrap());
+            c29_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + i % 10).unwrap());
+        }
+
+        // Check integer and decimal output
+        let decimal = sha_hash_rate_ma.u_decimal_average();
+        assert_eq!(decimal.units, sha_hash_rate_ma.average());
+        assert_eq!(decimal.units, 56833);
+        assert_eq!(decimal.nanos, 0);
+        let decimal = rxm_hash_rate_ma.u_decimal_average();
+        assert_eq!(decimal.units, rxm_hash_rate_ma.average());
+        assert_eq!(decimal.units, 516);
+        assert_eq!(decimal.nanos, 0);
+        let decimal = rxt_hash_rate_ma.u_decimal_average();
+        assert_eq!(decimal.units, rxt_hash_rate_ma.average());
+        assert_eq!(decimal.units, 5);
+        assert_eq!(decimal.nanos, 176666666);
+        let decimal = c29_hash_rate_ma.u_decimal_average();
+        assert_eq!(decimal.units, c29_hash_rate_ma.average());
+        assert_eq!(decimal.units, 2);
+        assert_eq!(decimal.nanos, 590000000);
+    }
+
+    #[test]
+    fn conversion_to_average_as_u_decimal_is_applied_correctly() {
+        use super::HashRateMovingAverage;
+
+        // Simple decimal cases
+        let dec = HashRateMovingAverage::average_as_u_decimal(0);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 0);
+        assert_eq!(&display_u_decimal_value(&dec), "0");
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 0);
+        assert_eq!(&display_u_decimal_value(&dec), "1");
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT / 2);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 500_000_000);
+        assert_eq!(&display_u_decimal_value(&dec), "0.5");
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT * 3 / 2);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 500_000_000);
+        assert_eq!(&display_u_decimal_value(&dec), "1.5");
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT / 10_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 100_000);
+        assert_eq!(&display_u_decimal_value(&dec), "0.0001");
+
+        // Huge numbers cases
+        let dec = HashRateMovingAverage::average_as_u_decimal(u64::MAX / 123);
+        assert_eq!(dec.units, 149_973_529);
+        assert_eq!(dec.nanos, 54_549_200);
+        assert_eq!(&display_u_decimal_value(&dec), "149973529.0545492"); // Actual value is 149973529,0545492001219....
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(u64::MAX / 12345);
+        assert_eq!(dec.units, 1_494_268);
+        assert_eq!(dec.nanos, 454_735_484);
+        assert_eq!(&display_u_decimal_value(&dec), "1494268.454735484"); // Actual value is 1494268,4547354841324...
+
+        // Digits approaching the accuracy limit cases
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT * 12_345 / 10_000);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 234_500_000);
+        assert_eq!(&display_u_decimal_value(&dec), "1.2345");
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT * 12_345 / 1_000_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 12_345_000);
+        assert_eq!(&display_u_decimal_value(&dec), "0.012345");
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT * 12_345 / 100_000_000_000);
+        assert_eq!(dec.units, 0);
+        assert_eq!(dec.nanos, 123); // Digits '4' and '5' are lost due to accuracy limit
+        assert_eq!(&display_u_decimal_value(&dec), "0.000000123"); // Actual value is 0,00000012345
+
+        // Repetitive digits cases
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT * 4 / 3);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 333_333_333);
+        assert_eq!(&display_u_decimal_value(&dec), "1.333333333"); // Actual value is 1,3333333333333333333...
+
+        let dec = HashRateMovingAverage::average_as_u_decimal(NANOS_PER_UNIT * 13 / 11);
+        assert_eq!(dec.units, 1);
+        assert_eq!(dec.nanos, 181_818_181);
+        assert_eq!(&display_u_decimal_value(&dec), "1.181818181"); // Actual value is 1,1818181818181818181...
     }
 }

@@ -1,33 +1,15 @@
-//  Copyright 2020, The Tari Project
-//
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
-// the  following conditions are met:
-//
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
-// following  disclaimer.
-//
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
-//
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
-// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-// DAMAGE.
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
 
 use std::convert::{TryFrom, TryInto};
 
 use log::*;
-use tari_common_types::types::{FixedHash, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
+use url::Url;
 
 use crate::{
     base_node::{
@@ -44,6 +26,7 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedData,
             QueryDeletedRequest,
             QueryDeletedResponse,
@@ -63,7 +46,6 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
@@ -73,14 +55,21 @@ pub struct BaseNodeWalletRpcService<B> {
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,
     state_machine: StateMachineHandle,
+    wallet_query_service_address: Option<Url>,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, mempool: MempoolHandle, state_machine: StateMachineHandle) -> Self {
+    pub fn new(
+        db: AsyncBlockchainDb<B>,
+        mempool: MempoolHandle,
+        state_machine: StateMachineHandle,
+        wallet_query_service_address: Option<Url>,
+    ) -> Self {
         Self {
             db,
             mempool,
             state_machine,
+            wallet_query_service_address,
         }
     }
 
@@ -99,7 +88,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         self.state_machine.clone()
     }
 
-    async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
+    async fn fetch_kernel(&self, signature: CompressedSignature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
         let chain_metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
         let state_machine = self.state_machine();
@@ -275,7 +264,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         };
 
         let message = request.into_message();
-        let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+        let signature =
+            CompressedSignature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
 
         let mut response = self.fetch_kernel(signature).await?;
         response.is_synced = is_synced;
@@ -306,10 +296,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         for sig in message.sigs {
-            let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+            let signature =
+                CompressedSignature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
             let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
             responses.push(TxQueryBatchResponse {
-                signature: Some(SignatureProto::from(signature)),
+                signature: Some(SignatureProto::from(&signature)),
                 location: response.location,
                 best_block_hash: response.best_block_hash,
                 confirmations: response.confirmations,
@@ -378,8 +369,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         const MAX_ALLOWED_QUERY_SIZE: usize = 512;
         if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
             return Err(RpcStatus::bad_request(&format!(
-                "Exceeded maximum allowed query hashes. Max: {}",
-                MAX_ALLOWED_QUERY_SIZE
+                "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
             )));
         }
 
@@ -553,7 +543,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
     }
@@ -568,14 +558,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
     }
 
     async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus> {
         let requested_epoch_time: u64 = request.into_message();
-        trace!(target: LOG_TARGET, "requested_epoch_time: {}", requested_epoch_time);
+        trace!(target: LOG_TARGET, "requested_epoch_time: {requested_epoch_time}");
         let tip_header = self
             .db()
             .fetch_tip_header()
@@ -609,7 +599,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height))
+                    RpcStatus::not_found(&format!("Header not found during search at height {mid_height}"))
                 })?;
             let before_mid_header = self
                 .db()
@@ -642,8 +632,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             } else if mid_height == right_height {
                 trace!(
                     target: LOG_TARGET,
-                    "requested_epoch_time: {}, selected height: {}",
-                    requested_epoch_time, right_height
+                    "requested_epoch_time: {requested_epoch_time}, selected height: {right_height}"
                 );
                 return Ok(Response::new(right_height));
             } else if requested_epoch_time <= mid_header.timestamp.as_u64() {
@@ -704,5 +693,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(stats.into()))
+    }
+
+    async fn get_wallet_query_http_service_address(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus> {
+        Ok(Response::new(GetWalletQueryHttpServiceAddressResponse {
+            http_address: self
+                .wallet_query_service_address
+                .clone()
+                .map(|url| url.to_string())
+                .unwrap_or_default(),
+        }))
     }
 }

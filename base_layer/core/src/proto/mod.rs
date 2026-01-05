@@ -38,18 +38,10 @@ pub mod mempool {
     include!(concat!(env!("OUT_DIR"), "/tari.mempool.rs"));
 }
 
-#[allow(clippy::large_enum_variant)]
-pub mod transaction_protocol {
-    include!(concat!(env!("OUT_DIR"), "/tari.transaction_protocol.rs"));
-}
-
 pub mod types {
     include!(concat!(env!("OUT_DIR"), "/tari.types.rs"));
 }
 
-#[cfg(feature = "base_node")]
 mod block;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 mod block_header;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 mod sidechain_feature;

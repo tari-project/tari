@@ -1,13 +1,13 @@
 [package]
 name = "tari_comms_rpc_macros"
 description = "RPC service proc macro"
-authors = ["The Tari Development Community"]
-repository = "https://github.com/tari-project/tari"
+authors.workspace = true
+repository.workspace = true
 homepage = "https://tari.com"
 readme = "README.md"
-license = "BSD-3-Clause"
-version = "2.1.1-pre.0"
-edition = "2018"
+license.workspace = true
+version.workspace = true
+edition.workspace = true
 
 [lib]
 proc-macro = true
@@ -24,5 +24,5 @@ tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 futures = "0.3.5"
 prost = "0.13.3"
-tokio = { version = "1", features = ["macros"] }
+tokio = { workspace = true, features = ["macros"] }
 tower-service = "0.3"

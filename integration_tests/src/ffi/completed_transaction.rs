@@ -47,7 +47,7 @@ impl CompletedTransaction {
         unsafe {
             tx_id = ffi_import::completed_transaction_get_transaction_id(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_transaction_id error {}", error);
+                println!("completed_transaction_get_transaction_id error {error}");
                 panic!("completed_transaction_get_transaction_id error");
             }
         }
@@ -60,7 +60,7 @@ impl CompletedTransaction {
         unsafe {
             ptr = ffi_import::completed_transaction_get_destination_tari_address(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_destination_tari_address error {}", error);
+                println!("completed_transaction_get_destination_tari_address error {error}");
                 panic!("completed_transaction_get_destination_tari_address error");
             }
         }
@@ -73,7 +73,7 @@ impl CompletedTransaction {
         unsafe {
             ptr = ffi_import::completed_transaction_get_source_tari_address(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_source_tari_address error {}", error);
+                println!("completed_transaction_get_source_tari_address error {error}");
                 panic!("completed_transaction_get_source_tari_address error");
             }
         }
@@ -86,7 +86,7 @@ impl CompletedTransaction {
         unsafe {
             ptr = ffi_import::completed_transaction_get_transaction_kernel(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_transaction_kernel error {}", error);
+                println!("completed_transaction_get_transaction_kernel error {error}");
                 panic!("completed_transaction_get_transaction_kernel error");
             }
         }
@@ -99,7 +99,7 @@ impl CompletedTransaction {
         unsafe {
             amount = ffi_import::completed_transaction_get_amount(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_amount error {}", error);
+                println!("completed_transaction_get_amount error {error}");
                 panic!("completed_transaction_get_amount error");
             }
         }
@@ -112,7 +112,7 @@ impl CompletedTransaction {
         unsafe {
             fee = ffi_import::completed_transaction_get_fee(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_fee error {}", error);
+                println!("completed_transaction_get_fee error {error}");
                 panic!("completed_transaction_get_fee error");
             }
         }
@@ -125,7 +125,7 @@ impl CompletedTransaction {
         unsafe {
             timestamp = ffi_import::completed_transaction_get_timestamp(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_timestamp error {}", error);
+                println!("completed_transaction_get_timestamp error {error}");
                 panic!("completed_transaction_get_timestamp error");
             }
         }
@@ -136,9 +136,9 @@ impl CompletedTransaction {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::completed_transaction_get_payment_id(self.ptr, &mut error);
+            ptr = ffi_import::completed_transaction_get_user_payment_id(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_payment_id error {}", error);
+                println!("completed_transaction_get_payment_id error {error}");
                 panic!("completed_transaction_get_payment_id error");
             }
         }
@@ -151,7 +151,7 @@ impl CompletedTransaction {
         unsafe {
             transaction_type = ffi_import::completed_transaction_get_transaction_type(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_transaction_type error {}", error);
+                println!("completed_transaction_get_transaction_type error {error}");
                 panic!("completed_transaction_get_transaction_type error");
             }
         }
@@ -164,7 +164,7 @@ impl CompletedTransaction {
         unsafe {
             status = ffi_import::completed_transaction_get_status(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_status error {}", error);
+                println!("completed_transaction_get_status error {error}");
                 panic!("completed_transaction_get_status error");
             }
         }
@@ -177,24 +177,11 @@ impl CompletedTransaction {
         unsafe {
             is_outbound = ffi_import::completed_transaction_is_outbound(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_is_outbound error {}", error);
+                println!("completed_transaction_is_outbound error {error}");
                 panic!("completed_transaction_is_outbound error");
             }
         }
         is_outbound
-    }
-
-    pub fn get_confirmations(&self) -> u64 {
-        let confirmations_cnt;
-        let mut error = 0;
-        unsafe {
-            confirmations_cnt = ffi_import::completed_transaction_get_confirmations(self.ptr, &mut error);
-            if error > 0 {
-                println!("completed_transaction_get_confirmations error {}", error);
-                panic!("completed_transaction_get_confirmations error");
-            }
-        }
-        confirmations_cnt
     }
 
     pub fn get_cancellation_reason(&self) -> i32 {
@@ -203,7 +190,7 @@ impl CompletedTransaction {
         unsafe {
             reason = ffi_import::completed_transaction_get_cancellation_reason(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_cancellation_reason error {}", error);
+                println!("completed_transaction_get_cancellation_reason error {error}");
                 panic!("completed_transaction_get_cancellation_reason error");
             }
         }

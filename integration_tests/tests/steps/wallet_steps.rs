@@ -20,7 +20,8 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+#![allow(clippy::indexing_slicing)]
+use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
 
 use cucumber::{given, then, when};
 use futures::StreamExt;
@@ -35,30 +36,19 @@ use grpc::{
     GetTransactionInfoRequest,
     ImportUtxosRequest,
     PaymentRecipient,
+    ReplaceByFeeRequest,
     SendShaAtomicSwapRequest,
     TransferRequest,
+    UserPayForFeeRequest,
     ValidateRequest,
 };
-use minotari_app_grpc::tari_rpc::{self as grpc, TransactionStatus};
+use minotari_app_grpc::{
+    tari_rpc,
+    tari_rpc::{self as grpc, GetBalanceResponse, GetStateRequest, TransactionStatus, TxOutputsToSpendTransfer},
+};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionOutputVersion,
-            UnblindedOutput,
-        },
-    },
-};
 use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
     transaction::{
@@ -70,9 +60,31 @@ use tari_integration_tests::{
     TariWorld,
 };
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        EncryptedData,
+        OutputFeatures,
+        OutputType,
+        RangeProofType,
+        TransactionOutputVersion,
+        UnblindedOutput,
+    },
+    MicroMinotari,
+};
 use tari_utilities::hex::Hex;
 
-use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
+use crate::steps::{
+    cucumber_steps_log,
+    mining_steps::create_miner,
+    CONFIRMATION_PERIOD,
+    HALF_SECOND,
+    TWO_MINUTES_WITH_HALF_SECOND_SLEEP,
+};
+
+pub const LOG_TARGET: &str = "cucumber::wallet_steps";
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
@@ -107,29 +119,54 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
     let num_retries = 100;
 
     let mut client = wallet_ps.get_grpc_client().await.unwrap();
-    let mut curr_amount = 0;
+    let mut available_balance = 0;
 
-    for _ in 0..=num_retries {
+    for i in 0..=num_retries {
         let _result = client.validate_all_transactions(ValidateRequest {}).await;
-        curr_amount = client
+        let balance = client
             .get_balance(GetBalanceRequest { payment_id: None })
             .await
             .unwrap()
-            .into_inner()
-            .available_balance;
+            .into_inner();
+        available_balance = balance.available_balance;
 
-        if curr_amount >= amount {
+        if available_balance >= amount {
+            cucumber_steps_log(format!(
+                "Wallet {wallet} needs at least available {amount} uT (DONE), has {balance:?}"
+            ));
             return;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wallet {wallet} needs at least available {amount} uT, has {balance:?}"
+            ));
+        } else {
+            // Nothing here
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // failed to get wallet right amount, so we panic
-    panic!(
-        "wallet {} failed to get balance of at least amount {}, current amount is {}",
-        wallet, amount, curr_amount
-    );
+    panic!("wallet {wallet} failed to get balance of at least amount {amount}, current amount is {available_balance}");
+}
+
+#[when(expr = "I remember wallet {word} balance {word}")]
+#[then(expr = "I remember wallet {word} balance {word}")]
+async fn remember_wallet_balance(world: &mut TariWorld, wallet: String, balance_key: String) {
+    let wallet_ps = world.wallets.get(&wallet).unwrap();
+
+    let mut client = wallet_ps.get_grpc_client().await.unwrap();
+
+    let _result = client.validate_all_transactions(ValidateRequest {}).await;
+    let balance = client
+        .get_balance(GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+    cucumber_steps_log(format!(
+        "Wallet: {wallet}, balance key: {balance_key}, balance: {balance:?}"
+    ));
+    world.balance.insert(balance_key, balance);
 }
 
 #[when(expr = "I have wallet {word} connected to base node {word}")]
@@ -155,6 +192,7 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 
 #[when(expr = "wallet {word} detects all transactions as {word}")]
 #[then(expr = "wallet {word} detects all transactions as {word}")]
+#[allow(clippy::too_many_lines)]
 async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_name: String, status: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
@@ -174,7 +212,7 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
         let tx_info = tx_info.unwrap();
         let tx_id = tx_info.transaction.unwrap().tx_id;
 
-        println!("waiting for tx with tx_id = {} to be {}", tx_id, status);
+        cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be {status}"));
         for retry in 0..=num_retries {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![tx_id],
@@ -199,7 +237,9 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
@@ -210,7 +250,9 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
@@ -220,7 +262,9 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
@@ -250,10 +294,9 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     },
                     _ => (),
                 },
-                _ => panic!("Unknown status {}, don't know what to expect", status),
+                _ => panic!("Unknown status {status}, don't know what to expect"),
             }
-            // tokio sleep 100ms
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 }
@@ -266,19 +309,13 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
     status: String,
 ) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
 
     for tx_id in tx_ids {
-        println!("waiting for tx with tx_id = {} to be pending", tx_id);
+        cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be pending"));
         for retry in 0..=num_retries {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![*tx_id],
@@ -337,7 +374,7 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
                     },
                     _ => (),
                 },
-                _ => panic!("Unknown status {}, don't know what to expect", status),
+                _ => panic!("Unknown status {status}, don't know what to expect"),
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -347,19 +384,13 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
 #[then(expr = "wallet {word} detects all transactions are Broadcast")]
 async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
 
     for tx_id in tx_ids {
-        println!("waiting for tx with tx_id = {} to be mined_confirmed", tx_id);
+        cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be mined_confirmed"));
         for retry in 0..=num_retries {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![*tx_id],
@@ -376,20 +407,20 @@ async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name:
             }
             match tx_info.status() {
                 grpc::TransactionStatus::Broadcast => {
-                    println!(
+                    cucumber_steps_log(format!(
                         "Transaction with tx_id = {} has been detected as mined_confirmed by wallet {}",
                         tx_id,
                         wallet_name.as_str()
-                    );
+                    ));
                     return;
                 },
                 _ => {
-                    println!(
+                    cucumber_steps_log(format!(
                         "Transaction with tx_id = {} has been detected with status = {:?}",
                         tx_id,
                         tx_info.status()
-                    );
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    ));
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                     continue;
                 },
             }
@@ -400,18 +431,12 @@ async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name:
 #[when(expr = "wallet {word} detects last transaction is Pending")]
 async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
 
-    println!("waiting for tx with tx_id = {} to be pending", tx_id);
+    cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be pending"));
     for retry in 0..=num_retries {
         let request = GetTransactionInfoRequest {
             transaction_ids: vec![*tx_id],
@@ -428,15 +453,15 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
         }
         match tx_info.status() {
             grpc::TransactionStatus::Pending => {
-                println!(
+                cucumber_steps_log(format!(
                     "Transaction with tx_id = {} has been detected as pending by wallet {}",
                     tx_id,
                     wallet.as_str()
-                );
+                ));
                 return;
             },
             _ => {
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
             },
         }
@@ -446,18 +471,12 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
 #[when(expr = "wallet {word} detects last transaction is Cancelled")]
 async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
 
-    println!("waiting for tx with tx_id = {} to be Cancelled", tx_id);
+    cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be Cancelled"));
     for retry in 0..=num_retries {
         let request = GetTransactionInfoRequest {
             transaction_ids: vec![*tx_id],
@@ -475,11 +494,15 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
         }
         match tx_info.status() {
             grpc::TransactionStatus::Rejected => {
-                println!("Transaction with tx_id = {} has status {:?}", tx_id, tx_info.status());
+                cucumber_steps_log(format!(
+                    "Transaction with tx_id = {} has status {:?}",
+                    tx_id,
+                    tx_info.status()
+                ));
                 return;
             },
             _ => {
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
             },
         }
@@ -490,10 +513,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
 #[then(expr = "I list all {word} transactions for wallet {word}")]
 async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String, wallet: String) {
     if transaction_type.as_str() != "COINBASE" && transaction_type.as_str() != "NORMAL" {
-        panic!(
-            "Invalid transaction type. Values should be COINBASE or NORMAL, value passed is {}",
-            transaction_type
-        );
+        panic!("Invalid transaction type. Values should be COINBASE or NORMAL, value passed is {transaction_type}");
     }
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
 
@@ -513,11 +533,10 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
         if transaction_type == "COINBASE" && !is_coinbase || transaction_type == "NORMAL" && is_coinbase {
             continue;
         }
-        println!("\n");
-        println!(
+        cucumber_steps_log(format!(
             "TxId: {}, Status: {}, IsCancelled: {}, {}",
             tx_info.tx_id, tx_info.status, tx_info.is_cancelled, transaction_type
-        );
+        ));
     }
 }
 
@@ -541,7 +560,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         "TRANSACTION_STATUS_COINBASE_UNCONFIRMED" => 12,
         "TRANSACTION_STATUS_COINBASE_CONFIRMED" => 13,
         "TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN" => 14,
-        _ => panic!("Invalid transaction status {}", transaction_status),
+        _ => panic!("Invalid transaction status {transaction_status}"),
     };
 
     let num_retries = 100;
@@ -570,24 +589,24 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
             return;
         }
         total_found += found_tx;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     panic!(
-        "Wallet {} failed to have at least num {} txs with status {}, current status is {}, scanned txs {}",
-        wallet, num_txs, transaction_status, current_status, total_found
+        "Wallet {wallet} failed to have at least num {num_txs} txs with status {transaction_status}, current status \
+         is {current_status}, scanned txs {total_found}"
     );
 }
 
 #[when(expr = "I create a transaction {word} spending {word} to {word}")]
-pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
+pub fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -606,55 +625,99 @@ async fn create_tx_custom_fee_per_gram(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
 #[when(expr = "I create a custom locked transaction {word} spending {word} to {word} with lockheight {word}")]
-async fn create_tx_custom_lock(
-    world: &mut TariWorld,
-    transaction: String,
-    inputs: String,
-    output: String,
-    lockheight: u64,
-) {
+fn create_tx_custom_lock(world: &mut TariWorld, transaction: String, inputs: String, output: String, lockheight: u64) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager);
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
+#[then(expr = "I wait for wallet {word} to have less than {int} uT")]
 #[when(expr = "I wait for wallet {word} to have less than {int} uT")]
 async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    println!("Waiting for wallet {} to have less than {} uT", wallet, amount);
+    cucumber_steps_log(format!("Waiting for wallet {wallet} to have less than {amount} uT"));
 
     let num_retries = 100;
-    let request = GetBalanceRequest { payment_id: None };
-
-    for _ in 0..num_retries {
-        let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
-        let current_balance = balance_res.available_balance;
-        if current_balance < amount {
-            println!(
-                "Wallet {} now has less than {}, with current balance {}",
-                wallet, amount, current_balance
-            );
+    for i in 0..num_retries {
+        let _result = client.validate_all_transactions(ValidateRequest {}).await;
+        let balance_res = client
+            .get_balance(GetBalanceRequest { payment_id: None })
+            .await
+            .unwrap()
+            .into_inner();
+        if balance_res.available_balance < amount {
+            cucumber_steps_log(format!(
+                "Wallet {wallet} needs less than available {amount} uT (DONE), has {balance_res:?}"
+            ));
             return;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wallet {wallet} needs less than available {amount} uT, has {balance_res:?}"
+            ));
+        } else {
+            // Nothing here
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    panic!(
-        "Wallet {} didn't get less than {} after num_retries {}",
-        wallet, amount, num_retries
-    );
+    panic!("Wallet {wallet} didn't get less than {amount} after num_retries {num_retries}");
+}
+
+#[then(expr = "I wait for wallet {word} to have scanned to height {int}")]
+#[when(expr = "I wait for wallet {word} to have scanned to height {int}")]
+async fn wait_for_wallet_to_have_scanned_to_height(world: &mut TariWorld, wallet: String, height: u64) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    cucumber_steps_log(format!(
+        "Waiting for wallet {wallet} to have scanned to height {height}"
+    ));
+
+    let num_retries = 40;
+    for i in 0..num_retries {
+        let _result = client.validate_all_transactions(ValidateRequest {}).await;
+        let state_res = client.get_state(GetStateRequest {}).await.unwrap().into_inner();
+        if state_res.scanned_height == height {
+            cucumber_steps_log(format!(
+                "Wallet {wallet} needs to scan to height {height} (DONE), current {state_res:?}"
+            ));
+            return;
+        } else if i % 3 == 0 {
+            cucumber_steps_log(format!(
+                "Wallet {wallet} needs to scan to height {height}, current {state_res:?}"
+            ));
+        } else {
+            // Nothing here
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    panic!("Wallet {wallet} didn't scan to height {height} after num_retries {num_retries}");
+}
+
+#[then(expr = "all wallets validate their transactions")]
+#[when(expr = "all wallets validate their transactions")]
+async fn all_wallets_validate_their_transactions(world: &mut TariWorld) {
+    let wallets = world.wallets.keys().cloned().collect::<Vec<_>>();
+    for wallet in &wallets {
+        let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+        let result = client.validate_all_transactions(ValidateRequest {}).await;
+        if let Err(e) = result {
+            cucumber_steps_log(format!(
+                "Error! Wallet {wallet} failed to validate transactions, error: {e:?}"
+            ));
+        }
+    }
 }
 
 #[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
@@ -682,7 +745,7 @@ async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, 
     let nodes = world.all_seed_nodes().to_vec();
     let node = nodes.first().unwrap();
     for ind in 0..num {
-        let wallet_name = format!("Wallet_{}", ind);
+        let wallet_name = format!("Wallet_{ind}");
         world
             .wallet_connected_to_base_node
             .insert(wallet_name.clone(), node.clone());
@@ -698,8 +761,12 @@ async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, 
     }
 }
 
-#[when(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
-#[then(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
+#[when(
+    expr = "I send {int} uT one-sided without waiting for broadcast from wallet {word} to wallet {word} at fee {int}"
+)]
+#[then(
+    expr = "I send {int} uT one-sided without waiting for broadcast from wallet {word} to wallet {word} at fee {int}"
+)]
 async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     world: &mut TariWorld,
     amount: u64,
@@ -716,8 +783,8 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         address: dest_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
-        payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        payment_type: 1, // one sided transaction
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -726,10 +793,13 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -757,45 +827,48 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
 
     dest_tx_ids.push(tx_id);
 
-    println!(
-        "Transfer amount {} from {} to {} at fee {} succeeded",
-        amount, source_wallet, dest_wallet, fee
-    );
+    cucumber_steps_log(format!(
+        "Transfer amount {amount} from {source_wallet} to {dest_wallet} at fee {fee} succeeded"
+    ));
 }
 
-#[then(expr = "I send a one-sided transaction of {int} uT from {word} to {word} at fee {int}")]
+#[when(expr = "I send a one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[then(expr = "I send a one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     world: &mut TariWorld,
     amount: u64,
-    source_wallet: String,
-    dest_wallet: String,
+    sender: String,
+    receiver: String,
     fee: u64,
 ) {
-    let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
-    let source_wallet_address = world.get_wallet_address(&source_wallet).await.unwrap();
+    let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
-    let dest_wallet_address = world.get_wallet_address(&dest_wallet).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
-        address: dest_wallet_address.clone(),
+        address: receiver_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
         payment_type: 1, // one sided transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "One sided transfer amount {} from {} to {}",
                 amount,
-                source_wallet.as_str(),
-                dest_wallet.as_str()
+                sender.as_str(),
+                receiver.as_str()
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
-    let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
 
     assert_eq!(tx_res.len(), 1usize);
@@ -805,12 +878,12 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         tx_res.is_success,
         "One sided transaction with amount {} from wallet {} to {} at fee {} failed",
         amount,
-        source_wallet.as_str(),
-        dest_wallet.as_str(),
+        sender.as_str(),
+        receiver.as_str(),
         fee
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = tx_res.transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -818,7 +891,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     };
 
     for i in 0..num_retries {
-        let tx_info_res = source_client
+        let tx_info_res = sender_client
             .get_transaction_info(tx_info_req.clone())
             .await
             .unwrap()
@@ -827,47 +900,56 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "One sided transaction from {} to {} with amount {} at fee {} has been broadcasted",
-                source_wallet.clone(),
-                dest_wallet.clone(),
+            cucumber_steps_log(format!(
+                "Wait for one sided transaction from {} to {} (DONE) with amount {} at fee {} to be broadcast",
+                sender.clone(),
+                receiver.clone(),
                 amount,
                 fee
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for one sided transaction from {} to {} with amount {} at fee {} to be broadcast",
+                sender.clone(),
+                receiver.clone(),
+                amount,
+                fee,
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries - 1 {
             panic!(
-                "One sided transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
-                source_wallet.clone(),
-                dest_wallet.clone(),
+                "One sided transaction from {} to {} with amount {} at fee {} failed to be broadcast",
+                sender.clone(),
+                receiver.clone(),
                 amount,
                 fee
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
-    let source_tx_ids = world.wallet_tx_ids.entry(source_wallet_address.clone()).or_default();
+    let source_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_default();
+    let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
 
     dest_tx_ids.push(tx_id);
 
-    println!(
-        "One sided transaction with amount {} from {} to {} at fee {} succeeded",
-        amount, source_wallet, dest_wallet, fee
-    );
+    cucumber_steps_log(format!(
+        "One sided transaction with amount {amount} from {sender} to {receiver} at fee {fee} succeeded"
+    ));
 }
 
-#[then(expr = "I send {int} uT from wallet {word} to wallet {word} at fee {int}")]
-#[when(expr = "I send {int} uT from wallet {word} to wallet {word} at fee {int}")]
-async fn send_amount_from_wallet_to_wallet_at_fee(
+#[then(expr = "I send an interactive transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[when(expr = "I send an interactive transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
     world: &mut TariWorld,
     amount: u64,
     sender: String,
@@ -883,7 +965,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // mimblewimble transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "Transfer amount {} from {} to {} as fee {}",
                 amount,
@@ -893,17 +975,22 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
+    cucumber_steps_log(format!("Transaction results: {tx_res:?}"));
 
     assert_eq!(tx_res.len(), 1usize);
 
     let tx_res = tx_res.first().unwrap();
+    cucumber_steps_log(format!("Transaction 1 result: {tx_res:?}"));
     assert!(
         tx_res.is_success,
         "Transaction with amount {} from wallet {} to {} at fee {} failed",
@@ -929,19 +1016,29 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "Transaction from {} to {} with amount {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for transaction from {} to {} with amount {} at fee {} (DONE) to be broadcast",
                 sender.clone(),
                 receiver.clone(),
                 amount,
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for transaction from {} to {} with amount {} at fee {} to be broadcast",
+                sender.clone(),
+                receiver.clone(),
+                amount,
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries - 1 {
             panic!(
-                "Transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                "Transaction from {} to {} with amount {} at fee {} failed to be broadcast",
                 sender.clone(),
                 receiver.clone(),
                 amount,
@@ -949,7 +1046,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
@@ -961,10 +1058,143 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
 
     receiver_tx_ids.push(tx_id);
 
-    println!(
-        "Transaction with amount {} from {} to {} at fee {} succeeded",
-        amount, sender, receiver, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "Transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} succeeded"
+    ));
+}
+
+#[then(expr = "I send {} interactive transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[when(expr = "I send {} interactive transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[allow(clippy::too_many_lines)]
+async fn send_many_interactive_amount_from_wallet_to_wallet_at_fee(
+    world: &mut TariWorld,
+    number_of_transactions: u64,
+    amount: u64,
+    sender: String,
+    receiver: String,
+    fee_per_gram: u64,
+) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
+
+    let payment_recipient = PaymentRecipient {
+        address: receiver_wallet_address.clone(),
+        amount,
+        fee_per_gram,
+        payment_type: 0, // mimblewimble transaction
+        raw_payment_id: MemoField::new_open_from_string(
+            &format!(
+                "Transfer amount {} from {} to {} as fee {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str(),
+                fee_per_gram
+            ),
+            TxType::PaymentToOther,
+        )
+        .unwrap()
+        .to_bytes(),
+        user_payment_id: None,
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+        single_tx: false,
+    };
+    let mut tx_ids = Vec::with_capacity(usize::try_from(number_of_transactions).unwrap());
+    for i in 0..number_of_transactions {
+        cucumber_steps_log(format!(
+            "Sending transaction {} of {} with amount {} from {} to {} at fee {}",
+            i + 1,
+            number_of_transactions,
+            amount,
+            sender,
+            receiver,
+            fee_per_gram
+        ));
+        let tx_res = sender_wallet_client
+            .transfer(transfer_req.clone())
+            .await
+            .unwrap()
+            .into_inner();
+        let tx_res = tx_res.results;
+        cucumber_steps_log(format!("Transaction results: {tx_res:?}"));
+
+        assert_eq!(tx_res.len(), 1usize);
+
+        let tx_res = tx_res.first().unwrap();
+        cucumber_steps_log(format!("Transaction 1 result: {tx_res:?}"));
+        assert!(
+            tx_res.is_success,
+            "Transaction with amount {} from wallet {} to {} at fee {} failed",
+            amount,
+            sender.as_str(),
+            receiver.as_str(),
+            fee_per_gram
+        );
+        tx_ids.push(tx_res.transaction_id);
+    }
+
+    for tx_id in &tx_ids {
+        let tx_info_req = GetTransactionInfoRequest {
+            transaction_ids: vec![*tx_id],
+        };
+
+        let num_retries = 300; // 30s total wait with 100ms intervals
+        for i in 0..num_retries {
+            let tx_info_res = sender_wallet_client
+                .get_transaction_info(tx_info_req.clone())
+                .await
+                .unwrap()
+                .into_inner();
+            let tx_info = tx_info_res.transactions.first().unwrap();
+
+            // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+            if tx_info.status == 1_i32 {
+                cucumber_steps_log(format!(
+                    "Wait for transaction from {} to {} with amount {} at fee {} (DONE) to be broadcast",
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                ));
+                break;
+            } else if i % 5 == 0 {
+                cucumber_steps_log(format!(
+                    "Wait for transaction from {} to {} with amount {} at fee {} to be broadcast",
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                ));
+            } else {
+                // Nothing here
+            }
+
+            if i == num_retries - 1 {
+                panic!(
+                    "Transaction from {} to {} with amount {} at fee {} failed to be broadcast",
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                )
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    // Insert tx_id's to the corresponding world mapping
+    world
+        .wallet_tx_ids
+        .insert(sender_wallet_address.clone(), tx_ids.clone());
+    world.wallet_tx_ids.insert(receiver_wallet_address.clone(), tx_ids);
+
+    cucumber_steps_log(format!(
+        "{number_of_transactions} consecutive interactive transactions with amount {amount} from {sender} to \
+         {receiver} at fee {fee_per_gram} succeeded"
+    ));
 }
 
 #[then(expr = "wallet {word} detects at least {int} coinbase transactions as CoinbaseConfirmed")]
@@ -984,7 +1214,7 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
     let mut total_mined_confirmed_coinbases = 0;
 
     'outer: for _ in 0..num_retries {
-        println!("Detecting coinbase confirmed transactions");
+        cucumber_steps_log(format!("{wallet_name}: Detecting coinbase confirmed transactions"));
         'inner: while let Some(tx_info) = completed_tx_res.next().await {
             let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
             let request = GetTransactionInfoRequest {
@@ -1007,19 +1237,15 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
             total_mined_confirmed_coinbases = 0;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     if total_mined_confirmed_coinbases >= coinbases {
-        println!(
-            "Wallet {} detected at least {} coinbase transactions as CoinbaseConfirmed",
-            &wallet_name, coinbases
-        );
+        cucumber_steps_log(format!(
+            "Wallet {wallet_name} detected at least {coinbases} coinbase transactions as CoinbaseConfirmed"
+        ));
     } else {
-        panic!(
-            "Wallet {} failed to detect at least {} coinbase transactions as CoinbaseConfirmed",
-            wallet_name, coinbases
-        );
+        panic!("Wallet {wallet_name} failed to detect at least {coinbases} coinbase transactions as CoinbaseConfirmed");
     }
 }
 
@@ -1044,7 +1270,7 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
     let mut total_mined_unconfirmed_coinbases = 0;
 
     'outer: for _ in 0..num_retries {
-        println!("Detecting coinbase unconfirmed transactions");
+        cucumber_steps_log(format!("{wallet_name}, Detecting coinbase unconfirmed transactions"));
         'inner: while let Some(tx_info) = completed_tx_res.next().await {
             let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
             let request = GetTransactionInfoRequest {
@@ -1067,20 +1293,89 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
             total_mined_unconfirmed_coinbases = 0;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     if total_mined_unconfirmed_coinbases >= coinbases {
-        println!(
-            "Wallet {} detected at least {} coinbase transactions as CoinbaseConfirmed",
-            &wallet_name, coinbases
-        );
+        cucumber_steps_log(format!(
+            "Wallet {wallet_name} detected at least {coinbases} coinbase transactions as CoinbaseConfirmed"
+        ));
     } else {
-        panic!(
-            "Wallet {} failed to detect at least {} coinbase transactions as CoinbaseConfirmed",
-            wallet_name, coinbases
-        );
+        panic!("Wallet {wallet_name} failed to detect at least {coinbases} coinbase transactions as CoinbaseConfirmed");
     }
+}
+
+#[then(expr = "wallet {word} detects only {int} transaction as unconfirmed")]
+async fn wallet_detects_only_transactions_as_unconfirmed(
+    world: &mut TariWorld,
+    wallet_name: String,
+    expected_count: u64,
+) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let mut completed_tx_res = client
+        .get_completed_transactions(GetCompletedTransactionsRequest {
+            payment_id: None,
+            block_hash: None,
+            block_height: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let num_retries = 40;
+    let mut total_unconfirmed_transactions = 0u64;
+    let mut all_transactions_status = Vec::new();
+
+    'outer: for _ in 0..num_retries {
+        cucumber_steps_log(format!("{wallet_name}, Detecting unconfirmed transactions"));
+        total_unconfirmed_transactions = 0;
+        all_transactions_status.clear();
+
+        'inner: while let Some(tx_info) = completed_tx_res.next().await {
+            let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            all_transactions_status.push((tx_id, tx_info.status()));
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedUnconfirmed => {
+                    total_unconfirmed_transactions += 1;
+                },
+                _ => continue 'inner,
+            }
+        }
+
+        // Debug: Print all transaction statuses
+        cucumber_steps_log(format!(
+            "{}, Found {} completed transactions with statuses: {:?}",
+            wallet_name,
+            all_transactions_status.len(),
+            all_transactions_status
+        ));
+
+        if total_unconfirmed_transactions == expected_count {
+            break 'outer;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        completed_tx_res = client
+            .get_completed_transactions(GetCompletedTransactionsRequest {
+                payment_id: None,
+                block_hash: None,
+                block_height: None,
+            })
+            .await
+            .unwrap()
+            .into_inner();
+    }
+
+    assert_eq!(
+        total_unconfirmed_transactions, expected_count,
+        "Expected {expected_count} unconfirmed transactions, but found {total_unconfirmed_transactions}. All \
+         transaction statuses: {all_transactions_status:?}"
+    );
 }
 
 #[then(expr = "wallet {word} detects exactly {int} coinbase transactions as CoinbaseConfirmed")]
@@ -1093,7 +1388,7 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
     let mut total_mined_confirmed_coinbases = 0;
 
     'outer: for _ in 0..num_retries {
-        println!("Detecting coinbase confirmed transactions");
+        cucumber_steps_log("Detecting coinbase confirmed transactions");
         'inner: for tx_id in tx_ids {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![*tx_id],
@@ -1112,47 +1407,36 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
             total_mined_confirmed_coinbases = 0;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     if total_mined_confirmed_coinbases == coinbases {
-        println!(
-            "Wallet {} detected exactly {} coinbase transactions as CoinbaseConfirmed",
-            &wallet_name, coinbases
-        );
+        cucumber_steps_log(format!(
+            "Wallet {wallet_name} detected exactly {coinbases} coinbase transactions as CoinbaseConfirmed"
+        ));
     } else {
-        panic!(
-            "Wallet {} failed to detect exactly {} coinbase transactions as CoinbaseConfirmed",
-            wallet_name, coinbases
-        );
+        panic!("Wallet {wallet_name} failed to detect exactly {coinbases} coinbase transactions as CoinbaseConfirmed");
     }
 }
 
 #[then(expr = "I stop all wallets")]
 async fn stop_all_wallets(world: &mut TariWorld) {
     for (wallet, wallet_ps) in &mut world.wallets {
-        println!("Stopping wallet {}", wallet);
-
+        cucumber_steps_log(format!("Stopping wallet {wallet}"));
         wallet_ps.kill();
     }
+    tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
 #[then(expr = "I stop wallet {word}")]
 #[when(expr = "I stop wallet {word}")]
 async fn stop_wallet(world: &mut TariWorld, wallet: String) {
-    // conveniently, register wallet address
-    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     world.wallet_addresses.insert(wallet.clone(), wallet_address);
-    println!("Stopping wallet {}", wallet.as_str());
+    cucumber_steps_log(format!("Stopping wallet {}", wallet.as_str()));
     wallet_ps.kill();
+    tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
 #[when(expr = "I start wallet {word}")]
@@ -1169,6 +1453,20 @@ async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
     }
 }
 
+#[then(expr = "I stop-start wallet {word}")]
+async fn restart_wallet(world: &mut TariWorld, wallet: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    // stop wallet
+    wallet_ps.kill();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    // start wallet
+    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap().clone();
+    let base_node_ps = world.base_nodes.get(&base_node).unwrap();
+    let seed_nodes = base_node_ps.seed_nodes.clone();
+
+    spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
+}
+
 #[then(expr = "all wallets detect all transactions as Mined_or_OneSidedConfirmed")]
 async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
     for wallet in world.wallets.keys() {
@@ -1176,15 +1474,14 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
         let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
         let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address);
 
-        let wallet_tx_ids = if wallet_tx_ids.is_none() {
-            println!("Wallet {} has no available transactions", &wallet);
-            vec![]
-        } else {
-            let wallet_tx_ids = wallet_tx_ids.unwrap();
+        let wallet_tx_ids = if let Some(wallet_tx_ids) = wallet_tx_ids {
             if wallet_tx_ids.is_empty() {
                 panic!("Wallet {} should have available transaction ids", wallet.as_str());
             }
             wallet_tx_ids.clone()
+        } else {
+            cucumber_steps_log(format!("Wallet {wallet} has no available transactions"));
+            vec![]
         };
 
         let num_retries = 100;
@@ -1200,21 +1497,20 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
                 if tx_status == TransactionStatus::MinedConfirmed as i32 ||
                     tx_status == TransactionStatus::OneSidedConfirmed as i32
                 {
-                    println!(
-                        "Wallet {} has detected transaction with id {} as Mined_or_OneSidedConfirmed",
-                        &wallet, tx_id
-                    );
+                    cucumber_steps_log(format!(
+                        "Wallet {wallet} has detected transaction with id {tx_id} as Mined_or_OneSidedConfirmed"
+                    ));
                     break 'inner;
                 }
 
                 if retry == num_retries {
                     panic!(
-                        "Transaction with id {} does not have status as Mined_or_OneSidedConfirmed, on wallet {}",
-                        tx_id, &wallet
+                        "Transaction with id {tx_id} does not have status as Mined_or_OneSidedConfirmed, on wallet \
+                         {wallet}"
                     );
                 }
 
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
     }
@@ -1231,7 +1527,7 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
     let exactly = "EXACTLY";
 
     if comparison.as_str() != at_least && comparison.as_str() != exactly {
-        panic!("Invalid comparison value provided: {}", comparison);
+        panic!("Invalid comparison value provided: {comparison}");
     }
 
     let wallets = wallets.split(',').collect::<Vec<_>>();
@@ -1262,55 +1558,58 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
                 let tx_info = completed_tx.unwrap().transaction.unwrap();
                 if tx_info.status == grpc::TransactionStatus::CoinbaseUnconfirmed as i32 {
                     unspendable_coinbase_count += 1;
-                    println!(
+                    cucumber_steps_log(format!(
                         "Found coinbase transaction with id {} for wallet '{}' as 'CoinbaseUnconfirmed'",
                         tx_info.tx_id, &wallet
-                    );
+                    ));
                 }
                 if tx_info.status == grpc::TransactionStatus::CoinbaseNotInBlockChain as i32 {
                     unspendable_coinbase_count += 1;
-                    println!(
+                    cucumber_steps_log(format!(
                         "Found coinbase transaction with id {} for wallet '{}' as 'CoinbaseNotInBlockChain'",
                         tx_info.tx_id, &wallet
-                    );
+                    ));
                 }
                 if tx_info.status == grpc::TransactionStatus::CoinbaseConfirmed as i32 {
                     spendable_coinbase_count += 1;
-                    println!(
+                    cucumber_steps_log(format!(
                         "Found coinbase transaction with id {} for wallet '{}' as 'CoinbaseConfirmed'",
                         tx_info.tx_id, &wallet
-                    );
+                    ));
                 }
             }
 
             if spendable_coinbase_count >= amount_of_coinbases {
-                println!(
+                cucumber_steps_log(format!(
                     "Wallet '{}' has found at least {} spendable coinbases within a total of {} coinbase transactions",
                     &wallet,
                     amount_of_coinbases,
                     spendable_coinbase_count + unspendable_coinbase_count
-                );
+                ));
                 break 'inner;
             }
 
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
         if comparison == at_least && spendable_coinbase_count >= amount_of_coinbases {
-            println!("Wallet {} has found at least {}", &wallet, amount_of_coinbases);
+            cucumber_steps_log(format!("Wallet {wallet} has found at least {amount_of_coinbases}"));
         } else if comparison == exactly && spendable_coinbase_count == amount_of_coinbases {
-            println!("Wallet {} has found exactly {}", &wallet, amount_of_coinbases);
+            cucumber_steps_log(format!("Wallet {wallet} has found exactly {amount_of_coinbases}"));
         } else {
             panic!(
-                "Wallet {} hasn't found {} {} spendable outputs, instead got {}",
-                wallet, comparison, amount_of_coinbases, spendable_coinbase_count
+                "Wallet {wallet} hasn't found {comparison} {amount_of_coinbases} spendable outputs, instead got \
+                 {spendable_coinbase_count}"
             );
         }
     }
 }
 
-#[when(expr = "I send {int} transactions of {int} uT each from wallet {word} to wallet {word} at fee_per_gram {int}")]
-async fn send_num_transactions_to_wallets_at_fee(
+#[when(
+    expr = "I send {int} one-sided transactions of {int} uT each from wallet {word} to wallet {word} at fee_per_gram \
+            {int}"
+)]
+async fn send_num_one_sided_transactions_to_wallets_at_fee(
     world: &mut TariWorld,
     num_txs: u64,
     amount: u64,
@@ -1328,8 +1627,8 @@ async fn send_num_transactions_to_wallets_at_fee(
             address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
-            payment_type: 0, // standard mimblewimble transaction
-            payment_id: PaymentId::open_from_string(
+            payment_type: 1, // one sided transaction
+            raw_payment_id: MemoField::new_open_from_string(
                 &format!(
                     "transfer amount {} from {} to {}",
                     amount,
@@ -1338,10 +1637,13 @@ async fn send_num_transactions_to_wallets_at_fee(
                 ),
                 TxType::PaymentToOther,
             )
+            .unwrap()
             .to_bytes(),
+            user_payment_id: None,
         };
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
+            single_tx: false,
         };
         let transfer_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
         let transfer_res = transfer_res.results.first().unwrap();
@@ -1367,20 +1669,19 @@ async fn send_num_transactions_to_wallets_at_fee(
     }
 
     let num_retries = 100;
-    println!(
-        "Waiting for transactions from wallet {} to wallet {} to be broadcasted",
-        &sender_wallet, &receiver_wallet
-    );
+    cucumber_steps_log(format!(
+        "Waiting for transactions from wallet {sender_wallet} to wallet {receiver_wallet} to be broadcast"
+    ));
 
     for tx_id in tx_ids {
-        println!("Waiting for transaction with id {} to be broadcasted", tx_id);
+        cucumber_steps_log(format!("Waiting for transaction with id {tx_id} to be broadcast"));
         let request = GetTransactionInfoRequest {
             transaction_ids: vec![tx_id],
         };
 
         let mut is_broadcast = false;
 
-        'inner: for _ in 0..num_retries {
+        'inner: for i in 0..num_retries {
             let txs_info = sender_wallet_client
                 .get_transaction_info(request.clone())
                 .await
@@ -1389,46 +1690,74 @@ async fn send_num_transactions_to_wallets_at_fee(
             let txs_info = txs_info.transactions.first().unwrap();
 
             if txs_info.status == 1 {
-                println!(
-                    "Transaction from wallet {} to wallet {} with id {} has been broadcasted to the network",
-                    &sender_wallet, &receiver_wallet, tx_id
-                );
+                cucumber_steps_log(format!(
+                    "Wait for Transaction from wallet {sender_wallet} to wallet {receiver_wallet} (DONE) with id \
+                     {tx_id} broadcast to the network"
+                ));
                 is_broadcast = true;
                 break 'inner;
+            } else if i % 5 == 0 {
+                cucumber_steps_log(format!(
+                    "Wait for Transaction from wallet {sender_wallet} to wallet {receiver_wallet} with id {tx_id} \
+                     broadcast to the network"
+                ));
+            } else {
+                // Nothing here
             }
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
         if !is_broadcast {
             panic!(
-                "Transaction from wallet {} to wallet {} with id {} was not broacasted to the network",
-                &sender_wallet, &receiver_wallet, tx_id
+                "Transaction from wallet {sender_wallet} to wallet {receiver_wallet} with id {tx_id} was not \
+                 broacasted to the network"
             );
         }
     }
 }
 
-#[then(expr = "I wait for {word} to have {int} node connections")]
-async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String, connections: u64) {
+#[then(expr = "I wait for {word} to have a node connection")]
+async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
 
-    println!("Waiting for wallet {} to have {} connections", &wallet, connections);
-    let mut actual_connections = 0_u32;
+    cucumber_steps_log(format!("Waiting for wallet {wallet} to have a connection"));
+    let mut connections = 0_u32;
 
     for _ in 0..num_retries {
         let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
-        actual_connections = network_status_res.num_node_connections;
-        if u64::from(actual_connections) >= connections {
-            println!("Wallet {} has at least {} connections", &wallet, connections);
+        connections = network_status_res.num_node_connections;
+        if u64::from(connections) >= 1 {
+            cucumber_steps_log(format!("Wallet {wallet} has a connection"));
             break;
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    if u64::from(actual_connections) != connections {
-        panic!("Wallet {} does not have {} connections", &wallet, connections);
+    if u64::from(connections) < 1 {
+        panic!("Wallet {wallet} does not have a connection");
     }
+}
+
+#[when(expr = "I wait for wallet {word} to have connectivity")]
+#[then(expr = "I wait for wallet {word} to have connectivity")]
+async fn wallet_pending_connection(world: &mut TariWorld, wallet: String) {
+    let mut wallet_client = world.get_wallet_client(&wallet).await.unwrap();
+
+    for _i in 0..30 {
+        let res: tonic::Response<tari_rpc::GetConnectedHttpPeerResponse> =
+            wallet_client.get_connected_http_peer(Empty {}).await.unwrap();
+        let res = res.into_inner();
+        if let Some(peer) = res.connected_peer {
+            if peer.is_online {
+                return;
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    panic!("Peer was not connected in time");
 }
 
 #[then(expr = "I wait for {word} to have {word} connectivity")]
@@ -1436,34 +1765,40 @@ async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wa
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
 
-    println!("Waiting for wallet {} to have connectivity {}", &wallet, &connectivity);
+    cucumber_steps_log(format!(
+        "Waiting for wallet {wallet} to have connectivity {connectivity}"
+    ));
     let connectivity = connectivity.to_uppercase();
 
+    // applications/minotari_app_grpc/proto/network.proto ->
+    // enum ConnectivityStatus {
+    //     Initializing = 0;
+    //     Online = 1;
+    //     Degraded = 2;
+    //     Offline = 3;
+    // }
     let connectivity_index = match connectivity.as_str() {
         "INITIALIZING" => 0,
         "ONLINE" => 1,
         "DEGRADED" => 2,
         "OFFLINE" => 3,
-        _ => panic!("Invalid connectivity value {}", connectivity),
+        _ => panic!("Invalid connectivity value {connectivity}"),
     };
 
     for _ in 0..=num_retries {
         let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
         let connectivity_status = network_status_res.status;
         if connectivity_status == connectivity_index {
-            println!("Wallet {} has {} connectivity", &wallet, &connectivity);
+            cucumber_steps_log(format!("Wallet {wallet} has {connectivity} connectivity"));
             return;
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    panic!(
-        "Wallet {} did not get correct connectivity status {}",
-        &wallet, connectivity
-    );
+    panic!("Wallet {wallet} did not get correct connectivity status {connectivity}");
 }
 
-#[when(expr = "I transfer {int}T from {word} to {word}")]
+#[when(expr = "I transfer {int}T one-sided from {word} to {word}")]
 async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
@@ -1473,8 +1808,8 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         address: receiver_wallet_address.clone(),
         amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
         fee_per_gram: 10,               // as in the js cucumber tests
-        payment_type: 0,                // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        payment_type: 1,                // one sided transaction
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1483,10 +1818,13 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -1503,7 +1841,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         10
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = tx_res.transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -1520,19 +1858,29 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "Transaction from {} to {} with amount {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for Transaction from {} to {} with amount {} at fee {} (DONE) to be broadcast",
                 sender.clone(),
                 receiver.clone(),
                 amount,
                 10
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for Transaction from {} to {} with amount {} at fee {} to be broadcast",
+                sender.clone(),
+                receiver.clone(),
+                amount,
+                10
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries {
             panic!(
-                "Transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                "Transaction from {} to {} with amount {} at fee {} failed to be broadcast",
                 sender.clone(),
                 receiver.clone(),
                 amount,
@@ -1540,7 +1888,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
@@ -1552,10 +1900,9 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
 
     dest_tx_ids.push(tx_id);
 
-    println!(
-        "Transfer amount {} from {} to {} at fee {} succeeded",
-        amount, sender, receiver, 10
-    );
+    cucumber_steps_log(format!(
+        "Transfer amount {amount} from {sender} to {receiver} at fee 10 succeeded"
+    ));
 }
 
 #[when(expr = "wallet {word} has {int}T")]
@@ -1576,17 +1923,14 @@ async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
 
         available_balance = balance_res.available_balance;
         if available_balance >= amount * 1_000_000 {
-            println!("Wallet {} has at least {}T", wallet.as_str(), amount);
+            cucumber_steps_log(format!("Wallet {} has at least {}T", wallet.as_str(), amount));
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    panic!(
-        "Wallet {} failed to have at least {}T, it ended with {}T",
-        wallet, amount, available_balance
-    );
+    panic!("Wallet {wallet} failed to have at least {amount}T, it ended with {available_balance}T");
 }
 
 #[when(expr = "I have wallet {word} with {int}T connected to base node {word}")]
@@ -1597,11 +1941,11 @@ async fn wallet_with_tari_connected_to_base_node(
     base_node: String,
 ) {
     let peer_seeds = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
-    println!(
+    cucumber_steps_log(format!(
         "Start a new wallet {} connected to base node {}",
         wallet.as_str(),
         base_node.as_str()
-    );
+    ));
     world
         .wallet_connected_to_base_node
         .insert(wallet.clone(), base_node.clone());
@@ -1622,10 +1966,17 @@ async fn wallet_with_tari_connected_to_base_node(
         // uT
     }
 
-    println!("Creating miner...");
-    create_miner(world, "temp_miner".to_string(), base_node.clone(), wallet.clone()).await;
+    cucumber_steps_log("Creating miner...");
+    create_miner(
+        world,
+        "SHA3X".to_string(),
+        "temp_miner".to_string(),
+        base_node.clone(),
+        wallet.clone(),
+    )
+    .await;
 
-    println!("Mining {} blocks", num_blocks + CONFIRMATION_PERIOD);
+    cucumber_steps_log(format!("Mining {} blocks", num_blocks + CONFIRMATION_PERIOD));
     let miner = world.miners.get(&"temp_miner".to_string()).unwrap();
     miner
         .mine(world, Some(num_blocks + CONFIRMATION_PERIOD), None, None)
@@ -1643,19 +1994,19 @@ async fn wallet_with_tari_connected_to_base_node(
             .into_inner();
 
         if balance_res.available_balance >= amount * 1_000_000 {
-            println!("Wallet {} has at least {}T", wallet.as_str(), amount);
+            cucumber_steps_log(format!("Wallet {} has at least {}T", wallet.as_str(), amount));
             return;
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    panic!("Wallet {} failed to have at least {}T", wallet, amount);
+    panic!("Wallet {wallet} failed to have at least {amount}T");
 }
 
-#[when(expr = "I transfer {int} uT from {word} to {word} and {word} at fee {int}")]
+#[when(expr = "I transfer {int} uT one-sided from {word} to {word} and {word} at fee {int}")]
 #[allow(clippy::too_many_lines)]
-async fn transfer_from_wallet_to_two_recipients_at_fee(
+async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
     world: &mut TariWorld,
     amount: u64,
     sender: String,
@@ -1672,8 +2023,8 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         address: receiver1_address.clone(),
         amount,
         fee_per_gram,
-        payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        payment_type: 1, // one sided transaction
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1682,15 +2033,17 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
 
     let payment_recipient2 = PaymentRecipient {
         address: receiver2_address.clone(),
         amount,
         fee_per_gram,
-        payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        payment_type: 1, // one sided transaction
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1699,10 +2052,13 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
+        single_tx: true,
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -1729,7 +2085,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         fee_per_gram
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id1 = tx_res1.transaction_id;
     let tx_id2 = tx_res2.transaction_id;
 
@@ -1747,30 +2103,41 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         let tx_info1 = tx_info_res.transactions.first().unwrap();
         let tx_info2 = tx_info_res.transactions.last().unwrap();
 
-        println!(
+        cucumber_steps_log(format!(
             "Tx_info for first recipient {} is {}, for tx_id = {}",
             receiver1, tx_info1.status, tx_id1
-        );
-        println!(
+        ));
+        cucumber_steps_log(format!(
             "Tx_info for second recipient {} is {}, for tx_id = {}",
             receiver2, tx_info2.status, tx_id2
-        );
+        ));
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info1.status == 1_i32 && tx_info2.status == 1_i32 {
-            println!(
-                "Transaction from {} to {} and {} with amount {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Transaction from {} to {} and {} with amount {} at fee {} (DONE) to be broadcast",
                 sender.as_str(),
                 receiver1.as_str(),
                 receiver2.as_str(),
                 amount,
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Transaction from {} to {} and {} with amount {} at fee {} to be broadcast",
+                sender.as_str(),
+                receiver1.as_str(),
+                receiver2.as_str(),
+                amount,
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries {
             panic!(
-                "Transaction from {} to {} and {} with amount {} at fee {} failed to be broadcasted",
+                "Transaction from {} to {} and {} with amount {} at fee {} failed to be broadcast",
                 sender.as_str(),
                 receiver1.as_str(),
                 receiver2.as_str(),
@@ -1779,7 +2146,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
@@ -1794,10 +2161,9 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
     let receiver2_tx_ids = world.wallet_tx_ids.entry(receiver2_address.clone()).or_default();
     receiver2_tx_ids.push(tx_id2);
 
-    println!(
-        "Transfer amount {} from {} to {} and {} at fee {} succeeded",
-        amount, sender, receiver1, receiver2, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "Transfer amount {amount} from {sender} to {receiver1} and {receiver2} at fee {fee_per_gram} succeeded"
+    ));
 }
 
 #[when(expr = "I transfer {int} uT to self from wallet {word} at fee {int}")]
@@ -1810,14 +2176,17 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!("transfer amount {} from {} to self", amount, sender.as_str()),
             TxType::PaymentToSelf,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -1833,7 +2202,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         fee_per_gram
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = tx_res.transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -1850,25 +2219,34 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "Transaction to self from {} with amount {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for Transaction to self from {} with amount {} at fee {} (DONE) to be broadcast",
                 sender.clone(),
                 amount,
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for Transaction to self from {} with amount {} at fee {} to be broadcast",
+                sender.clone(),
+                amount,
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries {
             panic!(
-                "Transaction to self from {} with amount {} at fee {} failed to be broadcasted",
+                "Transaction to self from {} with amount {} at fee {} failed to be broadcast",
                 sender.clone(),
                 amount,
                 fee_per_gram
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
@@ -1876,10 +2254,9 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
 
     sender_tx_ids.push(tx_id);
 
-    println!(
-        "Transfer amount {} to self from {} at fee {} succeeded",
-        amount, sender, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "Transfer amount {amount} to self from {sender} at fee {fee_per_gram} succeeded"
+    ));
 }
 
 #[when(expr = "I broadcast HTLC transaction with {int} uT from wallet {word} to wallet {word} at fee {int}")]
@@ -1893,7 +2270,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "Atomic Swap from {} to {} with amount {} at fee {}",
                 sender.as_str(),
@@ -1903,7 +2280,9 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
 
     let atomic_swap_request = SendShaAtomicSwapRequest {
@@ -1924,7 +2303,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         fee_per_gram
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = sha_atomic_swap_tx_res.transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -1941,19 +2320,29 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "Atomic swap transaction from {} to {} with amount {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for Atomic swap transaction from {} to {} (DONE) with amount {} at fee {} to be broadcast",
                 sender.as_str(),
                 receiver.as_str(),
                 amount,
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for Atomic swap transaction from {} to {} with amount {} at fee {} to be broadcast",
+                sender.as_str(),
+                receiver.as_str(),
+                amount,
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries {
             panic!(
-                "Atomic swap transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                "Atomic swap transaction from {} to {} with amount {} at fee {} failed to be broadcast",
                 sender.as_str(),
                 receiver.as_str(),
                 amount,
@@ -1961,7 +2350,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
@@ -1975,10 +2364,9 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
     world.output_hash = Some(sha_atomic_swap_tx_res.output_hash);
     world.pre_image = Some(sha_atomic_swap_tx_res.pre_image);
 
-    println!(
-        "Atomic swap transfer amount {} from {} to {} at fee {} succeeded",
-        amount, sender, receiver, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "Atomic swap transfer amount {amount} from {sender} to {receiver} at fee {fee_per_gram} succeeded"
+    ));
 }
 
 #[when(expr = "I claim an HTLC refund transaction with wallet {word} at fee {int}")]
@@ -2005,7 +2393,7 @@ async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld,
         fee_per_gram
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = claim_htlc_refund_res.results.unwrap().transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -2022,33 +2410,40 @@ async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld,
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "Claim HTLC refund transaction with wallet {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for Claim HTLC refund transaction with wallet {} (DONE) at fee {} to be broadcast",
                 wallet.as_str(),
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for Claim HTLC refund transaction with wallet {} at fee {} to be broadcast",
+                wallet.as_str(),
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries {
             panic!(
-                "Claim HTLC refund transaction with wallet {} at fee {} failed to be broadcasted",
+                "Claim HTLC refund transaction with wallet {} at fee {} failed to be broadcast",
                 wallet.as_str(),
                 fee_per_gram
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
     let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
     wallet_tx_ids.push(tx_id);
 
-    println!(
-        "Claim HTLC refund transaction with wallet {} at fee {} succeeded",
-        wallet, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "Claim HTLC refund transaction with wallet {wallet} at fee {fee_per_gram} succeeded"
+    ));
 }
 
 #[when(expr = "I claim an HTLC transaction with wallet {word} at fee {int}")]
@@ -2077,7 +2472,7 @@ async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: St
         fee_per_gram
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = claim_htlc_res.results.unwrap().transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -2094,69 +2489,44 @@ async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: St
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "Claim HTLC transaction with wallet {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for Claim HTLC transaction with wallet {} (DONE) at fee {} to be broadcast",
                 wallet.as_str(),
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for Claim HTLC transaction with wallet {} at fee {} to be broadcast",
+                wallet.as_str(),
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries {
             panic!(
-                "Claim HTLC transaction with wallet {} at fee {} failed to be broadcasted",
+                "Claim HTLC transaction with wallet {} at fee {} failed to be broadcast",
                 wallet.as_str(),
                 fee_per_gram
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
     let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
     wallet_tx_ids.push(tx_id);
 
-    println!(
-        "Claim HTLC transaction with wallet {} at fee {} succeeded",
-        wallet, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "Claim HTLC transaction with wallet {wallet} at fee {fee_per_gram} succeeded"
+    ));
 }
 
-#[then(expr = "I wait for wallet {word} to have less than {int} uT")]
-async fn wait_for_wallet_to_have_less_than_amount(world: &mut TariWorld, wallet: String, amount: u64) {
-    let wallet_ps = world.wallets.get(&wallet).unwrap();
-    let num_retries = 100;
-
-    let mut client = wallet_ps.get_grpc_client().await.unwrap();
-    let mut curr_amount = u64::MAX;
-
-    for _ in 0..=num_retries {
-        let _result = client.validate_all_transactions(ValidateRequest {}).await;
-        curr_amount = client
-            .get_balance(GetBalanceRequest { payment_id: None })
-            .await
-            .unwrap()
-            .into_inner()
-            .available_balance;
-
-        if curr_amount < amount {
-            return;
-        }
-
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-
-    // failed to get wallet right amount, so we panic
-    panic!(
-        "wallet {} failed to get less balance than amount {}, current amount is {}",
-        wallet.as_str(),
-        amount,
-        curr_amount
-    );
-}
-
-#[then(expr = "I send a one-sided stealth transaction of {int} uT from {word} to {word} at fee {int}")]
+#[when(expr = "I send a one-sided stealth transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[then(expr = "I send a one-sided stealth transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_one_sided_stealth_transaction(
     world: &mut TariWorld,
     amount: u64,
@@ -2165,29 +2535,16 @@ async fn send_one_sided_stealth_transaction(
     fee_per_gram: u64,
 ) {
     let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
-    let mut receiver_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_address.clone(),
         amount,
         fee_per_gram,
         payment_type: 2, // one sided stealth transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: MemoField::new_open_from_string(
             &format!(
                 "One sided stealth transfer amount {} from {} to {}",
                 amount,
@@ -2196,10 +2553,13 @@ async fn send_one_sided_stealth_transaction(
             ),
             TxType::PaymentToOther,
         )
+        .unwrap()
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
+        single_tx: false,
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -2216,7 +2576,7 @@ async fn send_one_sided_stealth_transaction(
         fee_per_gram
     );
 
-    // we wait for transaction to be broadcasted
+    // we wait for transaction to be broadcast
     let tx_id = tx_res.transaction_id;
     let num_retries = 100;
     let tx_info_req = GetTransactionInfoRequest {
@@ -2233,19 +2593,29 @@ async fn send_one_sided_stealth_transaction(
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
         if tx_info.status == 1_i32 {
-            println!(
-                "One sided stealth transaction from {} to {} with amount {} at fee {} has been broadcasted",
+            cucumber_steps_log(format!(
+                "Wait for one sided stealth transaction from {} to {} (DONE) with amount {} at fee {} to be broadcast",
                 sender.clone(),
                 receiver.clone(),
                 amount,
                 fee_per_gram
-            );
+            ));
             break;
+        } else if i % 5 == 0 {
+            cucumber_steps_log(format!(
+                "Wait for one sided stealth transaction from {} to {} with amount {} at fee {} to be broadcast",
+                sender.clone(),
+                receiver.clone(),
+                amount,
+                fee_per_gram
+            ));
+        } else {
+            // Nothing here
         }
 
         if i == num_retries - 1 {
             panic!(
-                "One sided stealth transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                "One sided stealth transaction from {} to {} with amount {} at fee {} failed to be broadcast",
                 sender.clone(),
                 receiver.clone(),
                 amount,
@@ -2253,7 +2623,7 @@ async fn send_one_sided_stealth_transaction(
             )
         }
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // insert tx_id's to the corresponding world mapping
@@ -2265,16 +2635,21 @@ async fn send_one_sided_stealth_transaction(
 
     receiver_tx_ids.push(tx_id);
 
-    println!(
-        "One sided stealth transaction with amount {} from {} to {} at fee {} succeeded",
-        amount, sender, receiver, fee_per_gram
-    );
+    cucumber_steps_log(format!(
+        "One sided stealth transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} \
+         succeeded"
+    ));
 }
 
 #[then(expr = "I import {word} unspent outputs to {word}")]
 #[allow(clippy::too_many_lines)]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    if wallet_a_ps.is_running() {
+        cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
+        wallet_a_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
 
@@ -2381,10 +2756,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: PaymentId::open_from_string(
-            &format!("I import {} unspent outputs to {}", wallet_a, wallet_b),
+        payment_id: MemoField::new_open_from_string(
+            &format!("I import {wallet_a} unspent outputs to {wallet_b}"),
             TxType::ImportedUtxoNoneRewindable,
         )
+        .unwrap()
         .to_bytes(),
     };
 
@@ -2400,6 +2776,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
 #[allow(clippy::too_many_lines)]
 async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    if wallet_a_ps.is_running() {
+        cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
+        wallet_a_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
 
@@ -2505,10 +2886,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: PaymentId::open_from_string(
-            &format!("I import {} spent outputs to {}", wallet_a, wallet_b),
+        payment_id: MemoField::new_open_from_string(
+            &format!("I import {wallet_a} spent outputs to {wallet_b}"),
             TxType::ImportedUtxoNoneRewindable,
         )
+        .unwrap()
         .to_bytes(),
     };
 
@@ -2523,6 +2905,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
 #[then(expr = "I import {word} unspent outputs as pre_mine outputs to {word}")]
 async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
+    if wallet_a_ps.is_running() {
+        cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
+        wallet_a_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
 
@@ -2628,13 +3015,11 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: PaymentId::open_from_string(
-            &format!(
-                "I import {} unspent outputs as pre_mine outputs to {}",
-                wallet_a, wallet_b
-            ),
+        payment_id: MemoField::new_open_from_string(
+            &format!("I import {wallet_a} unspent outputs as pre_mine outputs to {wallet_b}"),
             TxType::ImportedUtxoNoneRewindable,
         )
+        .unwrap()
         .to_bytes(),
     };
 
@@ -2644,22 +3029,6 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
         .unwrap()
         .into_inner()
         .tx_ids;
-}
-
-#[then(expr = "I restart wallet {word}")]
-async fn restart_wallet(world: &mut TariWorld, wallet: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    // stop wallet
-    wallet_ps.kill();
-    // start wallet
-    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap().clone();
-    let base_node_ps = world.base_nodes.get(&base_node).unwrap();
-    let seed_nodes = base_node_ps.seed_nodes.clone();
-
-    // need to wait a few seconds before spawning a new wallet
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
 }
 
 #[then(expr = "I check if wallet {word} has {int} transactions")]
@@ -2691,7 +3060,7 @@ async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: Str
     );
 }
 
-#[when(expr = "I multi-send {int} transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[when(expr = "I multi-send {int} one-sided transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn multi_send_txs_from_wallet(
     world: &mut TariWorld,
     num_txs: u64,
@@ -2701,22 +3070,9 @@ async fn multi_send_txs_from_wallet(
     fee_per_gram: u64,
 ) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
-    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let mut transfer_res = vec![];
 
@@ -2725,8 +3081,8 @@ async fn multi_send_txs_from_wallet(
             address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
-            payment_type: 0, // mimblewimble transaction
-            payment_id: PaymentId::open_from_string(
+            payment_type: 1, // one sided transaction
+            raw_payment_id: MemoField::new_open_from_string(
                 &format!(
                     "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
                     amount,
@@ -2736,11 +3092,14 @@ async fn multi_send_txs_from_wallet(
                 ),
                 TxType::PaymentToOther,
             )
+            .unwrap()
             .to_bytes(),
+            user_payment_id: None,
         };
 
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
+            single_tx: false,
         };
         let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
         let tx_res = tx_res.results;
@@ -2778,19 +3137,19 @@ async fn multi_send_txs_from_wallet(
 
             // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
             if tx_info.status == 1_i32 {
-                println!(
-                    "Multi-transaction from {} to {} with amount {} at fee {} has been broadcasted",
+                cucumber_steps_log(format!(
+                    "Wait for Multi-transaction from {} to {} with amount {} at fee {} has been broadcast",
                     sender.clone(),
                     receiver.clone(),
                     amount,
                     fee_per_gram
-                );
+                ));
                 break;
             }
 
             if i == num_retries - 1 {
                 panic!(
-                    "Multi-transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                    "Multi-transaction from {} to {} with amount {} at fee {} failed to be broadcast",
                     sender.clone(),
                     receiver.clone(),
                     amount,
@@ -2798,7 +3157,7 @@ async fn multi_send_txs_from_wallet(
                 )
             }
 
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
         // insert tx_id's to the corresponding world mapping
@@ -2810,89 +3169,99 @@ async fn multi_send_txs_from_wallet(
 
         receiver_tx_ids.push(tx_id);
 
-        println!(
-            "Multi-transaction with amount {} from {} to {} at fee {} succeeded",
-            amount, sender, receiver, fee_per_gram
-        );
+        cucumber_steps_log(format!(
+            "Multi-transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} succeeded"
+        ));
     }
-}
-
-#[then(expr = "I check if last imported transactions are invalid in wallet {word}")]
-async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld, wallet: String) {
-    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let mut get_completed_txs_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {
-            payment_id: None,
-            block_hash: None,
-            block_height: None,
-        })
-        .await
-        .unwrap()
-        .into_inner();
-
-    while let Some(tx) = get_completed_txs_res.next().await {
-        let tx_info = tx.unwrap().transaction.unwrap();
-        let status = tx_info.status;
-        // 3 => TRANSACTION_STATUS_IMPORTED
-        // 5 => TRANSACTION_STATUS_COINBASE
-        if ![3, 5].contains(&status) {
-            panic!(
-                "Imported transaction hasn't been received as such: current status code is {}, it should be 3 or 5",
-                status
-            );
-        }
-    }
-}
-
-#[then(expr = "I check if last imported transactions are valid in wallet {word}")]
-async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, wallet: String) {
-    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let mut get_completed_txs_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {
-            payment_id: None,
-            block_hash: None,
-            block_height: None,
-        })
-        .await
-        .unwrap()
-        .into_inner();
-
-    let mut imported_cnt = 0;
-
-    while let Some(tx) = get_completed_txs_res.next().await {
-        let tx_info = tx.unwrap().transaction.unwrap();
-        for &tx_id in &world.last_imported_tx_ids {
-            if tx_id == tx_info.tx_id {
-                assert_eq!(tx_info.status(), grpc::TransactionStatus::OneSidedConfirmed);
-                imported_cnt += 1;
-            }
-        }
-    }
-    assert_eq!(imported_cnt, world.last_imported_tx_ids.len());
 }
 
 #[then(expr = "I cancel last transaction in wallet {word}")]
 async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
 
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     // get the last tx id for wallet
     let tx_id = *wallet_tx_ids.last().unwrap();
-    let cancel_tx_req = CancelTransactionRequest { tx_id };
+    let cancel_tx_req = CancelTransactionRequest {
+        tx_id,
+        force_if_completed: false,
+    };
     let cancel_tx_res = client.cancel_transaction(cancel_tx_req).await.unwrap().into_inner();
     assert!(
         cancel_tx_res.is_success,
-        "Unable to cancel transaction with id = {}",
-        tx_id
+        "Unable to cancel transaction with id = {tx_id}"
     );
+}
+
+#[when(
+    expr = "I send a replace by fee of {int} uT from wallet {word} to wallet {word} at fee higher by {int} then before"
+)]
+async fn send_replace_by_fee_transaction(
+    world: &mut TariWorld,
+    _amount: u64,
+    sender: String,
+    _receiver: String,
+    fee_increase: u64,
+) {
+    let mut client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+
+    let wallet_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap();
+    let tx_id = *wallet_tx_ids.last().unwrap();
+
+    let replace_by_fee_req = ReplaceByFeeRequest {
+        transaction_id: tx_id,
+        fee_increase,
+    };
+
+    let replace_by_fee_res = client.replace_by_fee(replace_by_fee_req).await.unwrap().into_inner();
+    let new_tx_id = replace_by_fee_res.transaction_id;
+
+    let wallet_tx_ids = world.wallet_tx_ids.get_mut(&sender_wallet_address).unwrap();
+    wallet_tx_ids.push(new_tx_id);
+}
+
+#[allow(clippy::too_many_lines)]
+#[when(expr = "I send a user_pay_for_fee from wallet {word} to wallet {word} at fee {int}")]
+async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String, receiver: String, fee: u64) {
+    let mut client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
+
+    let wallet_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap();
+    let tx_id = *wallet_tx_ids.last().unwrap();
+
+    let transfer_with_tx_id = TxOutputsToSpendTransfer {
+        tx_id,
+        fee,
+        destination: receiver_wallet_address.clone(),
+    };
+    let user_pay_for_fee_req = UserPayForFeeRequest {
+        recipients: vec![transfer_with_tx_id],
+    };
+
+    let response = client.user_pay_for_fee(user_pay_for_fee_req).await;
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
+    let tx_results = response
+        .expect("UserPayForFee response should succeed")
+        .into_inner()
+        .results;
+    assert!(
+        !tx_results.is_empty(),
+        "UserPayForFee response should contain at least one result"
+    );
+    let tx_result = tx_results.first().unwrap();
+    assert!(tx_result.is_success, "UserPayForFee should be successful");
+    let new_tx_id = tx_result.transaction_id;
+
+    let wallet_tx_ids = world.wallet_tx_ids.get_mut(&sender_wallet_address).unwrap();
+    wallet_tx_ids.push(new_tx_id);
+
+    let receiver_tx_ids = world.wallet_tx_ids.get_mut(&receiver_wallet_address.clone()).unwrap();
+    receiver_tx_ids.push(new_tx_id);
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
@@ -2904,7 +3273,10 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
         amount,
         fee_per_gram: fee,
         claim_public_key: identity.public_key,
-        payment_id: PaymentId::open_from_string("Burning some tari", TxType::Burn).to_bytes(),
+        sidechain_deployment_key: vec![],
+        payment_id: MemoField::new_open_from_string("Burning some tari", TxType::Burn)
+            .unwrap()
+            .to_bytes(),
     };
 
     let result = client.create_burn_transaction(req).await.unwrap();
@@ -2929,8 +3301,39 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
     }
 
     panic!(
-        "Burn transaction has status {} when we desired 1 (TRANSACTION_STATUS_BROADCAST), 2 \
-         (TRANSACTION_STATUS_UNCONFIRMED), or 6 (TRANSACTION_STATUS_CONFIRMED)",
-        last_status
+        "Burn transaction has status {last_status} when we desired 1 (TRANSACTION_STATUS_BROADCAST), 2 \
+         (TRANSACTION_STATUS_UNCONFIRMED), or 6 (TRANSACTION_STATUS_CONFIRMED)"
     )
+}
+
+#[then(expr = "wallet {word} balance is {word}")]
+async fn wallet_has_balance(world: &mut TariWorld, wallet_name: String, balance_key: String) {
+    let mut client = world.get_wallet_client(&wallet_name).await.unwrap();
+    let balance = world.balance.get(&balance_key).unwrap();
+
+    let balance_res = GetBalanceResponse::default();
+    let num_retries = 30;
+    for i in 0..num_retries {
+        let _result = client.validate_all_transactions(ValidateRequest {}).await;
+        let balance_res = client
+            .get_balance(GetBalanceRequest { payment_id: None })
+            .await
+            .unwrap()
+            .into_inner();
+        if &balance_res == balance {
+            cucumber_steps_log(format!(
+                "Wallet {wallet_name} needs balance {balance:?} (DONE), has {balance_res:?}"
+            ));
+            return;
+        } else if i % 3 == 0 {
+            cucumber_steps_log(format!(
+                "Wallet {wallet_name} needs balance {balance:?}, has {balance_res:?}"
+            ));
+        } else {
+            // Nothing here
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    panic!("Wallet {wallet_name} doesn't have the correct balance: expected {balance:?} current {balance_res:?}");
 }

@@ -117,7 +117,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
             'q' => break Err(Error::UserQuit),
             ' ' => continue,
             v => {
-                println!("Invalid selection '{}'", v);
+                println!("Invalid selection '{v}'");
                 continue;
             },
         };

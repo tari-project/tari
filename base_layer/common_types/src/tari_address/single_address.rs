@@ -109,7 +109,10 @@ impl SingleAddress {
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_vec();
-        bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| EMOJI.get(*b as usize).expect("Index should exist"))
+            .collect::<String>()
     }
 
     /// Return the public spend key of a Tari Address
@@ -127,10 +130,13 @@ impl SingleAddress {
         if validate_checksum(bytes).is_err() {
             return Err(TariAddressError::InvalidChecksum);
         }
-        let network = Network::try_from(bytes[0]).map_err(|_| TariAddressError::InvalidNetwork)?;
-        let features = TariAddressFeatures::from_bits(bytes[1]).ok_or(TariAddressError::InvalidFeatures)?;
-        let public_spend_key = CompressedPublicKey::from_canonical_bytes(&bytes[2..34])
-            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let network = Network::try_from(*bytes.first().ok_or(TariAddressError::InvalidSize)?)
+            .map_err(|_| TariAddressError::InvalidNetwork)?;
+        let features = TariAddressFeatures::from_bits(*bytes.get(1).ok_or(TariAddressError::InvalidSize)?)
+            .ok_or(TariAddressError::InvalidFeatures)?;
+        let public_spend_key =
+            CompressedPublicKey::from_canonical_bytes(bytes.get(2..34).ok_or(TariAddressError::InvalidSize)?)
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Ok(Self {
             network,
             features,
@@ -141,11 +147,13 @@ impl SingleAddress {
     /// Convert Tari Address to bytes
     pub fn to_vec(&self) -> Vec<u8> {
         let mut buf = [0u8; TARI_ADDRESS_INTERNAL_SINGLE_SIZE];
-        buf[0] = self.network.as_byte();
-        buf[1] = self.features.0;
-        buf[2..34].copy_from_slice(self.public_spend_key.as_bytes());
-        let checksum = compute_checksum(&buf[0..34]);
-        buf[34] = checksum;
+        *buf.get_mut(0).expect("Index should exist") = self.network.as_byte();
+        *buf.get_mut(1).expect("Index should exist") = self.features.0;
+        buf.get_mut(2..34)
+            .expect("Index should exist")
+            .copy_from_slice(self.public_spend_key.as_bytes());
+        let checksum = compute_checksum(buf.get(0..34).expect("Index should exist"));
+        *buf.get_mut(34).expect("Index should exist") = checksum;
         buf.to_vec()
     }
 
@@ -175,9 +183,9 @@ impl SingleAddress {
     /// Convert Tari Address to Base58
     pub fn to_base58(&self) -> String {
         let bytes = self.to_vec();
-        let mut network = bs58::encode(&bytes[0..1]).into_string();
-        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
-        let rest = bs58::encode(&bytes[2..]).into_string();
+        let mut network = bs58::encode(bytes.get(0..1).expect("Index should exist")).into_string();
+        let features = bs58::encode(bytes.get(1..2).expect("Index should exist").to_vec()).into_string();
+        let rest = bs58::encode(bytes.get(2..).expect("Index should exist")).into_string();
         network.push_str(&features);
         network.push_str(&rest);
         network
@@ -197,6 +205,8 @@ impl SingleAddress {
 }
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
+
     use tari_crypto::keys::SecretKey;
 
     use super::*;

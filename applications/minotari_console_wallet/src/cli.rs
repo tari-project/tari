@@ -31,10 +31,14 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{
+    epoch::VnEpoch,
+    seeds::seed_words::SeedWords,
+    tari_address::TariAddress,
+    types::CompressedCommitment,
+};
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
-use tari_key_manager::SeedWords;
+use tari_transaction_components::tari_amount::{self, MicroMinotari};
 use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
@@ -104,6 +108,9 @@ pub struct Cli {
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
+    /// Skip wallet recovery
+    #[clap(long)]
+    pub skip_recovery: bool,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -143,8 +150,6 @@ fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, val
 #[derive(Debug, Subcommand, Clone)]
 pub enum CliCommands {
     GetBalance,
-    SendMinotari(SendMinotariArgs),
-    BurnMinotari(BurnMinotariArgs),
     PreMineSpendGetOutputStatus,
     PreMineStart(PreMineStartSessionArgs),
     PreMineStartParty(PreMineSpendPartyDetailsArgs),
@@ -153,32 +158,123 @@ pub enum CliCommands {
     PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
+    ReplaceByFee(ReplaceByFeeArgs),
+    UserPayForFee(UserPayForFeeArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
-    DiscoverPeer(DiscoverPeerArgs),
     Whois(WhoisArgs),
     ExportUtxos(ExportUtxosArgs),
     ExportTx(ExportTxArgs),
     ImportTx(ImportTxArgs),
     ExportSpentUtxos(ExportUtxosArgs),
     CountUtxos,
-    SetBaseNode(SetBaseNodeArgs),
-    SetCustomBaseNode(SetBaseNodeArgs),
-    ClearCustomBaseNode,
     InitShaAtomicSwap(SendMinotariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
-    RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
+
+    GetMultisigUtxoData(GetMultisigUtxoDataArgs),
+    SendMultisigUtxo(SendMultisigUtxoArgs),
+    CreateMultisigUtxo(CreateMultisigUtxoArgs),
+
+    ShowPayRef(ShowPayRefArgs),
+    FindPayRef(FindPayRefArgs),
+    ListTx,
+
+    PrepareDepositMultisigTransaction(PrepareDepositMultisigTransactionArgs),
+    PrepareWithdrawMultisigTransaction(PrepareWithdrawMultisigTransactionArgs),
+
+    PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
+    SignOneSidedTransaction(SignOneSidedTransactionArgs),
+
+    SignOneSidedDepositMultisigTransaction(SignOneSidedTransactionArgs),
+    SignOneSidedWithdrawMultisigTransaction(SignOneSidedTransactionArgs),
+
+    BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
+
+    SignMessage(SignMessageArgs),
+    SignScriptMessage(SignScriptMessageArgs),
+    RescanWallet(RescanWalletArgs),
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct DiscoverPeerArgs {
-    pub dest_public_key: UniPublicKey,
+pub struct PrepareDepositMultisigTransactionArgs {
+    #[clap(long)]
+    pub amount: MicroMinotari,
+    /// The number of required signatures
+    #[clap(long)]
+    pub party_number: u8,
+    #[clap(long, multiple = true)]
+    /// list of public keys of the parties involved in the multisig
+    pub public_keys: Vec<UniPublicKey>,
+    #[clap(long)]
+    /// The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareWithdrawMultisigTransactionArgs {
+    #[clap(long)]
+    pub utxo_commitment: String,
+    #[clap(short, long, parse(try_from_str = parse_hex), multiple = true, use_value_delimiter = true)]
+    pub schnorr_signatures: Vec<Vec<u8>>,
+    #[clap(long)]
+    /// The recipient address that will receive the funds
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareOneSidedTransactionForSigningArgs {
+    pub amount: MicroMinotari,
+    pub destination: TariAddress,
+    #[clap(short, long, default_value = "<No message>")]
+    pub payment_id: String,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct BroadcastSignedOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignMessageArgs {
+    /// The message to be signed (UTF-8 string)
+    #[clap(long)]
+    pub message: String,
+    /// Optional output file path
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    /// Optional sender offset public key to use for signing
+    #[clap(long)]
+    pub sender_offset_key: Option<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignScriptMessageArgs {
+    /// The message to be signed (UTF-8 string)
+    #[clap(long)]
+    pub message: String,
+    /// Optional output file path
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    /// Optional sender offset public key to use for signing
+    #[clap(long)]
+    pub sender_offset_key: Option<UniPublicKey>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -190,10 +286,19 @@ pub struct SendMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct BurnMinotariArgs {
-    pub amount: MicroMinotari,
-    #[clap(short, long, default_value = "Burn funds")]
-    pub payment_id: String,
+pub struct ReplaceByFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    #[clap(short, long)]
+    pub fee_increase: MicroMinotari,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UserPayForFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    pub fee: MicroMinotari,
+    pub destination: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -231,22 +336,28 @@ impl FromStr for CliRecipientInfo {
         }
 
         // Parse output indexes
-        if !parts[0].starts_with('[') && !parts[0].ends_with(']') {
+        if !parts.first().expect("Already checked").starts_with('[') &&
+            !parts.first().expect("Already checked").ends_with(']')
+        {
             return Err("Invalid 'recipient-info' part 1; array bounds must be indicated with '[' and ']'".to_string());
         }
-        let binding = parts[0].replace("[", "").replace("]", "");
+        let binding = parts
+            .first()
+            .expect("Already checked")
+            .replace("[", "")
+            .replace("]", "");
         let parts_0 = binding.split(',').collect::<Vec<&str>>();
         let output_indexes = parts_0
             .iter()
             .map(|v| {
                 v.parse()
-                    .map_err(|e| format!("'recipient_info' - invalid output_index: {}", e))
+                    .map_err(|e| format!("'recipient_info' - invalid output_index: {e}"))
             })
             .collect::<Result<Vec<usize>, String>>()?;
 
         // Parse recipient address
-        let recipient_address = TariAddress::from_base58(parts[1])
-            .map_err(|e| format!("'recipient_info' - invalid recipient address: {}", e))?;
+        let recipient_address = TariAddress::from_base58(parts.get(1).expect("Already checked"))
+            .map_err(|e| format!("'recipient_info' - invalid recipient address: {e}"))?;
 
         Ok(CliRecipientInfo {
             output_indexes,
@@ -322,34 +433,24 @@ pub struct MakeItRainArgs {
     pub start_time: Option<DateTime<Utc>>,
     #[clap(long, alias = "stealth-one-sided")]
     pub one_sided: bool,
-    #[clap(short, long)]
-    pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub payment_id: String,
 }
 
 impl MakeItRainArgs {
-    pub fn transaction_type(&self) -> MakeItRainTransactionType {
-        if self.one_sided {
-            MakeItRainTransactionType::StealthOneSided
-        } else if self.burn_tari {
-            MakeItRainTransactionType::BurnTari
-        } else {
-            MakeItRainTransactionType::Interactive
-        }
+    pub const fn transaction_type(&self) -> MakeItRainTransactionType {
+        MakeItRainTransactionType::StealthOneSided
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum MakeItRainTransactionType {
-    Interactive,
     StealthOneSided,
-    BurnTari,
 }
 
 impl Display for MakeItRainTransactionType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -446,7 +547,7 @@ pub struct FinaliseShaAtomicSwapArgs {
 }
 
 fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
-    Vec::<u8>::from_hex(s).map_err(|e| CliParseError::HexError(format!("{}", e)))
+    Vec::<u8>::from_hex(s).map_err(|e| CliParseError::HexError(format!("{e}")))
 }
 
 #[derive(Debug, Args, Clone)]
@@ -462,7 +563,12 @@ pub struct RegisterValidatorNodeArgs {
     pub amount: MicroMinotari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
-    pub validator_node_signature: Vec<u8>,
+    #[clap(long, parse(try_from_str = parse_hex), required = true)]
+    pub validator_node_signature: Vec<Vec<u8>>,
+    pub validator_node_claim_public_key: UniPublicKey,
+    pub epoch: VnEpoch,
+    #[clap(long, parse(try_from_str = parse_hex), required = false)]
+    pub sidechain_deployment_key: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Registering VN")]
     pub payment_id: String,
 }
@@ -471,4 +577,68 @@ pub struct RegisterValidatorNodeArgs {
 pub struct SyncArgs {
     #[clap(short, long, default_value = "0")]
     pub sync_to_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ShowPayRefArgs {
+    pub transaction_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FindPayRefArgs {
+    pub payment_reference_hex: String,
+}
+
+// Helper function to parse CompressedCommitment from hex string
+fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> {
+    CompressedCommitment::from_hex(s).map_err(|e| format!("Invalid CompressedCommitment: {}", e))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SendMultisigUtxoArgs {
+    #[clap(long, parse(try_from_str = parse_compressed_commitment))]
+    //  The commitment of the multisig UTXO
+    pub utxo_commitment: CompressedCommitment,
+    #[clap(long)]
+    // The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+
+    // signatures
+    #[clap(short, long, parse(try_from_str = parse_hex), multiple = true, use_value_delimiter = true)]
+    pub schnorr_signatures: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct GetMultisigUtxoDataArgs {
+    //  The commitment of the multisig UTXO
+    #[clap(long, parse(try_from_str = parse_compressed_commitment))]
+    pub utxo_commitment: CompressedCommitment,
+
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateMultisigUtxoArgs {
+    #[clap(long)]
+    //  amount on microtari
+    pub amount: MicroMinotari,
+
+    // How many signatures are required to spend the multisig UTXO
+    #[clap(long, default_value = "2")]
+    pub party_number: u8,
+
+    #[clap(long, multiple = true)]
+    // list of public keys of the parties involved in the multisig
+    pub public_keys: Vec<UniPublicKey>,
+
+    #[clap(long)]
+    // The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RescanWalletArgs {
+    #[clap(short, long, default_value = "0")]
+    pub from_height: u64,
 }

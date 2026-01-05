@@ -22,28 +22,34 @@
 
 use std::{
     fs,
-    fs::File,
-    iter,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use fs2::FileExt;
 use futures::future;
-use lmdb_zero::open;
 use log::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::{
     configuration::{DnsNameServerList, Network},
     exit_codes::{ExitCode, ExitError},
     DnsNameServer,
 };
+use tari_common_sqlite::{
+    connection::{DbConnection, DbConnectionUrl},
+    error::StorageError,
+};
 use tari_comms::{
     backoff::ConstantBackoff,
     multiaddr::multiaddr,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
+    },
     pipeline,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
@@ -51,8 +57,7 @@ use tari_comms::{
         NodeNetworkInfo,
         ProtocolId,
     },
-    tor,
-    tor::{HiddenServiceControllerError, TorIdentity},
+    tor::{self, HiddenServiceControllerError, TorIdentity},
     transports::{
         predicate::FalsePredicate,
         HiddenServiceTransport,
@@ -71,10 +76,7 @@ use tari_comms::{
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -118,6 +120,8 @@ pub enum CommsInitializationError {
     InvalidTorForwardAddress(std::io::Error),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
+    #[error("StorageError `{0}`")]
+    StorageError(#[from] StorageError),
 }
 
 impl CommsInitializationError {
@@ -148,25 +152,15 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError> {
-    let peer_database_name = {
-        let mut rng = thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(&data_path)
-        .set_env_flags(open::NOLOCK)
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError>
+where
+    PathBuf: From<P>,
+{
+    fs::create_dir_all(&data_path)?;
+    let database_url = DbConnectionUrl::File(PathBuf::from(data_path).join("peers.db"));
+    debug!(target: LOG_TARGET, "initialize_local_test_comms - node_identity: {}, database URL: {}", node_identity.node_id().to_hex(), database_url.to_url_string());
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+    let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer())?;
 
     //---------------------------------- Comms --------------------------------------------//
 
@@ -176,7 +170,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
         .with_user_agent(&"/test/1.0")
-        .with_peer_storage(peer_database, None)
+        .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1)
         .with_network_byte(Network::LocalNet.as_byte())
@@ -261,7 +255,7 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
         },
         TransportType::Tor => {
             let tor_config = transport_config.tor;
-            debug!(target: LOG_TARGET, "Building TOR comms stack ({:?})", tor_config);
+            debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
             let listener_address_override = tor_config.listener_address_override.clone();
             let hidden_service_ctl = initialize_hidden_service(tor_config)?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
@@ -317,18 +311,18 @@ async fn configure_comms_and_dht(
     config: &P2pConfig,
     connector: InboundDomainConnector,
 ) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
-    let file_lock = acquire_exclusive_file_lock(&config.datastore_path)?;
-
-    let datastore = LMDBBuilder::new()
-        .set_path(&config.datastore_path)
-        .set_env_flags(open::NOLOCK)
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+    let database_url = DbConnectionUrl::File(
+        PathBuf::from(&config.datastore_path)
+            .join(&config.peer_database_name)
+            .with_extension("db"),
+    );
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(16))?;
+    let this_node = builder
+        .node_identity()
+        .as_deref()
+        .ok_or(CommsBuilderError::NodeIdentityNotSet)?
+        .to_peer();
+    let peer_database = PeerDatabaseSql::new(db_connection, &this_node)?;
 
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
@@ -337,8 +331,9 @@ async fn configure_comms_and_dht(
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, Some(file_lock))
-        .with_excluded_dial_addresses(config.dht.excluded_dial_addresses.clone().into_vec().clone());
+        .with_transport_protocols(config.transport.transport_type.get_supported_protocols())
+        .with_peer_storage(peer_database)
+        .with_excluded_dial_addresses(config.dht.excluded_dial_addresses.clone().into_vec());
 
     let mut comms = match config.auxiliary_tcp_listener_address {
         Some(ref addr) => builder.with_auxiliary_tcp_listener_address(addr.clone()).build()?,
@@ -392,32 +387,6 @@ async fn configure_comms_and_dht(
     Ok((comms, dht))
 }
 
-/// Acquire an exclusive OS level write lock on a file in the provided path. This is used to check if another instance
-/// of this database has already been initialized in order to prevent two process from using it simultaneously
-/// ## Parameters
-/// `db_path` - Path where the db will be initialized
-///
-/// ## Returns
-/// Returns a File handle that must be retained to keep the file lock active.
-fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
-    let lock_file_path = db_path.join(".p2p_file.lock");
-
-    if let Some(parent) = lock_file_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let file = File::create(lock_file_path)?;
-    // Attempt to acquire exclusive OS level Write Lock
-    if let Err(e) = file.try_lock_exclusive() {
-        error!(
-            target: LOG_TARGET,
-            "Could not acquire exclusive write lock on database lock file: {:?}", e
-        );
-        return Err(CommsInitializationError::CannotAcquireFileLock);
-    }
-
-    Ok(file)
-}
-
 /// Adds a new peer to the base node
 /// ## Parameters
 /// `comms_node` - A reference to the comms node. This is the communications stack
@@ -435,15 +404,15 @@ pub async fn add_seed_peers(
         if &peer.public_key == node_identity.public_key() {
             debug!(
                 target: LOG_TARGET,
-                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer
+                "Attempting to add yourself [{peer}] as a seed peer to comms layer, ignoring request"
             );
             continue;
         }
         peer.add_flags(PeerFlags::SEED);
 
-        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
+        debug!(target: LOG_TARGET, "Adding seed peer [{peer}]");
         peer_manager
-            .add_peer(peer)
+            .add_or_update_peer(peer)
             .await
             .map_err(CommsInitializationError::FailedToAddSeedPeer)?;
     }
@@ -516,7 +485,7 @@ impl P2pInitializer {
                 let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
                     Ok(res) => res,
                     Err(_) => {
-                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{}`", addr);
+                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{addr}`");
                         Err(DnsClientError::Timeout)
                     },
                 };
@@ -543,7 +512,7 @@ impl P2pInitializer {
                     Some(peers)
                 },
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "DNS seed `{}` failed to resolve: {}", addr, err);
+                    warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
                     None
                 },
             })
@@ -565,7 +534,7 @@ impl P2pInitializer {
         }
         let mut dns_errors = Vec::new();
         for dns in dns_seed_name_servers {
-            info!(target: LOG_TARGET, "Connecting to DNS name server: {}", dns);
+            info!(target: LOG_TARGET, "Connecting to DNS name server: {dns}");
             let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
                 (true, false) => DnsSeedResolver::connect_secure(dns.clone()),
                 (_, _) => DnsSeedResolver::connect(dns.clone()),
@@ -573,14 +542,13 @@ impl P2pInitializer {
             match res {
                 Ok(resolver) => return Ok(resolver),
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {}", err);
+                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {err}");
                     dns_errors.push(err.to_string())
                 },
             }
         }
         Err(ServiceInitializationError::from(DnsClientError::Connection(format!(
-            "{:?}",
-            dns_errors
+            "{dns_errors:?}"
         ))))
     }
 }
@@ -624,7 +592,7 @@ impl ServiceInitializer for P2pInitializer {
         let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
             Ok(peers) => peers,
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {}", err);
+                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {err}");
                 Vec::new()
             },
         };

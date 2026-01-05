@@ -59,7 +59,7 @@ impl CommandContext {
         } else {
             for header in headers {
                 println!("\n\nHeader hash: {}", header.hash().to_hex());
-                println!("{}", header);
+                println!("{header}");
             }
             Ok(())
         }

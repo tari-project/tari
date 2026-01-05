@@ -23,10 +23,30 @@
 use std::sync::{Arc, Mutex, Once};
 
 use libc::c_void;
-use tari_common_types::tari_address::TariAddress;
 
-use super::{Balance, CompletedTransaction, ContactsLivenessData, PendingInboundTransaction, Wallet};
+use super::{Balance, CompletedTransaction, PendingInboundTransaction, Wallet};
 use crate::ffi::TransactionSendStatus;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum FfiConnectivityStatus {
+    #[default]
+    Connecting = 0,
+    Online = 1,
+    Offline = 2,
+    Degraded = 3,
+}
+
+impl From<u64> for FfiConnectivityStatus {
+    fn from(value: u64) -> Self {
+        match value {
+            0 => FfiConnectivityStatus::Connecting,
+            1 => FfiConnectivityStatus::Online,
+            2 => FfiConnectivityStatus::Offline,
+            3 => FfiConnectivityStatus::Degraded,
+            _ => FfiConnectivityStatus::Connecting,
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct Callbacks {
@@ -43,9 +63,8 @@ pub struct Callbacks {
     txo_validation_result: Mutex<u64>,
     tx_validation_complete: Mutex<bool>,
     tx_validation_result: Mutex<u64>,
-    transaction_saf_message_received: Mutex<u64>,
-    contacts_liveness_data_updated: Mutex<u64>,
     basenode_state_updated: Mutex<u64>,
+    connectivity_status: Mutex<(FfiConnectivityStatus, u64)>,
     pub wallet: Option<Arc<Mutex<Wallet>>>,
 }
 
@@ -87,6 +106,11 @@ impl Callbacks {
         *self.transaction_faux_unconfirmed.lock().unwrap()
     }
 
+    /// Reply with status (connecting = 0, online = 1, offline = 2, degraded = 3) and latency (ms)
+    pub fn get_connectivity_status(&self) -> (FfiConnectivityStatus, u64) {
+        (*self.connectivity_status.lock().unwrap()).clone()
+    }
+
     #[allow(dead_code)]
     pub fn get_transaction_cancelled(&self) -> u64 {
         *self.transaction_cancelled.lock().unwrap()
@@ -108,16 +132,6 @@ impl Callbacks {
     #[allow(dead_code)]
     pub fn get_tx_validation_result(&self) -> u64 {
         *self.tx_validation_result.lock().unwrap()
-    }
-
-    #[allow(dead_code)]
-    pub fn get_transaction_saf_message_received(&self) -> u64 {
-        *self.transaction_saf_message_received.lock().unwrap()
-    }
-
-    #[allow(dead_code)]
-    pub fn get_contacts_liveness_data_updated(&self) -> u64 {
-        *self.contacts_liveness_data_updated.lock().unwrap()
     }
 
     pub fn on_received_transaction(&mut self, ptr: *mut c_void) {
@@ -235,27 +249,6 @@ impl Callbacks {
         *self.txo_validation_result.lock().unwrap() = validation_results;
     }
 
-    pub fn on_contacts_liveness_data_updated(&mut self, ptr: *mut c_void) {
-        let contact_liveness_data = ContactsLivenessData::from_ptr(ptr);
-        let address = TariAddress::from_bytes(&contact_liveness_data.get_public_key().address().get_vec()).unwrap();
-        println!(
-            "{} callbackContactsLivenessUpdated: received {} from contact {} with latency {} at {} and is {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
-            contact_liveness_data.get_message_type(),
-            address.to_base58(),
-            contact_liveness_data.get_latency(),
-            contact_liveness_data.get_last_seen(),
-            contact_liveness_data.get_online_status()
-        );
-        self.wallet
-            .as_mut()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .add_liveness_data(contact_liveness_data);
-        *self.contacts_liveness_data_updated.lock().unwrap() += 1;
-    }
-
     pub fn on_balance_updated(&mut self, ptr: *mut c_void) {
         let balance = Balance::from_ptr(ptr);
         println!(
@@ -282,24 +275,19 @@ impl Callbacks {
         *self.tx_validation_result.lock().unwrap() = validation_results;
     }
 
-    pub fn on_saf_messages_received(&mut self) {
+    pub fn on_connectivity_status(&mut self, status: u64, latency: u64) {
         println!(
-            "{} callbackSafMessageReceived().",
+            "{} Connectivity Status Changed to {} / latency {} ms.",
             chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
+            status,
+            latency
         );
-        *self.transaction_saf_message_received.lock().unwrap() += 1;
-    }
 
-    pub fn on_connectivity_status(&mut self, status: u64) {
-        println!(
-            "{} Connectivity Status Changed to {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
-            status
-        );
+        *self.connectivity_status.lock().unwrap() = (FfiConnectivityStatus::from(status), latency);
     }
 
     pub fn callback_wallet_scanned_height(&mut self, height: u64) {
-        println!("wallet scanned up to height {}.", height);
+        println!("wallet scanned up to height {height}.");
     }
 
     pub fn on_basenode_state_update(&mut self, state: *mut c_void) {
@@ -325,8 +313,6 @@ impl Callbacks {
         *self.txo_validation_result.lock().unwrap() = 0;
         *self.tx_validation_complete.lock().unwrap() = false;
         *self.tx_validation_result.lock().unwrap() = 0;
-        *self.transaction_saf_message_received.lock().unwrap() = 0;
-        *self.contacts_liveness_data_updated.lock().unwrap() = 0;
         *self.basenode_state_updated.lock().unwrap() = 0;
         self.wallet = Some(wallet);
         println!("wallet {:?}", self.wallet);

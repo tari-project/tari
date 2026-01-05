@@ -24,7 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Utc;
 use clap::Parser;
-use tari_comms::peer_manager::PeerQuery;
+use tari_comms::peer_manager::PeerFeatures;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
 
 use super::{CommandContext, HandleCommand};
@@ -45,16 +45,17 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     pub async fn list_peers(&self, filter: Option<String>) -> Result<(), Error> {
-        let mut query = PeerQuery::new();
-        if let Some(f) = filter {
-            let filter = f.to_lowercase();
-            query = query.select_where(move |p| match filter.as_str() {
-                "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => p.features.is_node(),
-                "wallet" | "wallets" | "w" => p.features.is_client(),
-                _ => false,
-            })
-        }
-        let mut peers = self.comms.peer_manager().perform_query(query).await?;
+        let features = filter.as_ref().and_then(|value| match value.to_lowercase().as_str() {
+            "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => Some(PeerFeatures::COMMUNICATION_NODE),
+            "wallet" | "wallets" | "w" => Some(PeerFeatures::COMMUNICATION_CLIENT),
+            _ => {
+                println!("Unknown filter '{filter:?}'; list-peers");
+                println!("  Try 'basenode', 'basenodes', 'base-node', 'base_node', 'wallet', 'wallets', 'w'");
+                None
+            },
+        });
+
+        let mut peers = self.comms.peer_manager().all(features).await?;
         let num_peers = peers.len();
         println!();
         let mut table = Table::new();
@@ -96,7 +97,7 @@ impl CommandContext {
                         .to_std()
                         .map(format_duration_basic)
                         .unwrap_or_else(|_| "?".into());
-                    s.push(format!("last seen: {}", duration));
+                    s.push(format!("last seen: {duration}"));
                 }
 
                 if s.is_empty() {
@@ -128,7 +129,7 @@ impl CommandContext {
         }
         table.print_stdout();
 
-        println!("{} peer(s) known by this node", num_peers);
+        println!("{num_peers} peer(s) known by this node");
         Ok(())
     }
 }

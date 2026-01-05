@@ -1,7 +1,9 @@
 [package]
 name = "minotari_app_utilities"
+description = "Utilities for Minotari applications"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -18,13 +20,14 @@ futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
 ] }
 json5 = "0.4"
-log = { version = "0.4.8", features = ["std"] }
-rand = "0.8"
-tokio = { version = "1.44", features = ["signal"] }
-serde = "1.0.126"
-thiserror = "^1.0.26"
+log = { workspace = true, features = ["std"] }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["signal"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
 dialoguer = { version = "0.10" }
 tonic = "0.13.1"
+tari_p2p.workspace = true
 
 [build-dependencies]
 tari_common = { workspace = true, features = [

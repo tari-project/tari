@@ -22,14 +22,11 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-#[cfg(feature = "base_node")]
 use rand::RngCore;
 use tokio::sync::{oneshot::Sender as OneshotSender, RwLock};
 
-pub type RequestKey = u64;
-
+use crate::common::RequestKey;
 /// Generate a new random request key to uniquely identify a request and its corresponding responses.
-#[cfg(feature = "base_node")]
 pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
 where R: RngCore {
     rng.next_u64()

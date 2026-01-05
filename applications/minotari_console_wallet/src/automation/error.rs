@@ -23,6 +23,7 @@
 use std::{
     io,
     num::{ParseFloatError, ParseIntError},
+    path::PathBuf,
 };
 
 use log::*;
@@ -34,13 +35,13 @@ use minotari_wallet::{
 };
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::FixedHashSizeError;
-use tari_core::transactions::{
-    tari_amount::MicroMinotariError,
-    transaction_components::TransactionError,
-    transaction_key_manager::error::KeyManagerServiceError,
-};
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_script::ScriptError;
+use tari_transaction_components::{
+    key_manager::error::KeyManagerError,
+    tari_amount::MicroMinotariError,
+    transaction_components::TransactionError,
+};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -63,7 +64,7 @@ pub enum CommandError {
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerServiceError),
+    KeyManagerError(#[from] KeyManagerError),
     #[error("Tokio join error `{0}`")]
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]
@@ -98,6 +99,12 @@ pub enum CommandError {
     FailedSignature(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Failed to write to file {file_path} - {err}.")]
+    FileWriteError { file_path: PathBuf, err: io::Error },
+    #[error("Failed to read file {file_path} - {err}.")]
+    FileReadError { file_path: PathBuf, err: io::Error },
+    #[error("Serialization error: `{0}`")]
+    SerializationError(String),
 }
 
 impl From<SchnorrSignatureError> for CommandError {
@@ -120,7 +127,7 @@ impl From<ByteArrayError> for CommandError {
 
 impl From<CommandError> for ExitError {
     fn from(err: CommandError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
+        error!(target: LOG_TARGET, "{err}");
         Self::new(ExitCode::CommandError, err.to_string())
     }
 }
@@ -153,8 +160,8 @@ pub enum ParseError {
 
 impl From<ParseError> for ExitError {
     fn from(err: ParseError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        let msg = format!("Failed to parse input file commands! {}", err);
+        error!(target: LOG_TARGET, "{err}");
+        let msg = format!("Failed to parse input file commands! {err}");
         Self::new(ExitCode::InputError, msg)
     }
 }

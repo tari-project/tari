@@ -174,7 +174,16 @@ where
     TSocket: AsyncWrite,
 {
     loop {
-        let n = ready!(socket.as_mut().poll_write(context, &buf[*offset..]))?;
+        let bytes = match buf.get(*offset..) {
+            Some(bytes) => bytes,
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Offset exceeds buffer length",
+                )));
+            },
+        };
+        let n = ready!(socket.as_mut().poll_write(context, bytes))?;
         trace!(
             target: LOG_TARGET,
             "poll_write_all: wrote {}/{} bytes",
@@ -229,15 +238,21 @@ where
     TSocket: AsyncRead,
 {
     loop {
-        let mut read_buf = ReadBuf::new(&mut buf[*offset..]);
+        let bytes = match buf.get_mut(*offset..) {
+            Some(bytes) => bytes,
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Offset exceeds buffer length",
+                )));
+            },
+        };
+        let mut read_buf = ReadBuf::new(bytes);
         let prev_rem = read_buf.remaining();
         ready!(socket.as_mut().poll_read(context, &mut read_buf))?;
-        let n = prev_rem.checked_sub(read_buf.remaining()).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "buffer underflow: prev_rem < read_buf.remaining()",
-            )
-        })?;
+        let n = prev_rem
+            .checked_sub(read_buf.remaining())
+            .ok_or_else(|| io::Error::other("buffer underflow: prev_rem < read_buf.remaining()"))?;
         trace!(
             target: LOG_TARGET,
             "poll_read_exact: read {}/{} bytes",
@@ -255,10 +270,10 @@ where
         }
     }
 }
-
 impl<TSocket> NoiseSocket<TSocket>
 where TSocket: AsyncRead + Unpin
 {
+    #[allow(clippy::too_many_lines)]
     fn poll_read(&mut self, context: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         loop {
             trace!(target: LOG_TARGET, "NoiseSocket ReadState::{:?}", self.read_state);
@@ -294,28 +309,27 @@ where TSocket: AsyncRead + Unpin
                     frame_len,
                     ref mut offset,
                 } => {
-                    match ready!(poll_read_exact(
-                        context,
-                        Pin::new(&mut self.socket),
-                        &mut self.buffers.read_encrypted[..(frame_len as usize)],
-                        offset
-                    )) {
-                        Ok(()) => {
-                            match self.state.read_message(
-                                &self.buffers.read_encrypted[..(frame_len as usize)],
-                                &mut self.buffers.read_decrypted,
-                            ) {
-                                Ok(decrypted_len) => {
-                                    self.read_state = ReadState::CopyDecryptedFrame {
-                                        decrypted_len,
-                                        offset: 0,
-                                    };
-                                },
-                                Err(e) => {
-                                    warn!(target: LOG_TARGET, "Decryption Error: {}", e);
-                                    self.read_state = ReadState::DecryptionError(e);
-                                },
-                            }
+                    let bytes = match self.buffers.read_encrypted.get_mut(..(frame_len as usize)) {
+                        Some(bytes) => bytes,
+                        None => {
+                            return Poll::Ready(Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "frame length exceeds buffer length",
+                            )));
+                        },
+                    };
+                    match ready!(poll_read_exact(context, Pin::new(&mut self.socket), bytes, offset)) {
+                        Ok(()) => match self.state.read_message(bytes, &mut self.buffers.read_decrypted) {
+                            Ok(decrypted_len) => {
+                                self.read_state = ReadState::CopyDecryptedFrame {
+                                    decrypted_len,
+                                    offset: 0,
+                                };
+                            },
+                            Err(e) => {
+                                warn!(target: LOG_TARGET, "Decryption Error: {e}");
+                                self.read_state = ReadState::DecryptionError(e);
+                            },
                         },
                         Err(e) => {
                             if e.kind() == io::ErrorKind::UnexpectedEof {
@@ -329,27 +343,37 @@ where TSocket: AsyncRead + Unpin
                     decrypted_len,
                     ref mut offset,
                 } => {
-                    let bytes_to_copy = cmp::min(decrypted_len - *offset, buf.len());
-                    buf[..bytes_to_copy]
-                        .copy_from_slice(&self.buffers.read_decrypted[*offset..(*offset + bytes_to_copy)]);
+                    let num_bytes_to_copy = cmp::min(decrypted_len - *offset, buf.len());
+                    let bytes_to_copy = match self.buffers.read_decrypted.get(*offset..(*offset + num_bytes_to_copy)) {
+                        Some(bytes) => bytes,
+                        None => {
+                            return Poll::Ready(Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "Offset exceeds buffer length",
+                            )));
+                        },
+                    };
+                    buf.get_mut(..num_bytes_to_copy)
+                        .expect("this is checked")
+                        .copy_from_slice(bytes_to_copy);
                     trace!(
                         target: LOG_TARGET,
                         "CopyDecryptedFrame: copied {}/{} bytes",
-                        *offset + bytes_to_copy,
+                        *offset + num_bytes_to_copy,
                         decrypted_len
                     );
-                    *offset += bytes_to_copy;
+                    *offset += num_bytes_to_copy;
                     if *offset == decrypted_len {
                         self.read_state = ReadState::Init;
                     }
-                    return Poll::Ready(Ok(bytes_to_copy));
+                    return Poll::Ready(Ok(num_bytes_to_copy));
                 },
                 ReadState::Eof(Ok(())) => return Poll::Ready(Ok(0)),
                 ReadState::Eof(Err(())) => return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into())),
                 ReadState::DecryptionError(ref e) => {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("DecryptionError: {}", e),
+                        format!("DecryptionError: {e}"),
                     )))
                 },
             }
@@ -390,30 +414,48 @@ where TSocket: AsyncWrite + Unpin
                 },
                 WriteState::BufferData { ref mut offset } => {
                     let bytes_buffered = if let Some(buf) = buf {
-                        let bytes_to_copy = ::std::cmp::min(MAX_WRITE_BUFFER_LENGTH - *offset, buf.len());
-                        self.buffers.write_decrypted[*offset..(*offset + bytes_to_copy)]
-                            .copy_from_slice(&buf[..bytes_to_copy]);
+                        let num_bytes_to_copy = ::std::cmp::min(MAX_WRITE_BUFFER_LENGTH - *offset, buf.len());
+                        let bytes = match buf.get(..num_bytes_to_copy) {
+                            Some(bytes) => bytes,
+                            None => {
+                                return Poll::Ready(Err(io::Error::new(
+                                    io::ErrorKind::InvalidInput,
+                                    "frame length exceeds buffer length",
+                                )));
+                            },
+                        };
+                        self.buffers
+                            .write_decrypted
+                            .get_mut(*offset..(*offset + num_bytes_to_copy))
+                            .expect("this is checked")
+                            .copy_from_slice(bytes);
                         trace!(
                             target: LOG_TARGET,
                             "BufferData: buffered {}/{} bytes",
-                            bytes_to_copy,
+                            num_bytes_to_copy,
                             buf.len()
                         );
-                        *offset += bytes_to_copy;
-                        Some(bytes_to_copy)
+                        *offset += num_bytes_to_copy;
+                        Some(num_bytes_to_copy)
                     } else {
                         None
                     };
 
                     if buf.is_none() || *offset == MAX_WRITE_BUFFER_LENGTH {
-                        match self.state.write_message(
-                            &self.buffers.write_decrypted[..*offset],
-                            &mut self.buffers.write_encrypted,
-                        ) {
+                        let bytes = match self.buffers.write_decrypted.get(..*offset) {
+                            Some(bytes) => bytes,
+                            None => {
+                                return Poll::Ready(Err(io::Error::new(
+                                    io::ErrorKind::InvalidInput,
+                                    "frame length exceeds buffer length",
+                                )));
+                            },
+                        };
+                        match self.state.write_message(bytes, &mut self.buffers.write_encrypted) {
                             Ok(encrypted_len) => {
-                                let frame_len = encrypted_len.try_into().map_err(|_| {
-                                    io::Error::new(io::ErrorKind::Other, "offset should be able to fit in u16")
-                                })?;
+                                let frame_len = encrypted_len
+                                    .try_into()
+                                    .map_err(|_| io::Error::other("offset should be able to fit in u16"))?;
                                 self.write_state = WriteState::WriteFrameLen {
                                     frame_len,
                                     buf: u16::to_be_bytes(frame_len),
@@ -421,8 +463,8 @@ where TSocket: AsyncWrite + Unpin
                                 };
                             },
                             Err(e) => {
-                                warn!(target: LOG_TARGET, "Encryption Error: {}", e);
-                                let err = io::Error::new(io::ErrorKind::InvalidData, format!("EncryptionError: {}", e));
+                                warn!(target: LOG_TARGET, "Encryption Error: {e}");
+                                let err = io::Error::new(io::ErrorKind::InvalidData, format!("EncryptionError: {e}"));
                                 self.write_state = WriteState::EncryptionError(e);
                                 return Poll::Ready(Err(err));
                             },
@@ -452,12 +494,16 @@ where TSocket: AsyncWrite + Unpin
                     frame_len,
                     ref mut offset,
                 } => {
-                    match ready!(poll_write_all(
-                        context,
-                        Pin::new(&mut self.socket),
-                        &self.buffers.write_encrypted[..(frame_len as usize)],
-                        offset
-                    )) {
+                    let bytes = match self.buffers.write_encrypted.get(..(frame_len as usize)) {
+                        Some(bytes) => bytes,
+                        None => {
+                            return Poll::Ready(Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "frame length exceeds buffer length",
+                            )));
+                        },
+                    };
+                    match ready!(poll_write_all(context, Pin::new(&mut self.socket), bytes, offset)) {
                         Ok(()) => {
                             self.write_state = WriteState::Flush;
                         },
@@ -477,7 +523,7 @@ where TSocket: AsyncWrite + Unpin
                 WriteState::EncryptionError(ref e) => {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("EncryptionError: {}", e),
+                        format!("EncryptionError: {e}"),
                     )))
                 },
             }
@@ -540,9 +586,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         match self.handshake_1_5rtt().await {
             Ok(_) => self.build(),
             Err(err) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
-                    "Noise handshake failed because '{:?}'. Closing socket.", err
+                    "Noise handshake failed because '{err:?}'. Closing socket."
                 );
                 self.socket.shutdown().await?;
                 Err(err)
@@ -597,7 +643,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .socket
             .state
             .into_transport_mode()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Invalid snow state: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Invalid snow state: {err}")))?;
 
         Ok(NoiseSocket {
             state: transport_state,

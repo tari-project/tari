@@ -29,13 +29,19 @@ use std::{
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tari_common::{
-    configuration::{serializers, Network, StringList},
+    configuration::{
+        bootstrap::{wallet_get_default_seed_https_address, wallet_http_service_default_port},
+        serializers,
+        Network,
+        StringList,
+    },
     SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
+use url::Url;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -53,7 +59,8 @@ where D: serde::Deserializer<'de> {
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
     pub override_from: Option<String>,
-    /// The p2p config settings
+    /// DEPRECATED: The p2p config settings
+    #[serde(default)]
     pub p2p: P2pConfig,
     /// The transaction_service_config config settings
     #[serde(rename = "transactions")]
@@ -61,11 +68,12 @@ pub struct WalletConfig {
     /// The output_manager_service_config config settings
     #[serde(rename = "outputs")]
     pub output_manager_service_config: OutputManagerServiceConfig,
-    /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
+    /// DEPRECATED: The buffer size for the publish/subscribe connector channel, connecting comms messages to the
+    /// domain layer
     pub buffer_size: usize,
     /// Selected network
     pub network: Network,
-    /// The base_node_service_config config settings
+    /// DEPRECATED: The base_node_service_config config settings
     #[serde(rename = "base_node")]
     pub base_node_service_config: BaseNodeServiceConfig,
     /// The relative path to store persistent data
@@ -79,10 +87,10 @@ pub struct WalletConfig {
     /// The main wallet password
     #[serde(deserialize_with = "deserialize_safe_password_option")]
     pub password: Option<SafePassword>,
-    /// The auto ping interval to use for contacts liveness data
+    /// DEPRECATED: The auto ping interval to use for contacts liveness data
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
-    /// How long a contact may be not seen before being determined to be offline
+    /// DEPRECATED: How long a contact may be not seen before being determined to be offline
     pub contacts_online_ping_window: usize,
     /// When running the console wallet in command mode, how long to wait for sent transactions.
     #[serde(with = "serializers::seconds")]
@@ -101,8 +109,6 @@ pub struct WalletConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
-    /// A custom base node peer that will be used to obtain metadata from
-    pub custom_base_node: Option<String>,
     /// A list of base node peers that the wallet should use for service requests and tracking chain state
     pub base_node_service_peers: StringList,
     /// The amount of times wallet recovery will be retried before being abandoned
@@ -111,42 +117,57 @@ pub struct WalletConfig {
     pub fee_per_gram: u64,
     /// Number of required transaction confirmations used for UI purposes
     pub num_required_confirmations: u64,
-    /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
-    /// with the optional "libtor" feature flag.
+    /// DEPRECATED: Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet
+    /// DEPRECATED: was built with the optional "libtor" feature flag.
     pub use_libtor: bool,
-    /// A path to the file that stores the base node identity and secret key
+    /// DEPRECATED: A path to the file that stores the wallet identity and secret key
     pub identity_file: Option<PathBuf>,
     /// The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
     /// For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
     /// responsiveness of the wallet with slightly delayed balance updates
     #[serde(with = "serializers::seconds")]
     pub balance_enquiry_cooldown_period: Duration,
-    // How many days do we need to start scanning before our actual birthday
+    /// How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,
+    /// The URL of the HTTP client to use for base node requests
+    pub http_server_url: String,
+    /// The fallback url address to use if the base node at http_server_url does not respond
+    pub fallback_http_server_url: String,
+    /// the scanning interval for the utxo scanner service
+    pub scanning_interval: u64,
+    /// grpc database write timeout in ms. This is how long the grpc server will wait for a database write to complete
+    /// before returning an error to the client. This should be long enough to cover the majority of database writes
+    /// but short enough to avoid blocking the grpc server for too long. Default = 100ms
+    pub grpc_db_write_timeout: u64,
+    /// gRPC broadcast confirmation timeout in ms. This is how long the grpc server will wait for the mempool to
+    /// respond once the transaction has been submitted, either accepted or rejected. Default = 5000ms
+    pub grpc_broadcast_confirmation: u64,
 }
 
 impl Default for WalletConfig {
     fn default() -> Self {
-        let p2p = P2pConfig {
-            datastore_path: PathBuf::from("peer_db/wallet"),
-            listener_self_liveness_check_interval: None,
-            ..Default::default()
-        };
+        let port = wallet_http_service_default_port(Network::get_current());
+        let http_server_url = Url::parse(format!("http://127.0.0.1:{port}").as_str())
+            .expect("This should be a valid URL")
+            .to_string();
+        let fallback_http_server_url = Url::parse(wallet_get_default_seed_https_address(Network::get_current()))
+            .expect("This should be a valid URL")
+            .to_string();
         Self {
             override_from: None,
-            p2p,
+            p2p: P2pConfig { ..Default::default() }, // DEPRECATED
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
-            buffer_size: 50_000,
+            buffer_size: 50_000, // DEPRECATED
             network: Default::default(),
-            base_node_service_config: Default::default(),
+            base_node_service_config: Default::default(), // DEPRECATED
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             config_dir: PathBuf::from_str("config/wallet").unwrap(),
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
             db_connection_pool_size: 16, // Note: Do not reduce this default number
             password: None,
-            contacts_auto_ping_interval: Duration::from_secs(30),
-            contacts_online_ping_window: 30,
+            contacts_auto_ping_interval: Duration::from_secs(30), // DEPRECATED
+            contacts_online_ping_window: 30,                      // DEPRECATED
             command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
@@ -154,15 +175,19 @@ impl Default for WalletConfig {
             grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
-            custom_base_node: None,
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
             fee_per_gram: 5,
             num_required_confirmations: 3,
-            use_libtor: true,
-            identity_file: None,
+            use_libtor: true,    // DEPRECATED
+            identity_file: None, // DEPRECATED
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
+            http_server_url,
+            fallback_http_server_url,
+            scanning_interval: 60,
+            grpc_db_write_timeout: 100,
+            grpc_broadcast_confirmation: 5000,
         }
     }
 }
@@ -184,7 +209,6 @@ impl WalletConfig {
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
         }
-        self.p2p.set_base_path(base_path);
     }
 }
 

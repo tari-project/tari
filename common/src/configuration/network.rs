@@ -157,7 +157,7 @@ impl FromStr for Network {
             invalid => Err(ConfigurationError::new(
                 "network",
                 Some(value.to_string()),
-                format!("Invalid network option: {}", invalid),
+                format!("Invalid network option: {invalid}"),
             )),
         }
     }
@@ -190,9 +190,15 @@ impl TryFrom<u8> for Network {
             _ => Err(ConfigurationError::new(
                 "network",
                 Some(v.to_string()),
-                format!("Invalid network option: {}", v),
+                format!("Invalid network option: {v}"),
             )),
         }
+    }
+}
+
+impl From<Network> for u8 {
+    fn from(n: Network) -> Self {
+        n.as_byte()
     }
 }
 
@@ -293,8 +299,7 @@ mod test {
         }
         if LEGACY_RANGE.contains(&network_wire_byte) {
             return Err(format!(
-                "Invalid network wire byte `{}` for network `{}`",
-                network_wire_byte, network
+                "Invalid network wire byte `{network_wire_byte}` for network `{network}`"
             ));
         }
 
@@ -309,8 +314,7 @@ mod test {
         };
         if !valid {
             return Err(format!(
-                "Invalid network wire byte `{}` for network `{}`",
-                network_wire_byte, network
+                "Invalid network wire byte `{network_wire_byte}` for network `{network}`"
             ));
         }
         Ok(())

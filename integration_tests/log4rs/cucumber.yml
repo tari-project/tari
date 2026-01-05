@@ -63,21 +63,6 @@ appenders:
         pattern: "{{log_dir}}/log/wallet.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
-  base_layer_contacts:
-    kind: rolling_file
-    path: "{{log_dir}}/log/contacts.log"
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 100mb
-      roller:
-        kind: fixed_window
-        base: 1
-        count: 10
-        pattern: "{{log_dir}}/log/contacts.{}.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
@@ -161,33 +146,34 @@ loggers:
     appenders:
       - base_layer_base_node
     additive: false
-  chat_ffi:
-    level: debug
-    appenders:
-      - base_layer_contacts
   wallet:
     level: trace
     appenders:
       - base_layer_wallet
   # miner
   minotari::application:
-    level: debug
+    level: trace
     appenders:
       - miner
     additive: false
   minotari::miner:
-    level: debug
+    level: trace
+    appenders:
+      - miner
+    additive: false
+  minotari::logging::miner:
+    level: trace
     appenders:
       - miner
     additive: false
   minotari_miner:
-    level: debug
+    level: trace
     appenders:
       - miner
     additive: false
   # merge mining proxy
   minotari_mm_proxy::proxy:
-    level: debug
+    level: trace
     appenders:
       - proxy
     additive: false
@@ -224,11 +210,6 @@ loggers:
     appenders:
       - other
     additive: false
-  # Route log events sent to the "contacts" logger to the "network" appender
-  contacts:
-    level: debug
-    appenders:
-      - base_layer_contacts
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
     level: debug

@@ -23,18 +23,17 @@
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
-use tari_common_types::tari_address::TariAddressError;
+use tari_common_types::{seeds::error::MnemonicError, tari_address::TariAddressError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{
-    transaction_components::{EncryptedDataError, TransactionError},
-    transaction_key_manager::error::KeyManagerServiceError,
-    transaction_protocol::TransactionProtocolError,
-};
 use tari_crypto::errors::RangeProofError;
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_transaction_components::{
+    key_manager::error::KeyManagerError,
+    transaction_components::{EncryptedDataError, TransactionError},
+    TransactionBuilderError,
+};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -50,20 +49,20 @@ pub enum OutputManagerError {
     BuildError(String),
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
-    #[error("Transaction protocol error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
     MnemonicError(#[from] MnemonicError),
-    #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("DHT outbound error: `{0}`")]
     DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String, range_exhausted: bool },
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
@@ -80,8 +79,8 @@ pub enum OutputManagerError {
     ApiSendFailed,
     #[error("Error receiving a message from the public API")]
     ApiReceiveFailed,
-    #[error("API returned something unexpected.")]
-    UnexpectedApiResponse,
+    #[error("Unexpected API response with `{0}`")]
+    UnexpectedApiResponse(String),
     #[error("Invalid config provided to Output Manager")]
     InvalidConfig,
     #[error("The response received from another service is an incorrect variant: `{0}`")]
@@ -136,7 +135,7 @@ pub enum OutputManagerError {
     #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
     #[error("Key manager service error: {0}")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptedDataError),
     #[error("No commitments were provided")]
@@ -147,12 +146,18 @@ pub enum OutputManagerError {
     ValidationInProgress,
     #[error("Invalid data: `{0}`")]
     RangeProofError(String),
-    #[error("Transaction is over sized: `{0}`")]
+    #[error("Transaction inputs are over sized: `{0}`")]
     TooManyInputsToFulfillTransaction(String),
+    #[error("Transaction outputs are over sized: `{0}`")]
+    TooManyOutputsToFulfillTransaction(String),
     #[error("Std I/O error: {0}")]
     StdIoError(#[from] std::io::Error),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Base node client error: `{0}`")]
+    BaseNodeClientError(String),
+    #[error("Invalid payment ID format: `{0}`")]
+    InvalidPaymentIdFormat(String),
 }
 
 impl From<RangeProofError> for OutputManagerError {
@@ -187,6 +192,8 @@ pub enum OutputManagerStorageError {
     ValuesNotFound,
     #[error("Error converting a type: {reason}")]
     ConversionError { reason: String },
+    #[error("Error processing range limit output selection criteria: {reason}")]
+    RangeLimitError { reason: String },
     #[error("Output has already been spent")]
     OutputAlreadySpent,
     #[error("Output is already encumbered")]
@@ -216,7 +223,7 @@ pub enum OutputManagerStorageError {
     #[error("Binary not stored as valid hex:{0}")]
     HexError(String),
     #[error("Key Manager Service Error: `{0}`")]
-    KeyManagerServiceError(#[from] KeyManagerServiceError),
+    KeyManagerServiceError(#[from] KeyManagerError),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
     #[error("Error: `{0}`")]
@@ -239,7 +246,7 @@ impl From<ByteArrayError> for OutputManagerStorageError {
 
 impl From<OutputManagerError> for ExitError {
     fn from(err: OutputManagerError) -> Self {
-        log::error!(target: crate::error::LOG_TARGET, "{}", err);
+        log::error!(target: crate::error::LOG_TARGET, "{err}");
         Self::new(ExitCode::WalletError, err.to_string())
     }
 }

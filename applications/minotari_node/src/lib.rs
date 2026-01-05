@@ -31,6 +31,7 @@ mod builder;
 pub mod cli;
 mod commands;
 pub mod config;
+mod consensus_constants_tracker;
 mod grpc;
 mod grpc_method;
 #[cfg(feature = "metrics")]
@@ -38,13 +39,19 @@ mod metrics;
 mod recovery;
 mod utils;
 
+mod http;
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 pub use grpc_method::GrpcMethod;
+pub use http::HttpCacheConfig;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    tari_rpc::{self, readiness_status::State as ReadinessState},
+    tls::identity::read_identity,
+};
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
@@ -54,16 +61,19 @@ use tari_common::{
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::task;
+use tokio::{
+    task::{self, JoinHandle},
+    time::timeout,
+};
 use tonic::{
     codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
 };
 
-use crate::cli::Cli;
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
 #[cfg(feature = "metrics")]
 pub use crate::metrics::MetricsConfig;
+use crate::{cli::Cli, grpc::readiness_grpc_server::ReadinessGrpcServer};
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 
@@ -92,10 +102,9 @@ pub async fn run_base_node(
         non_interactive_mode: true,
         watch: None,
         profile_with_tokio_console: false,
-        grpc_enabled: false,
         mining_enabled: false,
         second_layer_grpc_enabled: false,
-        disable_splash_screen: false,
+        disable_splash_screen: true,
         libtor_data_dir: None,
     };
 
@@ -119,43 +128,61 @@ pub async fn run_base_node_with_cli(
         );
     }
 
+    let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
+
+    let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
+    let mut readiness_grpc_shutdown = Shutdown::new();
+    let mut readiness_task: Option<JoinHandle<Result<(), anyhow::Error>>> = None;
+    if config.base_node.grpc_enabled {
+        readiness_task = Some(task::spawn(run_grpc(
+            readiness_grpc_server,
+            grpc_address.clone(),
+            auth.clone(),
+            tls_identity.clone(),
+            readiness_grpc_shutdown.to_signal(),
+        )));
+    } else {
+        info!(target: LOG_TARGET, "base_node.grpc_enabled is set to false. gRPC server is disabled.");
+    }
+    readiness_handler.send_readiness_status(ReadinessState::StartingUp);
+
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
+        readiness_handler.send_readiness_status(ReadinessState::RecoveringPreparing);
         recovery::initiate_recover_db(&config.base_node)?;
-        recovery::run_recovery(&config.base_node)
+        readiness_handler.send_readiness_status(ReadinessState::RecoveringRebuilding);
+        recovery::run_recovery(&config.base_node, readiness_handler)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
     };
 
     // Build, node, build!
-    let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
-
-    if config.base_node.grpc_enabled {
-        let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
-            let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
-            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
-        });
-        // Go, GRPC, go go
-        let grpc =
-            grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
-        let auth = config.base_node.grpc_authentication.clone();
-
-        let mut tls_identity = None;
-        if config.base_node.grpc_tls_enabled {
-            tls_identity = read_identity(config.base_node.config_dir.clone())
-                .await
-                .map(Some)
-                .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
-        }
-        task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
-    }
+    let ctx =
+        builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal(), &readiness_handler)
+            .await?;
 
     ctx.start()
-        .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{e:?}")))?;
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
+    readiness_handler.send_readiness_status(ReadinessState::Ready);
+
+    // Go, GRPC, go go
+    let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
+
+    readiness_grpc_shutdown.trigger();
+    if let Some(task) = readiness_task {
+        if let Err(e) = timeout(std::time::Duration::from_millis(500), task).await {
+            error!("Readiness task failed to shutdown: {e}");
+        }
+    }
+
+    if config.base_node.grpc_enabled {
+        task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
+    }
+
     let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
     if cli.non_interactive_mode {
         println!("Node started in non-interactive mode (pid = {})", process::id());
@@ -181,14 +208,14 @@ pub async fn run_base_node_with_cli(
 }
 
 /// Runs the gRPC server
-async fn run_grpc(
-    grpc: grpc::base_node_grpc_server::BaseNodeGrpcServer,
+async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
+    grpc: T,
     grpc_address: Multiaddr,
     auth_config: GrpcAuthentication,
     tls_identity: Option<Identity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
+    info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
@@ -210,10 +237,32 @@ async fn run_grpc(
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an error: {:?}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {err:?}");
             err
         })?;
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
+}
+
+/// Prepares the parameters required to call the `run_grpc` function
+async fn prepare_grpc_params(
+    config: &ApplicationConfig,
+) -> Result<(Multiaddr, GrpcAuthentication, Option<Identity>), ExitError> {
+    let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
+        let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
+        format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap()
+    });
+
+    let auth = config.base_node.grpc_authentication.clone();
+
+    let mut tls_identity = None;
+    if config.base_node.grpc_tls_enabled {
+        tls_identity = read_identity(config.base_node.config_dir.clone())
+            .await
+            .map(Some)
+            .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
+    }
+
+    Ok((grpc_address, auth, tls_identity))
 }

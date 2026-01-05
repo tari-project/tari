@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
@@ -32,7 +33,6 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,
@@ -46,34 +46,24 @@ use minotari_wallet::{
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
 use tari_common_types::{
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::CompressedPublicKey,
-    wallet_types::WalletType,
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
+    types::{CompressedPublicKey, PrivateKey},
 };
-use tari_comms::{
-    connectivity::ConnectivityEventRx,
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-};
-use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
-use tari_core::transactions::{
+use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
-        encrypted_data::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         OutputFeatures,
-        TemplateType,
         TransactionError,
     },
     weight::TransactionWeight,
 };
-use tari_shutdown::ShutdownSignal;
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
-use tokio::{
-    sync::{broadcast, watch, RwLock},
-    task,
-};
+use tokio::sync::{watch, RwLock};
 
 use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
@@ -81,15 +71,12 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_burn_transaction_task, send_register_template_transaction_task, send_transaction_task},
+            tasks::send_burn_transaction_task,
             wallet_event_monitor::WalletEventMonitor,
         },
-        ui_burnt_proof::UiBurntProof,
-        ui_contact::UiContact,
+        ui_burnt_proof::UiBurnProof,
         ui_error::UiError,
     },
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
@@ -102,21 +89,13 @@ pub struct AppState {
     completed_tx_filter: TransactionFilter,
     config: AppStateConfig,
     wallet_config: WalletConfig,
-    wallet_connectivity: WalletConnectivityHandle,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
 
 impl AppState {
-    pub fn new(
-        wallet_identity: &WalletIdentity,
-        wallet: WalletSqlite,
-        base_node_selected: Peer,
-        base_node_config: PeerConfig,
-        wallet_config: WalletConfig,
-    ) -> Self {
-        let wallet_connectivity = wallet.wallet_connectivity.clone();
+    pub fn new(wallet_identity: &WalletIdentity, wallet: WalletSqlite, wallet_config: WalletConfig) -> Self {
         let output_manager_service = wallet.output_manager_service.clone();
-        let inner = AppStateInner::new(wallet_identity, wallet, base_node_selected, base_node_config);
+        let inner = AppStateInner::new(wallet_identity, wallet);
         let cached_data = inner.data.clone();
 
         let inner = Arc::new(RwLock::new(inner));
@@ -126,7 +105,6 @@ impl AppState {
             cache_update_cooldown: None,
             config: AppStateConfig::default(),
             completed_tx_filter: TransactionFilter::AbandonedCoinbases,
-            wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
                 wallet_config.balance_enquiry_cooldown_period,
@@ -165,26 +143,9 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-        inner.refresh_contacts_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
-    }
-
     pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
-        inner.refresh_burnt_proofs_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
-    }
-
-    pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
-        self.check_connectivity().await;
-        let mut inner = self.inner.write().await;
-        inner.refresh_connected_peers_state().await?;
+        inner.refresh_burn_proofs_state().await?;
         drop(inner);
         self.update_cache().await;
         Ok(())
@@ -213,112 +174,18 @@ impl AppState {
         }
     }
 
-    pub async fn check_connectivity(&mut self) {
-        if self.get_custom_base_node().is_none() &&
-            self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
-        {
-            let current = self.get_selected_base_node();
-            let list = self.get_base_node_list().clone();
-            let mut index: usize = list.iter().position(|(_, p)| p == current).unwrap_or_default();
-            if !list.is_empty() {
-                if index == list.len() - 1 {
-                    index = 0;
-                } else {
-                    index += 1;
-                }
-                let (_, next) = &list[index];
-                if let Err(e) = self.set_base_node_peer(next.clone()).await {
-                    error!(target: LOG_TARGET, "Base node offline: {:?}", e);
-                }
-            }
-        }
-    }
-
-    pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-
-        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
-
-        let contact = Contact::new(alias, address, None, None, false);
-        inner.wallet.contacts_service.upsert_contact(contact).await?;
-
-        inner.refresh_contacts_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
-    }
-
-    // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, address_string: String) -> String {
-        if address_string == TariAddress::default().to_base58() {
-            return "Offline payment".to_string();
-        }
-
-        match self
-            .cached_data
-            .contacts
-            .iter()
-            .find(|&contact| contact.address.eq(&address_string))
-        {
-            Some(contact) => contact.alias.clone(),
-            None => address_string,
-        }
-    }
-
-    pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
-
-        inner.wallet.contacts_service.remove_contact(address).await?;
-
-        inner.refresh_contacts_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
-    }
-
-    pub async fn delete_burnt_proof(&mut self, proof_id: u32) -> Result<(), UiError> {
+    pub async fn delete_burnt_proof(&mut self, proof_id: i32) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
         inner
             .wallet
             .db
-            .delete_burnt_proof(proof_id)
+            .delete_burn_proof(proof_id)
             .map_err(UiError::WalletStorageError)?;
 
-        inner.refresh_burnt_proofs_state().await?;
+        inner.refresh_burn_proofs_state().await?;
         drop(inner);
         self.update_cache().await;
-
-        Ok(())
-    }
-
-    pub async fn send_transaction(
-        &mut self,
-        address: String,
-        amount: u64,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: u64,
-        payment_id: PaymentId,
-        result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
-
-        let output_features = OutputFeatures { ..Default::default() };
-
-        let fee_per_gram = fee_per_gram * uT;
-        let tx_service_handle = inner.wallet.transaction_service.clone();
-        tokio::spawn(send_transaction_task(
-            address,
-            MicroMinotari::from(amount),
-            selection_criteria,
-            output_features,
-            payment_id,
-            fee_per_gram,
-            tx_service_handle,
-            result_tx,
-        ));
 
         Ok(())
     }
@@ -329,11 +196,11 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&address)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -360,7 +227,8 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
+        sidechain_deployment_key: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -388,6 +256,10 @@ impl AppState {
             },
         };
 
+        let sidechain_deploy_key = sidechain_deployment_key
+            .map(|sidechain_id| PrivateKey::from_hex(sidechain_id.as_str()).map_err(|_| UiError::PublicKeyParseError))
+            .transpose()?;
+
         send_burn_transaction_task(
             burn_proof_filepath,
             claim_public_key,
@@ -395,43 +267,8 @@ impl AppState {
             selection_criteria,
             payment_id,
             fee_per_gram,
+            sidechain_deploy_key,
             tx_service_handle,
-            inner.wallet.db.clone(),
-            result_tx,
-        )
-        .await;
-
-        Ok(())
-    }
-
-    pub async fn register_code_template(
-        &mut self,
-        template_name: String,
-        template_version: u16,
-        template_type: TemplateType,
-        binary_url: String,
-        binary_sha: String,
-        repository_url: String,
-        repository_commit_hash: String,
-        fee_per_gram: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
-        result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let tx_service_handle = inner.wallet.transaction_service.clone();
-
-        send_register_template_transaction_task(
-            template_name,
-            template_version,
-            template_type,
-            repository_url,
-            repository_commit_hash,
-            binary_url,
-            binary_sha,
-            fee_per_gram,
-            selection_criteria,
-            tx_service_handle,
-            inner.wallet.db.clone(),
             result_tx,
         )
         .await;
@@ -442,7 +279,7 @@ impl AppState {
     pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let mut tx_service_handle = inner.wallet.transaction_service.clone();
-        tx_service_handle.cancel_transaction(tx_id).await?;
+        tx_service_handle.cancel_pending_transaction(tx_id).await?;
         Ok(())
     }
 
@@ -453,51 +290,28 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn restart_transaction_protocols(&mut self) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let mut tx_service = inner.wallet.transaction_service.clone();
-        tx_service.restart_transaction_protocols().await?;
-        Ok(())
+    pub fn get_http_node_url(&self) -> String {
+        self.cached_data.wallet_current_connected_node.clone()
+    }
+
+    pub fn get_wallet_scanned_height(&self) -> u64 {
+        self.cached_data.wallet_scanned_height
+    }
+
+    pub fn get_base_node_latency(&self) -> Option<Duration> {
+        self.cached_data.base_node_latency
+    }
+
+    pub fn get_wallet_tip_height(&self) -> u64 {
+        self.cached_data.wallet_tip_height
     }
 
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }
 
-    pub fn get_burnt_proofs(&self) -> &[UiBurntProof] {
+    pub fn get_burn_proofs(&self) -> &[UiBurnProof] {
         self.cached_data.burnt_proofs.as_slice()
-    }
-
-    pub fn get_burnt_proof_by_index(&self, idx: usize) -> Option<&UiBurntProof> {
-        self.cached_data.burnt_proofs.get(idx)
-    }
-
-    pub fn get_contacts(&self) -> &[UiContact] {
-        self.cached_data.contacts.as_slice()
-    }
-
-    pub fn get_contact(&self, index: usize) -> Option<&UiContact> {
-        if index < self.cached_data.contacts.len() {
-            Some(&self.cached_data.contacts[index])
-        } else {
-            None
-        }
-    }
-
-    pub fn get_contacts_slice(&self, start: usize, end: usize) -> &[UiContact] {
-        if self.cached_data.contacts.is_empty() || start > end || end > self.cached_data.contacts.len() {
-            return &[];
-        }
-
-        &self.cached_data.contacts[start..end]
-    }
-
-    pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
-        if self.cached_data.burnt_proofs.is_empty() || start >= end {
-            return &[];
-        }
-
-        &self.cached_data.burnt_proofs[start..end]
     }
 
     pub fn get_pending_txs(&self) -> &Vec<CompletedTransactionInfo> {
@@ -525,7 +339,7 @@ impl AppState {
             self.cached_data
                 .completed_txs
                 .iter()
-                .filter(|tx| !matches!(tx.status, TransactionStatus::CoinbaseNotInBlockChain))
+                .filter(|tx| !matches!(tx.status, LegacyTransactionStatus::CoinbaseNotInBlockChain))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -545,74 +359,12 @@ impl AppState {
         }
     }
 
-    pub fn get_connected_peers(&self) -> &Vec<Peer> {
-        &self.cached_data.connected_peers
-    }
-
     pub fn get_balance(&self) -> &Balance {
         &self.cached_data.balance
     }
 
     pub fn get_base_node_state(&self) -> &BaseNodeState {
         &self.cached_data.base_node_state
-    }
-
-    pub fn get_wallet_scanned_height(&self) -> u64 {
-        self.cached_data.wallet_scanned_height
-    }
-
-    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
-        self.wallet_connectivity.clone()
-    }
-
-    pub fn get_selected_base_node(&self) -> &Peer {
-        &self.cached_data.base_node_selected
-    }
-
-    pub fn get_previous_base_node(&self) -> &Peer {
-        &self.cached_data.base_node_previous
-    }
-
-    pub fn get_custom_base_node(&self) -> &Option<Peer> {
-        &self.cached_data.base_node_peer_custom
-    }
-
-    pub fn get_base_node_list(&self) -> &Vec<(String, Peer)> {
-        &self.cached_data.base_node_list
-    }
-
-    pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-        inner.set_base_node_peer(peer).await?;
-        Ok(())
-    }
-
-    pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
-        let pub_key = CompressedPublicKey::from_hex(public_key.as_str())?;
-        let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
-        let node_id = NodeId::from_key(&pub_key);
-        let peer = Peer::new(
-            pub_key,
-            node_id,
-            MultiaddressesWithStats::from_addresses_with_source(vec![addr], &PeerAddressSource::Config),
-            PeerFlags::default(),
-            PeerFeatures::COMMUNICATION_NODE,
-            Default::default(),
-            Default::default(),
-        );
-
-        let mut inner = self.inner.write().await;
-        inner.set_custom_base_node_peer(peer.clone()).await?;
-        Ok(peer)
-    }
-
-    pub async fn clear_custom_base_node(&mut self) -> Result<(), UiError> {
-        {
-            let mut inner = self.inner.write().await;
-            inner.clear_custom_base_node_peer().await?;
-        }
-        self.update_cache().await;
-        Ok(())
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
@@ -651,7 +403,7 @@ impl AppState {
         self.inner.read().await.get_network()
     }
 
-    pub async fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+    pub async fn get_wallet_type(&self) -> Result<LegacyWalletType, UiError> {
         let inner = self.inner.write().await;
         inner.get_wallet_type()
     }
@@ -663,14 +415,16 @@ pub struct AppStateInner {
 }
 
 impl AppStateInner {
-    pub fn new(
-        wallet_identity: &WalletIdentity,
-        wallet: WalletSqlite,
-        base_node_selected: Peer,
-        base_node_config: PeerConfig,
-    ) -> Self {
-        let data = AppStateData::new(wallet_identity, base_node_selected, base_node_config);
+    pub fn new(wallet_identity: &WalletIdentity, wallet: WalletSqlite) -> Self {
+        let mut data = AppStateData::new(wallet_identity);
+        let last_scanned_height = wallet
+            .db
+            .get_last_scanned_height()
+            .unwrap_or_default()
+            .unwrap_or_default();
 
+        data.wallet_tip_height = last_scanned_height;
+        data.wallet_scanned_height = last_scanned_height;
         AppStateInner {
             updated: false,
             data,
@@ -678,7 +432,7 @@ impl AppStateInner {
         }
     }
 
-    pub fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+    pub fn get_wallet_type(&self) -> Result<LegacyWalletType, UiError> {
         self.wallet
             .db
             .get_wallet_type()
@@ -726,8 +480,8 @@ impl AppStateInner {
                 .transaction_service
                 .get_pending_inbound_transactions()
                 .await?
-                .iter()
-                .map(|t| CompletedTransaction::from(t.clone()))
+                .into_iter()
+                .map(CompletedTransaction::from)
                 .collect::<Vec<CompletedTransaction>>(),
         );
         pending_transactions.extend(
@@ -735,17 +489,17 @@ impl AppStateInner {
                 .transaction_service
                 .get_pending_outbound_transactions()
                 .await?
-                .iter()
-                .map(|t| CompletedTransaction::from(t.clone()))
+                .into_iter()
+                .map(|t| CompletedTransaction::from_outbound(t, Vec::new()))
                 .collect::<Vec<CompletedTransaction>>(),
         );
         pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {
             b.timestamp.partial_cmp(&a.timestamp).unwrap()
         });
         self.data.pending_txs = pending_transactions
-            .iter()
+            .into_iter()
             .map(|tx| {
-                CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight())
+                CompletedTransactionInfo::from_completed_transaction(tx, &self.get_transaction_weight())
                     .map_err(|e| UiError::TransactionError(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -754,14 +508,14 @@ impl AppStateInner {
         completed_transactions.extend(
             self.wallet
                 .transaction_service
-                .get_completed_transactions(None, None, None)
+                .get_completed_transactions(None, None, None, 500)
                 .await?,
         );
 
         completed_transactions.extend(
             self.wallet
                 .transaction_service
-                .get_cancelled_completed_transactions()
+                .get_cancelled_completed_transactions(100)
                 .await?,
         );
         completed_transactions.sort_by(|a, b| {
@@ -777,8 +531,103 @@ impl AppStateInner {
                     .map_err(|e| UiError::TransactionError(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // Calculate payment references for completed transactions using optimized approach
+        self.calculate_payment_references_for_specific_transactions(&completed_transactions)
+            .await?;
+
         self.updated = true;
         Ok(())
+    }
+
+    async fn calculate_payment_references_for_specific_transactions(
+        &mut self,
+        completed_transactions: &[CompletedTransaction],
+    ) -> Result<(), UiError> {
+        debug!(
+            target: LOG_TARGET,
+            "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions",
+            completed_transactions.len()
+        );
+
+        // Get current tip height for confirmation calculations
+        let current_tip_height = self.wallet.db.get_last_scanned_height()?.unwrap_or(0);
+
+        // Create lookup maps: TxId -> (PayRef hex, status)
+        let mut payref_by_tx_id = HashMap::new();
+        let mut payref_status_by_tx_id = HashMap::new();
+
+        // Process each completed transaction directly
+        for completed_transaction in completed_transactions {
+            let tx_id = completed_transaction.tx_id;
+
+            // Check if transaction has been mined
+            if let Some(block_hash) = &completed_transaction.mined_in_block {
+                let mined_height = completed_transaction.mined_height.unwrap_or(0);
+                let confirmations = current_tip_height.saturating_sub(mined_height);
+
+                // this might change in future, but currently we only have a single "sent" output per transaction
+                // So we can make some assumptions here
+                let output_hash = if completed_transaction.direction == TransactionDirection::Inbound {
+                    completed_transaction.received_output_hashes.first()
+                } else {
+                    completed_transaction.sent_output_hashes.first()
+                };
+                // For the first output in the transaction, calculate PayRef directly
+                if let Some(output_hash) = output_hash {
+                    let payref = generate_payment_reference(block_hash, output_hash);
+                    let payref_hex = payref.to_hex();
+                    // Determine status based on confirmations
+                    let required_confirmations = 5; // Default confirmation requirement
+                    let (payref_hex_opt, status_text) = if confirmations >= required_confirmations {
+                        (
+                            Some(payref_hex.clone()),
+                            format!("Available ({confirmations} confirmations)"),
+                        )
+                    } else {
+                        let remaining = required_confirmations - confirmations;
+                        (
+                            None,
+                            format!(
+                                "Pending ({confirmations}/{required_confirmations} confirmations, {remaining} blocks \
+                                 remaining)"
+                            ),
+                        )
+                    };
+                    if let Some(payref_hex) = payref_hex_opt {
+                        payref_by_tx_id.insert(tx_id.as_u64(), payref_hex.clone());
+                    }
+
+                    payref_status_by_tx_id.insert(tx_id.as_u64(), status_text);
+                }
+            } else {
+                // Transaction not mined yet
+                payref_status_by_tx_id.insert(tx_id.as_u64(), "Not Mined".to_string());
+            }
+        }
+
+        // Update completed transactions with their payment references
+        for tx in &mut self.data.completed_txs {
+            // Look up payment reference by transaction ID
+            if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id.as_u64()) {
+                tx.payment_reference_hex = Some(payref_hex.clone());
+            }
+
+            // Always set the status, regardless of whether PayRef is available
+            if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
+                tx.payment_reference_status = Some(status.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn should_we_trigger_tx_update_for_payref(&self) -> bool {
+        for tx in &self.data.completed_txs {
+            if tx.payment_reference_hex.is_none() {
+                return true;
+            }
+        }
+        false
     }
 
     pub async fn refresh_single_confirmation_state(&mut self, tx_id: TxId, confirmations: u64) -> Result<(), UiError> {
@@ -817,19 +666,21 @@ impl AppStateInner {
                         None
                     });
             },
-            Some(tx) => {
-                let tx =
-                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight())
-                        .map_err(|e| UiError::TransactionError(e.to_string()))?;
+            Some(txn) => {
+                let tx = CompletedTransactionInfo::from_completed_transaction(
+                    txn.clone().into(),
+                    &self.get_transaction_weight(),
+                )
+                .map_err(|e| UiError::TransactionError(e.to_string()))?;
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
-                    if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
+                    if tx.status == LegacyTransactionStatus::Pending && tx.cancelled.is_none() {
                         self.data.pending_txs[index] = tx;
                         self.updated = true;
                         return Ok(());
                     } else {
                         let _completed_transaction_info = self.data.pending_txs.remove(index);
                     }
-                } else if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
+                } else if tx.status == LegacyTransactionStatus::Pending && tx.cancelled.is_none() {
                     self.data.pending_txs.push(tx);
                     self.data.pending_txs.sort_by(|a, b| {
                         b.timestamp
@@ -852,103 +703,30 @@ impl AppStateInner {
                         .partial_cmp(&a.timestamp)
                         .expect("Should be able to compare timestamps")
                 });
+                self.calculate_payment_references_for_specific_transactions(&[txn.into()])
+                    .await?;
             },
         }
         self.updated = true;
         Ok(())
     }
 
-    pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
-        let db_contacts = self.wallet.contacts_service.get_contacts().await?;
-        let mut ui_contacts: Vec<UiContact> = vec![];
-        for contact in db_contacts {
-            // A contact's online status is a function of current time and can therefore not be stored in a database
-            let online_status = self
-                .wallet
-                .contacts_service
-                .get_contact_online_status(contact.clone())
-                .await?;
-            ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{}", online_status)));
-        }
+    pub async fn refresh_burn_proofs_state(&mut self) -> Result<(), UiError> {
+        // Sorted by created_at DESC in the DB query
+        let db_burn_proofs = self.wallet.db.get_all_burn_proofs()?;
+        let mut ui_proofs = Vec::with_capacity(db_burn_proofs.len());
 
-        ui_contacts.sort_by(|a, b| {
-            a.alias
-                .partial_cmp(&b.alias)
-                .expect("Should be able to compare contact aliases")
-        });
-
-        self.data.contacts = ui_contacts;
-        self.refresh_network_id().await?;
-        self.updated = true;
-        Ok(())
-    }
-
-    pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
-        let db_burnt_proofs = self.wallet.db.fetch_burnt_proofs()?;
-        let mut ui_proofs: Vec<UiBurntProof> = vec![];
-
-        for proof in db_burnt_proofs {
-            ui_proofs.push(UiBurntProof {
-                id: proof.0,
-                reciprocal_claim_public_key: proof.1,
-                payload: proof.2,
-                burned_at: proof.3,
+        for proof in db_burn_proofs {
+            ui_proofs.push(UiBurnProof {
+                id: proof.id,
+                proof: proof.burn_proof,
+                encoded_merkle_proof: proof.kernel_merkle_proof,
+                kernel: proof.kernel,
+                burned_at: proof.created_at,
             });
         }
 
-        ui_proofs.sort_by(|a, b| a.burned_at.cmp(&b.burned_at));
-
         self.data.burnt_proofs = ui_proofs;
-        self.updated = true;
-        Ok(())
-    }
-
-    pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
-        let wallet_id = self.wallet.get_wallet_id().await?;
-        let qr_link = format!(
-            "tari://{}/transactions/send?tariAddress={}",
-            wallet_id.network(),
-            wallet_id.address_interactive.to_base58()
-        );
-        let code = QrCode::new(qr_link).unwrap();
-        let image = code
-            .render::<unicode::Dense1x2>()
-            .dark_color(unicode::Dense1x2::Dark)
-            .light_color(unicode::Dense1x2::Light)
-            .build()
-            .lines()
-            .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
-        let identity = MyIdentity {
-            tari_address_interactive: wallet_id.address_interactive.clone(),
-            tari_address_one_sided: wallet_id.address_one_sided.clone(),
-            network_address: wallet_id
-                .node_identity
-                .public_addresses()
-                .iter()
-                .map(|a| a.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
-            qr_code: image,
-            node_id: wallet_id.node_identity.node_id().to_string(),
-            public_key: wallet_id.node_identity.public_key().to_string(),
-        };
-        self.data.my_identity = identity;
-        self.updated = true;
-        Ok(())
-    }
-
-    pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
-        self.refresh_network_id().await?;
-        let connections = self.wallet.comms.connectivity().get_active_connections().await?;
-        let peer_manager = self.wallet.comms.peer_manager();
-        let mut peers = Vec::with_capacity(connections.len());
-        for c in &connections {
-            if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
-                peers.push(p);
-            }
-        }
-        self.data.connected_peers = peers;
         self.updated = true;
         Ok(())
     }
@@ -976,40 +754,30 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn refresh_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
-        self.data.base_node_selected = peer;
+    pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64, tip_height: u64) -> Result<(), UiError> {
+        self.data.wallet_scanned_height = height;
+        self.data.wallet_tip_height = tip_height;
         self.updated = true;
         Ok(())
     }
 
-    pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64) -> Result<(), UiError> {
-        self.data.wallet_scanned_height = height;
+    pub async fn trigger_wallet_latency_node_update(&mut self, latency: Duration, name: String) -> Result<(), UiError> {
+        self.data.base_node_latency = Some(latency);
+        self.data.wallet_current_connected_node = name;
         self.updated = true;
         Ok(())
     }
 
     pub fn get_shutdown_signal(&self) -> ShutdownSignal {
-        self.wallet.comms.shutdown_signal()
+        self.wallet.shutdown_signal.clone()
     }
 
     pub fn get_transaction_service_event_stream(&self) -> TransactionEventReceiver {
         self.wallet.transaction_service.get_event_stream()
     }
 
-    pub fn get_contacts_liveness_event_stream(&self) -> broadcast::Receiver<Arc<ContactsLivenessEvent>> {
-        self.wallet.contacts_service.get_contacts_liveness_event_stream()
-    }
-
     pub fn get_output_manager_service_event_stream(&self) -> OutputManagerEventReceiver {
         self.wallet.output_manager_service.get_event_stream()
-    }
-
-    pub fn get_connectivity_event_stream(&self) -> ConnectivityEventRx {
-        self.wallet.comms.connectivity().get_event_subscription()
-    }
-
-    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
-        self.wallet.wallet_connectivity.clone()
     }
 
     pub fn get_wallet_utxo_scanner(&self) -> UtxoScannerHandle {
@@ -1018,131 +786,6 @@ impl AppStateInner {
 
     pub fn get_base_node_event_stream(&self) -> BaseNodeEventReceiver {
         self.wallet.base_node_service.get_event_stream()
-    }
-
-    pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
-        self.wallet
-            .set_base_node_peer(
-                peer.public_key.clone(),
-                Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
-                None,
-            )
-            .await?;
-
-        self.spawn_restart_transaction_protocols_task();
-        self.spawn_transaction_revalidation_task();
-
-        self.data.base_node_previous = self.data.base_node_selected.clone();
-        self.data.base_node_selected = peer.clone();
-        self.updated = true;
-
-        info!(
-            target: LOG_TARGET,
-            "Setting new base node peer for wallet: {}::{}",
-            peer.public_key,
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
-        );
-
-        Ok(())
-    }
-
-    pub async fn set_custom_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
-        self.wallet
-            .set_base_node_peer(
-                peer.public_key.clone(),
-                Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
-                None,
-            )
-            .await?;
-
-        self.spawn_restart_transaction_protocols_task();
-        self.spawn_transaction_revalidation_task();
-
-        self.data.base_node_previous = self.data.base_node_selected.clone();
-        self.data.base_node_selected = peer.clone();
-        self.data.base_node_peer_custom = Some(peer.clone());
-        if let Some(pos) = self
-            .data
-            .base_node_list
-            .iter()
-            .position(|(s, _)| s == "Custom Base Node")
-        {
-            self.data.base_node_list.remove(pos);
-        }
-        self.data
-            .base_node_list
-            .insert(0, ("Custom Base Node".to_string(), peer.clone()));
-        self.updated = true;
-
-        // persist the custom node in wallet db
-        self.wallet
-            .db
-            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())?;
-        self.wallet.db.set_client_key_value(
-            CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
-        )?;
-        info!(
-            target: LOG_TARGET,
-            "Setting custom base node peer for wallet: {}::{}",
-            peer.public_key,
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
-        );
-
-        Ok(())
-    }
-
-    pub async fn clear_custom_base_node_peer(&mut self) -> Result<(), UiError> {
-        let previous = self.data.base_node_previous.clone();
-        self.wallet
-            .set_base_node_peer(
-                previous.public_key.clone(),
-                Some(previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
-                None,
-            )
-            .await?;
-
-        self.spawn_restart_transaction_protocols_task();
-        self.spawn_transaction_revalidation_task();
-
-        self.data.base_node_peer_custom = None;
-        self.data.base_node_selected = previous;
-        self.data.base_node_list.remove(0);
-        self.updated = true;
-
-        // clear from wallet db
-        self.wallet
-            .db
-            .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())?;
-        self.wallet
-            .db
-            .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())?;
-        Ok(())
-    }
-
-    pub fn spawn_transaction_revalidation_task(&mut self) {
-        let mut txn_service = self.wallet.transaction_service.clone();
-        let mut output_manager_service = self.wallet.output_manager_service.clone();
-
-        task::spawn(async move {
-            if let Err(e) = txn_service.validate_transactions().await {
-                error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-            }
-
-            if let Err(e) = output_manager_service.validate_txos().await {
-                error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-            }
-        });
-    }
-
-    pub fn spawn_restart_transaction_protocols_task(&mut self) {
-        let mut txn_service = self.wallet.transaction_service.clone();
-
-        task::spawn(async move {
-            if let Err(e) = txn_service.restart_transaction_protocols().await {
-                error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
-            }
-        });
     }
 
     pub fn add_notification(&mut self, notification: String) {
@@ -1178,7 +821,7 @@ pub struct CompletedTransactionInfo {
     pub fee: MicroMinotari,
     pub excess_signature: String,
     pub maturity: u64,
-    pub status: TransactionStatus,
+    pub status: LegacyTransactionStatus,
     pub timestamp: NaiveDateTime,
     pub mined_timestamp: Option<NaiveDateTime>,
     pub cancelled: Option<TxCancellationReason>,
@@ -1187,9 +830,11 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
-    pub payment_id: Option<PaymentId>,
+    pub payment_id: Option<MemoField>,
     pub coinbase: bool,
     pub burn: bool,
+    pub payment_reference_hex: Option<String>,
+    pub payment_reference_status: Option<String>, // "Available", "Pending 3/5", "Not Mined", etc.
 }
 
 impl CompletedTransactionInfo {
@@ -1215,10 +860,7 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
-        } else if let PaymentId::Open { tx_type, .. } |
-        PaymentId::AddressAndData { tx_type, .. } |
-        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
-        {
+        } else if let Some(tx_type) = tx.payment_id.get_tx_type() {
             tx_type == TxType::Burn
         } else {
             false
@@ -1250,6 +892,8 @@ impl CompletedTransactionInfo {
             payment_id: Some(tx.payment_id),
             coinbase,
             burn,
+            payment_reference_hex: None,    // Will be populated when transactions are loaded
+            payment_reference_status: None, // Will be populated when transactions are loaded
         })
     }
 }
@@ -1260,19 +904,16 @@ struct AppStateData {
     completed_txs: Vec<CompletedTransactionInfo>,
     confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
-    contacts: Vec<UiContact>,
-    burnt_proofs: Vec<UiBurntProof>,
-    connected_peers: Vec<Peer>,
+    burnt_proofs: Vec<UiBurnProof>,
     balance: Balance,
     base_node_state: BaseNodeState,
-    base_node_selected: Peer,
-    base_node_previous: Peer,
-    base_node_list: Vec<(String, Peer)>,
-    base_node_peer_custom: Option<Peer>,
     all_events: VecDeque<EventListItem>,
     notifications: Vec<(DateTime<Local>, String)>,
     new_notification_count: u32,
     wallet_scanned_height: u64,
+    wallet_tip_height: u64,
+    wallet_current_connected_node: String,
+    base_node_latency: Option<Duration>,
 }
 
 #[derive(Clone)]
@@ -1282,7 +923,7 @@ pub struct EventListItem {
 }
 
 impl AppStateData {
-    pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
+    pub fn new(wallet_identity: &WalletIdentity) -> Self {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network(),
@@ -1296,10 +937,9 @@ impl AppStateData {
             .build()
             .lines()
             .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
+            .fold("".to_string(), |acc, l| format!("{acc}{l}\n"));
 
         let identity = MyIdentity {
-            tari_address_interactive: wallet_identity.address_interactive.clone(),
             tari_address_one_sided: wallet_identity.address_one_sided.clone(),
             network_address: wallet_identity
                 .node_identity
@@ -1312,54 +952,29 @@ impl AppStateData {
             node_id: wallet_identity.node_identity.node_id().to_string(),
             public_key: wallet_identity.node_identity.public_key().to_string(),
         };
-        let base_node_previous = base_node_selected.clone();
-
-        // set up our base node list from config
-        let mut base_node_list = base_node_config
-            .base_node_peers
-            .iter()
-            .map(|peer| ("Service Peer".to_string(), peer.clone()))
-            .collect::<Vec<(String, Peer)>>();
-
-        // add peer seeds
-        let peer_seeds = base_node_config
-            .peer_seeds
-            .iter()
-            .map(|peer| ("Peer Seed".to_string(), peer.clone()))
-            .collect::<Vec<(String, Peer)>>();
-
-        base_node_list.extend(peer_seeds);
 
         // and prepend the custom base node if it exists
-        if let Some(peer) = base_node_config.base_node_custom.clone() {
-            base_node_list.insert(0, ("Custom Base Node".to_string(), peer));
-        }
-
         AppStateData {
             pending_txs: Vec::new(),
             completed_txs: Vec::new(),
             confirmations: HashMap::new(),
             my_identity: identity,
-            contacts: Vec::new(),
             burnt_proofs: vec![],
-            connected_peers: Vec::new(),
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),
-            base_node_selected,
-            base_node_previous,
-            base_node_list,
-            base_node_peer_custom: base_node_config.base_node_custom,
             all_events: VecDeque::new(),
             notifications: Vec::new(),
             new_notification_count: 0,
             wallet_scanned_height: 0,
+            wallet_tip_height: 0,
+            wallet_current_connected_node: "".to_string(),
+            base_node_latency: None,
         }
     }
 }
 
 #[derive(Clone)]
 pub struct MyIdentity {
-    pub tari_address_interactive: TariAddress,
     pub tari_address_one_sided: TariAddress,
     pub network_address: String,
     pub qr_code: String,
@@ -1370,18 +985,14 @@ pub struct MyIdentity {
 #[derive(Clone, Debug)]
 pub enum UiTransactionSendStatus {
     Initiated,
-    Queued,
-    SentDirect,
     TransactionComplete,
-    DiscoveryInProgress,
-    SentViaSaf,
     Error(String),
 }
 
 #[derive(Clone, Debug)]
 pub enum UiTransactionBurnStatus {
     Initiated,
-    TransactionComplete((u32, String, String)),
+    TransactionComplete,
     Error(String),
 }
 

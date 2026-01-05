@@ -20,6 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -28,27 +29,34 @@ use std::{
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use minotari_app_grpc::tari_rpc::{
-    self as grpc,
-    pow_algo::PowAlgos,
-    GetBlocksRequest,
-    GetNewBlockTemplateWithCoinbasesRequest,
-    GetNewBlockWithCoinbasesRequest,
-    ListHeadersRequest,
-    NewBlockCoinbase,
-    NewBlockTemplateRequest,
-    PowAlgo,
+use minotari_app_grpc::{
+    tari_rpc,
+    tari_rpc::{
+        self as grpc,
+        pow_algo::PowAlgos,
+        GetBlocksRequest,
+        GetNewBlockTemplateWithCoinbasesRequest,
+        GetNewBlockWithCoinbasesRequest,
+        ListHeadersRequest,
+        NewBlockCoinbase,
+        NewBlockTemplateRequest,
+        PowAlgo,
+    },
 };
 use minotari_node::BaseNodeConfig;
-use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
+use minotari_wallet_grpc_client::grpc::Empty;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::{blocks::Block, transactions::aggregated_body::AggregateBody};
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
     miner::mine_block_before_submit,
-    world::NodeClient,
     TariWorld,
+};
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    helpers::borsh::SerializedSize,
+    weight::TransactionWeight,
 };
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
@@ -79,64 +87,51 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
 async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes: u64) {
     for i in 0..nodes {
-        let node = format!("Node_{}", i);
+        let node = format!("Node_{i}");
         println!("Initializing node {}", node.clone());
         spawn_base_node(world, false, node, world.all_seed_nodes().to_vec()).await;
     }
 }
 
-#[when(expr = "I wait for {word} to connect to {word}")]
-#[then(expr = "I wait for {word} to connect to {word}")]
-async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
-    let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
-    let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
+#[when(expr = "I wait for base node {word} to connect to base node {word}")]
+#[then(expr = "I wait for base node {word} to connect to base node {word}")]
+async fn base_node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
+    let mut node_client = world.get_node_client(&first_node).await.unwrap();
+    let mut second_client = world.get_node_client(&second_node).await.unwrap();
 
-    let second_client_pubkey = match second_client {
-        NodeClient::Wallet(mut client) => {
-            client
-                .identify(GetIdentityRequest {})
-                .await
-                .unwrap()
-                .into_inner()
-                .public_key
-        },
-        NodeClient::BaseNode(mut client) => client.identify(Empty {}).await.unwrap().into_inner().public_key,
-    };
+    let second_client_pubkey = second_client.identify(Empty {}).await.unwrap().into_inner().public_key;
 
     for _i in 0..100 {
-        let res = match node_client {
-            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-        };
+        let res: tonic::Response<tari_rpc::ListConnectedPeersResponse> =
+            node_client.list_connected_peers(Empty {}).await.unwrap();
         let res = res.into_inner();
-
         if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
             return;
         }
+
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
     panic!("Peer was not connected in time");
 }
 
-#[when(expr = "I wait for {word} to have {int} connections")]
+#[when(expr = "I wait base node for {word} to have {int} base node connections")]
 async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
-    let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
+    let mut node_client = world.get_node_client(&node).await.unwrap();
     let mut connected_peers = 0;
-    for _i in 0..100 {
-        let res = match node_client {
-            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-        };
+    for _i in 0..60 {
+        let res: tonic::Response<tari_rpc::ListConnectedPeersResponse> =
+            node_client.list_connected_peers(Empty {}).await.unwrap();
         let res = res.into_inner();
         connected_peers = res.connected_peers.len();
         if res.connected_peers.len() >= num_connections {
             return;
         }
+
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
-    panic!("Peer was not connected in time, connected to {} peers", connected_peers);
+    panic!("Peer was not connected in time, connected to {connected_peers} peers");
 }
 
 #[then(expr = "all nodes are on the same chain at height {int}")]
@@ -171,10 +166,30 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "base nodes not successfully synchronized at height {}, {:?}",
-        height, nodes_at_height
-    );
+    panic!("base nodes not successfully synchronized at height {height}, {nodes_at_height:?}");
+}
+
+#[then(expr = "all nodes are on the same network difficulty")]
+async fn all_nodes_on_same_network_difficulty(world: &mut TariWorld) {
+    let mut all_nodes_metadata = Vec::new();
+    for (name, _) in &world.base_nodes {
+        let mut client = world.get_node_client(name).await.unwrap();
+        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+        all_nodes_metadata.push(chain_tip.metadata.unwrap());
+    }
+    let first_metadata = all_nodes_metadata.first().unwrap();
+    if all_nodes_metadata
+        .iter()
+        .any(|v| v.best_block_height != first_metadata.best_block_height)
+    {
+        panic!("base nodes not successfully synchronized at the same height");
+    }
+    if all_nodes_metadata
+        .iter()
+        .any(|v| v.accumulated_difficulty != first_metadata.accumulated_difficulty)
+    {
+        panic!("base nodes synchronized at the same height do all not have the same accumulated difficulty");
+    }
 }
 
 #[then(expr = "all nodes are at height {int}")]
@@ -208,10 +223,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "base nodes not successfully synchronized at height {}, {:?}",
-        height, nodes_at_height
-    );
+    panic!("base nodes not successfully synchronized at height {height}, {nodes_at_height:?}");
 }
 
 #[when(expr = "node {word} is at height {int}")]
@@ -232,10 +244,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
     }
 
     // base node didn't synchronize successfully at height, so we bail out
-    panic!(
-        "base node didn't synchronize successfully with height {}, current chain height {}",
-        height, chain_hgt
-    );
+    panic!("base node didn't synchronize successfully with height {height}, current chain height {chain_hgt}");
 }
 
 #[then(expr = "node {word} has a pruned height of {int}")]
@@ -254,10 +263,7 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "Node {} pruned height is {} and never reached expected pruned height of {}",
-        node, last_pruned_height, height
-    )
+    panic!("Node {node} pruned height is {last_pruned_height} and never reached expected pruned height of {height}")
 }
 
 #[given(expr = "I have a base node {word} connected to seed {word}")]
@@ -275,7 +281,7 @@ async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
 #[given(expr = "I have {int} seed nodes")]
 async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
-        spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
+        spawn_base_node(world, true, format!("seed_node_{node}"), vec![]).await;
     }
 }
 
@@ -290,7 +296,7 @@ async fn transaction_in_state(
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let sig = &tx.body.kernels()[0].excess_sig;
     let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
 
@@ -319,10 +325,7 @@ async fn transaction_in_state(
         tokio::time::sleep(Duration::from_millis(HALF_SECOND * 2)).await;
     }
 
-    panic!(
-        "The node {} has tx {} in state {} instead of the expected {}",
-        node, tx_name, last_state, state
-    );
+    panic!("The node {node} has tx {tx_name} in state {last_state} instead of the expected {state}");
 }
 
 #[then(expr = "I wait until base node {word} has {int} unconfirmed transactions in its mempool")]
@@ -343,10 +346,7 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "The node {} has {} unconfirmed txs instead of the expected {}",
-        node, unconfirmed_txs, num_transactions
-    );
+    panic!("The node {node} has {unconfirmed_txs} unconfirmed txs instead of the expected {num_transactions}");
 }
 
 #[then(expr = "{word} is in the {word} of all nodes")]
@@ -365,7 +365,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let sig = &tx.body.kernels()[0].excess_sig;
 
     let mut node_pool_status: IndexMap<&String, &str> = IndexMap::new();
@@ -414,8 +414,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
     }
 
     panic!(
-        "More than {}% ({} node(s)) failed to get {} in {}, {:?}",
-        can_fail_percent, can_fail, tx_name, pool, node_pool_status
+        "More than {can_fail_percent}% ({can_fail} node(s)) failed to get {tx_name} in {pool}, {node_pool_status:?}"
     );
 }
 
@@ -426,7 +425,7 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let resp = client
         .submit_transaction(grpc::SubmitTransactionRequest {
             transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
@@ -438,7 +437,7 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
     if result.result == 1 {
         Ok(())
     } else {
-        panic!("Transaction {} wasn't submit to {}", tx_name, node)
+        panic!("Transaction {tx_name} wasn't submit to {node}")
     }
 }
 
@@ -448,7 +447,7 @@ pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let resp = client
         .submit_transaction(grpc::SubmitTransactionRequest {
             transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
@@ -458,10 +457,7 @@ pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String
     let result = resp.into_inner();
 
     if result.result == 1 {
-        panic!(
-            "Transaction {} was submitted, but should not have been to {}",
-            tx_name, node
-        )
+        panic!("Transaction {tx_name} was submitted, but should not have been to {node}")
     } else {
         Ok(())
     }
@@ -567,15 +563,9 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     }
 
     if current_height == expected_height {
-        println!(
-            "Base node {} is at the same height {} as node {}",
-            &base_node, current_height, &peer_node
-        );
+        println!("Base node {base_node} is at the same height {current_height} as node {peer_node}");
     } else {
-        panic!(
-            "Base node {} failed to synchronize at the same height as node {}",
-            base_node, peer_node
-        );
+        panic!("Base node {base_node} failed to synchronize at the same height as node {peer_node}");
     }
 }
 
@@ -583,7 +573,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
 #[then(expr = "I stop node {word}")]
 async fn stop_node(world: &mut TariWorld, node: String) {
     let base_ps = world.base_nodes.get_mut(&node).unwrap();
-    println!("Stopping node {}", node);
+    println!("Stopping node {node}");
     base_ps.kill();
 }
 
@@ -733,6 +723,110 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     }
 }
 
+#[then(expr = "I generate a block {word} with {int} coinbases from node {word} for wallet {word}")]
+async fn generate_block_with_many_coinbases(
+    world: &mut TariWorld,
+    block_name: String,
+    number_of_coinbases: u64,
+    node_name: String,
+    wallet_name: String,
+) {
+    let mut client = world.get_node_client(&node_name).await.unwrap();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
+
+    let template_req = NewBlockTemplateRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+    };
+    let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
+    let miner_data = template_response.miner_data.unwrap();
+
+    let mut coinbases = Vec::with_capacity(usize::try_from(number_of_coinbases).unwrap());
+    let mut value = 0;
+    for i in 0..number_of_coinbases {
+        let share_value = if i == number_of_coinbases - 1 {
+            miner_data.reward - value
+        } else {
+            miner_data.reward / number_of_coinbases
+        };
+        coinbases.push(NewBlockCoinbase {
+            address: wallet_address.clone(),
+            value: share_value,
+            stealth_payment: true,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        });
+        value += share_value;
+    }
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases,
+    };
+
+    let template_response = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+    let new_block = template_response.block.clone().unwrap();
+
+    let block = Block::try_from(template_response.block.unwrap()).unwrap();
+    let coinbase_outputs = block
+        .body
+        .outputs()
+        .iter()
+        .filter(|o| o.is_coinbase())
+        .cloned()
+        .collect::<Vec<_>>();
+    let outputs = block
+        .body
+        .outputs()
+        .iter()
+        .filter(|o| !o.is_coinbase())
+        .cloned()
+        .collect::<Vec<_>>();
+    let block_size = block.get_serialized_size().unwrap();
+
+    println!(
+        "Custom block: {}, size: {} bytes, coinbases: {}, kernels: {}, outputs: {}, inputs: {}, weight: {}",
+        block.header.height,
+        block_size,
+        coinbase_outputs.len(),
+        block.body.kernels().len(),
+        outputs.len(),
+        block.body.inputs().len(),
+        block.body.calculate_weight(&TransactionWeight::latest()).unwrap(),
+    );
+
+    assert_eq!(coinbase_outputs.len() as u64, number_of_coinbases);
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {e}"),
+    }
+
+    world.blocks.insert(block_name, block);
+}
+
+#[then(expr = "block {word} has serialized size at least {int} bytes")]
+async fn block_has_serialized_size_greater_than(world: &mut TariWorld, block: String, size: u64) {
+    let block = world.blocks.get(&block).unwrap();
+    assert!(
+        u64::try_from(block.get_serialized_size().unwrap()).unwrap() >= size,
+        "Block {} with weight {} has serialized size of {} which is not at least {}",
+        block.header.height,
+        block.body.calculate_weight(&TransactionWeight::latest()).unwrap(),
+        block.get_serialized_size().unwrap(),
+        size,
+    );
+}
+
 #[then(expr = "generate a block with 2 coinbases from node {word}")]
 async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
@@ -798,7 +892,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 }
 
@@ -851,7 +945,7 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
             coinbase_kernel_count += 1;
         }
     }
-    println!("{}", body);
+    println!("{body}");
     for utxo in body.outputs() {
         if utxo.is_coinbase() {
             coinbase_utxo_count += 1;
@@ -875,7 +969,126 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
+    }
+}
+
+#[then(expr = "generate a block with zero value coinbase as a single request from node {word}")]
+async fn generate_block_as_single_request_with_zero_coinbase(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases: vec![NewBlockCoinbase {
+            address: TariAddress::from_base58(
+                "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+            )
+            .unwrap()
+            .to_base58(),
+            value: 0,
+            stealth_payment: false,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        }],
+    };
+    let new_block = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    println!("{body}");
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 1);
+
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+    assert!(
+        coinbase_output.minimum_value_promise.as_u64() > 0,
+        "Zero coinbase should have been automatically set to block reward"
+    );
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {e}"),
+    }
+}
+
+#[then(expr = "generate a block with zero value coinbase from node {word}")]
+async fn generate_block_with_zero_coinbase(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = NewBlockTemplateRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+    };
+
+    let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
+
+    let block_template = template_response.new_block_template.clone().unwrap();
+    let request = GetNewBlockWithCoinbasesRequest {
+        new_template: Some(block_template),
+        coinbases: vec![NewBlockCoinbase {
+            address: TariAddress::from_base58(
+                "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+            )
+            .unwrap()
+            .to_base58(),
+            value: 0,
+            stealth_payment: false,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        }],
+    };
+
+    let new_block = client.get_new_block_with_coinbases(request).await.unwrap().into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 1);
+
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+    assert!(
+        coinbase_output.minimum_value_promise.as_u64() > 0,
+        "Zero coinbase should have been automatically set to block reward"
+    );
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 }
 
@@ -905,10 +1118,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "Node {} never reached initial sync. Stuck at tip {}",
-        node, longest_chain
-    )
+    panic!("Node {node} never reached initial sync. Stuck at tip {longest_chain}")
 }
 
 #[when(expr = "I have {int} base nodes with pruning horizon {int} force syncing on node {word}")]
@@ -919,7 +1129,7 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
     node: String,
 ) {
     for i in 0..=nodes_count {
-        let node_name = format!("BaseNode-{}", i);
+        let node_name = format!("BaseNode-{i}");
 
         let mut base_node_config = BaseNodeConfig::default();
         let peers = vec![node.clone()];
@@ -955,8 +1165,5 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "Node {} only received {} of {} expected peers",
-        node, last_num_of_peers, num_peers
-    )
+    panic!("Node {node} only received {last_num_of_peers} of {num_peers} expected peers")
 }

@@ -85,12 +85,12 @@ impl fmt::Display for ConnectionManagerEvent {
         #[allow(clippy::enum_glob_use)]
         use ConnectionManagerEvent::*;
         match self {
-            PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
+            PeerConnected(conn) => write!(f, "PeerConnected({conn})"),
             PeerDisconnected(id, node_id, minimized) => {
                 write!(f, "PeerDisconnected({}, {}, {:?})", id, node_id.short_str(), minimized)
             },
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
-            PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
+            PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({err:?})",),
             NewInboundSubstream(node_id, protocol, _) => write!(
                 f,
                 "NewInboundSubstream({}, {}, Stream)",
@@ -123,6 +123,9 @@ pub struct ConnectionManagerConfig {
     /// the responder will wait 2 x this value (1 per receive) before timing out.
     /// Default: 3s
     pub noise_handshake_recv_timeout: Duration,
+    /// The maximum time to wait for a peer to respond on a noise protocol dial.
+    /// Default: 60s
+    pub noise_dial_timeout: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
@@ -157,6 +160,7 @@ impl Default for ConnectionManagerConfig {
             auxiliary_tcp_listener_address: None,
             peer_validation_config: PeerValidatorConfig::default(),
             noise_handshake_recv_timeout: Duration::from_secs(6),
+            noise_dial_timeout: Duration::from_secs(60),
             excluded_dial_addresses: vec![],
         }
     }
@@ -218,8 +222,9 @@ where
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
 
-        let noise_config =
-            NoiseConfig::new(node_identity.clone()).with_recv_timeout(config.noise_handshake_recv_timeout);
+        let noise_config = NoiseConfig::new(node_identity.clone())
+            .with_recv_timeout(config.noise_handshake_recv_timeout)
+            .with_dial_timeout(config.noise_dial_timeout);
 
         let listener = PeerListener::new(
             config.clone(),
@@ -233,7 +238,7 @@ where
         );
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
-            info!(target: LOG_TARGET, "Starting auxiliary listener on {}", addr);
+            info!(target: LOG_TARGET, "Starting auxiliary listener on {addr}");
             let aux_config = ConnectionManagerConfig {
                 // Disable liveness checks on the auxiliary listener
                 self_liveness_self_check_interval: None,
@@ -309,7 +314,7 @@ where
             Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to start listener(s). {}. Connection manager is quitting.", err
+                    "Failed to start listener(s). {err}. Connection manager is quitting."
                 );
                 return;
             },
@@ -364,7 +369,7 @@ where
         if let Some(mut listener) = self.aux_listener.take() {
             listener.set_supported_protocols(self.protocols.get_supported_protocols());
             let addr = listener.listen().await?;
-            debug!(target: LOG_TARGET, "Aux TCP listener bound to address {}", addr);
+            debug!(target: LOG_TARGET, "Aux TCP listener bound to address {addr}");
             listener_info.aux_bind_address = Some(addr);
         }
 
@@ -383,7 +388,7 @@ where
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
         use ConnectionManagerRequest::{CancelDial, DialPeer, NotifyListening};
-        trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
+        trace!(target: LOG_TARGET, "Connection manager got request: {request:?}" );
         match request {
             DialPeer { node_id, reply_tx } => {
                 let tracing_id = tracing::Span::current().id();
@@ -395,7 +400,7 @@ where
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to send cancel dial request to dialer: {}", err
+                        "Failed to send cancel dial request to dialer: {err}"
                     );
                 }
             },
@@ -439,18 +444,18 @@ where
                     .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
                 match time::timeout(Duration::from_secs(10), notify_fut).await {
                     Ok(Ok(_)) => {
-                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                        debug!(target: LOG_TARGET, "Protocol notification for '{proto_str}' sent" );
                     },
                     Ok(Err(err)) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                            "Error sending NewSubstream notification for protocol '{proto_str}' because '{err:?}'"
                         );
                     },
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
+                            "Error sending NewSubstream notification for protocol '{proto_str}' because {err}"
                         );
                     },
                 }
@@ -487,7 +492,7 @@ where
     #[inline]
     async fn send_dialer_request(&mut self, req: DialerRequest) {
         if let Err(err) = self.dialer_tx.send(req).await {
-            error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
+            error!(target: LOG_TARGET, "Failed to send request to dialer because '{err}'");
         }
     }
 
@@ -510,12 +515,12 @@ where
                 warn!(target: LOG_TARGET, "Peer not found for dial");
                 if let Some(reply) = reply {
                     let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(
-                        PeerManagerError::PeerNotFoundError,
+                        PeerManagerError::peer_not_found(&node_id),
                     )));
                 }
             },
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
+                warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{err}'");
                 if let Some(reply) = reply {
                     let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
                 }

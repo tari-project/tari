@@ -4,6 +4,9 @@ linker = "aarch64-linux-gnu-gcc"
 [target.riscv64gc-unknown-linux-gnu]
 linker = "riscv64-linux-gnu-gcc"
 
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-ladvapi32"]
+
 [alias]
 ci-fmt = "fmt --all -- --check"
 ci-fmt-fix = "fmt --all"
@@ -11,3 +14,5 @@ ci-clippy = "lints clippy --all-targets --all-features -- -A clippy::literal_str
 ci-test-compile = "test --no-run --workspace --all-features --no-default-features"
 ci-test = "nextest run --all-features --release --workspace --exclude tari_integration_tests --profile ci --no-fail-fast"
 ci-cucumber = "test  --release  --test cucumber --all-features  --package tari_integration_tests -- -t @critical"
+ci-check = "check --release --all-targets --workspace --exclude tari_integration_tests --locked"
+ci-lcheck = "lcheck --release --all-targets --workspace --exclude tari_integration_tests --locked"

@@ -20,117 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, path::PathBuf};
+use std::path::PathBuf;
 
-use blake2::Blake2b;
-use digest::consts::U64;
 use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
-    storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
-    transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
+    transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
 };
-use rand::{random, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{CompressedPublicKey, Signature, UncompressedSignature},
+    types::{CompressedPublicKey, PrivateKey},
 };
-use tari_core::{
-    consensus::DomainSeparatedConsensusHasher,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
-    },
+use tari_transaction_components::{
+    transaction_components::{MemoField, OutputFeatures},
+    MicroMinotari,
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_hashing::TransactionHashDomain;
-use tari_key_manager::key_manager::KeyManager;
-use tari_max_size::{MaxSizeBytes, MaxSizeString};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::ByteArray;
 use tokio::sync::{broadcast, watch};
 
 use crate::ui::{
-    state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
+    state::{BurntProofBase64, SignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
     ui_error::UiError,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
-
-pub async fn send_transaction_task(
-    address: TariAddress,
-    amount: MicroMinotari,
-    selection_criteria: UtxoSelectionCriteria,
-    output_features: OutputFeatures,
-    payment_id: PaymentId,
-    fee_per_gram: MicroMinotari,
-    mut transaction_service_handle: TransactionServiceHandle,
-    result_tx: watch::Sender<UiTransactionSendStatus>,
-) {
-    let _result = result_tx.send(UiTransactionSendStatus::Initiated);
-    let mut event_stream = transaction_service_handle.get_event_stream();
-    let mut send_status = TransactionSendStatus::default();
-    match transaction_service_handle
-        .send_transaction(
-            address,
-            amount,
-            selection_criteria,
-            output_features,
-            fee_per_gram,
-            payment_id,
-        )
-        .await
-    {
-        Err(e) => {
-            let _result = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
-        },
-        Ok(our_tx_id) => {
-            loop {
-                let next_event = event_stream.recv().await;
-                match next_event {
-                    Ok(event) => match &*event {
-                        TransactionEvent::TransactionDiscoveryInProgress(tx_id) => {
-                            if our_tx_id == *tx_id {
-                                let _result = result_tx.send(UiTransactionSendStatus::DiscoveryInProgress);
-                            }
-                        },
-                        TransactionEvent::TransactionSendResult(tx_id, status) => {
-                            if our_tx_id == *tx_id {
-                                send_status = status.clone();
-                                break;
-                            }
-                        },
-                        TransactionEvent::TransactionCompletedImmediately(tx_id) => {
-                            if our_tx_id == *tx_id {
-                                let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
-                                return;
-                            }
-                        },
-                        _ => (),
-                    },
-                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                        continue;
-                    },
-                    Err(broadcast::error::RecvError::Closed) => {
-                        break;
-                    },
-                }
-            }
-
-            if send_status.direct_send_result {
-                let _result = result_tx.send(UiTransactionSendStatus::SentDirect);
-            } else if send_status.store_and_forward_send_result {
-                let _result = result_tx.send(UiTransactionSendStatus::SentViaSaf);
-            } else if send_status.queued_for_retry {
-                let _result = result_tx.send(UiTransactionSendStatus::Queued);
-            } else {
-                let _result = result_tx.send(UiTransactionSendStatus::Error(
-                    "Transaction could not be sent".to_string(),
-                ));
-            }
-        },
-    }
-}
 
 pub async fn send_one_sided_to_stealth_address_transaction(
     address: TariAddress,
@@ -138,7 +51,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -170,7 +83,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
                         }
                     },
                     Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
                         continue;
                     },
                     Err(broadcast::error::RecvError::Closed) => {
@@ -186,15 +99,16 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
     claim_public_key: Option<CompressedPublicKey>,
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     fee_per_gram: MicroMinotari,
+    sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,
-    db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
 ) {
     result_tx.send(UiTransactionBurnStatus::Initiated).unwrap();
@@ -209,14 +123,21 @@ pub async fn send_burn_transaction_task(
         amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
     );
     let (burn_tx_id, original_proof) = match transaction_service_handle
-        .burn_tari(amount, selection_criteria, fee_per_gram, payment_id, claim_public_key)
+        .burn_tari(
+            amount,
+            selection_criteria,
+            fee_per_gram,
+            payment_id,
+            claim_public_key,
+            sidechain_deployment_key,
+        )
         .await
     {
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to burn minotari: {:?}", e);
+            error!(target: LOG_TARGET, "failed to burn minotari: {e:?}");
             result_tx
-                .send(UiTransactionBurnStatus::Error(format!("burn error: {}", e)))
+                .send(UiTransactionBurnStatus::Error(format!("burn error: {e}")))
                 .unwrap();
             return;
         },
@@ -226,254 +147,54 @@ pub async fn send_burn_transaction_task(
     // ----------------------------------------------------------------------------
 
     loop {
-        let original_proof = original_proof.clone();
-        let burn_proof_filepath = burn_proof_filepath.clone();
-
         match event_stream.recv().await {
-            Ok(event) => {
-                if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
-                    if burn_tx_id == *completed_tx_id {
+            Ok(ref event) => {
+                let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = event.as_ref() else {
+                    warn!(target: LOG_TARGET, "Encountered an unexpected event: {}", event);
+                    continue;
+                };
+
+                if burn_tx_id != *completed_tx_id {
+                    continue;
+                }
+                if let Some(original_proof) = original_proof {
+                    if let Some(filepath) = burn_proof_filepath {
                         let wrapped_proof = BurntProofBase64 {
                             reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
                             commitment: original_proof.commitment.to_vec(),
-                            ownership_proof: original_proof.ownership_proof.map(|x| CommitmentSignatureBase64 {
-                                public_nonce: x.public_nonce().to_vec(),
-                                u: x.u().to_vec(),
-                                v: x.v().to_vec(),
-                            }),
-                            range_proof: original_proof.range_proof.0,
+                            ownership_proof: SignatureBase64 {
+                                public_nonce: original_proof.ownership_proof.get_compressed_public_nonce().to_vec(),
+                                signature: original_proof.ownership_proof.get_signature().to_vec(),
+                            },
                         };
 
                         let serialized_proof = match serde_json::to_string_pretty(&wrapped_proof) {
                             Ok(proof) => proof,
                             Err(e) => {
-                                error!(target: LOG_TARGET, "failed to serialize burn proof: {:?}", e);
+                                error!(target: LOG_TARGET, "failed to serialize burn proof: {e:?}");
                                 result_tx
-                                    .send(UiTransactionBurnStatus::Error(format!(
-                                        "failure to create proof {:?}",
-                                        e
-                                    )))
+                                    .send(UiTransactionBurnStatus::Error(format!("failure to create proof {e:?}")))
                                     .unwrap();
                                 return;
                             },
                         };
 
-                        let proof_id = random::<u32>();
-
-                        let filepath =
-                            burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json", proof_id)));
-
-                        match std::fs::write(filepath, serialized_proof.as_bytes()) {
-                            Ok(()) => {},
-                            Err(e) => {
-                                error!(target: LOG_TARGET, "failed to write burn proof: {:?}", e);
-                                result_tx
-                                    .send(UiTransactionBurnStatus::Error(format!(
-                                        "failure to write proof {:?}",
-                                        e
-                                    )))
-                                    .unwrap();
-                                return;
-                            },
-                        };
-
-                        let result = db.create_burnt_proof(
-                            proof_id,
-                            original_proof.reciprocal_claim_public_key.to_hex(),
-                            serialized_proof.clone(),
-                        );
-
-                        if let Err(err) = result {
-                            log::error!("failed to create database entry for the burnt proof: {:?}", err);
+                        if let Err(e) = std::fs::write(filepath, serialized_proof.as_bytes()) {
+                            error!(target: LOG_TARGET, "failed to write burn proof: {e:?}");
+                            result_tx
+                                .send(UiTransactionBurnStatus::Error(format!("failure to write proof {e:?}")))
+                                .unwrap();
+                            return;
                         }
-
-                        result_tx
-                            .send(UiTransactionBurnStatus::TransactionComplete((
-                                proof_id,
-                                original_proof.reciprocal_claim_public_key.to_hex(),
-                                serialized_proof,
-                            )))
-                            .unwrap();
-
-                        return;
                     }
-                } else {
-                    warn!(target: LOG_TARGET, "Encountered an unexpected event");
                 }
-            },
 
+                result_tx.send(UiTransactionBurnStatus::TransactionComplete).unwrap();
+
+                return;
+            },
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                continue;
-            },
-
-            Err(broadcast::error::RecvError::Closed) => {
-                break;
-            },
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-pub async fn send_register_template_transaction_task(
-    template_name: String,
-    template_version: u16,
-    template_type: TemplateType,
-    repository_url: String,
-    repository_commit_hash: String,
-    binary_url: String,
-    binary_sha: String,
-    fee_per_gram: MicroMinotari,
-    _selection_criteria: UtxoSelectionCriteria,
-    mut transaction_service_handle: TransactionServiceHandle,
-    _db: WalletDatabase<WalletSqliteDatabase>,
-    result_tx: watch::Sender<UiTransactionSendStatus>,
-) {
-    result_tx.send(UiTransactionSendStatus::Initiated).unwrap();
-    let mut event_stream = transaction_service_handle.get_event_stream();
-
-    // ----------------------------------------------------------------------------
-    // preparing data
-    // ----------------------------------------------------------------------------
-
-    let template_name = match MaxSizeString::<32>::try_from(template_name) {
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `template_name`: {}", e);
-            result_tx
-                .send(UiTransactionSendStatus::Error(format!("Template name error: {}", e)))
-                .unwrap();
-            return;
-        },
-        Ok(template_name) => template_name,
-    };
-
-    let binary_url = match MaxSizeString::<255>::try_from(binary_url) {
-        Ok(binary_url) => binary_url,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `binary_url`: {}", e);
-            result_tx
-                .send(UiTransactionSendStatus::Error(format!("Binary url error: {}", e)))
-                .unwrap();
-            return;
-        },
-    };
-    let binary_sha = match MaxSizeBytes::<32>::try_from(binary_sha) {
-        Ok(binary_sha) => binary_sha,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
-            result_tx
-                .send(UiTransactionSendStatus::Error(format!("Binary checksum error: {}", e)))
-                .unwrap();
-            return;
-        },
-    };
-
-    let repository_url = match MaxSizeString::<255>::try_from(repository_url) {
-        Ok(repository_url) => repository_url,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `repository_url`: {}", e);
-            result_tx
-                .send(UiTransactionSendStatus::Error(format!("Repository url error: {}", e)))
-                .unwrap();
-            return;
-        },
-    };
-
-    let repository_commit_hash = match MaxSizeBytes::<32>::try_from(repository_commit_hash) {
-        Ok(repository_commit_hash) => repository_commit_hash,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `repository_commit_hash`: {}", e);
-            result_tx
-                .send(UiTransactionSendStatus::Error(format!(
-                    "Repository commit hash error: {}",
-                    e
-                )))
-                .unwrap();
-            return;
-        },
-    };
-
-    // ----------------------------------------------------------------------------
-    // signing and sending code template registration request
-    // ----------------------------------------------------------------------------
-
-    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
-
-    let author_private_key = match km.next_key() {
-        Ok(secret_key) => secret_key.key,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to generate key: {}", e);
-            result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
-            return;
-        },
-    };
-
-    let author_public_key = CompressedPublicKey::from_secret_key(&author_private_key);
-    let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
-    let challenge = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
-        .chain(&author_public_key)
-        .chain(&public_nonce)
-        .chain(&binary_sha)
-        .chain(&b"")
-        .finalize();
-
-    let author_signature = Signature::new_from_schnorr(
-        UncompressedSignature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
-            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey"),
-    );
-
-    // ----------------------------------------------------------------------------
-    // ============================================================================
-    // ----------------------------------------------------------------------------
-
-    let result = transaction_service_handle
-        .register_code_template(
-            author_public_key,
-            author_signature,
-            template_name,
-            template_version,
-            template_type,
-            BuildInfo {
-                repo_url: repository_url,
-                commit_hash: repository_commit_hash,
-            },
-            binary_sha,
-            binary_url,
-            fee_per_gram,
-        )
-        .await;
-
-    let sent_tx_id = match result {
-        Ok(tx_id) => tx_id,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to register code template: {:?}", e);
-
-            result_tx
-                .send(UiTransactionSendStatus::Error(UiError::from(e).to_string()))
-                .unwrap();
-            return;
-        },
-    };
-
-    // ----------------------------------------------------------------------------
-    // starting a feedback loop to wait for the answer from the transaction service
-    // ----------------------------------------------------------------------------
-
-    loop {
-        match event_stream.recv().await {
-            Ok(event) => {
-                if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
-                    if sent_tx_id == *completed_tx_id {
-                        result_tx.send(UiTransactionSendStatus::TransactionComplete).unwrap();
-                        return;
-                    }
-                } else {
-                    warn!(target: LOG_TARGET, "Encountered an unexpected event");
-                }
-            },
-
-            Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
                 continue;
             },
 

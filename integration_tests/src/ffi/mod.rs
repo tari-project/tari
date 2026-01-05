@@ -20,30 +20,22 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_config;
 pub mod ffi_bytes;
 pub mod ffi_import;
-pub use comms_config::CommsConfig;
+mod wallet_db_config;
+pub use wallet_db_config::WalletDbConfig;
 mod wallet_address;
 pub use wallet_address::WalletAddress;
-mod transport_config;
-pub use transport_config::TransportConfig;
 mod wallet;
 pub use wallet::Wallet;
 mod public_key;
 pub use public_key::PublicKey;
-mod public_keys;
-pub use public_keys::PublicKeys;
 mod private_key;
 pub use private_key::PrivateKey;
 mod ffi_string;
 pub use ffi_string::FFIString;
 mod seed_words;
 pub use seed_words::SeedWords;
-mod contact;
-pub use contact::Contact;
-mod contacts;
-pub use contacts::Contacts;
 mod balance;
 pub use balance::Balance;
 mod vector;
@@ -65,11 +57,9 @@ pub use completed_transaction::CompletedTransaction;
 mod kernel;
 pub use kernel::Kernel;
 mod callbacks;
-pub use callbacks::Callbacks;
+pub use callbacks::{Callbacks, FfiConnectivityStatus};
 mod transaction_send_status;
 pub use transaction_send_status::TransactionSendStatus;
-mod contacts_liveness_data;
-pub use contacts_liveness_data::ContactsLivenessData;
 mod fee_per_gram_stats;
 pub use fee_per_gram_stats::FeePerGramStats;
 mod fee_per_gram_stat;

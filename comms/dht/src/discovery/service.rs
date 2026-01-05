@@ -118,7 +118,7 @@ impl DhtDiscoveryService {
                 }
 
                 Some(request) = self.request_rx.recv() => {
-                    trace!(target: LOG_TARGET, "Received request '{}'", request);
+                    trace!(target: LOG_TARGET, "Received request '{request}'");
                     self.handle_request(request).await;
                 },
             }
@@ -140,7 +140,7 @@ impl DhtDiscoveryService {
                 if let Err(err) = self.handle_discovery_response(discovery_msg).await {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to handle discovery response message because '{:?}'", err
+                        "Failed to handle discovery response message because '{err:?}'"
                     );
                 }
             },
@@ -186,8 +186,8 @@ impl DhtDiscoveryService {
                 if discovery_msg.public_key.as_bytes() != public_key.as_bytes() {
                     warn!(
                         target: LOG_TARGET,
-                        "Received a discovery response does not match the expected public key '{:#.5}'",
-                        public_key
+                        "Received a discovery response does not match the expected public key '{public_key:#.5}'"
+
                     );
                     self.dht
                         .ban_peer(
@@ -201,8 +201,8 @@ impl DhtDiscoveryService {
                 }
                 trace!(
                     target: LOG_TARGET,
-                    "Received discovery response message from {}",
-                    public_key
+                    "Received discovery response message from {public_key}"
+
                 );
 
                 let result = self.validate_then_add_peer(discovery_msg).await;
@@ -267,7 +267,7 @@ impl DhtDiscoveryService {
         let valid_peer = self
             .ban_offence(&public_key, validator.validate_peer(info, existing_peer))
             .await?;
-        self.peer_manager.add_peer(valid_peer.clone()).await?;
+        self.peer_manager.add_or_update_peer(valid_peer.clone()).await?;
 
         Ok(valid_peer)
     }

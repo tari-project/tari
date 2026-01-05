@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 //! # MemoryNet
 //!
 //! This example runs a small in-memory network.
@@ -82,18 +83,16 @@ async fn main() {
 
     let (node_message_tx, mut messaging_events_rx) = mpsc::unbounded_channel();
 
-    let seed_node = vec![
-        make_node(
-            PeerFeatures::COMMUNICATION_NODE,
-            vec![],
-            node_message_tx.clone(),
-            NUM_NEIGHBOURING_NODES,
-            NUM_RANDOM_NODES,
-            PROPAGATION_FACTOR,
-            QUIET_MODE,
-        )
-        .await,
-    ];
+    let seed_node = [make_node(
+        PeerFeatures::COMMUNICATION_NODE,
+        vec![],
+        node_message_tx.clone(),
+        NUM_NEIGHBOURING_NODES,
+        NUM_RANDOM_NODES,
+        PROPAGATION_FACTOR,
+        QUIET_MODE,
+    )
+    .await];
 
     let mut nodes = future::join_all(
         repeat_with(|| {
@@ -135,7 +134,7 @@ async fn main() {
     //         if n.node_identity().node_id() != ni.node_identity().node_id() {
     //             n.comms
     //                 .peer_manager()
-    //                 .add_peer(ni.node_identity().to_peer())
+    //                 .add_or_update_peer(ni.node_identity().to_peer())
     //                 .await
     //                 .unwrap();
     //         }
@@ -143,7 +142,7 @@ async fn main() {
     //     for ni in &wallets {
     //         n.comms
     //             .peer_manager()
-    //             .add_peer(ni.node_identity().to_peer())
+    //             .add_or_update_peer(ni.node_identity().to_peer())
     //             .await
     //             .unwrap();
     //     }
@@ -207,7 +206,7 @@ async fn main() {
             .await
             .unwrap()
             .len();
-        println!("Seed node knows {} peers ({} connections)", count, num_connections);
+        println!("Seed node knows {count} peers ({num_connections} connections)");
     }
 
     take_a_break(NUM_NODES).await;
@@ -223,16 +222,16 @@ async fn main() {
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    println!("{} messages sent in total across the network", total_messages);
+    println!("{total_messages} messages sent in total across the network");
 
     network_peer_list_stats(&nodes, &wallets).await;
     network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
     banner!("Summary");
-    println!("Total messages sent: {}", total_messages);
-    println!("Discovery messages: {}", discovery_messages);
-    println!("Total discoveries: {}/{}", discovery_successes, discovery_sent);
-    println!("Prop successes: {}/{}", num_prop_successes, num_prop_total);
+    println!("Total messages sent: {total_messages}");
+    println!("Discovery messages: {discovery_messages}");
+    println!("Total discoveries: {discovery_successes}/{discovery_sent}");
+    println!("Prop successes: {num_prop_successes}/{num_prop_total}");
 
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");

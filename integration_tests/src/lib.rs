@@ -25,9 +25,8 @@ use std::{convert::TryFrom, net::TcpListener, ops::Range, path::PathBuf, process
 use rand::Rng;
 
 pub mod base_node_process;
-pub mod chat_client;
-pub mod chat_ffi;
 pub mod ffi;
+pub use ffi::FfiConnectivityStatus;
 pub mod merge_mining_proxy;
 pub mod miner;
 pub mod transaction;
@@ -38,14 +37,20 @@ pub mod world;
 
 pub use world::TariWorld;
 
-pub fn get_port(range: Range<u16>) -> Option<u64> {
+pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u64> {
     let min = range.clone().min().expect("A minimum possible port number");
     let max = range.max().expect("A maximum possible port number");
 
     loop {
-        let port = rand::thread_rng().gen_range(min..max);
+        let port = loop {
+            let port = rand::thread_rng().gen_range(min..max);
+            if !world.assigned_ports.contains_key(&u64::from(port)) {
+                break port;
+            }
+        };
 
         if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            world.assigned_ports.insert(u64::from(port), u64::from(port));
             return Some(u64::from(port));
         }
     }
@@ -68,7 +73,7 @@ pub async fn wait_for_service(port: u64) {
         }
 
         if attempts >= max_tries {
-            panic!("Service on port {} never started", port);
+            panic!("Service on port {port} never started");
         }
 
         tokio::time::sleep(Duration::from_millis(250)).await;

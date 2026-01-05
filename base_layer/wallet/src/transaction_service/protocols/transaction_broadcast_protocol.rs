@@ -19,27 +19,24 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
-    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use futures::FutureExt;
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
-    types::Signature,
+    transaction::{LegacyTransactionStatus, TxId},
+    types::CompressedSignature,
 };
-use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
-    transactions::{transaction_components::Transaction, transaction_key_manager::TransactionKeyManagerInterface},
+use tari_transaction_components::{
+    rpc::models::{TxLocation, TxSubmissionRejectionReason},
+    transaction_components::Transaction,
 };
-use tari_utilities::hex::Hex;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
 
 use crate::{
@@ -71,7 +68,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
 {
     pub fn new(
         tx_id: TxId,
@@ -90,17 +87,11 @@ where
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         let mut shutdown = self.resources.shutdown_signal.clone();
-        let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
         let mut timeout_update_receiver = self.timeout_update_receiver.clone();
 
         // Main protocol loop
         loop {
-            let mut client = self
-                .resources
-                .connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or_else(|| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))?;
+            let client = self.resources.connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id) {
                 Ok(tx) => tx,
@@ -118,9 +109,9 @@ where
                 },
             };
 
-            if !(completed_tx.status == TransactionStatus::Completed ||
-                completed_tx.status == TransactionStatus::Broadcast ||
-                completed_tx.status == TransactionStatus::MinedUnconfirmed)
+            if !(completed_tx.status == LegacyTransactionStatus::Completed ||
+                completed_tx.status == LegacyTransactionStatus::Broadcast ||
+                completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
             {
                 debug!(
                     target: LOG_TARGET,
@@ -129,59 +120,43 @@ where
                 return Ok(self.tx_id);
             }
             if let Err(e) = check_transaction_size(&completed_tx.transaction, self.tx_id) {
-                self.cancel_transaction(TxCancellationReason::Oversized).await;
+                self.cancel_pending_transaction(TxCancellationReason::Oversized).await;
                 return Err(e);
             }
 
-            loop {
-                tokio::select! {
-                    _ = current_base_node_watcher.changed() => {
-                            if let Some(selected_peer) = &*current_base_node_watcher.borrow() {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})",
-                                    self.tx_id, selected_peer.get_current_peer().public_key,
-                                    selected_peer.get_current_peer().node_id,
-                                );
+            tokio::select! {
+                result = self.query_or_submit_transaction(completed_tx.clone(), &client).fuse() => {
+                    match self.mode {
+                        TxBroadcastMode::TransactionSubmission => {
+                            if result? {
+                                self.mode = TxBroadcastMode::TransactionQuery;
                             }
-                            self.last_rejection = None;
-                            continue;
-                    },
-                    result = self.query_or_submit_transaction(completed_tx.clone(), &mut client).fuse() => {
-                        match self.mode {
-                            TxBroadcastMode::TransactionSubmission => {
-                                if result? {
-                                    self.mode = TxBroadcastMode::TransactionQuery;
-                                }
-                            },
-                            TxBroadcastMode::TransactionQuery => {
-                                if result? {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Transaction broadcast, transaction validation protocol will continue from here"
-                                    );
-                                    return Ok(self.tx_id)
-                                }
-                            },
-                        }
-                        // Wait out the remainder of the delay before proceeding with next loop
-                        drop(client);
-                        let delay = *timeout_update_receiver.borrow();
-                        sleep(delay).await;
-                        break;
-                    },
-                    _ = timeout_update_receiver.changed() => {
-                         info!(
-                            target: LOG_TARGET,
-                            "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
-                        );
-                        break;
-                    },
-                    _ = shutdown.wait() => {
-                        info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
-                        return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
-                    },
-                }
+                        },
+                        TxBroadcastMode::TransactionQuery => {
+                            if result? {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Transaction broadcast, transaction validation protocol will continue from here"
+                                );
+                                return Ok(self.tx_id)
+                            }
+                        },
+                    }
+                    // Wait out the remainder of the delay before proceeding with next loop
+                    drop(client);
+                    let delay = *timeout_update_receiver.borrow();
+                    sleep(delay).await;
+                },
+                _ = timeout_update_receiver.changed() => {
+                     info!(
+                        target: LOG_TARGET,
+                        "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
+                    );
+                },
+                _ = shutdown.wait() => {
+                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                    return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
+                },
             }
         }
     }
@@ -195,25 +170,20 @@ where
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        let response = match client
-            .submit_transaction(tx.clone().try_into().map_err(|e| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidMessageError(e))
-            })?)
-            .await
-        {
-            Ok(r) => match TxSubmissionResponse::try_from(r) {
-                Ok(r) => r,
-                Err(_) => {
-                    trace!(target: LOG_TARGET, "Could not convert proto TxSubmission Response");
-                    return Ok(false);
-                },
+        let response = match client.submit_transaction(tx.clone()).await {
+            Ok(r) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) submission response from Base Node: {:?}", self.tx_id, r
+                );
+                r
             },
             Err(e) => {
                 info!(
                     target: LOG_TARGET,
-                    "Submit Transaction RPC Call to Base Node failed: {}", e
+                    "Submit Transaction RPC Call to Base Node failed: {e}"
                 );
                 return Ok(false);
             },
@@ -250,25 +220,27 @@ where
                     TransactionServiceError::MempoolRejectionTimeLocked,
                     TxCancellationReason::TimeLocked,
                 ),
-                _ => (
-                    TransactionServiceError::UnexpectedBaseNodeResponse,
-                    TxCancellationReason::Unknown,
+                TxSubmissionRejectionReason::FeeTooLow => (
+                    TransactionServiceError::MempoolRejectionFeeTooLow,
+                    TxCancellationReason::FeeTooLow,
+                ),
+                TxSubmissionRejectionReason::AlreadyMined => (
+                    TransactionServiceError::MempoolRejectionAlreadyMined,
+                    TxCancellationReason::AlreadyMined,
                 ),
             };
 
-            self.cancel_transaction(reason).await;
+            self.cancel_pending_transaction(reason).await;
 
             let _size = self
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id, reason)))
-                .map_err(|e| {
+                .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
+                        "Error sending event because there are no subscribers: {e:?}",
                     );
-                    e
                 });
 
             return Err(TransactionServiceProtocolError::new(self.tx_id, reason_error));
@@ -293,13 +265,11 @@ where
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionBroadcast(self.tx_id)))
-                .map_err(|e| {
+                .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
-                        "Error sending event, usually because there are no subscribers: {:?}",
-                        e
+                        "Error sending event, usually because there are no subscribers: {e:?}",
                     );
-                    e
                 });
         }
 
@@ -314,36 +284,22 @@ where
     /// end.
     async fn transaction_query(
         &mut self,
-        signature: Signature,
-        client: &mut BaseNodeWalletRpcClient,
+        signature: CompressedSignature,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        let response = match client.transaction_query(signature.into()).await {
-            Ok(r) => match TxQueryResponse::try_from(r) {
-                Ok(r) => r,
-                Err(_) => {
-                    trace!(target: LOG_TARGET, "Could not convert proto TxQueryResponse");
-                    return Ok(false);
-                },
-            },
-            Err(e) => {
+        let response = client
+            .transaction_query(
+                signature.get_compressed_public_nonce().as_bytes().to_vec(),
+                signature.get_signature().as_bytes().to_vec(),
+            )
+            .await
+            .map_err(|e| {
                 info!(
                     target: LOG_TARGET,
-                    "Transaction Query RPC Call to Base Node failed: {}", e
+                    "Transaction Query RPC Call to Base Node failed: {e}"
                 );
-                return Ok(false);
-            },
-        };
-
-        if !(response.is_synced ||
-            (response.location == TxLocation::Mined &&
-                response.confirmations >= self.resources.config.num_confirmations_required))
-        {
-            info!(
-                target: LOG_TARGET,
-                "Base Node reports not being synced, submission will be retried."
-            );
-            return Ok(false);
-        }
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Other(e.to_string()))
+            })?;
 
         // Mined?
         if response.location == TxLocation::Mined {
@@ -365,13 +321,13 @@ where
                 self.last_rejection = Some(Instant::now());
                 Ok(false)
             } else {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) has been rejected by the mempool after second submission attempt, \
-                     cancelling transaction",
-                    self.tx_id
+                let reason = "rejected by the mempool after second submission attempt".to_string();
+                error!(target: LOG_TARGET,
+                    "Transaction (TxId: {}) has been {}, cancelling transaction",
+                    self.tx_id, reason,
                 );
-                self.cancel_transaction(TxCancellationReason::InvalidTransaction).await;
+                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction)
+                    .await;
 
                 let _size = self
                     .resources
@@ -380,17 +336,15 @@ where
                         self.tx_id,
                         TxCancellationReason::InvalidTransaction,
                     )))
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         trace!(
                             target: LOG_TARGET,
-                            "Error sending event because there are no subscribers: {:?}",
-                            e
+                            "Error sending event because there are no subscribers: {e:?}",
                         );
-                        e
                     });
                 Err(TransactionServiceProtocolError::new(
                     self.tx_id,
-                    TransactionServiceError::MempoolRejection,
+                    TransactionServiceError::MempoolRejection { reason },
                 ))
             }
         } else {
@@ -405,7 +359,7 @@ where
     async fn query_or_submit_transaction(
         &mut self,
         completed_transaction: CompletedTransaction,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let signature = completed_transaction
             .transaction
@@ -430,22 +384,23 @@ where
         }
     }
 
-    async fn cancel_transaction(&mut self, reason: TxCancellationReason) {
+    async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason) {
         if let Err(e) = self
             .resources
             .output_manager_service
-            .cancel_transaction(self.tx_id)
+            .cancel_pending_transaction(self.tx_id)
             .await
         {
             warn!(
                 target: LOG_TARGET,
-                "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
+                "Failed to Cancel pending outputs for TxId: {} after failed sending attempt with error {:?}",
+                self.tx_id, e
             );
         }
         if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason) {
             warn!(
                 target: LOG_TARGET,
-                "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
+                "Failed to Cancel pending TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
             );
         }
     }

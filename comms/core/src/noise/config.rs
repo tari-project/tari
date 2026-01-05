@@ -49,6 +49,7 @@ pub struct NoiseConfig {
     node_identity: Arc<NodeIdentity>,
     parameters: NoiseParams,
     recv_timeout: Duration,
+    dial_timeout: Duration,
 }
 
 impl NoiseConfig {
@@ -59,6 +60,7 @@ impl NoiseConfig {
             node_identity,
             parameters,
             recv_timeout: Duration::from_secs(3),
+            dial_timeout: Duration::from_secs(60),
         }
     }
 
@@ -66,6 +68,17 @@ impl NoiseConfig {
     pub fn with_recv_timeout(mut self, recv_timeout: Duration) -> Self {
         self.recv_timeout = recv_timeout;
         self
+    }
+
+    /// Sets a custom dial timeout when dialing on the transport layer.
+    pub fn with_dial_timeout(mut self, dial_timeout: Duration) -> Self {
+        self.dial_timeout = dial_timeout;
+        self
+    }
+
+    /// Returns the custom dial timeout when dialing on the transport layer.
+    pub fn dial_timeout(&self) -> Duration {
+        self.dial_timeout
     }
 
     /// Upgrades the given socket to using the noise protocol. The upgraded socket and the peer's static key

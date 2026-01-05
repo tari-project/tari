@@ -25,6 +25,7 @@ use tari_comms::{
     peer_manager::PeerManagerError,
     protocol::rpc::{RpcError, RpcStatus},
 };
+use tokio::task::JoinError;
 
 use crate::peer_validator::DhtPeerValidatorError;
 
@@ -50,4 +51,31 @@ pub enum NetworkDiscoveryError {
     DuplicatePeerReceived,
     #[error("Sync peer sent invalid peer data: {0}")]
     InvalidPeerDataReceived(anyhow::Error),
+    #[error("Tokio task join error: `{0}`")]
+    JoinError(#[from] JoinError),
+    #[error("Timeout waiting for {operation} to {peer} after {duration}")]
+    Timeout {
+        operation: String,
+        peer: String,
+        duration: String,
+    },
+}
+
+// Custom PartialEq implementation that only compares the discriminant (variant type)
+impl PartialEq for NetworkDiscoveryError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::RpcError(_), Self::RpcError(_)) |
+                (Self::RpcStatus(_), Self::RpcStatus(_)) |
+                (Self::PeerManagerError(_), Self::PeerManagerError(_)) |
+                (Self::ConnectivityError(_), Self::ConnectivityError(_)) |
+                (Self::NoSyncPeers, Self::NoSyncPeers) |
+                (Self::PeerValidationError(_), Self::PeerValidationError(_)) |
+                (Self::EmptyPeerMessageReceived, Self::EmptyPeerMessageReceived) |
+                (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
+                (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
+                (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_))
+        )
+    }
 }

@@ -109,8 +109,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
                     Ok((c, len)) => {
                         trace!(
                             target: LOG_TARGET,
-                            "Added new RPC client session for connection '{}' ({} of {}, protocol: {:?})",
-                            peer_node_id, len, clients_capacity, protocol_id,
+                            "Added new RPC client session for connection '{peer_node_id}' ({len} of {clients_capacity}, protocol: {protocol_id:?})"
                         );
                         c
                     },
@@ -147,8 +146,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
             if !client.is_connected() {
                 trace!(
                     target: LOG_TARGET,
-                    "RPC client for connection '{}' is not connected, pruning",
-                    peer_node_id
+                    "RPC client for connection '{peer_node_id}' is not connected, pruning"
                 );
                 self.prune();
                 return Err(RpcClientPoolError::CouldNotObtainRpcConnection);

@@ -20,13 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use hickory_proto::{
     rr::IntoName,
     serialize::binary::{BinEncodable, BinEncoder},
-    xfer::Protocol,
 };
 use hickory_resolver::{
-    config::{NameServerConfig, ResolverConfig, ResolverOpts},
+    config::{NameServerConfig, ProtocolConfig, ResolverConfig, ResolverOpts},
     name_server::TokioConnectionProvider,
     TokioResolver,
 };
@@ -45,8 +46,16 @@ pub struct DnsClient {
 impl DnsClient {
     pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::builder_tokio()?.build(),
-            DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::Tls),
+            DnsNameServer::System => {
+                let mut opts = ResolverOpts::default();
+                opts.edns0 = true;
+                opts.try_tcp_on_error = true;
+                opts.timeout = std::time::Duration::from_secs(1);
+                TokioResolver::builder_tokio()?.with_options(opts).build()
+            },
+            DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, ProtocolConfig::Tls {
+                server_name: Arc::from(dns_name.as_str()),
+            }),
         };
 
         Ok(Self { resolver })
@@ -54,24 +63,24 @@ impl DnsClient {
 
     pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::builder_tokio()?.build(),
-            DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::default()),
+            DnsNameServer::System => {
+                let mut opts = ResolverOpts::default();
+                opts.edns0 = true;
+                opts.try_tcp_on_error = true;
+                opts.timeout = std::time::Duration::from_secs(1);
+                TokioResolver::builder_tokio()?.with_options(opts).build()
+            },
+            DnsNameServer::Custom { addr, dns_name: _ } => Self::create_resolver(addr, ProtocolConfig::Udp),
         };
 
         Ok(Self { resolver })
     }
 
-    fn create_resolver(
-        socket_addr: std::net::SocketAddr,
-        tls_dns_name: Option<String>,
-        protocol: Protocol,
-    ) -> TokioResolver {
-        let mut conf = ResolverConfig::new();
+    fn create_resolver(socket_addr: std::net::SocketAddr, protocol: ProtocolConfig) -> TokioResolver {
+        let mut conf = ResolverConfig::default();
         conf.add_name_server(NameServerConfig {
             socket_addr,
             protocol,
-            tls_dns_name,
-            http_endpoint: None,
             trust_negative_responses: false,
             bind_addr: None,
         });
@@ -99,10 +108,7 @@ impl DnsClient {
             })
             .filter_map(|txt| {
                 txt.map(|txt| {
-                    if txt.is_empty() {
-                        return None;
-                    }
-                    let len = txt[0] as usize;
+                    let len = *txt.first()? as usize;
                     if len == 0 {
                         return None;
                     }
@@ -116,12 +122,12 @@ impl DnsClient {
                         return None;
                     }
                     // Exclude the first length byte from the string result
-                    Some(String::from_utf8_lossy(&txt[1..=len]).to_string())
+                    Some(String::from_utf8_lossy(txt.get(1..=len)?).to_string())
                 })
                 .inspect_err(|e| {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to parse DNS TXT record. Error: {}", e
+                        "Failed to parse DNS TXT record. Error: {e}"
                     );
                 })
                 .transpose()

@@ -66,7 +66,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
 
     node1
         .peer_manager()
-        .add_peer(node2.node_identity().to_peer())
+        .add_or_update_peer(node2.node_identity().to_peer())
         .await
         .unwrap();
 
@@ -140,7 +140,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
                     }
                 }
 
-                println!("[task {}] send time = {:.2?}", id, total_time,);
+                println!("[task {id}] send time = {total_time:.2?}");
                 assert_eq!(count, num_iterations);
                 total_time
             })
@@ -153,7 +153,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
         .map(Result::unwrap)
         .collect::<Vec<_>>();
     let avg = send_latencies.iter().sum::<Duration>().as_millis() / send_latencies.len() as u128;
-    println!("avg t = {}ms", avg);
+    println!("avg t = {avg}ms");
 }
 
 #[tokio::test]

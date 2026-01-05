@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(clippy::mutex_atomic)]
-
+#![allow(clippy::indexing_slicing)]
 use std::{
     collections::HashMap,
     fmt,
@@ -32,13 +32,18 @@ use std::{
 use futures::future;
 use once_cell::sync::Lazy;
 use rand::{distributions, rngs::OsRng, Rng};
-use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
-    pipeline,
-    pipeline::SinkService,
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+    },
+    pipeline::{self, SinkService},
     protocol::{
         messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
@@ -59,11 +64,7 @@ use tari_comms_dht::{
     DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
-use tari_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};
+use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
 use tokio::{
     runtime,
     sync::{broadcast, mpsc},
@@ -72,7 +73,7 @@ use tokio::{
 };
 use tower::ServiceBuilder;
 
-use crate::memory_net::DrainBurst;
+use crate::memory_net::{create_test_peer, DrainBurst};
 
 pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/1.0");
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
@@ -121,7 +122,7 @@ pub fn get_next_name() -> String {
         *i - 1
     };
 
-    format!("Node{}", pos)
+    format!("Node{pos}")
 }
 
 pub async fn shutdown_all(nodes: Vec<TestNode>) {
@@ -138,7 +139,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
         let wallet1 = wallets.get(i).unwrap();
         let wallet2 = wallets.get(i + 1).unwrap();
 
-        banner!("🌎 '{}' is going to try discover '{}'.", wallet1, wallet2);
+        banner!("🌎 '{wallet1}' is going to try discover '{wallet2}'.");
 
         let start = Instant::now();
         let discovery_result = wallet1
@@ -200,6 +201,7 @@ pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
                 .peer_manager()
                 .exists_node_id(wallet.node_identity().node_id())
                 .await
+                .unwrap()
             {
                 num_known += 1;
             }
@@ -407,11 +409,11 @@ pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: b
                 },
             }
         }
-        println!("{} messages sent between nodes", num_messages);
+        println!("{num_messages} messages sent between nodes");
         num_messages
     } else {
         let len = drain_fut.await.len();
-        println!("📨 {} messages exchanged", len);
+        println!("📨 {len} messages exchanged");
         len
     }
 }
@@ -458,10 +460,7 @@ fn connection_manager_logger(
                 );
             },
             PeerInboundConnectFailed(err) => {
-                println!(
-                    "'{}' failed to accept inbound connection because '{:?}'",
-                    node_name, err
-                );
+                println!("'{node_name}' failed to accept inbound connection because '{err:?}'");
             },
             NewInboundSubstream(node_id, protocol, _) => {
                 println!(
@@ -549,7 +548,7 @@ impl TestNode {
                         let _result = events_tx.send(logger(event)).await;
                     },
                     Err(broadcast::error::RecvError::Closed) => break,
-                    Err(err) => log::error!("{}", err),
+                    Err(err) => log::error!("{err}"),
                 }
             }
         });
@@ -627,24 +626,14 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        format!("/memory/{}", port).parse().unwrap(),
+        format!("/memory/{port}").parse().unwrap(),
         features,
     ))
 }
 
-fn create_peer_storage() -> CommsDatabase {
-    let database_name = random::string(8);
-    let datastore = LMDBBuilder::new()
-        .set_path(create_temporary_data_path().to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-
-    let peer_database = datastore.get_handle(&database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    PeerStorage::new_indexed(peer_database).unwrap().into()
+fn create_peer_storage() -> PeerDatabaseSql {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub async fn make_node(
@@ -725,12 +714,12 @@ async fn setup_comms_dht(
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_min_connectivity(1)
-        .with_peer_storage(storage,None)
+        .with_peer_storage(storage)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
         .unwrap();
     for peer in seed_peers {
-        comms.peer_manager().add_peer(peer).await.unwrap();
+        comms.peer_manager().add_or_update_peer(peer).await.unwrap();
     }
 
     let db_name = iter::repeat(())

@@ -51,21 +51,37 @@ impl CommandContext {
             "Direction",
             "Age",
             "User Agent",
+            "Seed",
             "Info",
         ]);
         let peer_manager = self.comms.peer_manager();
-        for conn in conns {
-            let peer = peer_manager
-                .find_by_node_id(conn.peer_node_id())
-                .await
-                .expect("Unexpected peer database error")
-                .expect("Peer not found");
+        let node_ids = conns
+            .iter()
+            .map(|conn| conn.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let peers = match peer_manager.get_peers_by_node_ids(&node_ids).await {
+            Ok(val) => val,
+            Err(e) => {
+                println!("Error: Unexpected peer database error: {e}");
+                return;
+            },
+        };
+        if peers.len() != node_ids.len() {
+            println!("\nError: Peer manager returned fewer peers than requested\n");
+        }
+        for peer in peers {
+            let conn = match conns.iter().find(|conn| conn.peer_node_id() == &peer.node_id) {
+                None => continue,
+                Some(val) => val,
+            };
 
             let chain_height = peer
                 .get_metadata(1)
                 .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                 .map(|metadata| format!("height: {}", metadata.metadata.best_block_height()));
 
+            let is_seed = peer.is_seed();
             let ua = peer.user_agent;
             let rpc_sessions = self
                 .rpc_server
@@ -85,9 +101,10 @@ impl CommandContext {
                         ua.as_ref()
                     }
                 },
+                if is_seed { "SEED" } else { "    " },
                 format!(
                     "{}hnd: {}, ss: {}, rpc: {}",
-                    chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),
+                    chain_height.map(|s| format!("{s}, ")).unwrap_or_default(),
                     // Exclude the handle held by list-connections
                     conn.handle_count().saturating_sub(1),
                     conn.substream_count(),
@@ -98,7 +115,7 @@ impl CommandContext {
 
         table.print_stdout();
 
-        println!("{} active connection(s)", num_connections);
+        println!("{num_connections} active connection(s)");
     }
 }
 

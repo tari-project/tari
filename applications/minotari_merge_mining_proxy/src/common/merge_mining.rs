@@ -25,10 +25,8 @@
 use std::convert::{TryFrom, TryInto};
 
 use minotari_node_grpc_client::grpc;
-use tari_core::{
-    blocks::NewBlockTemplate,
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
-};
+use tari_node_components::blocks::NewBlockTemplate;
+use tari_transaction_components::transaction_components::{TransactionKernel, TransactionOutput};
 
 use crate::error::MmProxyError;
 
@@ -39,7 +37,7 @@ pub fn add_coinbase(
     block_template: grpc::NewBlockTemplate,
 ) -> Result<grpc::NewBlockTemplate, MmProxyError> {
     let mut block_template = NewBlockTemplate::try_from(block_template)
-        .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {}", e)))?;
+        .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {e}")))?;
     block_template.body.add_output(coinbase_output.clone());
     block_template.body.add_kernel(coinbase_kernel.clone());
     block_template.try_into().map_err(MmProxyError::ConversionError)

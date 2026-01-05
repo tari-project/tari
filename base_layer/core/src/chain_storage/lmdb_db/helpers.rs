@@ -36,7 +36,7 @@ pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 ///   `size_hint` is given as an option as checking what the serialized would be is expensive
 ///   for large data structures at ~30% overhead
 pub fn serialize<T>(data: &T, size_hint: Option<usize>) -> Result<Vec<u8>, ChainStorageError>
-where T: Serialize {
+where T: Serialize + ?Sized {
     let start = Instant::now();
     let mut buf = if let Some(size) = size_hint {
         Vec::with_capacity(size)
@@ -47,7 +47,7 @@ where T: Serialize {
     };
     let check_time = start.elapsed();
     bincode::serialize_into(&mut buf, data).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not serialize lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
     if buf.len() >= BYTES_PER_MB {
@@ -74,7 +74,7 @@ pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
 where T: DeserializeOwned {
     bincode::deserialize(buf_bytes)
         .map_err(|e| {
-            error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
+            error!(target: LOG_TARGET, "Could not deserialize lmdb: {e:?}");
             e
         })
         .map_err(|e| error::Error::ValRejected(e.to_string()))

@@ -20,19 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::Signature;
+use tari_common_types::types::CompressedSignature;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_transaction_components::transaction_components::Transaction;
 
-use crate::{
-    mempool::{
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
-        StateResponse,
-        StatsResponse,
-        TxStorageResponse,
-    },
-    transactions::transaction_components::Transaction,
+use crate::mempool::{
+    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+    StateResponse,
+    StatsResponse,
+    TxStorageResponse,
 };
-
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
 /// A local interface into the mempool service.
@@ -89,7 +86,7 @@ impl LocalMempoolService {
 
     pub async fn get_transaction_state_by_excess_sig(
         &mut self,
-        sig: Signature,
+        sig: CompressedSignature,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self
             .request_sender

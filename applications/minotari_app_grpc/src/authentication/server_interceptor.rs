@@ -48,6 +48,7 @@ impl ServerAuthenticationInterceptor {
         Some(Self { auth: processed_auth })
     }
 
+    #[allow(clippy::result_large_err)]
     fn handle_basic_auth(
         &self,
         req: Request<()>,

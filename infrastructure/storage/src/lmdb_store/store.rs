@@ -53,24 +53,40 @@ pub struct LMDBConfig {
     init_size_bytes: usize,
     grow_size_bytes: usize,
     resize_threshold_bytes: usize,
+    /// Turn off readahead. Most operating systems perform readahead on read requests by default. This option turns it
+    /// off if the OS supports it. Turning it off may help random read performance when the DB is larger than RAM and
+    /// system RAM is full. The option is not implemented on Windows. (Default: false)
+    no_read_ahead: bool,
 }
 
 impl LMDBConfig {
     /// Specify LMDB config in bytes.
-    pub fn new(init_size_bytes: usize, grow_size_bytes: usize, resize_threshold_bytes: usize) -> Self {
+    pub fn new(
+        init_size_bytes: usize,
+        grow_size_bytes: usize,
+        resize_threshold_bytes: usize,
+        no_read_ahead: bool,
+    ) -> Self {
         Self {
             init_size_bytes,
             grow_size_bytes,
             resize_threshold_bytes,
+            no_read_ahead,
         }
     }
 
     /// Specify LMDB config in megabytes.
-    pub fn new_from_mb(init_size_mb: usize, grow_size_mb: usize, resize_threshold_mb: usize) -> Self {
+    pub fn new_from_mb(
+        init_size_mb: usize,
+        grow_size_mb: usize,
+        resize_threshold_mb: usize,
+        no_read_ahead: bool,
+    ) -> Self {
         Self {
             init_size_bytes: init_size_mb * BYTES_PER_MB,
             grow_size_bytes: grow_size_mb * BYTES_PER_MB,
             resize_threshold_bytes: resize_threshold_mb * BYTES_PER_MB,
+            no_read_ahead,
         }
     }
 
@@ -89,12 +105,17 @@ impl LMDBConfig {
     pub fn resize_threshold_bytes(&self) -> usize {
         self.resize_threshold_bytes
     }
+
+    /// Get the `no_read_ahead` flag option. If true, readahead is disabled where supported.
+    pub fn no_read_ahead(&self) -> bool {
+        self.no_read_ahead
+    }
 }
 
 impl Default for LMDBConfig {
     fn default() -> Self {
         // Do not choose these values too small, as the entire SMT is replaced for every new block
-        Self::new_from_mb(128, 128, 64)
+        Self::new_from_mb(128, 128, 64, false)
     }
 }
 
@@ -213,7 +234,7 @@ impl LMDBBuilder {
                 db: Arc::new(db),
             };
             databases.insert(name.to_string(), db);
-            trace!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
+            trace!(target: LOG_TARGET, "({path}) LMDB database '{name}' is ready");
         }
         Ok(LMDBStore {
             path,
@@ -363,7 +384,7 @@ impl LMDBStore {
                 target: LOG_TARGET,
                 "Could not retrieve LMDB information for {}. {}",
                 self.path,
-                e.to_string()
+                e
             ),
             Ok(info) => {
                 let size_mb = info.mapsize / BYTES_PER_MB;
@@ -382,7 +403,7 @@ impl LMDBStore {
                 target: LOG_TARGET,
                 "Could not retrieve LMDB statistics for {}. {}",
                 self.path,
-                e.to_string()
+                e
             ),
             Ok(stats) => {
                 let page_size = stats.psize / 1024;
@@ -438,7 +459,7 @@ impl LMDBStore {
                 size_used_bytes / BYTES_PER_MB,
                 size_left_bytes / BYTES_PER_MB
             );
-            Self::resize(env, config, Some(increase_threshold_by.unwrap_or_default()))?;
+            Self::resize(env, config, increase_threshold_by)?;
         }
         Ok(())
     }
@@ -571,7 +592,7 @@ impl LMDBDatabase {
                 target: LOG_TARGET,
                 "Could not retrieve LMDB statistics for {}. {}",
                 self.name,
-                e.to_string()
+                e
             ),
             Ok(stats) => {
                 let page_size = stats.psize / 1024;
@@ -744,11 +765,11 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     {
         match val {
             Ok(None) => Ok(None),
-            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),
+            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {e}"))),
             Ok(Some(v)) => match bincode::deserialize(v) {
                 // The reference to v is about to be dropped, so we must copy the data now
                 Ok(val) => Ok(Some(val)),
-                Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),
+                Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {e}"))),
             },
         }
     }

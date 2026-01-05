@@ -23,7 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_core::blocks::BlockHeader;
+use tari_node_components::blocks::BlockHeader;
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand};
@@ -69,10 +69,10 @@ impl CommandContext {
             let (max, min, avg) = BlockHeader::timing_stats(&headers);
             let first = headers.first().ok_or(ArgsError::HeaderLost)?.height;
             let last = headers.last().ok_or(ArgsError::HeaderLost)?.height;
-            println!("Timing for blocks #{} - #{}", first, last);
-            println!("Max block time: {}", max);
-            println!("Min block time: {}", min);
-            println!("Avg block time: {}", avg);
+            println!("Timing for blocks #{first} - #{last}");
+            println!("Max block time: {max}");
+            println!("Min block time: {min}");
+            println!("Avg block time: {avg}");
             Ok(())
         }
     }

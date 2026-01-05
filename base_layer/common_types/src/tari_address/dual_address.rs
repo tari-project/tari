@@ -48,7 +48,8 @@ pub struct DualAddress {
     features: TariAddressFeatures,
     public_view_key: CompressedPublicKey,
     public_spend_key: CompressedPublicKey,
-    payment_id_user_data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
+    #[serde(alias = "payment_id_user_data")]
+    memo_field_payment_id: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
 impl DualAddress {
@@ -58,10 +59,10 @@ impl DualAddress {
         spend_key: CompressedPublicKey,
         network: Network,
         features: TariAddressFeatures,
-        payment_id_user_data: Option<Vec<u8>>,
+        memo_field_payment_id: Option<Vec<u8>>,
     ) -> Result<DualAddress, TariAddressError> {
         let mut features = features;
-        let payment_id_user_data = match payment_id_user_data {
+        let memo_field_payment_id = match memo_field_payment_id {
             Some(data) => {
                 if data.len() > MAX_ENCRYPTED_DATA_SIZE {
                     return Err(TariAddressError::PaymentIdTooLarge);
@@ -76,7 +77,7 @@ impl DualAddress {
             features,
             public_view_key: view_key,
             public_spend_key: spend_key,
-            payment_id_user_data,
+            memo_field_payment_id,
         })
     }
 
@@ -89,12 +90,12 @@ impl DualAddress {
         Self::new(view_key, spend_key, network, TariAddressFeatures::default(), None)
     }
 
-    pub fn add_payment_id_user_data(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
+    pub fn add_memo_field_payment_id(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
         if data.len() > MAX_ENCRYPTED_DATA_SIZE {
             return Err(TariAddressError::PaymentIdTooLarge);
         }
         self.features.set(TariAddressFeatures::PAYMENT_ID, true);
-        self.payment_id_user_data = MaxSizeBytes::from_bytes_truncate(data);
+        self.memo_field_payment_id = MaxSizeBytes::from_bytes_truncate(data);
         Ok(())
     }
 
@@ -126,8 +127,8 @@ impl DualAddress {
         Self::from_bytes(&bytes)
     }
 
-    pub fn get_payment_id_user_data_bytes(&self) -> Vec<u8> {
-        self.payment_id_user_data.as_ref().to_vec()
+    pub fn get_memo_field_payment_id_bytes(&self) -> Vec<u8> {
+        self.memo_field_payment_id.as_ref().to_vec()
     }
 
     /// Gets the network from the Tari Address
@@ -144,7 +145,10 @@ impl DualAddress {
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_vec();
-        bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| EMOJI.get(*b as usize).expect("Index should exist"))
+            .collect::<String>()
     }
 
     /// Return the public view key of a Tari Address
@@ -169,33 +173,44 @@ impl DualAddress {
         if validate_checksum(bytes).is_err() {
             return Err(TariAddressError::InvalidChecksum);
         }
-        let network = Network::try_from(bytes[0]).map_err(|_| TariAddressError::InvalidNetwork)?;
-        let features = TariAddressFeatures::from_bits(bytes[1]).ok_or(TariAddressError::InvalidFeatures)?;
-        let public_view_key = CompressedPublicKey::from_canonical_bytes(&bytes[2..34])
-            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let public_spend_key = CompressedPublicKey::from_canonical_bytes(&bytes[34..66])
-            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let payment_id_user_data = MaxSizeBytes::from_bytes_truncate(&bytes[66..length - 1]);
+        let network = Network::try_from(*bytes.first().ok_or(TariAddressError::InvalidSize)?)
+            .map_err(|_| TariAddressError::InvalidNetwork)?;
+        let features = TariAddressFeatures::from_bits(*bytes.get(1).ok_or(TariAddressError::InvalidSize)?)
+            .ok_or(TariAddressError::InvalidFeatures)?;
+        let public_view_key =
+            CompressedPublicKey::from_canonical_bytes(bytes.get(2..34).ok_or(TariAddressError::InvalidSize)?)
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let public_spend_key =
+            CompressedPublicKey::from_canonical_bytes(bytes.get(34..66).ok_or(TariAddressError::InvalidSize)?)
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let memo_field_payment_id =
+            MaxSizeBytes::from_bytes_truncate(bytes.get(66..length - 1).ok_or(TariAddressError::InvalidSize)?);
         Ok(Self {
             network,
             features,
             public_view_key,
             public_spend_key,
-            payment_id_user_data,
+            memo_field_payment_id,
         })
     }
 
     /// Convert Tari Address to bytes
     pub fn to_vec(&self) -> Vec<u8> {
-        let length = TARI_ADDRESS_INTERNAL_DUAL_SIZE + self.payment_id_user_data.len();
+        let length = TARI_ADDRESS_INTERNAL_DUAL_SIZE + self.memo_field_payment_id.len();
         let mut buf = vec![0; length];
-        buf[0] = self.network.as_byte();
-        buf[1] = self.features.0;
-        buf[2..34].copy_from_slice(self.public_view_key.as_bytes());
-        buf[34..66].copy_from_slice(self.public_spend_key.as_bytes());
-        buf[66..(length - 1)].copy_from_slice(self.payment_id_user_data.as_bytes());
-        let checksum = compute_checksum(&buf[0..(length - 1)]);
-        buf[length - 1] = checksum;
+        *buf.get_mut(0).expect("Index should exist") = self.network.as_byte();
+        *buf.get_mut(1).expect("Index should exist") = self.features.0;
+        buf.get_mut(2..34)
+            .expect("Index should exist")
+            .copy_from_slice(self.public_view_key.as_bytes());
+        buf.get_mut(34..66)
+            .expect("Index should exist")
+            .copy_from_slice(self.public_spend_key.as_bytes());
+        buf.get_mut(66..(length - 1))
+            .expect("Index should exist")
+            .copy_from_slice(self.memo_field_payment_id.as_bytes());
+        let checksum = compute_checksum(buf.get(0..(length - 1)).expect("Index should exist"));
+        *buf.get_mut(length - 1).expect("Index should exist") = checksum;
         buf
     }
 
@@ -226,9 +241,9 @@ impl DualAddress {
     pub fn to_base58(&self) -> String {
         let bytes = self.to_vec();
         let mut base58 = "".to_string();
-        base58.push_str(&bs58::encode(&bytes[0..1]).into_string());
-        base58.push_str(&bs58::encode(&bytes[1..2].to_vec()).into_string());
-        base58.push_str(&bs58::encode(&bytes[2..]).into_string());
+        base58.push_str(&bs58::encode(bytes.get(0..1).expect("Index should exists")).into_string());
+        base58.push_str(&bs58::encode(bytes.get(1..2).expect("Index should exists").to_vec()).into_string());
+        base58.push_str(&bs58::encode(bytes.get(2..).expect("Index should exists")).into_string());
         base58
     }
 
@@ -247,6 +262,7 @@ impl DualAddress {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_crypto::keys::SecretKey;
 
     use super::*;
@@ -561,7 +577,7 @@ mod test {
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
         assert_eq!(
-            emoji_id_from_public_key.payment_id_user_data.as_bytes(),
+            emoji_id_from_public_key.memo_field_payment_id.as_bytes(),
             payment_id.as_slice()
         );
 
@@ -579,7 +595,7 @@ mod test {
         assert_eq!(emoji_id_from_emoji_string.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_emoji_string.public_view_key(), &view_key);
         assert_eq!(
-            emoji_id_from_emoji_string.payment_id_user_data.as_bytes(),
+            emoji_id_from_emoji_string.memo_field_payment_id.as_bytes(),
             payment_id.as_slice()
         );
     }
@@ -615,7 +631,7 @@ mod test {
 
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(
-            emoji_id_from_public_key.payment_id_user_data.as_bytes(),
+            emoji_id_from_public_key.memo_field_payment_id.as_bytes(),
             payment_id.as_slice()
         );
 
@@ -632,7 +648,7 @@ mod test {
         // Return to the original public keys for good measure
         assert_eq!(emoji_id_from_emoji_string.public_spend_key(), &spend_key);
         assert_eq!(
-            emoji_id_from_emoji_string.payment_id_user_data.as_bytes(),
+            emoji_id_from_emoji_string.memo_field_payment_id.as_bytes(),
             payment_id.as_slice()
         );
         let bas58 = emoji_id_from_emoji_string.to_base58();

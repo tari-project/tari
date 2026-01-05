@@ -7,21 +7,21 @@ Feature: Base Node Connectivity
     Scenario: Basic connectivity between 2 nodes
         Given I have a seed node SEED_A
         When I have a base node NODE_A connected to all seed nodes
-        When I wait for NODE_A to connect to SEED_A
+        When I wait for base node NODE_A to connect to base node SEED_A
 
     @base-node @wallet
     Scenario: Basic connectivity between nodes and wallet
         Given I have a seed node SEED_A
         When I have wallet WALLET_A connected to all seed nodes
-        Then I wait for WALLET_A to connect to SEED_A
-        Then I wait for WALLET_A to have 1 node connections
+        Then I wait for wallet WALLET_A to have connectivity
+        Then I wait for WALLET_A to have a node connection
         Then I wait for WALLET_A to have ONLINE connectivity
 
     @base-node @wallet
     Scenario: Basic mining
         Given I have a seed node NODE
         When I have wallet WALLET connected to all seed nodes
-        When I have mining node MINER connected to base node NODE and wallet WALLET
+        When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET
         Given mining node MINER mines 1 blocks
         Then node NODE is at height 1
 

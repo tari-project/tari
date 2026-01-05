@@ -80,22 +80,20 @@ where
             self.executor
                 .spawn(async move {
                     let timer = Instant::now();
-                    trace!(target: LOG_TARGET, "Start outbound pipeline {}", id);
+                    trace!(target: LOG_TARGET, "Start outbound pipeline {id}");
                     match time::timeout(Duration::from_secs(10), pipeline.oneshot(msg)).await {
                         Ok(Ok(_)) => {},
                         Ok(Err(err)) => {
                             error!(
                                 target: LOG_TARGET,
-                                "Outbound pipeline {} returned an error: '{}'", id, err
+                                "Outbound pipeline {id} returned an error: '{err}'"
                             );
                         },
                         Err(err) => {
-                            error!(
+                            debug!(
                                 target: LOG_TARGET,
-                                "Outbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
-                                 deadlock or excessive delay in processing this pipeline. {}",
-                                id,
-                                err
+                                "Outbound pipeline {id} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
+                                 deadlock or excessive delay in processing this pipeline. {err}"
                             );
                         },
                     }

@@ -36,7 +36,8 @@ use tokio_stream::Stream;
 use super::{dns::DnsResolver, Transport};
 use crate::{
     transports::dns::{DnsResolverRef, SystemDnsResolver},
-    utils::multiaddr::socketaddr_to_multiaddr,
+    types::TransportProtocol,
+    utils::{multiaddr::socketaddr_to_multiaddr, network::supports_ipv6},
 };
 
 /// Transport implementation for TCP
@@ -49,6 +50,7 @@ pub struct TcpTransport {
     // keepalive: Option<Option<Duration>>,
     nodelay: Option<bool>,
     dns_resolver: DnsResolverRef,
+    supported_protocols: Vec<TransportProtocol>,
 }
 
 impl TcpTransport {
@@ -69,7 +71,17 @@ impl TcpTransport {
 
     /// Create a new TcpTransport
     pub fn new() -> Self {
-        Default::default()
+        let mut supported_protocols = vec![TransportProtocol::Ipv4];
+        // Gate IPv6 on runtime capability
+        if supports_ipv6() {
+            supported_protocols.push(TransportProtocol::Ipv6);
+        }
+        Self {
+            ttl: None,
+            nodelay: None,
+            dns_resolver: Arc::new(SystemDnsResolver),
+            supported_protocols,
+        }
     }
 
     /// Set the DnsResolver for this TcpTransport. The resolver will be used when converting DNS addresses to IP
@@ -100,11 +112,7 @@ impl TcpTransport {
 
 impl Default for TcpTransport {
     fn default() -> Self {
-        Self {
-            ttl: None,
-            nodelay: None,
-            dns_resolver: Arc::new(SystemDnsResolver),
-        }
+        Self::new()
     }
 }
 
@@ -119,7 +127,7 @@ impl Transport for TcpTransport {
             .dns_resolver
             .resolve(addr.clone())
             .await
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to resolve address: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Failed to resolve address: {err}")))?;
         let listener = TcpListener::bind(&socket_addr).await?;
         let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
         Ok((TcpInbound::new(self.clone(), listener), local_addr))
@@ -130,10 +138,14 @@ impl Transport for TcpTransport {
             .dns_resolver
             .resolve(addr.clone())
             .await
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Address resolution failed: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Address resolution failed: {err}")))?;
 
         let socket = TcpOutbound::new(TcpStream::connect(socket_addr).boxed(), self.clone()).await?;
         Ok(socket)
+    }
+
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        self.supported_protocols.clone()
     }
 }
 

@@ -46,7 +46,7 @@ try {
 
 
   console.log("Create Comms config...");
-  let comms = lib.comms_config_create(
+  let comms = lib.wallet_db_config_create(
     "/ip4/0.0.0.0/tcp/9838",
     tor,
     "wallet.dat",
@@ -108,10 +108,6 @@ try {
   const txoValidation = ffi.Callback("void", [u64, u64], function (i, j) {
     console.log("txoValidation: ", i, j);
   });
-  // callback_contacts_liveness_data_updated:  unsafe extern "C" fn(*mut ContactsLivenessData),
-  const contactsLivenessDataUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
-    console.log("contactsLivenessDataUpdated: ", ptr);
-  });
   // callback_balance_updated: unsafe extern "C" fn(*mut Balance),
   const balanceUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("balanceUpdated: ", ptr);
@@ -120,12 +116,8 @@ try {
   const txValidation = ffi.Callback("void", [u64, u8], function (i, j) {
     console.log("txValidation: ", i, j);
   });
-  // callback_saf_messages_received: unsafe extern "C" fn(),
-  const safsReceived = ffi.Callback("void", [], function () {
-    console.log("safsReceived");
-  });
   // callback_connectivity_status: unsafe extern "C" fn(),
-  const connectivityStatus = ffi.Callback("void", [u64], function () {
+  const connectivityStatus = ffi.Callback("void", [u64, u64], function () {
     console.log("connectivityStatus");
   });
 
@@ -165,10 +157,8 @@ try {
     transactionSendResult,
     txCancelled,
     txoValidation,
-    contactsLivenessDataUpdated,
     balanceUpdated,
     txValidation,
-    safsReceived,
     connectivityStatus,
     recoveryInProgress,
     err

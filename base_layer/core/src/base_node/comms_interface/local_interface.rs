@@ -24,25 +24,34 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    epoch::VnEpoch,
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
+use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_transaction_components::{
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    transaction_components::{TransactionKernel, TransactionOutput},
+};
 use tokio::sync::broadcast;
 
 use crate::{
     base_node::comms_interface::{
         comms_request::GetNewBlockTemplateRequest,
+        comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
         BlockEvent,
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::TemplateRegistrationEntry,
-    proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    chain_storage::{
+        InputMinedInfo,
+        MinedInfo,
+        OutputMinedInfo,
+        TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
+    },
 };
-
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 
@@ -241,7 +250,7 @@ impl LocalNodeCommsInterface {
     /// Fetches the blocks with the specified kernel signatures commitments
     pub async fn get_blocks_with_kernels(
         &mut self,
-        kernels: Vec<Signature>,
+        kernels: Vec<CompressedSignature>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
@@ -283,7 +292,7 @@ impl LocalNodeCommsInterface {
     /// Searches for a kernel via the excess sig
     pub async fn get_kernel_by_excess_sig(
         &mut self,
-        kernel: Signature,
+        kernel: CompressedSignature,
     ) -> Result<Vec<TransactionKernel>, CommsInterfaceError> {
         match self
             .request_sender
@@ -298,10 +307,14 @@ impl LocalNodeCommsInterface {
     pub async fn get_active_validator_nodes(
         &mut self,
         height: u64,
-    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, CommsInterfaceError> {
+        validator_network: Option<CompressedPublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchValidatorNodesKeys { height })
+            .call(NodeCommsRequest::FetchValidatorNodesKeys {
+                height,
+                validator_network,
+            })
             .await??
         {
             NodeCommsResponse::FetchValidatorNodesKeysResponse(validator_node) => Ok(validator_node),
@@ -309,17 +322,35 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    pub async fn get_shard_key(
+    pub async fn get_validator_node_changes(
         &mut self,
-        height: u64,
-        public_key: CompressedPublicKey,
-    ) -> Result<Option<[u8; 32]>, CommsInterfaceError> {
+        sidechain_id: Option<CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeChange>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::GetShardKey { height, public_key })
+            .call(NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id })
             .await??
         {
-            NodeCommsResponse::GetShardKeyResponse(shard_key) => Ok(shard_key),
+            NodeCommsResponse::FetchValidatorNodeChangesResponse(validator_node_change) => Ok(validator_node_change),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_validator_node(
+        &mut self,
+        sidechain_id: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetValidatorNode {
+                sidechain_id,
+                public_key,
+            })
+            .await??
+        {
+            NodeCommsResponse::GetValidatorNode(vn) => Ok(vn),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
@@ -353,6 +384,63 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetch mined info by PayRef (Payment Reference)
+    pub async fn fetch_mined_info_by_payref(&mut self, payref: &FixedHash) -> Result<MinedInfo, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchMinedInfoByPayRef(*payref))
+            .await??
+        {
+            NodeCommsResponse::MinedInfo(mined_info) => Ok(mined_info),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetch mined info by output hash
+    pub async fn fetch_mined_info_by_output_hash(
+        &mut self,
+        output_hash: &HashOutput,
+    ) -> Result<MinedInfo, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchMinedInfoByOutputHash(*output_hash))
+            .await??
+        {
+            NodeCommsResponse::MinedInfo(mined_info) => Ok(mined_info),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetch output mined info by output hash
+    pub async fn fetch_output_mined_info(
+        &mut self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<OutputMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchOutputMinedInfo(*output_hash))
+            .await??
+        {
+            NodeCommsResponse::OutputMinedInfo(output_info) => Ok(output_info),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Check if an output is spent and return spent information
+    pub async fn check_output_spent_status(
+        &mut self,
+        output_hash: HashOutput,
+    ) -> Result<Option<InputMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::CheckOutputSpentStatus(output_hash))
+            .await??
+        {
+            NodeCommsResponse::InputMinedInfo(input_info) => Ok(input_info),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

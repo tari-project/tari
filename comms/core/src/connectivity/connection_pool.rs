@@ -45,7 +45,7 @@ impl ConnectionStatus {
 
 impl fmt::Display for ConnectionStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -248,6 +248,25 @@ impl ConnectionPool {
 
     pub fn count_entries(&self) -> usize {
         self.connections.len()
+    }
+
+    /// Get all connected node IDs for filtering in peer discovery
+    pub fn get_connected_node_ids(&self) -> Vec<NodeId> {
+        self.connections
+            .iter()
+            .filter_map(|(node_id, conn_state)| {
+                if conn_state.status() == ConnectionStatus::Connected &&
+                    conn_state
+                        .connection()
+                        .filter(|c| c.is_connected() && c.peer_features().is_node())
+                        .is_some()
+                {
+                    Some(node_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub(in crate::connectivity) fn count_filtered<P>(&self, mut predicate: P) -> usize

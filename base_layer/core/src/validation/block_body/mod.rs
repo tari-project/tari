@@ -27,4 +27,6 @@ mod block_body_internal_validator;
 pub use block_body_internal_validator::BlockBodyInternalConsistencyValidator;
 
 mod block_body_full_validator;
+mod block_body_partial_validator;
+
 pub use block_body_full_validator::BlockBodyFullValidator;

@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Display;
+
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
-
-use crate::transactions::transaction_components::{TransactionInput, TransactionOutput};
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionOutput};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputMinedInfo {
@@ -39,4 +41,42 @@ pub struct InputMinedInfo {
     pub spent_height: u64,
     pub header_hash: BlockHash,
     pub spent_timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinedInfo {
+    pub input: Option<InputMinedInfo>,
+    pub output: Option<OutputMinedInfo>,
+}
+
+impl Display for MinedInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(output) = &self.output {
+            let time = DateTime::<Utc>::from_timestamp(i64::try_from(output.mined_timestamp).unwrap_or(i64::MAX), 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
+            writeln!(
+                f,
+                "Output mined at height {} in block {} at timestamp {}",
+                output.mined_height,
+                output.header_hash,
+                time.to_rfc2822()
+            )?;
+        } else {
+            writeln!(f, "Output not mined ")?;
+        }
+        if let Some(input) = &self.input {
+            let time = DateTime::<Utc>::from_timestamp(i64::try_from(input.spent_timestamp).unwrap_or(i64::MAX), 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
+            writeln!(
+                f,
+                "Output spent at height {} in block {} at timestamp {}",
+                input.spent_height,
+                input.header_hash,
+                time.to_rfc2822()
+            )?;
+        } else {
+            writeln!(f, "Output not spent")?;
+        }
+        Ok(())
+    }
 }

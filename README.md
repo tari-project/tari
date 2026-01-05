@@ -1,3 +1,13 @@
+<!-- CI / Build Status -->
+[![CI](../../actions/workflows/ci.yml/badge.svg?branch=development)](../../actions/workflows/ci.yml)
+[![Integration Tests](../../actions/workflows/integration_tests.yml/badge.svg?branch=development)](../../actions/workflows/integration_tests.yml)
+[![Docker Build](../../actions/workflows/build_dockers.yml/badge.svg?branch=development)](../../actions/workflows/build_dockers.yml)
+[![Binary Build](../../actions/workflows/build_binaries.yml/badge.svg?branch=development)](../../actions/workflows/build_binaries.yml)
+
+<!-- Release & License -->
+[![Release](https://img.shields.io/github/v/release/tari-project/tari?sort=semver)](https://github.com/tari-project/tari/releases)
+[![License](https://img.shields.io/github/license/tari-project/tari)](https://github.com/tari-project/tari/blob/development/LICENSE)
+
 [![Coverage Status](https://coveralls.io/repos/github/tari-project/tari/badge.svg?branch=development)](https://coveralls.io/github/tari-project/tari?branch=development)
 
 # The Tari protocol
@@ -8,9 +18,10 @@ A number of applications have been developed by the Tari community to implement 
 - Minotari Wallet
 - Minotari Miner
 - Minotari Merge Mining Proxy
+- Minotari MCP Servers (for AI integration)
 - Minotari Aurora wallets for Android and iOS
 
-Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
+The core applications and MCP servers are documented in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
 
 ## Developers
 Want to contribute? Start by reading the [Contributing Guide](Contributing.md) and the [Reviewing Guide](docs/src/reviewing_guide.md).
@@ -20,11 +31,11 @@ Want to contribute? Start by reading the [Contributing Guide](Contributing.md) a
 ### Versions
 The recommended running versions of each network are:
 
-| Network   | Version     |
-|-----------|-------------|
-| Mainnet   | 2.1.0       |
-| Nextnet   | 2.1.0-rc.0  |
-| Esmeralda | 2.1.0-pre.0 |
+| Network   | Version      |
+|-----------|--------------|
+| Mainnet   | 4.10.0       |
+| Nextnet   | 4.9.1-rc.0   |
+| Esmeralda | 4.10.0-pre.0 |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
@@ -181,6 +192,8 @@ Compiled executables can be found at these paths::
     ./target/release/minotari_console_wallet
     ./target/release/minotari_merge_mining_proxy
     ./target/release/minotari_miner
+    ./target/release/minotari_mcp_wallet
+    ./target/release/minotari_mcp_node
 
 Alternatively, `cargo` can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
 on your system:
@@ -189,6 +202,8 @@ on your system:
     cargo install --path=applications/minotari_console_wallet --force
     cargo install --path=applications/minotari_merge_mining_proxy --force
     cargo install --path=applications/minotari_miner --force
+    cargo install --path=applications/minotari_mcp_wallet --force
+    cargo install --path=applications/minotari_mcp_node --force
 
 ---
 
@@ -199,6 +214,8 @@ anywhere on your system:
     cargo install --path=applications/minotari_console_wallet --force
     cargo install --path=applications/minotari_merge_mining_proxy --force
     cargo install --path=applications/minotari_miner --force
+    cargo install --path=applications/minotari_mcp_wallet --force
+    cargo install --path=applications/minotari_mcp_node --force
 
 ### Run
 
@@ -209,7 +226,7 @@ used, you can run it from that directory, or you more likely want to copy it som
 start the Tor service `%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` if running on Windows. 
 Tor is included in the binary if running on Linux or Mac. 
 
-Running+:
+Running:
 
     minotari_node
 
@@ -218,6 +235,10 @@ Running+:
     minotari_merge_mining_proxy
 
     minotari_miner
+
+    minotari_mcp_wallet
+
+    minotari_mcp_node
 
 Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
 flag if you want to run in debug mode:
@@ -229,6 +250,10 @@ flag if you want to run in debug mode:
     cargo run --bin minotari_console_wallet --release
 
     cargo run --bin minotari_miner --release
+
+    cargo run --bin minotari_mcp_wallet --release
+
+    cargo run --bin minotari_mcp_node --release
 
 Using all the default options, the blockchain database, wallet database, console wallet database, log files and all
 configuration files will be created in the `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows) directory.
@@ -823,6 +848,48 @@ and `cpu: accepted (1/0)` to the pool.
 Mined and rejected Tari coinbases should be visible in the Tari Console Wallet, and pool shares in the pool interface.
 If you are using `cryptonote.social:5555` as in the example above, go to <https://cryptonote.social/xmr> and type in
 your wallet identity under `Username:` to see your shares, or try `taritest` if you used this configuration example.
+
+## AI Integration (MCP Servers)
+
+Tari provides Model Context Protocol (MCP) servers that enable AI agents like Claude to interact securely with Tari blockchain functionality.
+
+### MCP Applications
+
+- **`minotari_mcp_wallet`**: Provides secure wallet operations for AI agents
+- **`minotari_mcp_node`**: Enables AI agents to query blockchain and node information
+- **`minotari_mcp_common`**: Shared infrastructure for building secure MCP servers
+
+### Quick Start
+
+1. **Start your Tari wallet with gRPC enabled**:
+   ```bash
+   minotari_console_wallet --enable-grpc
+   ```
+
+2. **Start the MCP wallet server** (read-only, safe for AI):
+   ```bash
+   minotari_mcp_wallet --mcp-enabled
+   ```
+
+3. **Start the MCP node server**:
+   ```bash
+   minotari_mcp_node --mcp-enabled
+   ```
+
+### Security Features
+
+- **Local-only binding**: Servers only bind to 127.0.0.1 for security
+- **Permission levels**: Separate read-only and control operations
+- **Rate limiting**: Configurable request limits per client
+- **Audit logging**: Comprehensive operation tracking
+- **User confirmation**: Optional confirmation for value transfers
+
+For complete documentation, see:
+- [MCP Implementation Guide](docs/mcp/TARI_MCP_IMPLEMENTATION.md)
+- [Wallet MCP Server](applications/minotari_mcp_wallet/README.md)
+- [Common MCP Framework](applications/minotari_mcp_common/README.md)
+
+For more information about the Model Context Protocol, visit [modelcontextprotocol.io](https://modelcontextprotocol.io/specification/2025-03-26).
 
 # Project documentation
 

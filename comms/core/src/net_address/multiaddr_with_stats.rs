@@ -13,7 +13,7 @@ use std::{
 
 use chrono::{NaiveDateTime, Utc};
 use log::trace;
-use multiaddr::Multiaddr;
+use multiaddr::{Multiaddr, Protocol};
 use serde::{Deserialize, Serialize};
 
 use crate::{peer_manager::PeerIdentityClaim, types::CommsPublicKey};
@@ -58,14 +58,44 @@ impl MultiaddrWithStats {
         addr
     }
 
+    /// Constructs a new net address with stats. The caller must ensure that all the values are valid, including the
+    /// quality score.
+    pub fn new_with_stats(
+        address: Multiaddr,
+        last_seen: Option<NaiveDateTime>,
+        connection_attempts: u32,
+        avg_initial_dial_time: Option<Duration>,
+        initial_dial_time_sample_count: u32,
+        avg_latency: Option<Duration>,
+        latency_sample_count: u32,
+        last_attempted: Option<NaiveDateTime>,
+        last_failed_reason: Option<String>,
+        quality_score: Option<i32>,
+        source: PeerAddressSource,
+    ) -> Self {
+        Self {
+            address,
+            last_seen,
+            connection_attempts,
+            avg_initial_dial_time,
+            initial_dial_time_sample_count,
+            avg_latency,
+            latency_sample_count,
+            last_attempted,
+            last_failed_reason,
+            quality_score,
+            source,
+        }
+    }
+
     pub fn merge(&mut self, other: &Self) {
         if self.address == other.address {
             trace!(
                 target: LOG_TARGET, "merge: '{}, {:?}, {:?}' and '{}, {:?}, {:?}'",
-                self.address.to_string(),
+                self.address,
                 self.last_seen,
                 self.quality_score,
-                other.address.to_string(),
+                other.address,
                 other.last_seen,
                 other.quality_score
             );
@@ -114,6 +144,20 @@ impl MultiaddrWithStats {
         &self.address
     }
 
+    /// Returns true if the address is an external address, i.e. not a loopback, unspecified or private IP address.
+    pub fn is_external(&self) -> bool {
+        if self.address.is_empty() {
+            return false;
+        }
+        let mut protocols = self.address.iter();
+        let internal = match protocols.next() {
+            Some(Protocol::Ip4(ip)) => ip.is_loopback() || ip.is_unspecified() || ip.is_private(),
+            Some(Protocol::Ip6(ip)) => ip.is_loopback() || ip.is_unspecified(),
+            _ => false, // onion3 etc = OK
+        };
+        !internal
+    }
+
     pub fn offline_at(&self) -> Option<NaiveDateTime> {
         if self.last_failed_reason.is_some() {
             self.last_attempted
@@ -132,6 +176,7 @@ impl MultiaddrWithStats {
     /// MAX_LATENCY_SAMPLE_COUNT and the new latency_measurement will have a weight of 1.
     pub fn update_latency(&mut self, latency_measurement: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
+        self.last_failed_reason = None;
 
         self.avg_latency = Some(
             ((self
@@ -155,6 +200,7 @@ impl MultiaddrWithStats {
 
     pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
+        self.last_failed_reason = None;
 
         self.avg_initial_dial_time = Some(
             ((self.avg_initial_dial_time.unwrap_or_default() * self.initial_dial_time_sample_count) +
@@ -171,7 +217,7 @@ impl MultiaddrWithStats {
     pub fn mark_last_seen_now(&mut self) -> &mut Self {
         trace!(
             target: LOG_TARGET, "mark_last_seen_now: from {}, address '{}', previous {:?}",
-            self.source, self.address.to_string(), self.last_seen
+            self.source, self.address, self.last_seen
         );
         self.last_seen = Some(Utc::now().naive_utc());
         self.last_failed_reason = None;
@@ -184,6 +230,19 @@ impl MultiaddrWithStats {
     pub fn reset_connection_attempts(&mut self) {
         self.connection_attempts = 0;
         self.last_failed_reason = None;
+    }
+
+    #[cfg(test)]
+    pub fn reset_stats_to_default(&mut self) {
+        self.last_seen = None;
+        self.connection_attempts = 0;
+        self.avg_initial_dial_time = None;
+        self.initial_dial_time_sample_count = 0;
+        self.avg_latency = None;
+        self.latency_sample_count = 0;
+        self.last_attempted = None;
+        self.last_failed_reason = None;
+        self.quality_score = None;
     }
 
     /// Mark that a connection could not be established with this net address

@@ -23,25 +23,25 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    rpc::models::FeePerGramStat,
+    transaction_components::{Transaction, TransactionError},
+    weight::TransactionWeight,
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::Block,
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
         unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
-        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
         TxStorageResponse,
-    },
-    transactions::{
-        transaction_components::{Transaction, TransactionError},
-        weight::TransactionWeight,
     },
     validation::{TransactionValidator, ValidationError},
 };
@@ -55,14 +55,18 @@ pub struct MempoolStorage {
     pub(crate) unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
-    rules: ConsensusManager,
+    rules: BaseNodeConsensusManager,
     last_seen_height: u64,
     pub(crate) last_seen_hash: FixedHash,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: ConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: BaseNodeConsensusManager,
+        validator: Box<dyn TransactionValidator>,
+    ) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),
@@ -82,17 +86,17 @@ impl MempoolStorage {
             .map(|k| k.excess_sig.get_signature().to_hex())
             .unwrap_or_else(|| "None?!".into());
         let timer = Instant::now();
-        debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
+        debug!(target: LOG_TARGET, "Inserting tx into mempool: {tx_id}");
         let tx_fee = match tx.body.get_total_fee() {
             Ok(fee) => fee,
             Err(e) => {
-                warn!(target: LOG_TARGET, "Invalid transaction: {}", e);
+                warn!(target: LOG_TARGET, "Invalid transaction: {e}");
                 return Ok(TxStorageResponse::NotStoredConsensus);
             },
         };
         // This check is almost free, so lets check this before we do any expensive validation.
         if tx_fee.as_u64() < self.unconfirmed_pool.config.min_fee {
-            debug!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
+            debug!(target: LOG_TARGET, "Tx: ({tx_id}) fee too low, rejecting");
             return Ok(TxStorageResponse::NotStoredFeeTooLow);
         }
         match self.validator.validate(&tx) {
@@ -120,32 +124,29 @@ impl MempoolStorage {
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
-                    warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
                     Ok(TxStorageResponse::NotStoredOrphan)
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                warn!(target: LOG_TARGET, "Validation failed due to already spent input");
+                // This can happen if we get a transaction after it has been mined, but before the block has been
+                // published. In this case, we do not want to store the transaction in the mempool.
+                info!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
-            Err(ValidationError::MaturityError) => {
-                warn!(target: LOG_TARGET, "Validation failed due to maturity error");
-                Ok(TxStorageResponse::NotStoredTimeLocked)
-            },
+            Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
             Err(ValidationError::ConsensusError(msg)) => {
-                warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
+                warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {msg}");
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Validation failed due to already mined kernel: {}", msg
+                    "Validation failed due to already mined kernel: {msg}"
                 );
                 Ok(TxStorageResponse::NotStoredAlreadyMined)
             },
             Err(e) => {
-                eprintln!("Validation failed due to error: {}", e);
-                warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
+                info!(target: LOG_TARGET, "Validation failed due to error: {e}");
                 Ok(TxStorageResponse::NotStored)
             },
         }
@@ -225,8 +226,8 @@ impl MempoolStorage {
         self.last_seen_hash = published_block.header.hash();
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         match self.stats() {
-            Ok(stats) => debug!(target: LOG_TARGET, "{}", stats),
-            Err(e) => warn!(target: LOG_TARGET, "error to obtain stats: {}", e),
+            Ok(stats) => debug!(target: LOG_TARGET, "{stats}"),
+            Err(e) => warn!(target: LOG_TARGET, "error to obtain stats: {e}"),
         }
         Ok(())
     }
@@ -328,7 +329,7 @@ impl MempoolStorage {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> TxStorageResponse {
         if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig) {
             TxStorageResponse::UnconfirmedPool
         } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig) {

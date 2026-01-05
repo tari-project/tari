@@ -20,17 +20,19 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{CompressedCommitment, FixedHash},
+};
+use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
+use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::{AchievedTargetDifficulty, Difficulty},
-    transactions::transaction_components::Transaction,
+    proof_of_work::AchievedTargetDifficulty,
     validation::error::ValidationError,
 };
-
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
 pub trait BlockBodyValidator<B>: Send + Sync {
@@ -44,8 +46,12 @@ pub trait CandidateBlockValidator<B>: Send + Sync {
         backend: &B,
         block: &ChainBlock,
         metadata: &ChainMetadata,
-        // smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<(), ValidationError>;
+
+    // This body-in-isolation validation is intended to validate the block body without any knowledge of consecutive
+    // blocks that may exist. For example, it cannot validate that kernels are unique or that outputs have not been
+    // spent already.
+    fn validate_body_at_height(&self, backend: &B, block: &ChainBlock) -> Result<(), ValidationError>;
 }
 
 pub trait TransactionValidator: Send + Sync {
@@ -64,6 +70,7 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
+        vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 

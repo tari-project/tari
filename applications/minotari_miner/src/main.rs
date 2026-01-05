@@ -47,14 +47,14 @@ mod stratum;
 async fn main() {
     let terminal_title = format!("Minotari Miner - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
-        println!("Error setting terminal title. {}", e)
+        println!("Error setting terminal title. {e}")
     }
     match main_inner().await {
         Ok(_) => std::process::exit(0),
         Err(err) => {
-            error!(target: LOG_TARGET, "Fatal error: {:?}", err);
+            error!(target: LOG_TARGET, "Fatal error: {err}");
             let exit_code = err.exit_code;
-            error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
+            error!(target: LOG_TARGET, "Exiting with code: {exit_code}");
             std::process::exit(exit_code as i32)
         },
     }

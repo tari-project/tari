@@ -110,7 +110,7 @@ impl RpcStatus {
     /// potentially sensitive error information. Use this function with map_err to catch "miscellaneous" errors.
     pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
         move |err| {
-            log::error!(target: target, "Internal error: {}", err);
+            log::error!(target: target, "Internal error: {err}");
             Self::general_default()
         }
     }
@@ -159,7 +159,7 @@ impl From<RpcError> for RpcStatus {
             RpcError::DecodeError(_) => Self::bad_request("Failed to decode request"),
             RpcError::RequestFailed(status) => status,
             err => {
-                error!(target: LOG_TARGET, "Internal error: {}", err);
+                error!(target: LOG_TARGET, "Internal error: {err}");
                 Self::general(&err.to_string())
             },
         }
@@ -262,7 +262,7 @@ impl RpcStatusCode {
     }
 
     pub fn to_debug_string(&self) -> String {
-        format!("{:?}", self)
+        format!("{self:?}")
     }
 }
 

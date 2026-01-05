@@ -30,7 +30,13 @@ use std::{
 };
 
 use bitflags::bitflags;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{Error as DeError, Visitor},
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
 use tari_common::configuration::Network;
 use tari_utilities::hex::{from_hex, Hex};
 use thiserror::Error;
@@ -47,7 +53,7 @@ const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the
 const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 443; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
-const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
+pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TariAddressFeatures(u8);
@@ -98,6 +104,9 @@ impl fmt::Display for TariAddressFeatures {
         if self.contains(TariAddressFeatures::ONE_SIDED) {
             write!(f, "One-sided,")?;
         }
+        if self.contains(TariAddressFeatures::PAYMENT_ID) {
+            write!(f, "Payment-id,")?;
+        }
         Ok(())
     }
 }
@@ -132,7 +141,7 @@ pub enum TariAddressError {
     PaymentIdNotSupported,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TariAddress {
     Dual(Box<DualAddress>),
     Single(Box<SingleAddress>),
@@ -239,18 +248,18 @@ impl TariAddress {
         }
     }
 
-    pub fn get_payment_id_user_data_bytes(&self) -> Vec<u8> {
+    pub fn get_memo_field_payment_id_bytes(&self) -> Vec<u8> {
         match self {
-            TariAddress::Dual(v) => v.get_payment_id_user_data_bytes(),
+            TariAddress::Dual(v) => v.get_memo_field_payment_id_bytes(),
             TariAddress::Single(_) => vec![],
         }
     }
 
-    pub fn with_payment_id_user_data(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
+    pub fn with_memo_field_payment_id(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
         match self {
             TariAddress::Dual(v) => {
                 let mut address = v.clone();
-                address.add_payment_id_user_data(data)?;
+                address.add_memo_field_payment_id(data)?;
                 Ok(TariAddress::Dual(address))
             },
             TariAddress::Single(_) => Err(TariAddressError::PaymentIdNotSupported),
@@ -259,12 +268,6 @@ impl TariAddress {
 
     /// helper function to convert emojis to u8
     fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
-        // The string must be the correct size, including the checksum
-        if !(emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
-            emoji.chars().count() == TARI_ADDRESS_INTERNAL_DUAL_SIZE)
-        {
-            return Err(TariAddressError::InvalidSize);
-        }
         if emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             SingleAddress::emoji_to_bytes(emoji)
         } else {
@@ -298,15 +301,17 @@ impl TariAddress {
     /// Gets the checksum from the Tari Address
     pub fn calculate_checksum(&self) -> u8 {
         let bytes = self.to_vec();
-        // -1 is safe as this the len will always be greater than 0
-        bytes[bytes.len() - 1]
+        *bytes.last().expect("Index should exist")
     }
 
     /// Convert Tari Address to an emoji string
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_vec();
-        bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| EMOJI.get(*b as usize).expect("Index should exist"))
+            .collect::<String>()
     }
 
     /// Return the public view key of an Tari Address
@@ -385,9 +390,9 @@ impl TariAddress {
     /// Convert Tari Address to bytes
     pub fn to_base58(&self) -> String {
         let bytes = self.to_vec();
-        let mut network = bs58::encode(&bytes[0..1]).into_string();
-        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
-        let rest = bs58::encode(&bytes[2..]).into_string();
+        let mut network = bs58::encode(bytes.get(0..1).expect("Index should exist")).into_string();
+        let features = bs58::encode(bytes.get(1..2).expect("Index should exist").to_vec()).into_string();
+        let rest = bs58::encode(bytes.get(2..).expect("Index should exist")).into_string();
         network.push_str(&features);
         network.push_str(&rest);
         network
@@ -434,76 +439,259 @@ impl Default for TariAddress {
     }
 }
 
-pub mod tari_address_json_bs58 {
-    use std::fmt;
-
-    use serde::{
-        de::{Error, Visitor},
-        Deserializer,
-        Serializer,
-    };
-
-    use crate::tari_address::TariAddress;
-
-    /// Serializes a [`TariAddress`] to a base58 string or a binary array.
-    pub fn serialize<S>(address: &TariAddress, ser: S) -> Result<S::Ok, S::Error>
+impl Serialize for TariAddress {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        if ser.is_human_readable() {
-            ser.serialize_str(&address.to_base58())
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_base58())
         } else {
-            ser.serialize_bytes(&address.to_vec())
+            serializer.serialize_bytes(&self.to_vec())
+        }
+    }
+}
+
+struct TariAddressVisitorLegacy;
+
+impl<'de> Visitor<'de> for TariAddressVisitorLegacy {
+    type Value = TariAddress;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a map with a single key as TariAddress variant")
+    }
+
+    fn visit_map<M>(self, mut map: M) -> Result<TariAddress, M::Error>
+    where M: serde::de::MapAccess<'de> {
+        let entry = map.next_entry::<String, serde_json::Value>()?;
+        let (variant, value) = entry.ok_or_else(|| M::Error::custom("expected a single key for enum variant"))?;
+
+        match variant.as_str() {
+            "Dual" => {
+                let inner: DualAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                Ok(TariAddress::Dual(Box::new(inner)))
+            },
+            "Single" => {
+                let inner: SingleAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                Ok(TariAddress::Single(Box::new(inner)))
+            },
+            other => Err(M::Error::unknown_variant(other, &["Dual", "Single"])),
+        }
+    }
+}
+
+struct TariAddressVisitor;
+
+impl<'de> Visitor<'de> for TariAddressVisitor {
+    type Value = TariAddress;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a base58 string or legacy map representing a TariAddress")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<TariAddress, E>
+    where E: DeError {
+        // Try base58 decoding first
+        match TariAddress::from_base58(v) {
+            Ok(addr) => Ok(addr),
+            Err(_) => {
+                // Fallback to legacy JSON value parsing
+
+                // Deserialize from the JSON string as legacy map format
+                // Note: this is a little tricky because visit_str gives you a &str,
+                // but legacy expects a map object. So we deserialize here from the string JSON text.
+
+                let value: serde_json::Value = serde_json::from_str(v).map_err(DeError::custom)?;
+                // Convert serde_json::Value back to a string JSON fragment for deserialization
+                let json_str = serde_json::to_string(&value).map_err(DeError::custom)?;
+                let mut deserializer = serde_json::Deserializer::from_str(&json_str);
+                // Use legacy visitor to parse the map structure
+                deserializer
+                    .deserialize_map(TariAddressVisitorLegacy)
+                    .map_err(DeError::custom)
+            },
         }
     }
 
-    /// Serializes a [`TariAddress`] from a base58 string or a binary array.
-    pub fn deserialize<'de, D>(de: D) -> Result<TariAddress, D::Error>
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<TariAddress, E>
+    where E: DeError {
+        TariAddress::from_bytes(v).map_err(DeError::custom)
+    }
+
+    fn visit_map<M>(self, map: M) -> Result<TariAddress, M::Error>
+    where M: serde::de::MapAccess<'de> {
+        // Delegate map deserialization to legacy visitor
+        TariAddressVisitorLegacy.visit_map(map)
+    }
+}
+
+impl<'de> Deserialize<'de> for TariAddress {
+    fn deserialize<D>(deserializer: D) -> Result<TariAddress, D::Error>
     where D: Deserializer<'de> {
-        let visitor = Base58Visitor::default();
-        if de.is_human_readable() {
-            de.deserialize_string(visitor)
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(TariAddressVisitor)
         } else {
-            de.deserialize_bytes(visitor)
-        }
-    }
-    #[derive(Default)]
-    struct Base58Visitor {}
-
-    impl<'de> Visitor<'de> for Base58Visitor {
-        type Value = TariAddress;
-
-        fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-            fmt.write_str("Expecting a binary array or Base58 string")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where E: Error {
-            let address = TariAddress::from_base58(v).map_err(|e| E::custom(e.to_string()))?;
-            Ok(address)
-        }
-
-        fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-        where E: Error {
-            self.visit_str(&v)
-        }
-
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-        where E: Error {
-            TariAddress::from_bytes(v).map_err(|e| E::custom(e.to_string()))
-        }
-
-        fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-        where E: Error {
-            self.visit_bytes(v)
+            deserializer.deserialize_bytes(TariAddressVisitor)
         }
     }
 }
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
+    use serde_json;
     use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::{dammsum::compute_checksum, types::PrivateKey};
+
+    #[test]
+    fn compare_serializers() {
+        // Test previous implementation of TariAddress base58 serialization with the new one
+        pub mod tari_address_json_bs58 {
+            use std::fmt;
+
+            use serde::{
+                de::{Error, Visitor},
+                Deserializer,
+                Serializer,
+            };
+
+            use crate::tari_address::TariAddress;
+            /// Serializes a [`TariAddress`] to a base58 string or a binary array.
+            pub fn serialize<S>(address: &TariAddress, ser: S) -> Result<S::Ok, S::Error>
+            where S: Serializer {
+                if ser.is_human_readable() {
+                    ser.serialize_str(&address.to_base58())
+                } else {
+                    ser.serialize_bytes(&address.to_vec())
+                }
+            }
+            /// Serializes a [`TariAddress`] from a base58 string or a binary array.
+            pub fn deserialize<'de, D>(de: D) -> Result<TariAddress, D::Error>
+            where D: Deserializer<'de> {
+                let visitor = Base58Visitor::default();
+                if de.is_human_readable() {
+                    de.deserialize_string(visitor)
+                } else {
+                    de.deserialize_bytes(visitor)
+                }
+            }
+            #[derive(Default)]
+            struct Base58Visitor {}
+            impl<'de> Visitor<'de> for Base58Visitor {
+                type Value = TariAddress;
+
+                fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+                    fmt.write_str("Expecting a binary array or Base58 string")
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where E: Error {
+                    let address = TariAddress::from_base58(v).map_err(|e| E::custom(e.to_string()))?;
+                    Ok(address)
+                }
+
+                fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+                where E: Error {
+                    self.visit_str(&v)
+                }
+
+                fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+                where E: Error {
+                    TariAddress::from_bytes(v).map_err(|e| E::custom(e.to_string()))
+                }
+
+                fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+                where E: Error {
+                    self.visit_bytes(v)
+                }
+            }
+        }
+
+        #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+        struct PreviousSerialization {
+            #[serde(with = "tari_address_json_bs58")]
+            recipient_address: TariAddress,
+        }
+        let previous_serialization = PreviousSerialization {
+            recipient_address: TariAddress::default(),
+        };
+
+        #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+        struct NewSerialization {
+            recipient_address: TariAddress,
+        }
+        let new_serialization = NewSerialization {
+            recipient_address: TariAddress::default(),
+        };
+
+        let previous_serialization = serde_json::to_string(&previous_serialization).unwrap();
+        let new_serialization = serde_json::to_string(&new_serialization).unwrap();
+        assert_eq!(previous_serialization, new_serialization);
+
+        let previous_deserialized = serde_json::from_str::<PreviousSerialization>(&previous_serialization).unwrap();
+        let new_deserialized = serde_json::from_str::<NewSerialization>(&new_serialization).unwrap();
+        assert_eq!(
+            previous_deserialized.recipient_address,
+            new_deserialized.recipient_address
+        );
+    }
+
+    #[test]
+    fn test_serialize_deserialize_dual_address() {
+        let dual_address = DualAddress::new(
+            CompressedPublicKey::from_hex("3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924").unwrap(),
+            CompressedPublicKey::from_hex("d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61").unwrap(),
+            Network::MainNet,
+            TariAddressFeatures(1),
+            None,
+        )
+        .unwrap();
+
+        let addr = TariAddress::Dual(Box::new(dual_address));
+
+        let json_str = serde_json::to_string(&addr).expect("Failed to serialize TariAddress");
+        let expected_json =
+            r#""126J92Yow5y9UoRFd1DNujPmVFq9C1ZeiYWT95UKxz5Y1rzbfjtHg4SCZS1dk83ivzt3m2XRQHTaYUk9SwmyeCvy5BJ""#;
+
+        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
+        let actual_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(actual_value, expected_value);
+
+        let decoded_addr: TariAddress = serde_json::from_str(&json_str).expect("Failed to deserialize TariAddress");
+
+        assert_eq!(addr, decoded_addr);
+    }
+
+    #[test]
+    fn deserialize_dual_address_legacy() {
+        let expected_deserialized_dual_address = DualAddress::new(
+            CompressedPublicKey::from_hex("3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924").unwrap(),
+            CompressedPublicKey::from_hex("d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61").unwrap(),
+            Network::MainNet,
+            TariAddressFeatures(1),
+            None,
+        )
+        .unwrap();
+        let expected_addr = TariAddress::Dual(Box::new(expected_deserialized_dual_address));
+
+        let legacy_dual_address = r#"
+        {
+          "Dual": {
+            "network": "mainnet",
+            "features": 1,
+            "public_view_key": "3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924",
+            "public_spend_key": "d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61",
+            "payment_id_user_data": {
+              "inner": []
+            }
+          }
+        }
+        "#;
+        let actual_addr = serde_json::from_str::<TariAddress>(legacy_dual_address)
+            .expect("Failed to deserialize TariAddress from JSON");
+        assert_eq!(actual_addr, expected_addr);
+    }
 
     #[test]
     /// Test valid single tari address
@@ -924,7 +1112,7 @@ mod test {
             Err(TariAddressError::InvalidSize)
         );
         // This emoji string is too long to be a valid emoji ID
-        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
+        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidSize)
@@ -995,18 +1183,61 @@ mod test {
         // This emoji string contains an invalid utf8 character
         let emoji_string = "🦊 | 🦊 | 🦊 | 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
                             🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
-                            🦊| 🦊 | 🦊| 🦊 | 🦊";
+                            🦊| 🦊 | 🦊| 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊";
         assert_eq!(
             TariAddress::from_base58(emoji_string),
             Err(TariAddressError::InvalidCharacter)
         );
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
-            Err(TariAddressError::InvalidSize)
+            Err(TariAddressError::InvalidEmoji)
         );
         assert_eq!(
             TariAddress::from_str(emoji_string),
             Err(TariAddressError::InvalidAddressString)
+        );
+    }
+
+    #[test]
+    fn retrieve_memo_field() {
+        // Address 1
+        let pmnt_id_address = TariAddress::from_base58(
+            "f75xWw72BhjRuSatHg4MtqgqzejhZJEmHH7DyYceQDVfKdepfY22CfPJUFQyhkao28gp7cbVqVdR9zczg9eKpoYjGUBH6G32SB",
+        )
+        .unwrap();
+        assert_eq!(pmnt_id_address.get_memo_field_payment_id_bytes(), [
+            118, 103, 102, 118, 101
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
+            "vgfve"
+        );
+        // Address 2
+        let pmnt_id_address = TariAddress::from_base58(
+            "f65xWw72BhjRuSatHg4MtqgqzejhZJEmHH7DyYceQDVfKdfPq5FDo1y7d7pnkm7nxfLy5JpcJMAoX2eiSvHmV7TeTo9k5tsAuR",
+        )
+        .unwrap();
+        assert_eq!(pmnt_id_address.get_memo_field_payment_id_bytes(), [
+            118, 103, 102, 118, 101
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
+            "vgfve"
+        );
+        // Address 3
+        let address = TariAddress::from_base58(
+            "f23KSMumnDPez4mX9Lxxr1tFDvnkt6aJbsxYLps6sp53PSEHeFXggaGdL3vA4sCHjjbX9Q9KxqyYKUqmeyiWqgUuwFz",
+        )
+        .unwrap();
+        let pmnt_id_address = address
+            .with_memo_field_payment_id([72, 101, 108, 108, 111].to_vec())
+            .unwrap();
+        assert_eq!(pmnt_id_address.get_memo_field_payment_id_bytes(), [
+            72, 101, 108, 108, 111
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
+            "Hello"
         );
     }
 }

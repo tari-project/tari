@@ -28,10 +28,8 @@ use std::{
 };
 
 use callbacks::Callbacks;
-use indexmap::IndexMap;
 use libc::{c_ulonglong, c_void};
-use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 
 use super::{
     ffi_import::{
@@ -39,23 +37,17 @@ use super::{
         wallet_create,
         TariBalance,
         TariCompletedTransaction,
-        TariContactsLivenessData,
         TariPendingInboundTransaction,
         TariTransactionSendStatus,
         TariWallet,
     },
     Balance,
-    CommsConfig,
     CompletedTransactions,
-    Contact,
-    Contacts,
-    ContactsLivenessData,
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKey,
-    PublicKeys,
     WalletAddress,
+    WalletDbConfig,
 };
 use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
 
@@ -130,11 +122,6 @@ extern "C" fn callback_txo_validation_complete(_context: *mut c_void, request_ke
     callbacks.on_txo_validation_complete(request_key, validation_results);
     // println!("callback_txo_validation_complete");
 }
-extern "C" fn callback_contacts_liveness_data_updated(_context: *mut c_void, ptr: *mut TariContactsLivenessData) {
-    let callbacks = Callbacks::instance();
-    callbacks.on_contacts_liveness_data_updated(ptr);
-    // println!("callback_contacts_liveness_data_updated");
-}
 extern "C" fn callback_balance_updated(_context: *mut c_void, ptr: *mut TariBalance) {
     let callbacks = Callbacks::instance();
     callbacks.on_balance_updated(ptr);
@@ -149,14 +136,10 @@ extern "C" fn callback_transaction_validation_complete(
     callbacks.on_transaction_validation_complete(request_key, validation_results);
     // println!("callback_transaction_validation_complete");
 }
-extern "C" fn callback_saf_messages_received(_context: *mut c_void) {
+
+extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64, latency: u64) {
     let callbacks = Callbacks::instance();
-    callbacks.on_saf_messages_received();
-    // println!("callback_saf_messages_received");
-}
-extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64) {
-    let callbacks = Callbacks::instance();
-    callbacks.on_connectivity_status(status);
+    callbacks.on_connectivity_status(status, latency);
     // println!("callback_connectivity_status");
 }
 
@@ -182,7 +165,6 @@ struct CachedBalance {
 #[derive(Debug)]
 pub struct Wallet {
     ptr: *mut TariWallet,
-    liveness_data: Arc<Mutex<IndexMap<String, ContactsLivenessData>>>,
     balance: CachedBalance,
 }
 
@@ -194,7 +176,11 @@ impl Drop for Wallet {
 
 impl Wallet {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn create(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
+    pub fn create(
+        wallet_db_config: WalletDbConfig,
+        log_path: String,
+        seed_words_ptr: *const c_void,
+    ) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
@@ -202,7 +188,7 @@ impl Wallet {
         unsafe {
             ptr = wallet_create(
                 void_ptr,
-                comms_config.get_ptr(),
+                wallet_db_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 11,
                 50,
@@ -212,8 +198,7 @@ impl Wallet {
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
                 CString::new("").unwrap().into_raw(),
-                ptr::null(),
-                false,
+                0,
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -225,10 +210,8 @@ impl Wallet {
                 callback_transaction_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
-                callback_contacts_liveness_data_updated,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
-                callback_saf_messages_received,
                 callback_connectivity_status,
                 callback_wallet_scanned_height,
                 callback_base_node_state,
@@ -236,27 +219,18 @@ impl Wallet {
                 &mut error,
             );
             if error > 0 {
-                println!("wallet_create error {}", error);
+                println!("wallet_create error {error}");
                 panic!("wallet_create error");
             }
         }
         #[allow(clippy::arc_with_non_send_sync)]
         let wallet = Arc::new(Mutex::new(Self {
             ptr,
-            liveness_data: Default::default(),
             balance: Default::default(),
         }));
         let callbacks = Callbacks::instance();
         callbacks.reset(wallet.clone());
         wallet
-    }
-
-    pub fn add_liveness_data(&mut self, contact_liveness_data: ContactsLivenessData) {
-        let address = TariAddress::from_bytes(&contact_liveness_data.get_public_key().address().get_vec()).unwrap();
-        self.liveness_data
-            .lock()
-            .unwrap()
-            .insert(address.to_base58(), contact_liveness_data);
     }
 
     pub fn set_balance(&mut self, balance: Balance) {
@@ -271,87 +245,17 @@ impl Wallet {
         self.ptr = null_mut();
     }
 
-    pub fn add_base_node_peer(&self, base_node: PublicKey, address: String) -> bool {
-        let mut error = 0;
-        let success;
-        unsafe {
-            success = ffi_import::wallet_set_base_node_peer(
-                self.ptr,
-                base_node.get_ptr(),
-                CString::new(address).unwrap().into_raw(),
-                &mut error,
-            );
-            if error > 0 {
-                println!("wallet_set_base_node_peer error {}", error);
-                panic!("wallet_set_base_node_peer error");
-            }
-        }
-        success
-    }
-
     pub fn get_address(&self) -> WalletAddress {
         let ptr;
         let mut error = 0;
         unsafe {
             ptr = ffi_import::wallet_get_tari_interactive_address(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_interactive_address error {}", error);
+                println!("wallet_get_tari_interactive_address error {error}");
                 panic!("wallet_get_tari_interactive_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
-    }
-
-    pub fn connected_public_keys(&self) -> PublicKeys {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::comms_list_connected_public_keys(self.ptr, &mut error);
-            if error > 0 {
-                println!("comms_list_connected_public_keys error {}", error);
-                panic!("comms_list_connected_public_keys error");
-            }
-        }
-        PublicKeys::from_ptr(ptr)
-    }
-
-    pub fn upsert_contact(&self, contact: Contact) -> bool {
-        let success;
-        let mut error = 0;
-        unsafe {
-            success = ffi_import::wallet_upsert_contact(self.ptr, contact.get_ptr(), &mut error);
-            if error > 0 {
-                println!("wallet_upsert_contact error {}", error);
-                panic!("wallet_upsert_contact error");
-            }
-        }
-        success
-    }
-
-    pub fn get_contacts(&self) -> Contacts {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::wallet_get_contacts(self.ptr, &mut error);
-            if error > 0 {
-                println!("wallet_get_contacts error {}", error);
-                panic!("wallet_get_contacts error");
-            }
-        }
-        Contacts::from_ptr(ptr)
-    }
-
-    pub fn remove_contact(&self, contact: Contact) -> bool {
-        let success;
-        let mut error = 0;
-        unsafe {
-            success = ffi_import::wallet_remove_contact(self.ptr, contact.get_ptr(), &mut error);
-            if error > 0 {
-                println!("wallet_remove_contact error {}", error);
-                panic!("wallet_remove_contact error");
-            }
-        }
-        success
     }
 
     pub fn get_balance(&self) -> Balance {
@@ -360,7 +264,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_balance(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_balance error {}", error);
+                println!("wallet_get_balance error {error}");
                 panic!("wallet_get_balance error");
             }
         }
@@ -372,7 +276,7 @@ impl Wallet {
         dest: String,
         amount: u64,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         one_sided: bool,
     ) -> u64 {
         let tx_id;
@@ -385,11 +289,11 @@ impl Wallet {
                 null_mut(),
                 fee_per_gram,
                 one_sided,
-                CString::new(payment_id.user_data_as_string()).unwrap().into_raw(),
+                CString::new(payment_id.payment_id_as_string()).unwrap().into_raw(),
                 &mut error,
             );
             if error > 0 {
-                println!("wallet_send_transaction error {}", error);
+                println!("wallet_send_transaction error {error}");
                 panic!("wallet_send_transaction error");
             }
         }
@@ -402,7 +306,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_pending_outbound_transactions(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_pending_outbound_transactions error {}", error);
+                println!("wallet_get_pending_outbound_transactions error {error}");
                 panic!("wallet_get_pending_outbound_transactions error");
             }
         }
@@ -415,7 +319,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_pending_inbound_transactions(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_pending_inbound_transactions error {}", error);
+                println!("wallet_get_pending_inbound_transactions error {error}");
                 panic!("wallet_get_pending_inbound_transactions error");
             }
         }
@@ -428,7 +332,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_completed_transactions(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_completed_transactions error {}", error);
+                println!("wallet_get_completed_transactions error {error}");
                 panic!("wallet_get_completed_transactions error");
             }
         }
@@ -441,7 +345,7 @@ impl Wallet {
         unsafe {
             cancelled = ffi_import::wallet_cancel_pending_transaction(self.ptr, transaction_id, &mut error);
             if error > 0 {
-                println!("wallet_cancel_pending_transaction error {}", error);
+                println!("wallet_cancel_pending_transaction error {error}");
                 panic!("wallet_cancel_pending_transaction error");
             }
         }
@@ -454,7 +358,7 @@ impl Wallet {
         unsafe {
             request_key = ffi_import::wallet_start_txo_validation(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_start_txo_validation error {}", error);
+                println!("wallet_start_txo_validation error {error}");
                 panic!("wallet_start_txo_validation error");
             }
         }
@@ -467,15 +371,11 @@ impl Wallet {
         unsafe {
             request_key = ffi_import::wallet_start_transaction_validation(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_start_transaction_validation error {}", error);
+                println!("wallet_start_transaction_validation error {error}");
                 panic!("wallet_start_transaction_validation error");
             }
         }
         request_key
-    }
-
-    pub fn get_liveness_data(&self) -> Arc<Mutex<IndexMap<String, ContactsLivenessData>>> {
-        self.liveness_data.clone()
     }
 
     #[allow(dead_code)]
@@ -485,23 +385,10 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_fee_per_gram_stats(self.ptr, count, &mut error);
             if error > 0 {
-                println!("wallet_get_fee_per_gram_stats error {}", error);
+                println!("wallet_get_fee_per_gram_stats error {error}");
                 panic!("wallet_get_fee_per_gram_stats error");
             }
         }
         FeePerGramStats::from_ptr(ptr)
-    }
-
-    pub fn contacts_handle(&self) -> *mut c_void {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::contacts_handle(self.ptr, &mut error);
-            if error > 0 {
-                println!("contacts_handle error {}", error);
-                panic!("contacts_handle error");
-            }
-        }
-        ptr
     }
 }

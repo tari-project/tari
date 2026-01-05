@@ -25,28 +25,31 @@ use std::{
     sync::Arc,
 };
 
-use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::{chain_metadata::ChainMetadata, wallet_types::WalletType};
+use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::CipherSeed, types::CompressedCommitment};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
-    tor::TorIdentity,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::SafePassword;
 
-use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
+use crate::{
+    error::WalletStorageError,
+    storage::sqlite_db::models::DbBurnProof,
+    utxo_scanner_service::service::ScannedBlock,
+};
 
 const LOG_TARGET: &str = "wallet::database";
 
-/// This trait defines the functionality that a database backend need to provide for the Contacts Service
+/// This trait defines the functionality that a database backend need
 pub trait WalletBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
 
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError>;
     fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError>;
     fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError>;
     fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError>;
@@ -63,15 +66,12 @@ pub trait WalletBackend: Send + Sync + Clone {
     /// Change the passphrase used to encrypt the database
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
 
-    fn create_burnt_proof(
+    fn fetch_burn_proofs(&self) -> Result<Vec<DbBurnProof>, WalletStorageError>;
+    fn get_burn_proof_by_commitment(
         &self,
-        id: u32,
-        reciprocal_claim_public_key: String,
-        payload: String,
-    ) -> Result<(), WalletStorageError>;
-    fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError>;
-    fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError>;
-    fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError>;
+        commitment: &CompressedCommitment,
+    ) -> Result<Option<DbBurnProof>, WalletStorageError>;
+    fn delete_burn_proof(&self, id: i32) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,7 +79,6 @@ pub enum DbKey {
     CommsAddress,
     CommsFeatures,
     CommsIdentitySignature,
-    TorId,
     BaseNodeChainMetadata,
     ClientKey(String),
     MasterSeed,
@@ -99,8 +98,7 @@ impl DbKey {
             DbKey::MasterSeed => "MasterSeed".to_string(),
             DbKey::CommsAddress => "CommsAddress".to_string(),
             DbKey::CommsFeatures => "NodeFeatures".to_string(),
-            DbKey::TorId => "TorId".to_string(),
-            DbKey::ClientKey(k) => format!("ClientKey.{}", k),
+            DbKey::ClientKey(k) => format!("ClientKey.{k}"),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
             DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
             DbKey::SecondaryKeySalt => "SecondaryKeySalt".to_string(),
@@ -119,7 +117,6 @@ pub enum DbValue {
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
-    TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
     BaseNodeChainMetadata(ChainMetadata),
@@ -131,20 +128,19 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
-    WalletType(Box<WalletType>),
+    WalletType(Box<LegacyWalletType>),
 }
 
 #[derive(Clone)]
 pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
-    TorId(TorIdentity),
     BaseNodeChainMetadata(ChainMetadata),
     MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
-    WalletType(Box<WalletType>),
+    WalletType(Box<LegacyWalletType>),
 }
 
 pub enum WriteOperation {
@@ -187,21 +183,6 @@ where T: WalletBackend + 'static
 
     pub fn clear_master_seed(&self) -> Result<(), WalletStorageError> {
         self.db.write(WriteOperation::Remove(DbKey::MasterSeed))?;
-        Ok(())
-    }
-
-    pub fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::TorId) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::TorId(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::TorId, other),
-            Err(e) => log_error(DbKey::TorId, e),
-        }?;
-        Ok(c)
-    }
-
-    pub fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
-        self.db.write(WriteOperation::Insert(DbKeyValuePair::TorId(id)))?;
         Ok(())
     }
 
@@ -252,22 +233,6 @@ where T: WalletBackend + 'static
             .write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(
                 Box::new(sig),
             )))?;
-        Ok(())
-    }
-
-    pub fn get_chain_metadata(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::BaseNodeChainMetadata) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::BaseNodeChainMetadata(metadata))) => Ok(Some(metadata)),
-            Ok(Some(other)) => unexpected_result(DbKey::BaseNodeChainMetadata, other),
-            Err(e) => log_error(DbKey::BaseNodeChainMetadata, e),
-        }?;
-        Ok(c)
-    }
-
-    pub fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))?;
         Ok(())
     }
 
@@ -338,6 +303,11 @@ where T: WalletBackend + 'static
         Ok(result)
     }
 
+    pub fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError> {
+        let result = self.db.get_last_scanned_height()?;
+        Ok(result)
+    }
+
     pub fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
         let result = self.db.get_scanned_blocks()?;
         Ok(result)
@@ -367,29 +337,22 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn create_burnt_proof(
+    pub fn get_all_burn_proofs(&self) -> Result<Vec<DbBurnProof>, WalletStorageError> {
+        self.db.fetch_burn_proofs()
+    }
+
+    pub fn get_burn_proof_by_commitment(
         &self,
-        id: u32,
-        reciprocal_claim_public_key: String,
-        payload: String,
-    ) -> Result<(), WalletStorageError> {
-        self.db.create_burnt_proof(id, reciprocal_claim_public_key, payload)?;
-        Ok(())
+        commitment: &CompressedCommitment,
+    ) -> Result<Option<DbBurnProof>, WalletStorageError> {
+        self.db.get_burn_proof_by_commitment(commitment)
     }
 
-    pub fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError> {
-        self.db.fetch_burnt_proof(id)
+    pub fn delete_burn_proof(&self, id: i32) -> Result<(), WalletStorageError> {
+        self.db.delete_burn_proof(id)
     }
 
-    pub fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError> {
-        self.db.fetch_burnt_proofs()
-    }
-
-    pub fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError> {
-        self.db.delete_burnt_proof(id)
-    }
-
-    pub fn get_wallet_type(&self) -> Result<Option<WalletType>, WalletStorageError> {
+    pub fn get_wallet_type(&self) -> Result<Option<LegacyWalletType>, WalletStorageError> {
         match self.db.fetch(&DbKey::WalletType) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::WalletType(k))) => Ok(Some(*k)),
@@ -398,7 +361,7 @@ where T: WalletBackend + 'static
         }
     }
 
-    pub fn set_wallet_type(&self, wallet_type: WalletType) -> Result<(), WalletStorageError> {
+    pub fn set_wallet_type(&self, wallet_type: LegacyWalletType) -> Result<(), WalletStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::WalletType(Box::new(
                 wallet_type,
@@ -410,22 +373,21 @@ where T: WalletBackend + 'static
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {:?}", k)),
-            DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {:?}", v)),
+            DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {k:?}")),
+            DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {v:?}")),
             DbValue::ValueCleared => f.write_str("ValueCleared"),
             DbValue::CommsFeatures(_) => f.write_str("Node features"),
             DbValue::CommsAddress(_) => f.write_str("Comms Address"),
-            DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
-            DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
-            DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {:?}", k)),
-            DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {}", s)),
-            DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {}", v)),
-            DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {}", h)),
-            DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
+            DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{v}")),
+            DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {k:?}")),
+            DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {s}")),
+            DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {v}")),
+            DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {h}")),
+            DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {b}")),
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
-            DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
-            DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
-            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {:?}", wallet_type)),
+            DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {network}")),
+            DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {version}")),
+            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {wallet_type:?}")),
         }
     }
 }
@@ -435,7 +397,7 @@ fn log_error<T>(req: DbKey, err: WalletStorageError) -> Result<T, WalletStorageE
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
         req.to_key_string(),
-        err.to_string()
+        err
     );
     Err(err)
 }
@@ -446,13 +408,14 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
         req.to_key_string(),
         res
     );
-    error!(target: LOG_TARGET, "{}", msg);
+    error!(target: LOG_TARGET, "{msg}");
     Err(WalletStorageError::UnexpectedResult(msg))
 }
 
 #[cfg(test)]
 mod test {
-    use tari_key_manager::cipher_seed::CipherSeed;
+    #![allow(clippy::indexing_slicing)]
+    use tari_common_types::seeds::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::SafePassword;
     use tempfile::tempdir;
@@ -467,14 +430,14 @@ mod test {
     fn test_database_crud() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("my secret lovely passphrase");
         let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
         // Test wallet settings
         assert!(db.get_master_seed().unwrap().is_none());
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         db.set_master_seed(seed.clone()).unwrap();
         let stored_seed = db.get_master_seed().unwrap().unwrap();
         assert_eq!(seed, stored_seed);

@@ -19,6 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![allow(clippy::indexing_slicing)]
 #![cfg(feature = "rpc")]
 use std::time::Duration;
 
@@ -100,7 +101,7 @@ async fn rpc_server_can_request_drop_sessions() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -169,7 +170,7 @@ async fn rpc_server_can_prioritize_new_connections() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -222,7 +223,7 @@ async fn rpc_server_can_prioritize_old_connections() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -282,7 +283,7 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -317,7 +318,7 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
     }
 
     // RPC connections are closed when the peer is disconnected
-    conn1_2.disconnect(Minimized::No).await.unwrap();
+    conn1_2.disconnect(Minimized::No, "unit tests").await.unwrap();
 
     // Verify the RPC connections are closed
     async_assert_eventually!(
@@ -351,7 +352,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -428,7 +429,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -491,7 +492,7 @@ async fn client_prematurely_ends_session() {
 
     node1
         .peer_manager()
-        .add_peer(node2.node_identity().to_peer())
+        .add_or_update_peer(node2.node_identity().to_peer())
         .await
         .unwrap();
 

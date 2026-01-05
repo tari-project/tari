@@ -16,6 +16,7 @@
 /// `cargo run --release --example ledger_demo`
 /// -----------------------------------------------------------------------------------------------
 use dialoguer::{theme::ColorfulTheme, Select};
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ledger_get_app_name,
@@ -38,7 +39,6 @@ use minotari_ledger_wallet_comms::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey},
 };
@@ -55,7 +55,7 @@ fn main() {
         match get_transport() {
             Ok(_) => {},
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         };
@@ -70,7 +70,7 @@ fn main() {
         match verify_ledger_application() {
             Ok(_) => {},
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         }
@@ -82,9 +82,9 @@ fn main() {
     // GetAppName
     println!("\ntest: GetAppName");
     match ledger_get_app_name() {
-        Ok(name) => println!("app name:       {}", name),
+        Ok(name) => println!("app name:       {name}"),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -92,9 +92,9 @@ fn main() {
     // GetVersion
     println!("\ntest: GetVersion");
     match ledger_get_version() {
-        Ok(name) => println!("version:        {}", name),
+        Ok(name) => println!("version:        {name}"),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -105,7 +105,7 @@ fn main() {
     match ledger_get_public_spend_key(account) {
         Ok(public_alpha) => println!("public_alpha:   {}", public_alpha.to_hex()),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -114,33 +114,19 @@ fn main() {
     println!("\ntest: GetPublicKey");
     let index = OsRng.next_u64();
 
-    for branch in &[
-        TransactionKeyManagerBranch::OneSidedSenderOffset,
-        TransactionKeyManagerBranch::Spend,
-        TransactionKeyManagerBranch::RandomKey,
-        TransactionKeyManagerBranch::PreMine,
+    for branch in [
+        LedgerKeyBranch::OneSidedSenderOffset,
+        LedgerKeyBranch::Spend,
+        LedgerKeyBranch::Random,
+        LedgerKeyBranch::PreMine,
     ] {
-        match ledger_get_public_key(account, index, *branch) {
+        match ledger_get_public_key(account, index, branch) {
             Ok(public_key) => println!("public_key:     {}", public_key.to_hex()),
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         }
-    }
-
-    let branch = TransactionKeyManagerBranch::CommitmentMask;
-    match ledger_get_public_key(account, index, branch) {
-        Ok(_public_key) => {
-            println!("\nError: Should not have returned a public key for '{:?}'\n", branch);
-            return;
-        },
-        Err(e) => {
-            if e != LedgerDeviceError::Processing("GetPublicKey: expected 33 bytes, got 0 (BadBranchKey)".to_string()) {
-                println!("\nError: Unexpected response ({})\n", e);
-                return;
-            }
-        },
     }
 
     // GetScriptSignature
@@ -159,7 +145,7 @@ fn main() {
             branch_key: get_random_nonce(),
         },
         ScriptSignatureKey::Managed {
-            branch: TransactionKeyManagerBranch::Spend,
+            branch: LedgerKeyBranch::Spend,
             index: OsRng.next_u64(),
         },
     ] {
@@ -182,7 +168,7 @@ fn main() {
                 signature.u_y().to_hex()
             ),
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         }
@@ -197,9 +183,9 @@ fn main() {
     let mut sender_offset_indexes = Vec::new();
     for _i in 0..5 {
         derived_script_keys.push(get_random_nonce());
-        script_key_indexes.push((TransactionKeyManagerBranch::Spend, OsRng.next_u64()));
+        script_key_indexes.push((LedgerKeyBranch::Spend, OsRng.next_u64()));
         derived_sender_offsets.push(get_random_nonce());
-        sender_offset_indexes.push((TransactionKeyManagerBranch::OneSidedSenderOffset, OsRng.next_u64()));
+        sender_offset_indexes.push((LedgerKeyBranch::OneSidedSenderOffset, OsRng.next_u64()));
     }
 
     match ledger_get_script_offset(
@@ -212,7 +198,7 @@ fn main() {
     ) {
         Ok(script_offset) => println!("script_offset:  {}", script_offset.to_hex()),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -223,7 +209,7 @@ fn main() {
     let view_key_1 = match ledger_get_view_key(account) {
         Ok(val) => val,
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     };
@@ -232,13 +218,13 @@ fn main() {
     // GetDHSharedSecret
     println!("\ntest: GetDHSharedSecret");
     let index = OsRng.next_u64();
-    let branch = TransactionKeyManagerBranch::OneSidedSenderOffset;
+    let branch = LedgerKeyBranch::OneSidedSenderOffset;
     let public_key = CompressedPublicKey::from_secret_key(&get_random_nonce());
 
     match ledger_get_dh_shared_secret(account, index, branch, &public_key) {
         Ok(shared_secret) => println!("shared_secret:  {}", shared_secret.as_bytes().to_vec().to_hex()),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -246,9 +232,9 @@ fn main() {
     // GetRawSchnorrSignature
     println!("\ntest: GetRawSchnorrSignature");
     let private_key_index = OsRng.next_u64();
-    let private_key_branch = TransactionKeyManagerBranch::Spend;
+    let private_key_branch = LedgerKeyBranch::Spend;
     let nonce_index = OsRng.next_u64();
-    let nonce_branch = TransactionKeyManagerBranch::RandomKey;
+    let nonce_branch = LedgerKeyBranch::Random;
     let mut challenge = [0u8; 64];
     OsRng.fill_bytes(&mut challenge);
 
@@ -266,7 +252,7 @@ fn main() {
             signature.get_compressed_public_nonce().to_hex()
         ),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -274,7 +260,7 @@ fn main() {
     // GetScriptSchnorrSignature
     println!("\ntest: GetScriptSchnorrSignature");
     let private_key_index = OsRng.next_u64();
-    let private_key_branch = TransactionKeyManagerBranch::Spend;
+    let private_key_branch = LedgerKeyBranch::Spend;
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
 
@@ -285,7 +271,7 @@ fn main() {
             signature.get_compressed_public_nonce().to_hex()
         ),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -320,7 +306,7 @@ fn main() {
             signature.u_y().to_hex()
         ),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -334,10 +320,10 @@ fn main() {
             return;
         },
         Err(LedgerDeviceError::Processing(e)) => {
-            println!("\nLedger comms responded with: '{}'\n", e);
+            println!("\nLedger comms responded with: '{e}'\n");
         },
         Err(e) => {
-            println!("\nError: Unexpected response ({})\n", e);
+            println!("\nError: Unexpected response ({e})\n");
             return;
         },
     }
@@ -351,10 +337,10 @@ fn main() {
             return;
         },
         Err(LedgerDeviceError::Processing(e)) => {
-            println!("\nLedger comms responded with: '{}'\n", e);
+            println!("\nLedger comms responded with: '{e}'\n");
         },
         Err(e) => {
-            println!("\nError: Unexpected response ({})\n", e);
+            println!("\nError: Unexpected response ({e})\n");
             return;
         },
     }
@@ -368,10 +354,10 @@ fn main() {
             return;
         },
         Err(LedgerDeviceError::Processing(e)) => {
-            println!("\nLedger comms responded with: '{}'\n", e);
+            println!("\nLedger comms responded with: '{e}'\n");
         },
         Err(e) => {
-            println!("\nError: Unexpected response ({})\n", e);
+            println!("\nError: Unexpected response ({e})\n");
             return;
         },
     }
@@ -384,7 +370,7 @@ fn main() {
             println!("view_key:       {}\n", view_key_2.to_hex());
         },
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
         },
     }
 }

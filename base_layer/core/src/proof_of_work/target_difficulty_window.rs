@@ -22,10 +22,10 @@
 
 use std::cmp;
 
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyAdjustment};
 use tari_utilities::epoch_time::EpochTime;
 
-use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
-
+use crate::proof_of_work::lwma_diff::LinearWeightedMovingAverage;
 /// A window of target difficulties
 #[derive(Debug, Clone)]
 pub struct TargetDifficultyWindow {
@@ -75,6 +75,10 @@ impl TargetDifficultyWindow {
     pub fn calculate(&self, min: Difficulty, max: Difficulty) -> Difficulty {
         let difficulty = self.lwma.get_difficulty().unwrap_or(min);
         cmp::max(min, cmp::min(max, difficulty))
+    }
+
+    pub fn update_target_time(&mut self, target_time: u64) -> Result<(), String> {
+        self.lwma.update_target_time(target_time)
     }
 }
 

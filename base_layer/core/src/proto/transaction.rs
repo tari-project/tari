@@ -31,32 +31,30 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey, PrivateKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    transaction_components::{
+        CoinBaseExtra,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        SideChainFeature,
+        Transaction,
+        TransactionInput,
+        TransactionInputVersion,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+    },
+    MicroMinotari,
+};
 use tari_utilities::convert::try_convert_all;
 
-use crate::{
-    proto,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            CoinBaseExtra,
-            EncryptedData,
-            KernelFeatures,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            SideChainFeature,
-            Transaction,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-        },
-    },
-};
+use crate::proto;
 //---------------------------------- TransactionKernel --------------------------------------------//
 
 impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
@@ -135,7 +133,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
 
             let sender_offset_public_key =
                 CompressedPublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
-                    .map_err(|err| format!("{:?}", err))?;
+                    .map_err(|err| format!("{err:?}"))?;
 
             let metadata_signature = input
                 .metadata_signature
@@ -154,8 +152,8 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 )?,
                 features,
                 commitment,
-                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{err:?}"))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
@@ -171,7 +169,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             let hash = input.output_hash.try_into().map_err(|_| "Invalid transaction hash")?;
             Ok(TransactionInput::new_with_output_hash(
                 hash,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
             ))
         }
@@ -272,7 +270,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let sender_offset_public_key =
             CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-                .map_err(|err| format!("{:?}", err))?;
+                .map_err(|err| format!("{err:?}"))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
             Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
@@ -342,11 +340,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_feature = features
-            .sidechain_feature
-            .and_then(|features| features.side_chain_feature)
-            .map(SideChainFeature::try_from)
-            .transpose()?;
+        let sidechain_feature = features.sidechain_feature.map(SideChainFeature::try_from).transpose()?;
 
         let output_type = features
             .output_type

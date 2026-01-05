@@ -28,7 +28,6 @@ mod cli;
 mod common;
 mod config;
 mod error;
-mod monero_fail;
 mod proxy;
 mod run_merge_miner;
 
@@ -57,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let terminal_title = format!("Minotari Merge Mining Proxy - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
-        println!("Error setting terminal title. {}", e)
+        println!("Error setting terminal title. {e}")
     }
 
     let cli = Cli::parse();
@@ -82,7 +81,7 @@ async fn main() -> Result<(), anyhow::Error> {
             Ok(())
         },
         Err(err) => {
-            error!(target: LOG_TARGET, "Fatal error: {:?}", err);
+            error!(target: LOG_TARGET, "Fatal error: {err:?}");
             #[cfg(feature = "dhat-heap")]
             drop(dhat_profiler);
             Err(err)

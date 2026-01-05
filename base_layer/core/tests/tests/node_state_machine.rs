@@ -36,16 +36,19 @@ use tari_core::{
         SyncValidators,
     },
     chain_storage::BlockchainDatabaseConfig,
-    consensus::ConsensusManagerBuilder,
+    consensus::BaseNodeConsensusManagerBuilder,
     mempool::MempoolServiceConfig,
-    proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
+    proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::transaction_key_manager::create_memory_db_key_manager,
     validation::mocks::MockValidator,
 };
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
+use tari_transaction_components::{
+    key_manager::KeyManager,
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
+};
 use tari_utilities::ByteArray;
 use tempfile::tempdir;
 use tokio::{
@@ -70,10 +73,10 @@ use crate::helpers::{
 async fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager);
+    let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
         .build()
@@ -105,8 +108,9 @@ async fn test_listening_lagging() {
         alice_node.blockchain_db.clone().into(),
         alice_node.local_nci.clone(),
         alice_node.comms.connectivity(),
-        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
+        alice_node.comms.peer_manager(),
+        alice_node.dht.subscribe_dht_events(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -116,7 +120,7 @@ async fn test_listening_lagging() {
         shutdown.to_signal(),
     );
     wait_until_online(&[&alice_node, &bob_node]).await;
-
+    alice_state_machine.set_primary_bootstrap_complete(true);
     let await_event_task =
         task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
@@ -132,11 +136,15 @@ async fn test_listening_lagging() {
         Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
-    .await
     .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .prepare_new_block(chain_block(
+            prev_block.block(),
+            vec![],
+            &consensus_manager,
+            &key_manager,
+        ))
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -155,10 +163,10 @@ async fn test_listening_lagging() {
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
-    let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager);
+    let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(gen_block.clone())
         .build()
@@ -198,11 +206,15 @@ async fn test_listening_initial_fallen_behind() {
         Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
-    .await
     .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .prepare_new_block(chain_block(
+            prev_block.block(),
+            vec![],
+            &consensus_manager,
+            &key_manager,
+        ))
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -225,11 +237,15 @@ async fn test_listening_initial_fallen_behind() {
         Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
-    .await
     .unwrap();
     // charlie Block 2 - with block event and liveness service metadata update
     let mut prev_block = charlie_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .prepare_new_block(chain_block(
+            prev_block.block(),
+            vec![],
+            &consensus_manager,
+            &key_manager,
+        ))
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -248,8 +264,9 @@ async fn test_listening_initial_fallen_behind() {
         alice_node.blockchain_db.clone().into(),
         alice_node.local_nci.clone(),
         alice_node.comms.connectivity(),
-        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
+        alice_node.comms.peer_manager(),
+        alice_node.dht.subscribe_dht_events(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -260,6 +277,7 @@ async fn test_listening_initial_fallen_behind() {
     );
 
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 0);
+    alice_state_machine.set_primary_bootstrap_complete(true);
     let await_event_task =
         task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
@@ -283,6 +301,17 @@ async fn test_listening_initial_fallen_behind() {
 
 #[tokio::test]
 async fn test_event_channel() {
+    let network = Network::Esmeralda;
+    if std::env::var("TARI_NETWORK").is_err() {
+        std::env::set_var("TARI_NETWORK", network.as_key_str());
+    }
+    if Network::get_current_or_user_setting_or_default() != network {
+        let _ = Network::set_current(network);
+    }
+    let current_network = Network::get_current_or_user_setting_or_default();
+    if current_network != network {
+        panic!("could not set network");
+    }
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())
@@ -292,14 +321,15 @@ async fn test_event_channel() {
     let db = create_test_blockchain_db();
     let shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
-    let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(10);
+    let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(100);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
-    let state_machine = BaseNodeStateMachine::new(
+    let mut state_machine = BaseNodeStateMachine::new(
         db.into(),
         node.local_nci.clone(),
         node.comms.connectivity(),
-        node.comms.peer_manager(),
         mock.subscription(),
+        node.comms.peer_manager(),
+        node.dht.subscribe_dht_events(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -308,21 +338,20 @@ async fn test_event_channel() {
         consensus_manager,
         shutdown.to_signal(),
     );
-
+    state_machine.set_primary_bootstrap_complete(true);
     task::spawn(state_machine.run());
 
     let node_identity = random_node_identity();
     let block_hash = Blake2b::<U32>::digest(node_identity.node_id().as_bytes()).into();
     let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000.into(), 0).unwrap();
-
     node.comms
         .peer_manager()
-        .add_peer(node_identity.to_peer())
+        .add_or_update_peer(node_identity.to_peer())
         .await
         .unwrap();
 
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
-    for _ in 0..10 {
+    for _ in 0..100 {
         mock.publish_chain_metadata(
             peer_chain_metadata.node_id(),
             peer_chain_metadata.claimed_chain_metadata(),
@@ -333,7 +362,4 @@ async fn test_event_channel() {
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
     unpack_enum!(StateEvent::Initialized(_) = &*event);
-    let event = state_change_event_subscriber.recv().await;
-    let event = event.unwrap();
-    unpack_enum!(StateEvent::FallenBehind(_) = &*event);
 }

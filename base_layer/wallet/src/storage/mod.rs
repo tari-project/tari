@@ -29,7 +29,10 @@
 //     - 'diesel migration run --database-url test.sqlite3'
 //   - After running this, make sure that the diesel update did not change BigInt to Integer in 'schema.rs' (check for
 //     any unwanted changes)
+//    - IT IS SUPER IMPORTANT that you keep the rust type in the same order the columns are defined in the schema.rs
+//      file
 
 pub mod database;
+pub mod serializers;
 pub mod sqlite_db;
 pub mod sqlite_utilities;

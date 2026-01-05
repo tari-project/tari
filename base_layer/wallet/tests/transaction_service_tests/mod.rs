@@ -25,4 +25,3 @@
 
 mod service;
 mod storage;
-mod transaction_protocols;

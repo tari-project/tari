@@ -25,7 +25,7 @@ pub mod error;
 pub mod handle;
 
 mod input_selection;
-pub use input_selection::{UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
+pub use input_selection::{RangeLimit, UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
 
 mod recovery;
 pub mod resources;
@@ -37,13 +37,6 @@ use std::marker::PhantomData;
 
 use futures::future;
 use log::*;
-use tari_core::{
-    consensus::NetworkConsensus,
-    transactions::{
-        transaction_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
-        CryptoFactories,
-    },
-};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -51,10 +44,17 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tari_transaction_components::{
+    consensus::NetworkConsensus,
+    crypto_factories::CryptoFactories,
+    key_manager::SecretTransactionKeyManagerInterface,
+};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -68,20 +68,27 @@ use crate::{
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
 /// that a single comms message can hold.
 pub const TRANSACTION_INPUTS_LIMIT: u32 = 4000;
+/// The maximum number of transaction outputs that can be created in a single transaction, which must be comfortably
+/// less than what can fit into one block.
+pub const TRANSACTION_OUTPUTS_LIMIT: usize = 500;
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
-pub struct OutputManagerServiceInitializer<T, TKeyManagerInterface>
+pub struct OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where T: OutputManagerBackend
 {
     config: OutputManagerServiceConfig,
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    phantom: PhantomData<TKeyManagerInterface>,
+    phantom_key_manager: PhantomData<TKeyManagerInterface>,
+    phantom_http: PhantomData<THttpClientFactory>,
 }
 
-impl<T, TKeyManagerInterface> OutputManagerServiceInitializer<T, TKeyManagerInterface>
-where T: OutputManagerBackend + 'static
+impl<T, TKeyManagerInterface, THttpClientFactory>
+    OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
+where
+    T: OutputManagerBackend + 'static,
+    THttpClientFactory: HttpClientFactory,
 {
     pub fn new(
         config: OutputManagerServiceConfig,
@@ -94,16 +101,19 @@ where T: OutputManagerBackend + 'static
             backend: Some(backend),
             factories,
             network,
-            phantom: PhantomData,
+            phantom_key_manager: PhantomData,
+            phantom_http: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
+impl<T, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
+    for OutputManagerServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -123,7 +133,7 @@ where
         let network = self.network.as_network();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
-            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
             let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
 

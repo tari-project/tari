@@ -20,13 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::{
-    blocks::Block,
-    transactions::{
-        tari_amount::T,
-        test_helpers::schema_to_transaction,
-        transaction_components::{TransactionInputVersion, TransactionOutputVersion},
-    },
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    tari_amount::T,
+    test_helpers::schema_to_transaction,
+    transaction_components::{TransactionInputVersion, TransactionOutputVersion},
     txn_schema,
 };
 
@@ -40,29 +38,27 @@ enum MerkleMountainRangeField {
 }
 
 #[allow(dead_code)]
-pub async fn check_input_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Input, block_mod_fn).await;
+pub fn check_input_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Input, block_mod_fn);
 }
 
 #[allow(dead_code)]
-pub async fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Output, block_mod_fn).await;
+pub fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Output, block_mod_fn);
 }
 
 #[allow(dead_code)]
-pub async fn check_kernel_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Kernel, block_mod_fn).await;
+pub fn check_kernel_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Kernel, block_mod_fn);
 }
 
 #[allow(dead_code)]
-async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block)) {
+fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block)) {
     // create a blockchain with a couple of valid blocks
-    let mut blockchain = TestBlockchain::with_genesis("GB").await;
+    let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
 
-    let (_, output) = blockchain
-        .add_block(blocks.new_block("A1").child_of("GB").difficulty(1))
-        .await;
+    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
 
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(
@@ -72,17 +68,14 @@ async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block
             output_version: TransactionOutputVersion::V0
         )],
         &blockchain.key_manager,
-    )
-    .await;
-    blockchain
-        .add_block(
-            blocks
-                .new_block("A2")
-                .child_of("A1")
-                .difficulty(1)
-                .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
-        )
-        .await;
+    );
+    blockchain.add_block(
+        blocks
+            .new_block("A2")
+            .child_of("A1")
+            .difficulty(1)
+            .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
+    );
 
     // store the block metadata for later comparison
     let block = blockchain.get_block("A2").cloned().unwrap().block;

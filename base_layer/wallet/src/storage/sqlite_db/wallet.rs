@@ -33,23 +33,21 @@ use argon2::password_hash::{
 };
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error};
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
-use itertools::Itertools;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    seeds::cipher_seed::CipherSeed,
+    types::CompressedCommitment,
 };
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
-    tor::TorIdentity,
 };
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
     hidden_type,
@@ -63,10 +61,15 @@ use zeroize::Zeroize;
 
 use crate::{
     error::WalletStorageError,
-    schema::{burnt_proofs, client_key_values, wallet_settings},
+    schema,
+    schema::{client_key_values, wallet_settings},
     storage::{
         database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
-        sqlite_db::scanned_blocks::ScannedBlockSql,
+        serializers::{bincode_decode, bincode_encode},
+        sqlite_db::{
+            models::{BurntProofSql, DbBurnProof},
+            scanned_blocks::ScannedBlockSql,
+        },
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
     utxo_scanner_service::service::ScannedBlock,
@@ -246,7 +249,7 @@ impl WalletSqliteDatabase {
         let seed_bytes = Hidden::hide(seed.encipher(None)?);
         let ciphertext_integral_nonce =
             encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_master_seed".to_vec(), seed_bytes)
-                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))?;
         WalletSettingSql::new(DbKey::MasterSeed, ciphertext_integral_nonce.to_hex()).set(conn)?;
 
         Ok(())
@@ -264,7 +267,7 @@ impl WalletSqliteDatabase {
                         b"wallet_setting_master_seed".to_vec(),
                         &from_hex(seed_str.as_str())?,
                     )
-                    .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
+                    .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?,
                 );
                 CipherSeed::from_enciphered_bytes(decrypted_key_bytes.reveal(), None)?
             };
@@ -279,7 +282,7 @@ impl WalletSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
         let o = o
             .decrypt(&cipher)
-            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?;
         Ok(o)
     }
 
@@ -287,7 +290,7 @@ impl WalletSqliteDatabase {
     fn encrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         o.encrypt(&cipher)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))
+            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))
     }
 
     fn get_comms_address(&self, conn: &mut SqliteConnection) -> Result<Option<Multiaddr>, WalletStorageError> {
@@ -311,49 +314,15 @@ impl WalletSqliteDatabase {
         }
     }
 
-    fn set_tor_id(&self, tor: TorIdentity, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-
-        let bytes =
-            Hidden::hide(bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?);
-        let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), bytes)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
-
-        WalletSettingSql::new(DbKey::TorId, ciphertext_integral_nonce.to_hex()).set(conn)?;
-
-        Ok(())
-    }
-
-    fn get_tor_id(&self, conn: &mut SqliteConnection) -> Result<Option<DbValue>, WalletStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-        if let Some(key_str) = WalletSettingSql::get(&DbKey::TorId, conn)? {
-            let id = {
-                // we must zeroize decrypted_key_bytes, as this contains sensitive data,
-                // including private key informations
-                let decrypted_key_bytes = Hidden::hide(
-                    decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(&key_str)?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
-                );
-
-                bincode::deserialize(decrypted_key_bytes.reveal())
-                    .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
-            };
-            Ok(Some(DbValue::TorId(id)))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn set_chain_metadata(&self, chain: ChainMetadata, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        let bytes = bincode::serialize(&chain).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
+        let bytes = bincode_encode(&chain)?;
         WalletSettingSql::new(DbKey::BaseNodeChainMetadata, bytes.to_hex()).set(conn)?;
         Ok(())
     }
 
     fn get_chain_metadata(&self, conn: &mut SqliteConnection) -> Result<Option<ChainMetadata>, WalletStorageError> {
         if let Some(key_str) = WalletSettingSql::get(&DbKey::BaseNodeChainMetadata, conn)? {
-            let chain_metadata = bincode::deserialize(&from_hex(&key_str)?)
-                .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
+            let chain_metadata = bincode_decode(&from_hex(&key_str)?)?;
             Ok(Some(chain_metadata))
         } else {
             Ok(None)
@@ -370,10 +339,6 @@ impl WalletSqliteDatabase {
             DbKeyValuePair::MasterSeed(seed) => {
                 kvp_text = "MasterSeed";
                 self.set_master_seed(&seed, &mut conn)?;
-            },
-            DbKeyValuePair::TorId(node_id) => {
-                kvp_text = "TorId";
-                self.set_tor_id(node_id, &mut conn)?;
             },
             DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
                 kvp_text = "BaseNodeChainMetadata";
@@ -455,9 +420,6 @@ impl WalletSqliteDatabase {
                     return Ok(Some(DbValue::ValueCleared));
                 }
             },
-            DbKey::TorId => {
-                let _ = WalletSettingSql::clear(&DbKey::TorId, &mut conn)?;
-            },
             DbKey::CommsFeatures |
             DbKey::CommsAddress |
             DbKey::BaseNodeChainMetadata |
@@ -508,7 +470,6 @@ impl WalletBackend for WalletSqliteDatabase {
                 },
             },
             DbKey::CommsAddress => self.get_comms_address(&mut conn)?.map(DbValue::CommsAddress),
-            DbKey::TorId => self.get_tor_id(&mut conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&mut conn)?.map(DbValue::CommsFeatures),
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&mut conn)?.map(DbValue::BaseNodeChainMetadata),
             DbKey::EncryptedMainKey => WalletSettingSql::get(key, &mut conn)?.map(DbValue::EncryptedMainKey),
@@ -545,6 +506,14 @@ impl WalletBackend for WalletSqliteDatabase {
         match op {
             WriteOperation::Insert(kvp) => self.insert_key_value_pair(kvp),
             WriteOperation::Remove(k) => self.remove_key(k),
+        }
+    }
+
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        match ScannedBlockSql::last_height(&mut conn)? {
+            Some(height) => Ok(Some(height as u64)),
+            None => Ok(None),
         }
     }
 
@@ -634,96 +603,48 @@ impl WalletBackend for WalletSqliteDatabase {
         Ok(())
     }
 
-    fn create_burnt_proof(
-        &self,
-        id: u32,
-        reciprocal_claim_public_key: String,
-        payload: String,
-    ) -> Result<(), WalletStorageError> {
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let cipher = acquire_read_lock!(self.cipher);
-
-        BurntProofSql::new(
-            id,
-            reciprocal_claim_public_key,
-            payload,
-            chrono::Utc::now().naive_utc(),
-            &cipher,
-        )?
-        .insert(&mut conn)
-    }
-
-    fn fetch_burnt_proof(&self, id: u32) -> Result<(u32, String, String, NaiveDateTime), WalletStorageError> {
+    fn fetch_burn_proofs(&self) -> Result<Vec<DbBurnProof>, WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
-        match BurntProofSql::get(id, &mut conn) {
-            Ok(None) => Err(WalletStorageError::BurntProofNotFound(id)),
+        let proofs = schema::burn_proofs::table
+            .order(schema::burn_proofs::created_at.desc())
+            .load::<BurntProofSql>(&mut conn)?;
 
-            Ok(Some(entry)) => match self.decrypt_value(entry) {
-                Ok(decrypted) => Ok((
-                    decrypted.id as u32,
-                    decrypted.reciprocal_claim_public_key,
-                    decrypted.payload,
-                    decrypted.burned_at,
-                )),
-                Err(e) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to decrypt burnt proof: id={}: {}",
-                        id,
-                        e.to_string()
-                    );
-                    Err(WalletStorageError::AeadError(e.to_string()))
-                },
-            },
-
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to fetch burnt proof: id={}: {}",
-                    id,
-                    e.to_string()
-                );
-
-                Err(WalletStorageError::BurntProofNotFound(id))
-            },
-        }
-    }
-
-    fn fetch_burnt_proofs(&self) -> Result<Vec<(u32, String, String, NaiveDateTime)>, WalletStorageError> {
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let proofs = BurntProofSql::index(&mut conn)?;
-
-        Ok(proofs
+        proofs
             .into_iter()
-            .filter_map(|entry| {
-                let entry_id = entry.id;
-
-                match self.decrypt_value(entry) {
-                    Ok(decrypted) => Some((
-                        decrypted.id as u32,
-                        decrypted.reciprocal_claim_public_key,
-                        decrypted.payload,
-                        decrypted.burned_at,
-                    )),
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to decrypt burnt proof: id={}: {}",
-                            entry_id,
-                            e.to_string()
-                        );
-
-                        None
-                    },
-                }
+            .map(|entry| {
+                let decrypted = self.decrypt_value(entry)?;
+                decrypted.try_into()
             })
-            .collect_vec())
+            .collect()
     }
 
-    fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError> {
+    fn get_burn_proof_by_commitment(
+        &self,
+        commitment: &CompressedCommitment,
+    ) -> Result<Option<DbBurnProof>, WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
-        BurntProofSql::delete(id, &mut conn)?;
+
+        let proof = schema::burn_proofs::table
+            .filter(schema::burn_proofs::commitment.eq(commitment.as_bytes()))
+            .get_result::<BurntProofSql>(&mut conn)
+            .optional()?;
+
+        proof
+            .map(|entry| {
+                let decrypted = self.decrypt_value(entry)?;
+                decrypted.try_into()
+            })
+            .transpose()
+    }
+
+    fn delete_burn_proof(&self, id: i32) -> Result<(), WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let num_deleted =
+            diesel::delete(schema::burn_proofs::table.filter(schema::burn_proofs::id.eq(id))).execute(&mut conn)?;
+        if num_deleted == 0 {
+            return Err(WalletStorageError::BurnProofNotFound(id));
+        }
         Ok(())
     }
 }
@@ -996,105 +917,14 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
     }
 }
 
-#[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
-#[diesel(table_name = burnt_proofs)]
-struct BurntProofSql {
-    id: i32,
-    reciprocal_claim_public_key: String,
-    payload: String,
-    burned_at: NaiveDateTime,
-}
-
-impl BurntProofSql {
-    pub fn new(
-        id: u32,
-        reciprocal_claim_public_key: String,
-        payload: String,
-        burned_at: NaiveDateTime,
-        cipher: &XChaCha20Poly1305,
-    ) -> Result<Self, WalletStorageError> {
-        let entry = Self {
-            id: id as i32,
-            reciprocal_claim_public_key,
-            payload,
-            burned_at,
-        };
-        entry.encrypt(cipher).map_err(WalletStorageError::AeadError)
-    }
-
-    pub fn index(conn: &mut SqliteConnection) -> Result<Vec<Self>, WalletStorageError> {
-        Ok(burnt_proofs::table.load::<BurntProofSql>(conn)?)
-    }
-
-    pub fn insert(&self, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        diesel::insert_into(burnt_proofs::table).values(self).execute(conn)?;
-        Ok(())
-    }
-
-    pub fn get(id: u32, conn: &mut SqliteConnection) -> Result<Option<Self>, WalletStorageError> {
-        burnt_proofs::table
-            .filter(burnt_proofs::id.eq(id as i32))
-            .first::<BurntProofSql>(conn)
-            .map(Some)
-            .or_else(|err| match err {
-                Error::NotFound => Ok(None),
-                err => Err(err.into()),
-            })
-    }
-
-    pub fn delete(id: u32, conn: &mut SqliteConnection) -> Result<bool, WalletStorageError> {
-        let num_deleted = diesel::delete(burnt_proofs::table.filter(burnt_proofs::id.eq(id as i32))).execute(conn)?;
-        Ok(num_deleted > 0)
-    }
-}
-
-impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
-    fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [
-            Self::BURNT_PROOF,
-            self.id.to_be_bytes().as_bytes(),
-            field_name.as_bytes(),
-        ]
-        .concat()
-        .to_vec()
-    }
-
-    #[allow(unused_assignments)]
-    fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        self.payload = encrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("value"),
-            Hidden::hide(self.payload.as_bytes().to_vec()),
-        )?
-        .to_hex();
-
-        Ok(self)
-    }
-
-    #[allow(unused_assignments)]
-    fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut decrypted_value = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("value"),
-            &from_hex(self.payload.as_str()).map_err(|e| e.to_string())?,
-        )?;
-
-        self.payload = from_utf8(decrypted_value.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-
-        // we zeroize the decrypted value
-        decrypted_value.zeroize();
-
-        Ok(self)
-    }
-}
-
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
-    use tari_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
-    use tari_key_manager::cipher_seed::CipherSeed;
+    use tari_common_types::{
+        encryption::{decrypt_bytes_integral_nonce, Encryptable},
+        seeds::cipher_seed::CipherSeed,
+    };
     use tari_test_utils::random::string;
     use tari_utilities::{
         hex::{from_hex, Hex},
@@ -1114,7 +944,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
+        let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
         // Encrypt with a passphrase
@@ -1159,7 +989,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
+        let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
         // Encrypt with a passphrase
@@ -1182,10 +1012,10 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
+        let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
         let passphrase = "a very very secret key example.".to_string().into();
         let db = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
         let cipher = db.cipher();
@@ -1265,7 +1095,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
         let mut conn = connection.get_pooled_connection().unwrap();
 
         let key1 = "key1".to_string();
@@ -1317,13 +1147,13 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 
         let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
 
-        let seed = CipherSeed::new();
+        let seed = CipherSeed::random();
 
         let mut conn = connection.get_pooled_connection().unwrap();
         wallet.set_master_seed(&seed, &mut conn).unwrap();

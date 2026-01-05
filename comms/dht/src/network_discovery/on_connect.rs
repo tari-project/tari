@@ -30,7 +30,7 @@ use tokio::sync::broadcast;
 use crate::{
     event::DhtEvent,
     network_discovery::{
-        state_machine::{NetworkDiscoveryContext, StateEvent},
+        state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
     },
@@ -84,7 +84,7 @@ impl OnConnect {
                     match self.sync_peers(*conn.clone()).await {
                         Ok(_) => continue,
                         Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
-                            warn!(target: LOG_TARGET, "{}. Banning peer.", err);
+                            warn!(target: LOG_TARGET, "{err}. Banning peer.");
                             if let Err(err) = self
                                 .context
                                 .connectivity
@@ -110,7 +110,7 @@ impl OnConnect {
                 },
                 Ok(_) => { /* Nothing to do */ },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!(target: LOG_TARGET, "Lagged behind on {} connectivity event(s)", n)
+                    warn!(target: LOG_TARGET, "Lagged behind on {n} connectivity event(s)")
                 },
                 Err(broadcast::error::RecvError::Closed) => {
                     break;
@@ -150,25 +150,34 @@ impl OnConnect {
         let mut num_added = 0;
         while let Some(resp) = peer_stream.next().await {
             match resp {
-                Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
+                Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
                     Some(peer) => {
-                        if self.validate_and_add_peer(peer).await? {
-                            num_added += 1;
+                        let pub_key = peer.public_key.clone();
+                        match self.validate_and_add_peer(peer).await {
+                            Ok(new_peer) => {
+                                if new_peer {
+                                    debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
+                                    num_added += 1;
+                                }
+                            },
+                            Err(e) => {
+                                debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
+                            },
                         }
                     },
                     None => {
-                        debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
+                        debug!(target: LOG_TARGET, "Invalid response from peer `{sync_peer}`");
                     },
                 },
                 Err(err) => {
-                    debug!(target: LOG_TARGET, "Error response from peer `{}`: {}", sync_peer, err);
+                    debug!(target: LOG_TARGET, "Error response from peer `{sync_peer}`: {err}");
                 },
             }
         }
 
         debug!(
             target: LOG_TARGET,
-            "Added {} peer(s) from peer `{}`", num_added, sync_peer
+            "Added {num_added} peer(s) from peer `{sync_peer}`"
         );
         if num_added > 0 {
             self.context
@@ -177,6 +186,7 @@ impl OnConnect {
                     num_duplicate_peers: 0,
                     num_succeeded: num_added,
                     sync_peers: vec![conn.peer_node_id().clone()],
+                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
                 }));
         }
 
@@ -189,7 +199,7 @@ impl OnConnect {
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
         let valid_peer = peer_validator.validate_peer(peer, maybe_existing_peer)?;
-        self.context.peer_manager.add_peer(valid_peer).await?;
+        self.context.peer_manager.add_or_update_peer(valid_peer).await?;
         Ok(is_new_peer)
     }
 

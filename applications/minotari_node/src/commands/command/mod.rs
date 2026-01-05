@@ -28,6 +28,7 @@ mod check_for_updates;
 mod create_tls_certs;
 mod dial_peer;
 mod discover_peer;
+mod fetch_all_orphan_headers;
 mod get_block;
 mod get_chain_metadata;
 mod get_db_stats;
@@ -50,6 +51,7 @@ mod quit;
 mod reset_offline_peers;
 mod rewind_blockchain;
 mod search_kernel;
+mod search_payref;
 mod search_utxo;
 mod status;
 mod test_peer_liveness;
@@ -69,7 +71,7 @@ use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_comms::{
-    peer_manager::{Peer, PeerManagerError, PeerQuery},
+    peer_manager::{Peer, PeerManagerError},
     protocol::rpc::RpcServerHandle,
     CommsNode,
     NodeIdentity,
@@ -77,11 +79,11 @@ use tari_comms::{
 use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
-    blocks::ChainHeader,
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::service::LocalMempoolService,
 };
+use tari_node_components::blocks::ChainHeader;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_shutdown::Shutdown;
 use tokio::{sync::watch, time};
@@ -132,10 +134,12 @@ pub enum Command {
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
+    FetchAllOrphanHeaders(fetch_all_orphan_headers::Args),
     ListBadBlocks(list_bad_blocks::Args),
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
     SearchUtxo(search_utxo::Args),
+    SearchPayref(search_payref::Args),
     SearchKernel(search_kernel::Args),
     GetMempoolStats(get_mempool_stats::Args),
     GetMempoolState(get_mempool_state::Args),
@@ -163,7 +167,7 @@ pub trait HandleCommand<T> {
 
 pub struct CommandContext {
     pub config: Arc<ApplicationConfig>,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseNodeConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
     dht_metrics_collector: MetricsCollectorHandle,
@@ -229,11 +233,13 @@ impl CommandContext {
                 Command::GetDbStats(_) |
                 Command::GetStateInfo(_) |
                 Command::ListReorgs(_) |
+                Command::FetchAllOrphanHeaders(_) |
                 Command::ListBadBlocks(_) |
                 Command::GetBlock(_) |
                 Command::ListHeaders(_) |
                 Command::HeaderStats(_) |
                 Command::SearchUtxo(_) |
+                Command::SearchPayref(_) |
                 Command::SearchKernel(_) |
                 Command::GetMempoolStats(_) |
                 Command::GetMempoolState(_) |
@@ -251,7 +257,7 @@ impl CommandContext {
             };
             let fut = self.handle_command(args.command);
             if let Err(e) = time::timeout(Duration::from_secs(time_out), fut).await? {
-                return Err(Error::msg(format!("{} ({} s)", e, time_out)));
+                return Err(Error::msg(format!("{e} ({time_out} s)")));
             };
             Ok(None)
         }
@@ -297,10 +303,12 @@ impl HandleCommand<Command> for CommandContext {
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
+            Command::FetchAllOrphanHeaders(args) => self.handle_command(args).await,
             Command::ListBadBlocks(args) => self.handle_command(args).await,
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,
             Command::SearchUtxo(args) => self.handle_command(args).await,
+            Command::SearchPayref(args) => self.handle_command(args).await,
             Command::SearchKernel(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,
@@ -318,9 +326,7 @@ impl HandleCommand<Command> for CommandContext {
 
 impl CommandContext {
     async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let pm = self.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_banned());
-        pm.perform_query(query).await
+        self.comms.peer_manager().get_banned_peers().await
     }
 
     /// Function to process the get-headers command

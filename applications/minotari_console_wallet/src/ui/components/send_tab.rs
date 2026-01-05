@@ -1,13 +1,16 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use log::*;
+#[cfg(feature = "ledger")]
+use minotari_ledger_wallet_comms::accessor_methods::ledger_get_public_spend_key;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_common_types::wallet_types::WalletType;
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::encrypted_data::{PaymentId, TxType},
+use tari_transaction_components::{
+    transaction_components::memo_field::{MemoField, TxType},
+    MicroMinotari,
 };
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -21,9 +24,9 @@ use tui::{
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
-    components::{balance::Balance, contacts_tab::ContactsTab, Component, KeyHandled},
+    components::{balance::Balance, Component, KeyHandled},
     state::{AppState, UiTransactionSendStatus},
-    widgets::{draw_dialog, WindowedListState},
+    widgets::draw_dialog,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::send_tab ";
@@ -31,7 +34,6 @@ const LOG_TARGET: &str = "wallet::console_wallet::send_tab ";
 pub struct SendTab {
     balance: Balance,
     send_input_mode: SendInputMode,
-    show_contacts: bool,
     to_field: String,
     payment_id_field: String,
     amount_field: String,
@@ -40,20 +42,18 @@ pub struct SendTab {
     error_message: Option<String>,
     success_message: Option<String>,
     offline_message: Option<String>,
-    contacts_list_state: WindowedListState,
     send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
     confirmation_dialog: Option<ConfirmationDialogType>,
     selected_unique_id: Option<Vec<u8>>,
     table_state: TableState,
-    wallet_type: WalletType,
+    wallet_type: LegacyWalletType,
 }
 
 impl SendTab {
-    pub fn new(app_state: &AppState, wallet_type: WalletType) -> Self {
+    pub fn new(app_state: &AppState, wallet_type: LegacyWalletType) -> Self {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
-            show_contacts: false,
             to_field: String::new(),
             payment_id_field: String::new(),
             amount_field: String::new(),
@@ -62,7 +62,6 @@ impl SendTab {
             error_message: None,
             success_message: None,
             offline_message: None,
-            contacts_list_state: WindowedListState::new(),
             send_result_watch: None,
             confirmation_dialog: None,
             selected_unique_id: None,
@@ -107,24 +106,15 @@ impl SendTab {
             Span::raw(" to edit "),
             Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" field, "),
-            Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select a contact, "),
             Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
         ])];
 
         let mut send_instructions = vec![];
-        if let WalletType::DerivedKeys | WalletType::ProvidedKeys(_) = self.wallet_type {
-            send_instructions.append(&mut vec![
-                Span::raw("Press "),
-                Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a normal transaction, "),
-            ]);
-        }
         send_instructions.append(&mut vec![
-            Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to send a one-sided transaction"),
+            Span::styled("S/O", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to send a transaction"),
         ]);
         instructions.push(Spans::from(send_instructions));
 
@@ -214,38 +204,6 @@ impl SendTab {
         }
     }
 
-    fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            "Contacts",
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-        ));
-        f.render_widget(block, area);
-        let list_areas = Layout::default()
-            .constraints([Constraint::Length(1), Constraint::Min(42)].as_ref())
-            .margin(1)
-            .split(area);
-
-        let instructions = Paragraph::new(Spans::from(vec![
-            Span::raw(" Use "),
-            Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to choose a contact, "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select."),
-        ]))
-        .wrap(Wrap { trim: true });
-        f.render_widget(instructions, list_areas[0]);
-        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-        let mut list_state = self
-            .contacts_list_state
-            .update_list_state((list_areas[1].height as usize).saturating_sub(3));
-        let window = self.contacts_list_state.get_start_end();
-        let windowed_view = app_state.get_contacts_slice(window.0, window.1);
-
-        let column_list = ContactsTab::create_column_view(windowed_view);
-        column_list.render(f, list_areas[1], &mut list_state);
-    }
-
     #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
@@ -255,7 +213,8 @@ impl SendTab {
             } else if 'y' == c {
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::Normal) | Some(ConfirmationDialogType::StealthAddress) => {
+                    Some(ConfirmationDialogType::Normal) => {
+                        self.confirmation_dialog = None;
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
                                 v
@@ -277,49 +236,60 @@ impl SendTab {
                             };
 
                             let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
-
                             let mut reset_fields = false;
-                            match self.confirmation_dialog {
-                                Some(ConfirmationDialogType::StealthAddress) => {
-                                    match Handle::current().block_on(
-                                        app_state.send_one_sided_to_stealth_address_transaction(
-                                            self.to_field.clone(),
-                                            amount.into(),
-                                            UtxoSelectionCriteria::default(),
-                                            fee_per_gram,
-                                            PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
-                                            tx,
-                                        ),
-                                    ) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending one-sided transaction to stealth address:\n{}\nPress \
-                                                 Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
+
+                            #[cfg(feature = "ledger")]
+                            if let LegacyWalletType::Ledger(ledger) = &self.wallet_type {
+                                match ledger_get_public_spend_key(ledger.account) {
+                                    Ok(spend_key) => {
+                                        if spend_key != ledger.public_alpha {
+                                            self.error_message = Some(
+                                                "Ledger public spend key does not match wallet public spend key. \
+                                                 Please ensure you have selected the correct Ledger.\nPress Enter to \
+                                                 continue."
+                                                    .to_string(),
+                                            );
+                                            return KeyHandled::Handled;
+                                        }
+                                    },
+                                    _ => {
+                                        self.error_message = Some(
+                                            "Could not connect to Ledger. Please ensure your Ledger is connected and \
+                                             unlocked.\nPress Enter to continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
+                                }
+                            };
+
+                            match Handle::current().block_on(app_state.send_one_sided_to_stealth_address_transaction(
+                                self.to_field.clone(),
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                fee_per_gram,
+                                match MemoField::new_open_from_string(&self.payment_id_field, TxType::PaymentToOther) {
+                                    Ok(payment_id) => payment_id,
+                                    Err(_) => {
+                                        self.error_message = Some(
+                                            "Payment ID is invalid or too large (max 256 bytes)\nPress Enter to \
+                                             continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
                                 },
-                                _ => {
-                                    match Handle::current().block_on(app_state.send_transaction(
-                                        self.to_field.clone(),
-                                        amount.into(),
-                                        UtxoSelectionCriteria::default(),
-                                        fee_per_gram,
-                                        PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
-                                        tx,
-                                    )) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending normal transaction:\n{}\nPress Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
+                                tx,
+                            )) {
+                                Err(e) => {
+                                    self.error_message = Some(format!(
+                                        "Error sending one-sided transaction to stealth address:\n{e}\nPress Enter to \
+                                         continue."
+                                    ))
                                 },
+                                Ok(_) => reset_fields = true,
                             }
+
                             if reset_fields {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
@@ -330,7 +300,6 @@ impl SendTab {
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);
                             }
-                            self.confirmation_dialog = None;
                             return KeyHandled::Handled;
                         }
                     },
@@ -392,24 +361,6 @@ impl SendTab {
 
         KeyHandled::NotHandled
     }
-
-    fn on_key_show_contacts(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
-        if self.show_contacts && c == '\n' {
-            if let Some(c) = self
-                .contacts_list_state
-                .selected()
-                .and_then(|i| app_state.get_contact(i))
-                .cloned()
-            {
-                self.to_field = c.address;
-                self.send_input_mode = SendInputMode::Amount;
-                self.show_contacts = false;
-            }
-            return KeyHandled::Handled;
-        }
-
-        KeyHandled::NotHandled
-    }
 }
 
 impl<B: Backend> Component<B> for SendTab {
@@ -430,31 +381,13 @@ impl<B: Backend> Component<B> for SendTab {
         self.balance.draw(f, areas[0], app_state);
         self.draw_send_form(f, areas[1], app_state);
 
-        if self.show_contacts {
-            self.draw_contacts(f, areas[2], app_state);
-        };
-
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
             trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
             let status = match (*rx.borrow()).clone() {
                 UiTransactionSendStatus::Initiated => "Initiated",
-                UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
                 UiTransactionSendStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
-                    return;
-                },
-                UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
-                    self.success_message =
-                        Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
-                    return;
-                },
-                UiTransactionSendStatus::Queued => {
-                    self.offline_message = Some(
-                        "This wallet appears to be offline; transaction queued for further retry sending.\n Please \
-                         press Enter to continue"
-                            .to_string(),
-                    );
+                    self.error_message = Some(format!("Error sending transaction: {e}, Press Enter to continue."));
                     return;
                 },
                 UiTransactionSendStatus::TransactionComplete => {
@@ -467,7 +400,7 @@ impl<B: Backend> Component<B> for SendTab {
                 f,
                 area,
                 "Please Wait".to_string(),
-                format!("Transaction Send Status: {}", status),
+                format!("Transaction Send Status: {status}"),
                 Color::Green,
                 120,
                 10,
@@ -494,18 +427,7 @@ impl<B: Backend> Component<B> for SendTab {
                     f,
                     area,
                     "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this normal transaction?\n(Y)es / (N)o".to_string(),
-                    Color::Red,
-                    120,
-                    9,
-                );
-            },
-            Some(ConfirmationDialogType::StealthAddress) => {
-                draw_dialog(
-                    f,
-                    area,
-                    "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
+                    "Are you sure you want to send this transaction?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -548,14 +470,7 @@ impl<B: Backend> Component<B> for SendTab {
             return;
         }
 
-        if self.on_key_show_contacts(c, app_state) == KeyHandled::Handled {
-            return;
-        }
-
         match c {
-            'c' => {
-                self.show_contacts = !self.show_contacts;
-            },
             't' => self.send_input_mode = SendInputMode::To,
             'a' => {
                 self.send_input_mode = SendInputMode::Amount;
@@ -563,12 +478,6 @@ impl<B: Backend> Component<B> for SendTab {
             'f' => self.send_input_mode = SendInputMode::Fee,
             'p' => self.send_input_mode = SendInputMode::PaymentId,
             's' | 'o' => {
-                if let WalletType::Ledger(_) = self.wallet_type {
-                    // If we're a ledger wallet, then ignore interactive send requests
-                    if c == 's' {
-                        return;
-                    }
-                }
                 if self.to_field.is_empty() {
                     self.error_message =
                         Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());
@@ -584,20 +493,14 @@ impl<B: Backend> Component<B> for SendTab {
                     return;
                 }
 
-                self.confirmation_dialog = Some(match c {
-                    'o' => ConfirmationDialogType::StealthAddress,
-                    _ => ConfirmationDialogType::Normal,
-                });
+                self.confirmation_dialog = Some(ConfirmationDialogType::Normal);
             },
             _ => {},
         }
     }
 
-    fn on_up(&mut self, app_state: &mut AppState) {
-        if self.show_contacts {
-            self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-            self.contacts_list_state.previous();
-        } else if self.send_input_mode == SendInputMode::Amount {
+    fn on_up(&mut self, _app_state: &mut AppState) {
+        if self.send_input_mode == SendInputMode::Amount {
             let index = self.table_state.selected().unwrap_or_default();
             if index == 0 {
                 self.table_state.select(None);
@@ -607,20 +510,16 @@ impl<B: Backend> Component<B> for SendTab {
         }
     }
 
-    fn on_down(&mut self, app_state: &mut AppState) {
-        if self.show_contacts {
-            self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-            self.contacts_list_state.next();
-        } else if self.send_input_mode == SendInputMode::Amount {
+    fn on_down(&mut self, _app_state: &mut AppState) {
+        if self.send_input_mode == SendInputMode::Amount {
             self.table_state.select(None);
         } else {
             // dont care
         }
     }
 
-    fn on_esc(&mut self, _: &mut AppState) {
+    fn on_esc(&mut self, _app_state: &mut AppState) {
         self.send_input_mode = SendInputMode::None;
-        self.show_contacts = false;
     }
 
     fn on_backspace(&mut self, _app_state: &mut AppState) {
@@ -656,5 +555,4 @@ pub enum SendInputMode {
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
     Normal,
-    StealthAddress,
 }

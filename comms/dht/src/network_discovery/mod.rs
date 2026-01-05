@@ -38,8 +38,9 @@ pub use error::NetworkDiscoveryError;
 mod initializing;
 mod on_connect;
 mod ready;
+pub mod seed_strap;
 
-mod state_machine;
+pub mod state_machine;
 pub use state_machine::{DhtNetworkDiscovery, DhtNetworkDiscoveryRoundInfo};
 
 mod waiting;

@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_comms::peer_manager::Peer;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -37,14 +37,11 @@ use crate::{
         components::{
             base_node::BaseNode,
             burn_tab::BurnTab,
-            contacts_tab::ContactsTab,
             events_component::EventsComponent,
             log_tab::LogTab,
             menu::Menu,
-            network_tab::NetworkTab,
             notification_tab::NotificationTab,
             receive_tab::ReceiveTab,
-            register_template_tab::RegisterTemplateTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
             transactions_tab::TransactionsTab,
@@ -53,7 +50,6 @@ use crate::{
         state::AppState,
         MAX_WIDTH,
     },
-    wallet_modes::PeerConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
@@ -76,30 +72,20 @@ impl<B: Backend> App<B> {
         title: String,
         wallet: WalletSqlite,
         wallet_config: WalletConfig,
-        base_node_selected: Peer,
-        base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Result<Self, ExitError> {
         let wallet_address_interactive = wallet
             .get_wallet_interactive_address()
-            .await
-            .map_err(WalletError::KeyManagerServiceError)?;
+            .map_err(WalletError::AddressError)?;
         let wallet_address_one_sided = wallet
             .get_wallet_one_sided_address()
-            .await
-            .map_err(WalletError::KeyManagerServiceError)?;
+            .map_err(WalletError::AddressError)?;
         let wallet_id = WalletIdentity::new(
-            wallet.comms.node_identity(),
+            wallet.node_identity.clone(),
             wallet_address_interactive,
             wallet_address_one_sided,
         );
-        let app_state = AppState::new(
-            &wallet_id,
-            wallet,
-            base_node_selected.clone(),
-            base_node_config,
-            wallet_config,
-        );
+        let app_state = AppState::new(&wallet_id, wallet, wallet_config);
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
@@ -115,9 +101,6 @@ impl<B: Backend> App<B> {
             )
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
-            .add("Templates".into(), Box::new(RegisterTemplateTab::new(&app_state)))
-            .add("Contacts".into(), Box::new(ContactsTab::new()))
-            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));
@@ -137,14 +120,14 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_control_key(&mut self, c: char) {
-        trace!(target: LOG_TARGET, "on_control_key: {}", c);
+        trace!(target: LOG_TARGET, "on_control_key: {c}");
         if c == 'q' {
             self.should_quit = true;
         }
     }
 
     pub fn on_key(&mut self, c: char) {
-        trace!(target: LOG_TARGET, "on_key: {}", c);
+        trace!(target: LOG_TARGET, "on_key: {c}");
         match c {
             '\t' => {
                 self.tabs.next();

@@ -23,32 +23,29 @@
 use std::convert::TryFrom;
 
 use log::*;
-use tari_common_types::types::FixedHash;
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, FixedHash},
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
-use tari_script::TariScript;
+use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError};
+use tari_sidechain::SidechainProofValidationError;
+use tari_transaction_components::{
+    consensus::consensus_constants::ConsensusConstants,
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
+    transaction_components::{TransactionInput, TransactionOutput},
+};
 
 use crate::{
-    blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
-    borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{ConsensusConstants, ConsensusManager},
-    covenants::Covenant,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{
+        cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         tari_randomx_difficulty,
         AchievedTargetDifficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
-    },
-    transactions::transaction_components::{
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-        EncryptedData,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
     },
     validation::ValidationError,
 };
@@ -73,26 +70,28 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
     }
 
     let mid_index = timestamps.len() / 2;
-    let median_timestamp = if timestamps.len() % 2 == 0 {
+    let median_timestamp = if timestamps.len().is_multiple_of(2) {
         trace!(
             target: LOG_TARGET,
             "No median timestamp available, estimating median as avg of [{}] and [{}]",
-            timestamps[mid_index - 1],
-            timestamps[mid_index],
+            timestamps.get(mid_index - 1).expect("Already checked"),
+            timestamps.get(mid_index).expect("Already checked"),
         );
         // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
         // Note that the final cast back to `u64` will never truncate since each summand is bounded by `u64`
         // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
         EpochTime::from(
             u64::try_from(
-                (u128::from(timestamps[mid_index - 1].as_u64()) + u128::from(timestamps[mid_index].as_u64())) / 2,
+                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64()) +
+                    u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
+                    2,
             )
             .unwrap_or(u64::MAX),
         )
     } else {
-        timestamps[mid_index]
+        *timestamps.get(mid_index).expect("Already checked")
     };
-    trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
+    trace!(target: LOG_TARGET, "Median timestamp:{median_timestamp}");
     Ok(median_timestamp)
 }
 pub fn check_header_timestamp_greater_than_median(
@@ -130,15 +129,21 @@ pub fn check_target_difficulty(
     target: Difficulty,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
-    consensus: &ConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
+        PowAlgorithm::Cuckaroo => {
+            let cuckaroo_cycle_length = consensus
+                .consensus_constants(block_header.height)
+                .cuckaroo_cycle_length();
+            let cuckaroo_bits = consensus.consensus_constants(block_header.height).cuckaroo_edge_bits();
+            cuckaroo_difficulty(block_header, cuckaroo_cycle_length, cuckaroo_bits)?
+        },
     };
-
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {
@@ -155,23 +160,6 @@ pub fn check_target_difficulty(
             ))
         },
     }
-}
-
-pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd + 'a>(items: I) -> bool {
-    let mut items = items.into_iter();
-    let prev_item = items.next();
-    if prev_item.is_none() {
-        return true;
-    }
-    let mut prev_item = prev_item.unwrap();
-    for item in items {
-        if item <= prev_item {
-            return false;
-        }
-        prev_item = item;
-    }
-
-    true
 }
 
 /// This function checks that an input is a valid spendable UTXO in the database. It cannot confirm
@@ -206,47 +194,18 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     if db.fetch_output(&output_hash)?.is_some() {
         warn!(
             target: LOG_TARGET,
-            "Validation failed due to already spent input: {}", input
+            "Validation failed due to already spent input: {input}"
         );
         // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
         // been Some
         return Err(ValidationError::ContainsSTxO);
     }
 
-    warn!(
+    debug!(
         target: LOG_TARGET,
         "Input ({}, {}) does not exist in the database yet", input.commitment()?.to_hex(), output_hash.to_hex()
     );
     Err(ValidationError::UnknownInput)
-}
-
-/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
-pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = script
-        .get_serialized_size()
-        .map_err(|e| ValidationError::SerializationError(format!("Failed to get serialized script size: {}", e)))?;
-    if script_size > max_script_size {
-        return Err(ValidationError::TariScriptExceedsMaxSize {
-            max_script_size,
-            actual_script_size: script_size,
-        });
-    }
-    Ok(())
-}
-
-/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
-pub fn check_tari_encrypted_data_byte_size(
-    encrypted_data: &EncryptedData,
-    max_encrypted_data_size: usize,
-) -> Result<(), ValidationError> {
-    let encrypted_data_size = encrypted_data.as_bytes().len();
-    if encrypted_data_size > max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
-        return Err(ValidationError::EncryptedDataExceedsMaxSize {
-            max_encrypted_data_size: max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-            actual_encrypted_data_size: encrypted_data_size,
-        });
-    }
-    Ok(())
 }
 
 /// This function checks that the outputs do not already exist in the TxO set.
@@ -260,10 +219,137 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     {
         warn!(
             target: LOG_TARGET,
-            "Duplicate UTXO set commitment found for output: {}", output
+            "Duplicate UTXO set commitment found for output: {output}"
         );
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
     }
+
+    Ok(())
+}
+/// This function checks the validity of the validator node registration if applicable
+pub fn check_validator_node_registration<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+    current_epoch: VnEpoch,
+) -> Result<(), ValidationError> {
+    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    let Some(vn_reg) = sidechain_features.validator_node_registration() else {
+        return Ok(());
+    };
+
+    if vn_reg.max_epoch() < current_epoch {
+        return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+            public_key: vn_reg.public_key().to_string(),
+            max_epoch: vn_reg.max_epoch(),
+            current_epoch,
+        });
+    }
+
+    if db.validator_node_exists(
+        sidechain_features.sidechain_public_key(),
+        current_epoch,
+        vn_reg.public_key(),
+    )? {
+        return Err(ValidationError::ValidatorNodeAlreadyRegistered {
+            public_key: vn_reg.public_key().to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+/// Checks the validity of the validator node exit if applicable
+pub fn check_validator_node_exit<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+    current_epoch: VnEpoch,
+) -> Result<(), ValidationError> {
+    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    let Some(exit) = sidechain_features.validator_node_exit() else {
+        return Ok(());
+    };
+
+    if exit.max_epoch() < current_epoch {
+        return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+            public_key: exit.public_key().to_string(),
+            max_epoch: exit.max_epoch(),
+            current_epoch,
+        });
+    }
+
+    if !db.validator_node_is_active(
+        sidechain_features.sidechain_public_key(),
+        current_epoch,
+        exit.public_key(),
+    )? {
+        return Err(ValidationError::ValidatorNodeNotRegistered {
+            public_key: exit.public_key().to_string(),
+            details: format!("exit invalid for validator node that is not active/registered in {current_epoch}"),
+        });
+    }
+
+    Ok(())
+}
+
+/// This function checks the validity of the eviction proof if applicable
+pub fn check_eviction_proof<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+    constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    let Some(eviction_proof) = sidechain_features.eviction_proof() else {
+        return Ok(());
+    };
+
+    let epoch = eviction_proof.epoch();
+    let shard_group = eviction_proof.shard_group();
+
+    let chain_metadata = db.fetch_chain_metadata()?;
+    let tip_height = chain_metadata.best_block_height();
+    let tip_epoch = constants.block_height_to_epoch(tip_height);
+    if epoch > tip_epoch {
+        return Err(ValidationError::SidechainEvictionProofInvalidEpoch {
+            epoch,
+            tip_height: chain_metadata.best_block_height(),
+        });
+    }
+
+    let validator_pk = eviction_proof.node_to_evict();
+
+    // Only allow a single exit or evict on an active validator
+    if !db.validator_node_is_active_for_shard_group(
+        sidechain_features.sidechain_public_key(),
+        tip_epoch,
+        validator_pk,
+        shard_group,
+    )? {
+        return Err(ValidationError::SidechainEvictionProofValidatorNotFound {
+            validator_pk: validator_pk.to_string(),
+        });
+    }
+
+    let committee_size =
+        db.validator_nodes_count_for_shard_group(sidechain_features.sidechain_public_key(), tip_epoch, shard_group)?;
+    let quorum_threshold = committee_size - (committee_size - 1) / 3;
+
+    let sidechain_pk = sidechain_features.sidechain_public_key();
+
+    let check_vn = |public_key: &CompressedPublicKey| {
+        let is_active = db
+            .validator_node_is_active_for_shard_group(sidechain_pk, tip_epoch, public_key, shard_group)
+            .map_err(SidechainProofValidationError::internal_error)?;
+
+        Ok(is_active)
+    };
+
+    eviction_proof.validate(quorum_threshold, &check_vn)?;
 
     Ok(())
 }
@@ -382,141 +468,15 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     Ok(())
 }
 
-pub fn check_permitted_output_types(
-    constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    if !constants
-        .permitted_output_types()
-        .contains(&output.features.output_type)
-    {
-        return Err(ValidationError::OutputTypeNotPermitted {
-            output_type: output.features.output_type,
-        });
-    }
-
-    Ok(())
-}
-
-pub fn check_covenant_length(covenant: &Covenant, max_token_len: u32) -> Result<(), ValidationError> {
-    if covenant.num_tokens() > max_token_len as usize {
-        return Err(ValidationError::CovenantTooLarge {
-            max_size: max_token_len as usize,
-            actual_size: covenant.num_tokens(),
-        });
-    }
-
-    Ok(())
-}
-
-pub fn check_permitted_range_proof_types(
-    constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let binding = constants.permitted_range_proof_types();
-    let permitted_range_proof_types = binding.iter().find(|&&t| t.0 == output.features.output_type).ok_or(
-        ValidationError::OutputTypeNotMatchedToRangeProofType {
-            output_type: output.features.output_type,
-        },
-    )?;
-
-    if !permitted_range_proof_types
-        .1
-        .contains(&output.features.range_proof_type)
-    {
-        return Err(ValidationError::RangeProofTypeNotPermitted {
-            range_proof_type: output.features.range_proof_type,
-        });
-    }
-
-    Ok(())
-}
-
-pub fn validate_input_version(
-    consensus_constants: &ConsensusConstants,
-    input: &TransactionInput,
-) -> Result<(), ValidationError> {
-    if !consensus_constants.input_version_range().contains(&input.version) {
-        let msg = format!(
-            "Transaction input contains a version not allowed by consensus ({:?})",
-            input.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    Ok(())
-}
-
-pub fn validate_output_version(
-    consensus_constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let valid_output_version = consensus_constants
-        .output_version_range()
-        .outputs
-        .contains(&output.version);
-
-    if !valid_output_version {
-        let msg = format!(
-            "Transaction output version is not allowed by consensus ({:?})",
-            output.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    let valid_features_version = consensus_constants
-        .output_version_range()
-        .features
-        .contains(&output.features.version);
-
-    if !valid_features_version {
-        let msg = format!(
-            "Transaction output features version is not allowed by consensus ({:?})",
-            output.features.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    for opcode in output.script.as_slice() {
-        if !consensus_constants
-            .output_version_range()
-            .opcode
-            .contains(&opcode.get_version())
-        {
-            let msg = format!(
-                "Transaction output script opcode is not allowed by consensus ({})",
-                opcode
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
-    }
-
-    Ok(())
-}
-
-pub fn validate_kernel_version(
-    consensus_constants: &ConsensusConstants,
-    kernel: &TransactionKernel,
-) -> Result<(), ValidationError> {
-    if !consensus_constants.kernel_version_range().contains(&kernel.version) {
-        let msg = format!(
-            "Transaction kernel version is not allowed by consensus ({:?})",
-            kernel.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod test {
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::{crypto_factories::CryptoFactories, test_helpers, test_helpers::TestParams};
 
     use super::*;
-    use crate::transactions::{test_helpers, test_helpers::TestParams, CryptoFactories};
 
     mod is_all_unique_and_sorted {
-        use super::*;
+        use tari_transaction_components::validation::helpers::is_all_unique_and_sorted;
 
         #[test]
         fn it_returns_true_when_nothing_to_compare() {
@@ -580,30 +540,28 @@ mod test {
     }
 
     mod check_coinbase_maturity {
-        use futures::executor::block_on;
-
-        use super::*;
-        use crate::transactions::{
+        use tari_transaction_components::{
             aggregated_body::AggregateBody,
+            key_manager::KeyManager,
             transaction_components::{RangeProofType, TransactionError},
-            transaction_key_manager::create_memory_db_key_manager,
         };
 
+        use super::*;
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager().unwrap();
-            let test_params = TestParams::new(&key_manager).await;
+            let key_manager = KeyManager::new_random().unwrap();
+            let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
-            let key_manager = create_memory_db_key_manager().unwrap();
-            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(
+            let coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
                 RangeProofType::RevealedValue,
-            ));
-            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
+                &key_manager,
+            );
+            let coinbase_output = coinbase.to_transaction_output().unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -616,15 +574,21 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager().unwrap();
-            let test_params = TestParams::new(&key_manager).await;
+            let key_manager = KeyManager::new_random().unwrap();
+            let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase =
-                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
-                    .await;
-            coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::RevealedValue,
+                &key_manager,
+            );
+            let mut features = coinbase.features().clone();
+            features.maturity = 0;
+            coinbase.set_features(features);
+            let coinbase_output = coinbase.to_transaction_output().unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -640,19 +604,19 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager().unwrap();
-            let test_params = TestParams::new(&key_manager).await;
+            let key_manager = KeyManager::new_random().unwrap();
+            let test_params = TestParams::new(&key_manager);
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
                 RangeProofType::BulletProofPlus,
-            )
-            .await;
-            coinbase.value = 123.into();
-            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
+                &key_manager,
+            );
+            coinbase.set_value(123.into(), &key_manager).unwrap();
+            let coinbase_output = coinbase.to_transaction_output().unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();

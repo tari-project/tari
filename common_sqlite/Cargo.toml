@@ -3,14 +3,18 @@ name = "tari_common_sqlite"
 description = "Tari cryptocurrency wallet library"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[features]
+bundled = ["libsqlite3-sys/bundled"]
+
 [dependencies]
 tari_utilities = { workspace = true }
 
-diesel = { version = "2.2.4", features = [
+diesel = { version = "2.2.10", features = [
     "sqlite",
     "r2d2",
     "serde_json",
@@ -18,10 +22,17 @@ diesel = { version = "2.2.4", features = [
     "64-column-tables",
 ] }
 diesel_migrations = "2.2"
-log = "0.4.6"
-serde = "1.0.90"
-thiserror = "1.0.26"
-tokio = { version = "1.44", features = ["sync", "macros", "rt"] }
+log = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "rt"] }
+lazy_static = "1.5.0"
+libsqlite3-sys = { version = "0.30.1", optional = true }
 
 [dev-dependencies]
-tari_test_utils = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros", "rt", "time", "rt-multi-thread"] }
+
+[package.metadata.cargo-machete]
+ignored = ["libsqlite3-sys"]

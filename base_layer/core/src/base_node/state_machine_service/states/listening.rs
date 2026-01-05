@@ -30,7 +30,6 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::PeerManagerError;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
@@ -39,6 +38,7 @@ use crate::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
             states::{
+                events_and_states,
                 BlockSync,
                 DecideNextSync,
                 HeaderSyncState,
@@ -128,7 +128,7 @@ impl Listening {
         if !self.is_synced {
             self.is_synced = true;
             self.initial_delay_count = 0;
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                 true,
                 0,
                 shared.config.initial_sync_peer_count,
@@ -143,6 +143,7 @@ impl Listening {
         network_silence: bool,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
+
         if network_silence {
             self.set_synced_response(shared);
             warn!(
@@ -151,12 +152,13 @@ impl Listening {
                 network in general is slow to respond to pings"
             );
         } else {
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                 self.is_synced,
                 self.initial_delay_count,
                 shared.config.initial_sync_peer_count,
             )));
         }
+
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
         let mut ahead_of_peers_counter = 0;
@@ -172,7 +174,7 @@ impl Listening {
                     // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
                     // updated info
                     if !self.is_synced {
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                        shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                             self.is_synced,
                             self.initial_delay_count,
                             shared.config.initial_sync_peer_count,
@@ -190,20 +192,13 @@ impl Listening {
                             continue;
                         },
                         Ok(false) => {},
-                        Err(e) => match e {
-                            PeerManagerError::DataInconsistency(_) |
-                            PeerManagerError::DatabaseError(_) |
-                            PeerManagerError::MigrationError(_) => {
-                                return FatalError(format!("Error checking if peer is banned: {}", e));
-                            },
-                            _ => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Ignoring chain metadata from peer {} due to error: {}",
-                                    peer_metadata.node_id(), e
-                                );
-                                continue;
-                            },
+                        Err(e) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Ignoring chain metadata from peer {} due to error: {}",
+                                peer_metadata.node_id(), e
+                            );
+                            continue;
                         },
                     }
 
@@ -230,7 +225,7 @@ impl Listening {
                     let local_metadata = match shared.db.get_chain_metadata().await {
                         Ok(m) => m,
                         Err(e) => {
-                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
+                            return FatalError(format!("Could not get local blockchain metadata. {e}"));
                         },
                     };
 
@@ -280,7 +275,7 @@ impl Listening {
                             self.set_synced_response(shared);
                             info!(target: LOG_TARGET, "Initial sync achieved");
                         } else {
-                            info!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
+                            info!(target: LOG_TARGET, "We are ahead of at least {ahead_of_peers_counter} peers, waiting for more info");
                             self.set_synced_response(shared);
                         }
                     }
@@ -332,7 +327,7 @@ impl Listening {
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
+                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {n} item(s)");
                 },
                 Err(broadcast::error::RecvError::Closed) => {
                     debug!(target: LOG_TARGET, "Metadata event subscriber closed");
@@ -340,7 +335,6 @@ impl Listening {
                 },
             }
         }
-
         debug!(
             target: LOG_TARGET,
             "Event listener is complete because liveness metadata and timeout streams were closed"
@@ -400,13 +394,9 @@ fn determine_sync_mode(
         let network_tip_height = network.claimed_chain_metadata().best_block_height();
         info!(
             target: LOG_TARGET,
-            "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{} \
-             with an accumulated difficulty of {}, and the network chain tip is at #{} with an accumulated difficulty \
-             of {}",
-            local_tip_height,
-            local_tip_accum_difficulty,
-            network_tip_height,
-            network_tip_accum_difficulty,
+            "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{local_tip_height} \
+             with an accumulated difficulty of {local_tip_accum_difficulty}, and the network chain tip is at #{network_tip_height} with an accumulated difficulty \
+             of {network_tip_accum_difficulty}"
         );
 
         // If both the local and remote are pruned mode, we need to ensure that the remote pruning horizon is
@@ -455,9 +445,8 @@ fn determine_sync_mode(
             {
                 info!(
                     target: LOG_TARGET,
-                    "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
-                     waiting for the propagated blocks",
-                    blocks_behind_before_considered_lagging
+                    "While we are behind, we are still within {blocks_behind_before_considered_lagging} blocks of them, so we are staying as listening and \
+                     waiting for the propagated blocks"
                 );
                 return SyncStatus::BehindButNotYetLagging {
                     local: local.clone(),
@@ -475,7 +464,7 @@ fn determine_sync_mode(
             network.node_id(),
             network
                 .latency()
-                .map(|l| format!("{:.2?}", l))
+                .map(|l| format!("{l:.2?}"))
                 .unwrap_or_else(|| "unknown".to_string())
         );
         SyncStatus::Lagging {

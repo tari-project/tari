@@ -28,12 +28,9 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
+use tari_transaction_components::{BanPeriod, BanReason};
 
-use crate::{
-    chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    validation::ValidationError,
-};
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {
@@ -121,7 +118,7 @@ impl BlockSyncError {
             err @ BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) |
             err @ BlockSyncError::RpcError(_) |
             err @ BlockSyncError::RpcRequestError(_) => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),
 
@@ -130,7 +127,7 @@ impl BlockSyncError {
             err @ BlockSyncError::UnknownHeaderHash(_) |
             err @ BlockSyncError::InvalidBlockBody(_) |
             err @ BlockSyncError::FixedHashSizeError(_) => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,
             }),
 

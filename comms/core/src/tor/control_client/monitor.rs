@@ -53,11 +53,11 @@ where
             match either {
                 // Received a command to send to the control server
                 Either::Left(Some(line)) => {
-                    trace!(target: LOG_TARGET, "Tor send: {}", line);
+                    trace!(target: LOG_TARGET, "Tor send: {line}");
                     if let Err(err) = sink.send(line).await {
                         error!(
                             target: LOG_TARGET,
-                            "Error when sending to Tor control server: {:?}. Monitor is shutting down.", err
+                            "Error when sending to Tor control server: {err:?}. Monitor is shutting down."
                         );
                         break;
                     }
@@ -73,7 +73,7 @@ where
 
                 // Received a line from the control server
                 Either::Right(Some(Ok(line))) => {
-                    trace!(target: LOG_TARGET, "Tor recv: {}", line);
+                    trace!(target: LOG_TARGET, "Tor recv: {line}");
                     match parsers::response_line(&line) {
                         Ok(mut line) => {
                             if line.is_multiline {
@@ -93,7 +93,7 @@ where
                             } else if let Err(err) = responses_tx.send(line).await {
                                 warn!(
                                     target: LOG_TARGET,
-                                    "Failed to send response on internal channel: {:?}", err
+                                    "Failed to send response on internal channel: {err:?}"
                                 );
                             } else {
                                 // sent response
@@ -108,7 +108,7 @@ where
                     cmd_rx.close();
                     error!(
                         target: LOG_TARGET,
-                        "Line framing error when reading from tor control server: '{:?}'. Monitor is exiting.", err
+                        "Line framing error when reading from tor control server: '{err:?}'. Monitor is exiting."
                     );
                     let _result = event_tx.send(TorControlEvent::TorControlDisconnected);
                     break;
@@ -144,7 +144,7 @@ async fn read_until<E: fmt::Debug, S: Stream<Item = Result<String, E>> + Unpin>(
                 items.push(item);
             },
             Some(Err(err)) => {
-                error!(target: LOG_TARGET, "read_until: {:?}", err);
+                error!(target: LOG_TARGET, "read_until: {err:?}");
             },
             None => {
                 break items;
@@ -156,6 +156,6 @@ async fn read_until<E: fmt::Debug, S: Stream<Item = Result<String, E>> + Unpin>(
 fn log_server_response_error<E: fmt::Debug>(err: E) {
     error!(
         target: LOG_TARGET,
-        "Error processing response from tor control server: '{:?}'", err
+        "Error processing response from tor control server: '{err:?}'"
     );
 }

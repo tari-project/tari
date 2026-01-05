@@ -21,37 +21,38 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::warn;
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::consensus_constants::ConsensusConstants,
+    crypto_factories::CryptoFactories,
+    validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::Block,
-    consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{aggregated_body::AggregateBody, CryptoFactories},
-    validation::{
-        aggregate_body::AggregateBodyInternalConsistencyValidator,
-        InternalConsistencyValidator,
-        ValidationError,
-    },
+    consensus::BaseNodeConsensusManager,
+    validation::{InternalConsistencyValidator, ValidationError},
 };
 
 pub const LOG_TARGET: &str = "c::val::block_body_internal_consistency_validator";
 
 #[derive(Clone)]
 pub struct BlockBodyInternalConsistencyValidator {
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     factories: CryptoFactories,
     aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
 }
 
 impl BlockBodyInternalConsistencyValidator {
     pub fn new(
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
         bypass_range_proof_verification: bool,
         factories: CryptoFactories,
     ) -> Self {
         let aggregate_body_validator = AggregateBodyInternalConsistencyValidator::new(
             bypass_range_proof_verification,
-            consensus_manager.clone(),
+            consensus_manager.consensus_manager(),
             factories.clone(),
         );
         Self {
@@ -77,7 +78,7 @@ impl InternalConsistencyValidator for BlockBodyInternalConsistencyValidator {
 
 fn validate_block_specific_checks(
     block: &Block,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError> {
     let constants = consensus_manager.consensus_constants(block.header.height);
@@ -103,7 +104,7 @@ fn check_coinbase_output_features(
 fn validate_block_aggregate_body(
     block: &Block,
     validator: &AggregateBodyInternalConsistencyValidator,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<(), ValidationError> {
     let offset = &block.header.total_kernel_offset;
     let script_offset = &block.header.total_script_offset;
@@ -142,7 +143,7 @@ fn validate_block_aggregate_body(
 
 fn check_coinbase_outputs(
     block: &Block,
-    rules: &ConsensusManager,
+    rules: &BaseNodeConsensusManager,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError> {
     let total_coinbase = rules

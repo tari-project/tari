@@ -44,19 +44,6 @@ where F: Future<Output = ()> + Send + 'static {
     shutdown
 }
 
-/// Create a runtime and report if it panics. If there are tasks still running after the panic, this
-/// will carry on running forever.
-// #[deprecated(note = "use tokio::test instead")]
-pub fn test_async<F>(f: F)
-where F: FnOnce(&mut TestRuntime) {
-    let mut rt = TestRuntime::from(create_runtime());
-    f(&mut rt);
-    let handles = rt.handles.drain(..).collect::<Vec<_>>();
-    for h in handles {
-        rt.block_on(h).unwrap();
-    }
-}
-
 type BoxedJoinFuture = Pin<Box<dyn Future<Output = Result<(), JoinError>>>>;
 
 pub struct TestRuntime {

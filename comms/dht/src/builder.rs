@@ -152,7 +152,6 @@ impl DhtBuilder {
             .outbound_tx
             .take()
             .ok_or(DhtInitializationError::BuilderNoOutboundMessageSender)?;
-
         Dht::initialize(
             self.config.clone(),
             node_identity,

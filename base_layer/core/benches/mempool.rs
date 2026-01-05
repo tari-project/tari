@@ -29,22 +29,23 @@ mod benches {
 
 #[cfg(feature = "benches")]
 mod benches {
+    #![allow(clippy::indexing_slicing)]
     use std::sync::Arc;
 
     use criterion::{criterion_group, Criterion};
     use tari_common::configuration::Network;
     use tari_core::{
-        consensus::ConsensusManager,
+        consensus::BaseNodeConsensusManager,
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
-        transactions::{
-            tari_amount::{uT, T},
-            transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
-            transaction_key_manager::create_memory_db_key_manager,
-            CryptoFactories,
-        },
-        tx,
         validation::transaction::TransactionFullValidator,
+    };
+    use tari_transaction_components::{
+        crypto_factories::CryptoFactories,
+        key_manager::KeyManager,
+        tari_amount::{uT, T},
+        transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
+        tx,
     };
     use tokio::runtime::Runtime;
 
@@ -54,7 +55,7 @@ mod benches {
         num_outputs: usize,
         features: OutputFeatures,
     ) -> std::io::Result<Vec<Arc<Transaction>>> {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
         let mut txs = Vec::new();
         for _ in 0..num_txs {
             let (tx, _, _) =
@@ -67,7 +68,7 @@ mod benches {
     pub fn mempool_perf_test(c: &mut Criterion) {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_new_blockchain();
 
         let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());

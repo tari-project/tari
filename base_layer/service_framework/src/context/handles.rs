@@ -182,6 +182,7 @@ impl ServiceHandles {
 
     /// Get a handle from the given type (`TypeId`) and downcast it to a type `H`.
     /// If the item does not exist or the downcast fails, a panic occurs
+    #[track_caller]
     pub fn expect_handle<H>(&self) -> H
     where H: Clone + 'static {
         match self.get_handle_by_type_id(TypeId::of::<H>()) {

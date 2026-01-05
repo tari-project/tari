@@ -4,6 +4,7 @@ description = "A convenient shutdown signal"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -12,4 +13,4 @@ license.workspace = true
 futures = "^0.3"
 
 [dev-dependencies]
-tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -40,7 +40,7 @@ pub fn prefixed_string(prefix: &str, len: usize) -> String {
         .map(|_| rng.sample(Alphanumeric) as char)
         .take(len)
         .collect::<String>();
-    format!("{}{}", prefix, rand_str)
+    format!("{prefix}{rand_str}")
 }
 
 #[cfg(test)]

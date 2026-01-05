@@ -34,6 +34,7 @@ use monero::{
     cryptonote::hash::Hashable,
     util::ringct::{RctSigBase, RctType},
 };
+use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
@@ -41,11 +42,7 @@ use tari_utilities::{
 use tiny_keccak::{Hasher, Keccak};
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{
-    blocks::BlockHeader,
-    consensus::ConsensusManager,
-    proof_of_work::monero_rx::helpers::create_block_hashing_blob,
-};
+use crate::{consensus::BaseNodeConsensusManager, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
 
 /// This is a struct to deserialize the data from the pow field into data required for the randomX Monero merged mine
 /// pow.
@@ -114,11 +111,11 @@ impl MoneroPowData {
     /// Create a new MoneroPowData struct from the given header
     pub fn from_header(
         tari_header: &BlockHeader,
-        consensus: &ConsensusManager,
+        consensus: &BaseNodeConsensusManager,
     ) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_bytes();
         let pow_data: MoneroPowData =
-            BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
+            BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{e:?}")))?;
         if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size()
         {
             return Err(MergeMineError::DeserializeError(format!(
@@ -141,7 +138,7 @@ impl MoneroPowData {
         // inputs that is allowed. Remember that the data in powdata is used for the hash, so having
         // multiple pow_data that generate the same randomx difficulty could be a problem.
         BorshSerialize::serialize(&pow_data, &mut test_serialized_data)
-            .map_err(|e| MergeMineError::SerializeError(format!("{:?}", e)))?;
+            .map_err(|e| MergeMineError::SerializeError(format!("{e:?}")))?;
         if test_serialized_data != tari_header.pow.pow_data.to_vec() {
             return Err(MergeMineError::SerializedPowDataDoesNotMatch(
                 "Serialized pow data does not match original pow data".to_string(),
@@ -208,17 +205,12 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
+    use tari_transaction_components::{consensus::NetworkConsensus, tari_proof_of_work::PowData};
     use tari_utilities::ByteArray;
     use tiny_keccak::{Hasher, Keccak};
 
     use super::MoneroPowData;
-    use crate::{
-        consensus::NetworkConsensus,
-        proof_of_work::{
-            monero_rx::{merkle_tree::MerkleProof, FixedByteArray},
-            PowData,
-        },
-    };
+    use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
 
     #[test]
     fn test_borsh_de_serialization() {

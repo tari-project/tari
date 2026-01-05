@@ -3,6 +3,7 @@ name = "tari_mmr"
 description = "A Merkle Mountain Range implementation"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -13,14 +14,13 @@ default = []
 [dependencies]
 tari_utilities = { workspace = true }
 tari_crypto = { workspace = true }
-thiserror = "1.0"
-borsh = "1.5.7"
+thiserror = { workspace = true }
+borsh = { workspace = true }
 digest = "0.10"
-log = "0.4"
-serde = { version = "1.0", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
-rand = "0.8"
+rand = { workspace = true }
 blake2 = "0.10"
 serde_json = "1.0"
 bincode = "1.1"
