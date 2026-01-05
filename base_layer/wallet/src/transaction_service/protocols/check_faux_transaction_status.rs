@@ -137,6 +137,11 @@ pub async fn check_detected_transactions<
                 return;
             },
         };
+        debug!(
+            target: LOG_TARGET,
+            "TxId: {}, {:?} ",
+            tx.tx_id, output_info_for_tx_id
+        );
         if tx.mined_height.unwrap_or_default() != output_info_for_tx_id.mined_height.unwrap_or_default() {
             // If the mined height has changed, we need to update the transaction
             state_changed = true;
@@ -162,7 +167,7 @@ pub async fn check_detected_transactions<
         let mined_height = output_info_for_tx_id.mined_height.unwrap_or(0);
         let mined_in_block = output_info_for_tx_id.block_hash.unwrap_or(FixedHash::zero());
         let is_valid = tip_height >= mined_height;
-        let previously_confirmed = tx.status.is_confirmed();
+        let previously_confirmed = tx.status.is_confirmed() && tx.mined_height.is_some() && tx.mined_in_block.is_some();
         let must_be_confirmed = tip_height.saturating_sub(mined_height) >= config.num_confirmations_required;
 
         if !(previously_confirmed && must_be_confirmed) {

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-rc.0](https://github.com/tari-project/tari/compare/v5.2.0-pre.7...v5.2.0-rc.0) (2025-12-12)
+
+
+### Features
+
+* increase feedback of manual import ([#7625](https://github.com/tari-project/tari/issues/7625)) ([32b2e74](https://github.com/tari-project/tari/commit/32b2e748cc1800823aebfa1d32799d2d9fee3bf5))
+* ledger checking ([#7635](https://github.com/tari-project/tari/issues/7635)) ([7bae25c](https://github.com/tari-project/tari/commit/7bae25c6618d5bfd95ed9642347d6c546ca43ce2))
+* remove monero fail safe ([#7629](https://github.com/tari-project/tari/issues/7629)) ([9b6b3c3](https://github.com/tari-project/tari/commit/9b6b3c31120eb2e9260409e99fbcfd5cf594c5d1))
+
+
+### Bug Fixes
+
+* comms block ([#7627](https://github.com/tari-project/tari/issues/7627)) ([c186b1d](https://github.com/tari-project/tari/commit/c186b1db24ba7674fda1fdf132fee8747d4222ea))
+* offline signing payment id ([#7636](https://github.com/tari-project/tari/issues/7636)) ([8580ae1](https://github.com/tari-project/tari/commit/8580ae10b5a47dbc52311b90123d7f25b453f6d4))
+* scanning paganation and wallet request limits ([#7638](https://github.com/tari-project/tari/issues/7638)) ([2ed72a2](https://github.com/tari-project/tari/commit/2ed72a2efc31f72155149ff0d63a464025597547))
+* utxo scanner interval ([#7634](https://github.com/tari-project/tari/issues/7634)) ([1e12bcc](https://github.com/tari-project/tari/commit/1e12bcc4aa0b6cdff4fafb1354ad91120d5837a9))
+* wallet validation ([d43057c](https://github.com/tari-project/tari/commit/d43057cf48bd1951d315e4a0d0c0ee8e3d9ebadf))
+
 ## [5.2.0-pre.7](https://github.com/tari-project/tari/compare/v5.2.0-pre.6...v5.2.0-pre.7) (2025-12-04)
 
 
