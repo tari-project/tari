@@ -160,7 +160,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        let mining_method = [
+        const MINING_METHOD: &[GrpcMethod] = &[
             GrpcMethod::GetVersion,
             GrpcMethod::GetNewBlockTemplate,
             GrpcMethod::GetNewBlockWithCoinbases,
@@ -175,11 +175,12 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetSyncProgress,
         ];
 
-        let second_layer_methods = [
+        const SECOND_LAYER_METHODS: &[GrpcMethod] = &[
             GrpcMethod::GetVersion,
             GrpcMethod::GetConstants,
             GrpcMethod::GetMempoolTransactions,
             GrpcMethod::GetMempoolStats,
+            GrpcMethod::ListHeaders,
             GrpcMethod::GetTipInfo,
             GrpcMethod::GetActiveValidatorNodes,
             GrpcMethod::GetValidatorNodeChanges,
@@ -188,13 +189,13 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetHeaderByHash,
             GrpcMethod::GetSideChainUtxos,
         ];
-        if self.config.mining_enabled && mining_method.contains(&grpc_method) {
+        if self.config.mining_enabled && MINING_METHOD.contains(&grpc_method) {
             return true;
         }
-        if self.config.second_layer_grpc_enabled && second_layer_methods.contains(&grpc_method) {
+        if self.config.second_layer_grpc_enabled && SECOND_LAYER_METHODS.contains(&grpc_method) {
             return true;
         }
-        self.config.grpc_server_allow_methods.to_vec().contains(&grpc_method)
+        self.config.grpc_server_allow_methods.contains(&grpc_method)
     }
 
     #[allow(clippy::result_large_err)]

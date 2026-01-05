@@ -676,7 +676,7 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_utxos_paginates_results() {
-        use crate::{block_specs, test_helpers::blockchain::create_main_chain};
+        use crate::test_helpers::blockchain::create_main_chain;
 
         // Build a small chain: GB -> A -> B -> C
         let db = create_new_blockchain_with_network(Network::LocalNet);
@@ -801,7 +801,7 @@ mod tests {
 
     #[tokio::test]
     async fn large_fetch_utxo_paginates_results() {
-        use crate::{block_specs, test_helpers::blockchain::create_main_chain};
+        use crate::test_helpers::blockchain::create_main_chain;
 
         // Build a small chain: GB -> A -> B -> C
         let db = create_new_blockchain_with_network(Network::LocalNet);

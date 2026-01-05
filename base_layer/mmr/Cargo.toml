@@ -17,7 +17,6 @@ tari_crypto = { workspace = true }
 thiserror = { workspace = true }
 borsh = { workspace = true }
 digest = "0.10"
-log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
