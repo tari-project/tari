@@ -23,7 +23,6 @@
 use std::{convert::TryFrom, str::FromStr};
 
 use futures::future::Either;
-use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
