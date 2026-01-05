@@ -581,12 +581,6 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             )));
         }
 
-        if end_epoch < start_epoch {
-            return Err(ChainStorageError::InvalidQuery(format!(
-                "get_vn_set: End epoch is less than start epoch: {end_epoch} < {start_epoch}"
-            )));
-        }
-
         let mut cursor = self.activation_queue_read_cursor()?;
 
         let start_key = create_activation_key(sidechain_pk, start_epoch);
