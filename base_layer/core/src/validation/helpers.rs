@@ -337,6 +337,12 @@ pub fn check_eviction_proof<B: BlockchainBackend>(
 
     let committee_size =
         db.validator_nodes_count_for_shard_group(sidechain_features.sidechain_public_key(), tip_epoch, shard_group)?;
+    if committee_size == 0 {
+        return Err(ValidationError::ConsensusError(format!(
+            "Committee size for shard group {} is zero",
+            shard_group
+        )));
+    }
     let quorum_threshold = committee_size - (committee_size - 1) / 3;
 
     let sidechain_pk = sidechain_features.sidechain_public_key();
