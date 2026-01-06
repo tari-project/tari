@@ -3457,8 +3457,7 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Get the current epoch for the height
         let end_epoch = constants.block_height_to_epoch(height);
-        // TODO: custom limit
-        let vns = vn_store.get_vn_set(sidechain_pk, VnEpoch::zero(), end_epoch, 1_000_000)?;
+        let vns = vn_store.get_vn_set(sidechain_pk, VnEpoch::zero(), end_epoch)?;
 
         let mut nodes = Vec::with_capacity(vns.len());
         for node in vns {
