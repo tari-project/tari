@@ -80,6 +80,8 @@ pub(crate) struct BurntProofSql {
     pub updated_at: chrono::NaiveDateTime,
     pub encrypted_data: Option<Vec<u8>>,
     pub value: Option<i64>,
+    pub kernel_excess: Option<Vec<u8>>,
+    pub kernel_excess_sig: Option<Vec<u8>>,
 }
 
 fn get_encryption_domain(commitment: &[u8], field_name: &'static str) -> Vec<u8> {
@@ -114,6 +116,8 @@ pub(crate) struct NewBurntProofSql<'a> {
     pub kernel_merkle_proof: Option<&'a [u8]>,
     pub encrypted_data: Option<&'a [u8]>,
     pub value: Option<i64>,
+    pub kernel_excess: Option<&'a [u8]>,
+    pub kernel_excess_sig: Option<&'a [u8]>,
 }
 
 impl<'a> NewBurntProofSql<'a> {
@@ -126,6 +130,8 @@ impl<'a> NewBurntProofSql<'a> {
         cipher: &XChaCha20Poly1305,
         encrypted_data: Option<&'a [u8]>,
         value: Option<i64>,
+        kernel_excess: Option<&'a [u8]>,
+        kernel_excess_sig: Option<&'a [u8]>,
     ) -> Result<Self, WalletStorageError> {
         let burn_proof = encrypt_bytes_integral_nonce(
             cipher,
@@ -141,6 +147,8 @@ impl<'a> NewBurntProofSql<'a> {
             kernel_merkle_proof,
             encrypted_data,
             value,
+            kernel_excess,
+            kernel_excess_sig,
         };
         Ok(entry)
     }

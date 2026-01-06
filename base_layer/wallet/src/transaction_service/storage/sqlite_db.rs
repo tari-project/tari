@@ -1353,6 +1353,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     ) -> Result<(), TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
+        let kernel_excess = kernel.excess.as_bytes();
+        let kernel_excess_sig = kernel.excess_sig.get_signature().to_vec();
+
         let proof = NewBurntProofSql::new_encrypted(
             output_hash.as_bytes(),
             proof.commitment.as_bytes(),
@@ -1362,6 +1365,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             &self.cipher,
             Some(encrypted_data.as_bytes()),
             Some(value.as_u64() as i64),
+            Some(kernel_excess),
+            Some(&kernel_excess_sig),
         )?;
         diesel::insert_into(schema::burn_proofs::table)
             .values(proof)

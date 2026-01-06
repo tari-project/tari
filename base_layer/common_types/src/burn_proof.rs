@@ -33,6 +33,12 @@ pub struct BurnClaimProof {
     pub reciprocal_claim_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedSignature,
+    #[serde(with = "serializers::base64")]
+    pub kernel_excess: Vec<u8>,
+    #[serde(with = "serializers::base64")]
+    pub kernel_excess_nonce: Vec<u8>,
+    #[serde(with = "serializers::base64")]
+    pub kernel_excess_signature: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -12,6 +12,8 @@ diesel::table! {
         updated_at -> Timestamp,
         encrypted_data -> Nullable<Binary>,
         value -> Nullable<BigInt>,
+        kernel_excess -> Nullable<Binary>,
+        kernel_excess_sig -> Nullable<Binary>,
     }
 }
 

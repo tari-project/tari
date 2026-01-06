@@ -2091,6 +2091,9 @@ message CreateBurnTransactionResponse{
   bytes commitment = 4;
   Signature ownership_proof = 5;
   bytes reciprocal_claim_public_key = 6;
+  bytes kernel_excess = 7;
+  bytes kernel_excess_nonce = 8;
+  bytes kernel_excess_signature = 9;
 }
 
 message TransferResult {
@@ -2654,7 +2657,9 @@ message BurnClaimProof {
   bytes commitment = 1;
   Signature ownership_proof = 2;
   bytes reciprocal_claim_public_key = 3;
-
+  bytes kernel_excess = 4;
+  bytes kernel_excess_nonce = 5;
+  bytes kernel_excess_signature = 6;
 }
 
 message EncodedMerkleProof {
