@@ -123,6 +123,7 @@ tQrYpH9CNXgX9dC9
 -----END PGP PUBLIC KEY BLOCK-----"#;
 
     const VALID_SIGNATURE: &str = r#"-----BEGIN PGP SIGNATURE-----
+
 iQIzBAEBCAAdFiEEM3uR78XxAn2K7fY9GIWxSVBMCmQFAmDYhicACgkQGIWxSVBM
 CmRVuBAAkdFqPmJAHAu03CBTC6RjHlN+dxVgZ2UjfHzY80pVbiKTLeRoz7bMdVyZ
 nVnf7QEcBMrK21LA/sBp/QmSGhym3AN3QjrFvOLJMWcfKj0gMdFV+z1TxNpZoKhD
@@ -136,6 +137,7 @@ HFwxr8+CkSk5pNVZdusBZabXDnLxJz9k+rEvrB1F/9ZbLP3PzV9nyWcu3htxjcPo
 Ckvq+QUz80XM69HPwpAgFW6QORZdxv4ED/ek4gth3fqmu/bkQ4/vYKozMtr6Rx7D
 l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
 =vcW8
+
 -----END PGP SIGNATURE-----"#;
 
     const MESSAGE: &str = "Philip R. Zimmermann";
