@@ -51,12 +51,8 @@ where T: UtxoValue
     pub fn search(&self) -> Result<Vec<T>, String>{
         let initial_state = SelectionState::new_blank(self.available_utxos.clone(), self.search_params.clone());
 
-
         let mut to_search = vec![initial_state];
         let mut done_results = Vec::new();
-
-
-
 
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(self.params.threads)
@@ -92,17 +88,22 @@ where T: UtxoValue
             if iterations >= self.params.max_search_iterations {
                 break;
             }
+            if to_search.is_empty() {
+                break;
+            }
 
         }
 
         done_results.sort_by(|a, b| a.waste.cmp(&b.waste));
-        let best_result = done_results.first().expect("done_results should not be empty");
         // collect the selected utxos
-        let selected_utxos: Vec<T> = best_result.selected_utxos.iter().map(|&i| {
-            self.available_utxos.get(i).expect("utxo_index out of bounds").clone()
-        }).collect();
+        let selected_utxos: Vec<T> = match done_results.first(){
+            Some(best_result) => best_result.selected_utxos.iter().map(|&i| {
+                                                           self.available_utxos.get(i).expect("utxo_index out of bounds").clone()
+                                                           }).collect(),
+            None => Vec::new()
+        };
+
         Ok(selected_utxos)
-        // Ok(Vec::new())
     }
 }
 
@@ -192,16 +193,17 @@ where T: UtxoValue
                 .value();
             new_state.waste += new_state.parms.fee_per_input;
             let target = new_state.parms.total_target();
-            if new_state.current_value > target {
+            let current_value = new_state.current_value;
+            if current_value >= target {
                 // we have a solution
                 new_state.done = true;
-                if new_state.current_value == target {
+                if current_value == target {
                     // perfect match, no better branch to search
                     done_results.push(new_state.clone());
                     continue;
                 }
                 let change_waste = self.parms.change_cost();
-                if new_state.current_value <= target + change_waste{
+                if current_value <= target + change_waste{
                     // we have less change than the fee, so lets up the amount so we dont create a dust fee
                     // this is an edge case and should be avoided is possible. We should try and find a better solution
                     // here
@@ -218,11 +220,162 @@ where T: UtxoValue
                     new_state.waste += exstra_waste;
                 } else {
                     // we have change, so lets count the change fee and future spend cost as waste
-                    new_state.waste += change_waste;
+                    new_state.waste += new_state.parms.fee_per_input + new_state.parms.change_fee;
                 }
                 done_results.push(new_state.clone());
             };
         }
         (done_results, not_done_results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+
+
+    fn default_params() -> BranchAndBoundUtxoSelectorParams {
+        BranchAndBoundUtxoSelectorParams {
+            threads: 2,
+            max_search_iterations: 1000,
+        }
+    }
+
+    fn section_params(
+        target: u64,
+        output_fee: u64,
+        change_fee: u64,
+        fee_per_input: u64,
+        input_limit: usize,
+    ) -> UtxoSectionParams {
+        UtxoSectionParams::new(
+            MicroMinotari::from(target),
+            MicroMinotari::from(output_fee),
+            MicroMinotari::from(change_fee),
+            MicroMinotari::from(fee_per_input),
+            input_limit,
+        )
+    }
+
+    #[test]
+    fn test_exact_match() {
+        let utxos = vec![MicroMinotari(50), MicroMinotari(30), MicroMinotari(20)];
+        let params = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+        assert_eq!(sum, 100);
+    }
+
+    #[test]
+    fn test_overfunded_with_change() {
+        let utxos = vec![MicroMinotari(60), MicroMinotari(50)];
+        let params = section_params(100, 0, 5, 2, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+        assert!(sum == 110);
+    }
+
+    #[test]
+    fn test_underfunded() {
+        let utxos = vec![MicroMinotari(10), MicroMinotari(20)];
+        let params = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search();
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_multiple_solutions_choose_least_waste() {
+        let utxos = vec![MicroMinotari(60), MicroMinotari(40), MicroMinotari(50)];
+        let params = section_params(100, 0, 10, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+        assert!(sum == 110);
+        // Should not use all three if two suffice
+        assert!(result.len() == 2);
+    }
+
+    #[test]
+    fn test_input_limit() {
+        let utxos = vec![MicroMinotari(10); 20];
+        let params = section_params(100, 0, 0, 0, 5); // input limit 5
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_change_less_than_fee() {
+        let utxos = vec![MicroMinotari(51), MicroMinotari(50)];
+        let params = section_params(100, 0, 10, 5, 10); // change fee 10, fee per input 5
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+        assert!(sum == 101);
+    }
+
+    #[test]
+    fn test_no_utxos() {
+        let utxos: Vec<MicroMinotari> = Vec::new();
+        let params = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search();
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_single_utxo_match() {
+        let utxos = vec![MicroMinotari(100)];
+        let params = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].value().as_u64(), 100);
+    }
+
+    #[test]
+    fn test_all_utxos_too_small() {
+        let utxos = vec![MicroMinotari(10), MicroMinotari(20), MicroMinotari(30)];
+        let params = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search();
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_large_number_of_utxos_iteration_limit() {
+        let utxos = (1..=30).map(MicroMinotari).collect::<Vec<_>>();
+        let mut params = default_params();
+        params.max_search_iterations = 10; // force early stop
+        let section = section_params(100, 0, 0, 0, 30);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, section, params);
+        let result = selector.search().unwrap();
+        assert!(result.is_empty())
+    }
+
+    #[test]
+    fn test_duplicate_utxo_values() {
+        let utxos = vec![MicroMinotari(50), MicroMinotari(50), MicroMinotari(50)];
+        let params = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+        assert_eq!(sum, 100);
+    }
+
+    #[test]
+    fn test_thread_count_variation() {
+        let utxos = vec![MicroMinotari(60), MicroMinotari(40), MicroMinotari(50)];
+        let mut params = default_params();
+        params.threads = 1;
+        let section = section_params(100, 0, 0, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, section, params);
+        let result = selector.search().unwrap();
+        let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+        assert_eq!(sum,110);
     }
 }
