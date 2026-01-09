@@ -1,0 +1,118 @@
+// Copyright 2024. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::sync::Arc;
+use crate::MicroMinotari;
+use crate::transaction_components::MAX_TRANSACTION_INPUTS;
+use crate::utxo_selection::branch_and_bound::branch_and_bound::{BranchAndBoundUtxoSelector, BranchAndBoundUtxoSelectorParams, UtxoSectionParams};
+use crate::utxo_selection::UtxoValue;
+
+
+const MAX_SEARCH_ITERATIONS: usize = 100_000;
+
+pub struct BranchAndBoundUtxoSelectionBuilder<T> {
+    available_utxos: Vec<T>,
+    threads: usize,
+    max_search_iterations: usize,
+    target_amount: Option<MicroMinotari>,
+    output_fee: Option<MicroMinotari>,
+    change_fee: Option<MicroMinotari>,
+    fee_per_input: Option<MicroMinotari>,
+    input_limit: usize,
+}
+
+impl<T> BranchAndBoundUtxoSelectionBuilder<T>
+where T: UtxoValue
+{
+    pub fn new(available_utxos: Vec<T>) -> BranchAndBoundUtxoSelectionBuilder<T> {
+        BranchAndBoundUtxoSelectionBuilder {
+            available_utxos,
+            threads: 4,
+            max_search_iterations: MAX_SEARCH_ITERATIONS,
+            target_amount: None,
+            output_fee: None,
+            change_fee: None,
+            fee_per_input: None,
+            input_limit: MAX_TRANSACTION_INPUTS,
+        }
+    }
+
+    pub fn with_threads(mut self, threads: usize) -> Self {
+        self.threads = threads;
+        self
+    }
+
+    pub fn with_max_search_iterations(mut self, max_search_iterations: usize) -> Self {
+        self.max_search_iterations = max_search_iterations;
+        self
+    }
+
+    pub fn with_input_limit(mut self, input_limit: usize) -> Self {
+        self.input_limit = input_limit;
+        self
+    }
+
+    pub fn with_target_amount(mut self, target_amount: MicroMinotari) -> Self {
+        self.target_amount = Some(target_amount);
+        self
+    }
+
+    pub fn with_output_fee(mut self, output_fee: MicroMinotari) -> Self {
+        self.output_fee = Some(output_fee);
+        self
+    }
+
+    pub fn with_change_fee(mut self, change_fee: MicroMinotari) -> Self {
+        self.change_fee = Some(change_fee);
+        self
+    }
+    pub fn with_fee_per_input(mut self, fee_per_input: MicroMinotari) -> Self {
+        self.fee_per_input = Some(fee_per_input);
+        self
+    }
+
+    pub fn build(self) -> Result<BranchAndBoundUtxoSelector<T>, String> {
+        let target_amount = self.target_amount.ok_or("target_amount is required")?;
+        let output_fee = self.output_fee.ok_or("output_fee is required")?;
+        let change_fee = self.change_fee.ok_or("change_fee is required")?;
+        let fee_per_input = self.fee_per_input.ok_or("fee_per_input is required")?;
+
+        let selection_params = UtxoSectionParams::new(
+            target_amount,
+            output_fee,
+            change_fee,
+            fee_per_input,
+            self.input_limit,
+        );
+
+        let params = BranchAndBoundUtxoSelectorParams{
+            threads: self.threads,
+            max_search_iterations: self.max_search_iterations,
+        };
+
+        Ok(BranchAndBoundUtxoSelector::new(
+            self.available_utxos,
+            selection_params,
+            params,
+        ))
+    }
+}
