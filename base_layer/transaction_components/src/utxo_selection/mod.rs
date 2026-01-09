@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Debug;
+
 use crate::{
     transaction_components::{UnblindedOutput, WalletOutput},
     MicroMinotari,
 };
 
 pub mod branch_and_bound;
-pub trait UtxoValue: Clone + Sized + Send + Sync{
+pub trait UtxoValue: Clone + Sized + Send + Sync + Debug {
     fn value(&self) -> MicroMinotari;
 }
 

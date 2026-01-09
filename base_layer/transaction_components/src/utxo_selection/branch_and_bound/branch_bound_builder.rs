@@ -20,12 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-use crate::MicroMinotari;
-use crate::transaction_components::MAX_TRANSACTION_INPUTS;
-use crate::utxo_selection::branch_and_bound::branch_and_bound::{BranchAndBoundUtxoSelector, BranchAndBoundUtxoSelectorParams, UtxoSectionParams};
-use crate::utxo_selection::UtxoValue;
-
+use crate::{
+    transaction_components::MAX_TRANSACTION_INPUTS,
+    utxo_selection::{
+        branch_and_bound::branch_and_bound::{
+            BranchAndBoundUtxoSelector,
+            BranchAndBoundUtxoSelectorParams,
+            UtxoSectionParams,
+        },
+        UtxoValue,
+    },
+    MicroMinotari,
+};
 
 const MAX_SEARCH_ITERATIONS: usize = 100_000;
 
@@ -85,6 +91,7 @@ where T: UtxoValue
         self.change_fee = Some(change_fee);
         self
     }
+
     pub fn with_fee_per_input(mut self, fee_per_input: MicroMinotari) -> Self {
         self.fee_per_input = Some(fee_per_input);
         self
@@ -96,15 +103,10 @@ where T: UtxoValue
         let change_fee = self.change_fee.ok_or("change_fee is required")?;
         let fee_per_input = self.fee_per_input.ok_or("fee_per_input is required")?;
 
-        let selection_params = UtxoSectionParams::new(
-            target_amount,
-            output_fee,
-            change_fee,
-            fee_per_input,
-            self.input_limit,
-        );
+        let selection_params =
+            UtxoSectionParams::new(target_amount, output_fee, change_fee, fee_per_input, self.input_limit);
 
-        let params = BranchAndBoundUtxoSelectorParams{
+        let params = BranchAndBoundUtxoSelectorParams {
             threads: self.threads,
             max_search_iterations: self.max_search_iterations,
         };

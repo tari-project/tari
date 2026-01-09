@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
 use crate::{utxo_selection::UtxoValue, MicroMinotari};
-use std::sync::RwLock;
 
 pub struct BranchAndBoundUtxoSelector<T> {
     available_utxos: Arc<Vec<T>>,
@@ -48,11 +49,11 @@ where T: UtxoValue
         }
     }
 
-    pub fn search(&self) -> Result<Vec<T>, String>{
+    pub fn search_rayon(&self) -> Result<Vec<T>, String> {
         let initial_state = SelectionState::new_blank(self.available_utxos.clone(), self.search_params.clone());
 
         let mut to_search = vec![initial_state];
-        let mut done_results = Vec::new();
+        let mut done_results: Vec<SelectionState<T>> = Vec::new();
 
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(self.params.threads)
@@ -65,7 +66,7 @@ where T: UtxoValue
             iterations += to_search.len();
             pool.install(|| {
                 to_search.into_par_iter().for_each(|state| {
-                    let (mut done, not_done) = state.search();
+                    let (mut done, not_done) = state.expand();
                     thread_done
                         .write()
                         .expect("write lock should not be poisoned")
@@ -74,45 +75,83 @@ where T: UtxoValue
                         .write()
                         .expect("write lock should not be poisoned")
                         .extend(not_done);
-
-
                 });
             });
-            done_results.append(&mut thread_done
-                .into_inner()
-                .expect("into_inner should not fail"));
-            to_search = thread_not_done
-                .into_inner()
-                .expect("into_inner should not fail");
-            // todo remote duplicates from to_search to reduce search space
+            let run_done_result = thread_done.into_inner().expect("into_inner should not fail");
+            for new_done in run_done_result {
+                let mut found = false;
+                for done in &done_results {
+                    if done.selected_utxos == new_done.selected_utxos {
+                        // duplicate result, skip it
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    done_results.push(new_done);
+                }
+            }
+            to_search = Vec::new();
+            let all_new_to_be_searched = thread_not_done.into_inner().expect("into_inner should not fail");
+            for new_to_search in all_new_to_be_searched {
+                let mut found = false;
+                for to_search in &to_search {
+                    if to_search.selected_utxos == new_to_search.selected_utxos {
+                        // duplicate result, skip it
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    to_search.push(new_to_search);
+                }
+            }
             if iterations >= self.params.max_search_iterations {
                 break;
             }
             if to_search.is_empty() {
                 break;
             }
-
         }
 
         done_results.sort_by(|a, b| a.waste.cmp(&b.waste));
         // collect the selected utxos
-        let selected_utxos: Vec<T> = match done_results.first(){
-            Some(best_result) => best_result.selected_utxos.iter().map(|&i| {
-                                                           self.available_utxos.get(i).expect("utxo_index out of bounds").clone()
-                                                           }).collect(),
-            None => Vec::new()
+        let selected_utxos: Vec<T> = match done_results.first() {
+            Some(best_result) => best_result
+                .selected_utxos
+                .iter()
+                .map(|&i| self.available_utxos.get(i).expect("utxo_index out of bounds").clone())
+                .collect(),
+            None => Vec::new(),
         };
 
         Ok(selected_utxos)
     }
+
+    pub fn search(&self) -> Result<Vec<T>, String> {
+        let mut initial_state = SelectionState::new_blank(self.available_utxos.clone(), self.search_params.clone());
+        let mut best_result: Option<SelectionState<T>> = None;
+
+        initial_state.start_search(self.params.max_search_iterations, &mut best_result);
+
+        let selected_utxos: Vec<T> = match best_result {
+            Some(best_result) => best_result
+                .selected_utxos
+                .iter()
+                .map(|&i| self.available_utxos.get(i).expect("utxo_index out of bounds").clone())
+                .collect(),
+            None => Vec::new(),
+        };
+        Ok(selected_utxos)
+    }
 }
 
-pub struct BranchAndBoundUtxoSelectorParams{
+pub struct BranchAndBoundUtxoSelectorParams {
     pub threads: usize,
     pub max_search_iterations: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UtxoSectionParams {
     target_amount: MicroMinotari,
     output_fee: MicroMinotari,
@@ -147,7 +186,7 @@ impl UtxoSectionParams {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct SelectionState<T: Sized> {
     available_utxos: Arc<Vec<T>>,
     selected_utxos: Vec<usize>,
@@ -173,7 +212,14 @@ where T: UtxoValue
         }
     }
 
-    fn search(self) -> (Vec<SelectionState<T>>, Vec<SelectionState<T>>) {
+    fn add_utxo_sorted(&mut self, index: usize) {
+        let pos = self.selected_utxos.binary_search(&index).unwrap_or_else(|e| e);
+        self.selected_utxos.insert(pos, index);
+    }
+
+    // this method expands the current state into a list all possible states separating them into finished and
+    // unfinished
+    fn expand(self) -> (Vec<SelectionState<T>>, Vec<SelectionState<T>>) {
         let mut done_results = Vec::new();
         let mut not_done_results = Vec::new();
         if self.selected_utxos.len() >= self.parms.input_limit {
@@ -185,7 +231,7 @@ where T: UtxoValue
                 continue;
             }
             let mut new_state = self.clone();
-            new_state.selected_utxos.push(i);
+            new_state.add_utxo_sorted(i);
             new_state.current_value += new_state
                 .available_utxos
                 .get(i)
@@ -203,7 +249,7 @@ where T: UtxoValue
                     continue;
                 }
                 let change_waste = self.parms.change_cost();
-                if current_value <= target + change_waste{
+                if current_value <= target + change_waste {
                     // we have less change than the fee, so lets up the amount so we dont create a dust fee
                     // this is an edge case and should be avoided is possible. We should try and find a better solution
                     // here
@@ -214,7 +260,8 @@ where T: UtxoValue
                         not_done.done = false;
                         not_done_results.push(not_done);
                     }
-                    // we update the send result to send more as its cheaper to send the extra bit then create change or include another input.
+                    // we update the send result to send more as its cheaper to send the extra bit then create change or
+                    // include another input.
                     new_state.final_target = new_state.current_value;
                     // update the waste to include the extra we have to pay
                     new_state.waste += exstra_waste;
@@ -223,17 +270,117 @@ where T: UtxoValue
                     new_state.waste += new_state.parms.fee_per_input + new_state.parms.change_fee;
                 }
                 done_results.push(new_state.clone());
+            } else {
+                not_done_results.push(new_state)
             };
         }
         (done_results, not_done_results)
+    }
+
+    // this method starts and iterative search
+    fn start_search(&mut self, max_iterations: usize, best_result: &mut Option<SelectionState<T>>) {
+        let mut iterations = 1;
+        for i in 0..self.available_utxos.len() {
+            if self.selected_utxos.contains(&i) {
+                continue;
+            }
+            let mut new_state = self.clone();
+            iterations = new_state.search_and_add_index(i, iterations, max_iterations, best_result) + 1;
+            if iterations >= max_iterations {
+                break;
+            }
+        }
+    }
+
+    // this method does an iterative search to find the best solution adding the index specified
+    fn search_and_add_index(
+        &mut self,
+        index_to_add: usize,
+        current_iterations: usize,
+        max_iterations: usize,
+        best_result: &mut Option<SelectionState<T>>,
+    ) -> usize {
+        if self.selected_utxos.len() >= self.parms.input_limit {
+            // tx is too large, dont continue searching this branch
+            return current_iterations;
+        }
+        if let Some(best) = best_result {
+            if self.waste + self.parms.fee_per_input >= best.waste {
+                // no need to continue searching this branch
+                return current_iterations;
+            }
+        }
+        self.add_utxo_sorted(index_to_add);
+        self.current_value += self
+            .available_utxos
+            .get(index_to_add)
+            .expect("utxo_index out of bounds")
+            .value();
+        self.waste += self.parms.fee_per_input;
+        let target = self.parms.total_target();
+        let current_value = self.current_value;
+        if current_value >= target {
+            self.done = true;
+            if current_value == target {
+                // perfect match, no better branch to search
+                self.compare_to_best(best_result);
+                return current_iterations;
+            }
+            // not perfect, lets handle change
+            let change_waste = self.parms.change_cost();
+            if current_value > target + change_waste {
+                // we have enough to pay for change, so lets search further
+                self.waste += change_waste;
+                self.compare_to_best(best_result);
+                return current_iterations;
+            }
+
+            // Now we need to handle the edge case that we have enough to pay the target but not enough to cover change
+            // cost
+            let extra_waste = self.current_value.saturating_sub(target); // we know its bigger than target
+            self.compare_to_best(best_result);
+            if extra_waste < self.parms.fee_per_input {
+                // the waste is less than the cost of adding another input, so no use in adding another input
+                return current_iterations;
+            }
+        }
+        if current_iterations >= max_iterations {
+            return current_iterations;
+        }
+        let mut iterations = current_iterations + 1;
+        for i in 0..self.available_utxos.len() {
+            if self.selected_utxos.contains(&i) {
+                continue;
+            }
+            let mut new_state = self.clone();
+            iterations = new_state.search_and_add_index(i, iterations, max_iterations, best_result) + 1;
+            if current_iterations >= max_iterations {
+                return current_iterations;
+            }
+        }
+        iterations
+    }
+
+    fn compare_to_best(&self, best_result: &mut Option<SelectionState<T>>) {
+        match best_result {
+            Some(best) => {
+                if self.waste < best.waste {
+                    *best_result = Some(self.clone());
+                } else {
+                }
+            },
+            None => {
+                *best_result = Some(self.clone());
+            },
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
-
-
 
     fn default_params() -> BranchAndBoundUtxoSelectorParams {
         BranchAndBoundUtxoSelectorParams {
@@ -275,7 +422,7 @@ mod tests {
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
         let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
-        assert!(sum == 110);
+        assert_eq!(sum, 110);
     }
 
     #[test]
@@ -289,14 +436,14 @@ mod tests {
 
     #[test]
     fn test_multiple_solutions_choose_least_waste() {
-        let utxos = vec![MicroMinotari(60), MicroMinotari(40), MicroMinotari(50)];
+        let utxos = vec![MicroMinotari(70), MicroMinotari(40), MicroMinotari(50)];
         let params = section_params(100, 0, 10, 5, 10);
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
         let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
-        assert!(sum == 110);
+        assert_eq!(sum, 110);
         // Should not use all three if two suffice
-        assert!(result.len() == 2);
+        assert_eq!(result.len(), 2);
     }
 
     #[test]
@@ -315,7 +462,7 @@ mod tests {
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
         let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
-        assert!(sum == 101);
+        assert_eq!(sum, 101);
     }
 
     #[test]
@@ -351,7 +498,7 @@ mod tests {
         let utxos = (1..=30).map(MicroMinotari).collect::<Vec<_>>();
         let mut params = default_params();
         params.max_search_iterations = 10; // force early stop
-        let section = section_params(100, 0, 0, 0, 30);
+        let section = section_params(1000, 0, 0, 0, 30);
         let selector = BranchAndBoundUtxoSelector::new(utxos, section, params);
         let result = selector.search().unwrap();
         assert!(result.is_empty())
@@ -376,6 +523,68 @@ mod tests {
         let selector = BranchAndBoundUtxoSelector::new(utxos, section, params);
         let result = selector.search().unwrap();
         let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
-        assert_eq!(sum,110);
+        assert_eq!(sum, 110);
     }
+
+    // #[test]
+    // fn speed_test() {
+    //     use rand::Rng;
+    //     let mut utxos = Vec::new();
+    //     for _ in 0..100 {
+    //         let value: u64 = rand::thread_rng().gen_range(1000..100000);
+    //         utxos.push(MicroMinotari(value));
+    //     }
+    //     let input_sum: u64 = utxos.iter().map(|u| u.value().as_u64()).sum();
+    //     assert!(input_sum > 1000000);
+    //     let start = Instant::now();
+    //     let params = section_params(10000000, 0, 0, 0, 500);
+    //     let selector = BranchAndBoundUtxoSelector::new(utxos, params, BranchAndBoundUtxoSelectorParams {
+    //         threads: 1,
+    //         max_search_iterations: 100_0,
+    //     });
+    //     let result = selector.search().unwrap();
+    //     let end = start.elapsed();
+    //     let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+    //     dbg!(sum, end.as_millis());
+    //     assert!(sum > 10000000);
+    //     panic!("end")
+    // }
+    //
+    // #[test]
+    // fn thread_test() {
+    //     dbg!("1");
+    //     thread(1);
+    //     dbg!("2");
+    //     thread(2);
+    //     dbg!("4");
+    //     thread(4);
+    //     dbg!("8");
+    //     thread(8);
+    //     dbg!("16");
+    //     thread(16);
+    //     panic!("end");
+    // }
+    //
+    // fn thread(threads: usize) {
+    //     use rand::Rng;
+    //     let mut utxos = Vec::new();
+    //     for _ in 0..100 {
+    //         let value: u64 = rand::thread_rng().gen_range(1000..100000);
+    //         utxos.push(MicroMinotari(value));
+    //     }
+    //     let input_sum: u64 = utxos.iter().map(|u| u.value().as_u64()).sum();
+    //     // assert!(input_sum > 1000000);
+    //     let start = Instant::now();
+    //     let params = section_params(10000000, 0, 0, 0, 500);
+    //     let selector = BranchAndBoundUtxoSelector::new(utxos, params, BranchAndBoundUtxoSelectorParams {
+    //         threads,
+    //         max_search_iterations: 100_0,
+    //     });
+    //     let result = selector.search().unwrap();
+    //     let end = start.elapsed();
+    //     let sum: u64 = result.iter().map(|u| u.value().as_u64()).sum();
+    //     dbg!(sum, end.as_millis());
+    //     // assert!(sum> 10000000);
+    //     // panic!("end")
+    // }
 }
