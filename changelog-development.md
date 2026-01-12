@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.2.0-rc.1](https://github.com/tari-project/tari/compare/v5.2.0-rc.0...v5.2.0-rc.1) (2026-01-12)
+
+
+### Bug Fixes
+
+* conflicting short options in console wallet ([#7639](https://github.com/tari-project/tari/issues/7639)) ([d2f75ba](https://github.com/tari-project/tari/commit/d2f75ba9d1f5221a8a18be2d8c105a7f13ade232))
+* **node:** add missing data to get_active_validator_nodes ([#7645](https://github.com/tari-project/tari/issues/7645)) ([10344b1](https://github.com/tari-project/tari/commit/10344b1766bebf1751547328756fc605f2ba00bb))
+* **node:** enable list headers for L2 ([#7644](https://github.com/tari-project/tari/issues/7644)) ([8f77fe5](https://github.com/tari-project/tari/commit/8f77fe5540fd8c6bf7126b863c3f40df8b6919ec))
+
 ## [5.2.0-rc.0](https://github.com/tari-project/tari/compare/v5.2.0-pre.7...v5.2.0-rc.0) (2025-12-12)
 
 
