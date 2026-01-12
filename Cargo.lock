@@ -7839,7 +7839,6 @@ dependencies = [
  "num-traits",
  "primitive-types",
  "rand 0.8.5",
- "rayon",
  "semver",
  "serde",
  "serde_json",

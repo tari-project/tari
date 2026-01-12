@@ -28,7 +28,7 @@ use crate::{
 };
 
 pub mod branch_and_bound;
-pub trait UtxoValue: Clone + Sized + Send + Sync + Debug {
+pub trait UtxoValue: Clone + Debug {
     fn value(&self) -> MicroMinotari;
 }
 

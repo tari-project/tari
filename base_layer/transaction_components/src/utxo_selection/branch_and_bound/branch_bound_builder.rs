@@ -35,7 +35,6 @@ use crate::{
 
 const MAX_SEARCH_ITERATIONS: usize = 100_000;
 
-#[allow(dead_code)]
 pub struct BranchAndBoundUtxoSelectionBuilder<T> {
     available_utxos: Vec<T>,
     max_search_iterations: usize,
@@ -47,7 +46,6 @@ pub struct BranchAndBoundUtxoSelectionBuilder<T> {
     allow_dust_waste: bool,
 }
 
-#[allow(dead_code)]
 impl<T> BranchAndBoundUtxoSelectionBuilder<T>
 where T: UtxoValue
 {

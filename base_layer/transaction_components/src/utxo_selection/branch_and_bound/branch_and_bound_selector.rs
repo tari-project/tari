@@ -107,7 +107,7 @@ struct SelectionState<T> {
     selected_utxos: Vec<usize>,
     current_value: MicroMinotari,
     final_target: MicroMinotari,
-    parms: UtxoSectionParams,
+    params: UtxoSectionParams,
     waste: MicroMinotari,
     allow_dust_waste: bool,
 }
@@ -115,14 +115,14 @@ struct SelectionState<T> {
 impl<T> SelectionState<T>
 where T: UtxoValue
 {
-    fn new_blank(available_utxos: Arc<Vec<T>>, parms: UtxoSectionParams, allow_dust_waste: bool) -> Self {
+    fn new_blank(available_utxos: Arc<Vec<T>>, params: UtxoSectionParams, allow_dust_waste: bool) -> Self {
         Self {
             available_utxos,
             selected_utxos: Vec::new(),
             current_value: MicroMinotari::from(0),
             waste: MicroMinotari::from(0),
-            final_target: parms.target_amount,
-            parms,
+            final_target: params.target_amount,
+            params,
             allow_dust_waste,
         }
     }
@@ -139,8 +139,8 @@ where T: UtxoValue
             if iterations >= max_iterations {
                 break;
             }
-            if (self.selected_utxos.len() >= self.parms.input_limit) ||
-                (self.current_value >= self.parms.total_target())
+            if (self.selected_utxos.len() >= self.params.input_limit) ||
+                (self.current_value >= self.params.total_target())
             {
                 // tx is now at the limit, dont search further or we have the target
                 break;
@@ -167,8 +167,8 @@ where T: UtxoValue
             .get(index_to_add)
             .expect("utxo_index out of bounds")
             .value();
-        self.waste += self.parms.fee_per_input;
-        self.parms.target_amount += self.parms.fee_per_input;
+        self.waste += self.params.fee_per_input;
+        self.params.target_amount += self.params.fee_per_input;
 
         let done = self.check_current_state(best_result);
         let mut iterations = current_iterations + 1;
@@ -177,19 +177,19 @@ where T: UtxoValue
             return iterations;
         }
 
-        if self.selected_utxos.len() >= self.parms.input_limit {
+        if self.selected_utxos.len() >= self.params.input_limit {
             // tx is now at the limit, dont search further
             return current_iterations;
         }
         if let Some(best) = best_result {
             // we are already worse off than the best here, stop right here
-            if self.waste + self.parms.fee_per_input >= best.waste {
+            if self.waste + self.params.fee_per_input >= best.waste {
                 // no need to continue searching this branch
                 return current_iterations;
             }
         }
 
-        for i in 0..self.available_utxos.len() {
+        for i in index_to_add + 1..self.available_utxos.len() {
             if self.selected_utxos.contains(&i) {
                 continue;
             }
@@ -203,7 +203,7 @@ where T: UtxoValue
     }
 
     fn check_current_state(&mut self, best_result: &mut Option<SelectionState<T>>) -> bool {
-        let target = self.parms.total_target();
+        let target = self.params.total_target();
         let current_value = self.current_value;
         if current_value >= target {
             if current_value == target {
@@ -212,7 +212,7 @@ where T: UtxoValue
                 return true;
             }
             // not perfect, lets handle change
-            let change_waste = self.parms.change_cost();
+            let change_waste = self.params.change_cost();
             if current_value > target + change_waste {
                 // we have enough to pay for change, so lets stop here
                 self.compare_to_best(best_result, change_waste);
@@ -225,7 +225,7 @@ where T: UtxoValue
                 let extra_waste = self.current_value.saturating_sub(target); // we know its bigger than target
 
                 self.compare_to_best(best_result, extra_waste);
-                if extra_waste < self.parms.fee_per_input {
+                if extra_waste < self.params.fee_per_input {
                     // the waste is less than the cost of adding another input, so no use in adding another input
                     return true;
                 }

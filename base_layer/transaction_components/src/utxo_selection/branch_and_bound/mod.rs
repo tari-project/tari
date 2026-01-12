@@ -21,4 +21,4 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod branch_and_bound_selector;
-mod branch_bound_builder;
+pub mod branch_bound_builder;
