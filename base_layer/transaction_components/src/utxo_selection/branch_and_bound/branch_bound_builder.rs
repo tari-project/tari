@@ -37,13 +37,13 @@ const MAX_SEARCH_ITERATIONS: usize = 100_000;
 
 pub struct BranchAndBoundUtxoSelectionBuilder<T> {
     available_utxos: Vec<T>,
-    threads: usize,
     max_search_iterations: usize,
     target_amount: Option<MicroMinotari>,
     output_fee: Option<MicroMinotari>,
     change_fee: Option<MicroMinotari>,
     fee_per_input: Option<MicroMinotari>,
     input_limit: usize,
+    allow_dust_waste: bool,
 }
 
 impl<T> BranchAndBoundUtxoSelectionBuilder<T>
@@ -52,18 +52,18 @@ where T: UtxoValue
     pub fn new(available_utxos: Vec<T>) -> BranchAndBoundUtxoSelectionBuilder<T> {
         BranchAndBoundUtxoSelectionBuilder {
             available_utxos,
-            threads: 4,
             max_search_iterations: MAX_SEARCH_ITERATIONS,
             target_amount: None,
             output_fee: None,
             change_fee: None,
             fee_per_input: None,
             input_limit: MAX_TRANSACTION_INPUTS,
+            allow_dust_waste: true,
         }
     }
 
-    pub fn with_threads(mut self, threads: usize) -> Self {
-        self.threads = threads;
+    pub fn allow_dust_waste(mut self, allow: bool) -> Self {
+        self.allow_dust_waste = allow;
         self
     }
 
@@ -107,8 +107,8 @@ where T: UtxoValue
             UtxoSectionParams::new(target_amount, output_fee, change_fee, fee_per_input, self.input_limit);
 
         let params = BranchAndBoundUtxoSelectorParams {
-            threads: self.threads,
             max_search_iterations: self.max_search_iterations,
+            allow_dust_waste: self.allow_dust_waste,
         };
 
         Ok(BranchAndBoundUtxoSelector::new(
