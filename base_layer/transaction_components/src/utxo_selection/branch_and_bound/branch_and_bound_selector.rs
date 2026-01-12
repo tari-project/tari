@@ -39,7 +39,7 @@ where T: UtxoValue
         params: BranchAndBoundUtxoSelectorParams,
     ) -> Self {
         // Sort UTXOs in descending order for BnB
-        available_utxos.sort_by(|a, b| b.value().cmp(&a.value()));
+        available_utxos.sort_by_key(|b| std::cmp::Reverse(b.value()));
         Self {
             available_utxos: Arc::new(available_utxos),
             search_params,
@@ -266,8 +266,9 @@ where T: UtxoValue
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
-struct SelectionResult<T> {
+pub struct SelectionResult<T> {
     selected_utxos: Vec<T>,
     current_value: MicroMinotari,
     final_target: MicroMinotari,
@@ -276,6 +277,7 @@ struct SelectionResult<T> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use rand::Rng;
 
     use super::*;
@@ -770,7 +772,6 @@ mod tests {
         let params = section_params(96, 1, 1, 1, 10);
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
-        dbg!(&result);
         // 64 + 32 + 4 = 96 + 4(fee) = 100
         assert_eq!(result.current_value, 100.into());
     }
@@ -834,6 +835,6 @@ mod tests {
             let duration = start.elapsed().as_millis();
             total_duration += duration;
         }
-        dbg!("Average duration over 1000 runs: {} ms", total_duration / 1000);
+        println!("Average duration over 1000 runs: {} ms", total_duration / 1000);
     }
 }
