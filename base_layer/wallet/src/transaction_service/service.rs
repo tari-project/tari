@@ -2973,18 +2973,30 @@ where
             .resources
             .transaction_key_manager_service
             .get_random_key(None, None)?;
-        let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
+        let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&recovery_key_id),
-                payment_id.clone(),
-            )?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
             .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(MicroMinotari::zero())
+            .with_minimum_value_promise(MicroMinotari::zero());
+
+        if let Some(ref claim_pk) = claim_public_key {
+            output_builder = output_builder.encrypt_burn_data_with_dh(
+                &self.resources.transaction_key_manager_service,
+                claim_pk,
+                &sender_offset_private_key.key_id,
+                payment_id.clone(),
+            )?;
+        } else {
+            output_builder = output_builder.encrypt_data_for_recovery(
+                &self.resources.transaction_key_manager_service,
+                Some(&recovery_key_id),
+                payment_id.clone(),
+            )?;
+        }
+
+        let output = output_builder
             .sign_metadata_signature(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
@@ -3071,7 +3083,7 @@ where
                 .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
             let proof = BurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
-                reciprocal_claim_public_key: commitment_mask_key.pub_key,
+                reciprocal_claim_public_key: claim_public_key,
                 commitment,
                 ownership_proof,
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
