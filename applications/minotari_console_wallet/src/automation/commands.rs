@@ -2729,13 +2729,13 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {
-                    Ok(tx_id) => {
+                    Ok(mut ids) => {
                         debug!(
                             target: LOG_TARGET,
-                            "broadcast-signed-one-sided-transaction concluded with tx_id {tx_id}"
+                            "broadcast-signed-one-sided-transaction concluded with tx_id {:?}", ids
                         );
-                        println!("Transaction ID: {tx_id}");
-                        tx_ids.push(tx_id);
+                        println!("Transaction ID: {:?}", ids);
+                        tx_ids.append(&mut ids);
                     },
                     Err(e) => eprintln!("BroadcastSignedOneSidedTransaction error! {e}"),
                 }
