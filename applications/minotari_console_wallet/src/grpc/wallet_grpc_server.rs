@@ -2934,6 +2934,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ))
             })?;
 
+
+        info!(
+            target: LOG_TARGET,
+            "XXXX get burn claim proof sender offset public key: {}",
+            proof.burn_proof.sender_offset_public_key
+        );
         Ok(Response::new(GetBurnClaimProofResponse {
             claim_proof: Some(tari_rpc::BurnClaimProof {
                 commitment: commitment.as_bytes().to_vec(),
