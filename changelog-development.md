@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.1-pre.0](https://github.com/tari-project/tari/compare/v5.2.0-rc.1...v5.2.1-pre.0) (2026-01-14)
+
+
+### Bug Fixes
+
+* offline signing broadcast ([#7652](https://github.com/tari-project/tari/issues/7652)) ([08fba23](https://github.com/tari-project/tari/commit/08fba23f4500ed77bd15a7c8baa7a9d3f15fd223))
+
 ## [5.2.0-rc.1](https://github.com/tari-project/tari/compare/v5.2.0-rc.0...v5.2.0-rc.1) (2026-01-12)
 
 
