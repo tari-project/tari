@@ -25,7 +25,7 @@ use std::{ops::Shl, str::FromStr};
 use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
 use digest::{consts::U64, KeyInit};
-use log::trace;
+use log::{info, trace};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
@@ -102,6 +102,8 @@ use crate::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 
+//TODO remove
+const LOG_TARGET: &str = "wallet::key_manager::manager";
 #[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
@@ -1319,8 +1321,12 @@ impl TransactionKeyManagerInterface for KeyManager {
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
         let mask = self.get_private_key(commitment_mask_key_id)?;
+        info!(target: LOG_TARGET, "XXXXX sender offset key id: {}", sender_offset_key_id);
+        info!(target: LOG_TARGET, "XXXXX claim public key: {}", claim_public_key);
         let shared_secret = self.get_diffie_hellman_shared_secret(sender_offset_key_id, claim_public_key)?;
+        info!(target: LOG_TARGET, "XXXXXXX Shared secret for burn data: {}", shared_secret);   
         let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
+        info!(target: LOG_TARGET, "XXXXXXX Encryption key for burn data: {}", encryption_key.reveal());
         let commitment = self.get_commitment(commitment_mask_key_id, &PrivateKey::from(value))?;
 
         EncryptedData::encrypt_data(&encryption_key, &commitment, value.into(), &mask, payment_id)

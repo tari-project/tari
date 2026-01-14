@@ -2094,6 +2094,7 @@ message CreateBurnTransactionResponse{
   bytes kernel_excess = 7;
   bytes kernel_excess_nonce = 8;
   bytes kernel_excess_signature = 9;
+  bytes sender_offset_public_key = 10;
 }
 
 message TransferResult {
@@ -2660,6 +2661,7 @@ message BurnClaimProof {
   bytes kernel_excess = 4;
   bytes kernel_excess_nonce = 5;
   bytes kernel_excess_signature = 6;
+  bytes sender_offset_public_key = 7;
 }
 
 message EncodedMerkleProof {

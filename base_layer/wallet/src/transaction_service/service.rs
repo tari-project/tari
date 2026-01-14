@@ -95,16 +95,9 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::{OutputManagerEvent, OutputManagerHandle},
-        service::UseOutput,
-        storage::{database::OutputBackendQuery, models::SpendingPriority, OutputStatus},
-        UtxoSelectionCriteria,
-    },
-    transaction_service::{
+    OperationId, base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle}, connectivity_service::WalletConnectivityInterface, output_manager_service::{
+        UtxoSelectionCriteria, error::OutputManagerError, handle::{OutputManagerEvent, OutputManagerHandle}, service::UseOutput, storage::{OutputStatus, database::OutputBackendQuery, models::SpendingPriority}
+    },  transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
@@ -122,10 +115,7 @@ use crate::{
                 WalletTransaction::{Completed, PendingInbound, PendingOutbound},
             },
         },
-    },
-    util::watch::Watch,
-    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
-    OperationId,
+    }, util::watch::Watch, utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle}
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -2969,6 +2959,7 @@ where
 
         let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
 
+        info!(target: LOG_TARGET, "XXXXX Creating burn output");
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
@@ -2981,7 +2972,9 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero());
 
+        info!(target: LOG_TARGET, "XXXXX Encrypting burn data with sender offset: {}", sender_offset_private_key.pub_key.clone());
         if let Some(ref claim_pk) = claim_public_key {
+            info!(target: LOG_TARGET, "XXXXX Encrypting burn data with DH");
             output_builder = output_builder.encrypt_burn_data_with_dh(
                 &self.resources.transaction_key_manager_service,
                 claim_pk,
@@ -2989,6 +2982,7 @@ where
                 payment_id.clone(),
             )?;
         } else {
+            info!(target: LOG_TARGET, "XXXXX Encrypting burn data for recovery");
             output_builder = output_builder.encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
@@ -3089,6 +3083,7 @@ where
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
                 kernel_excess_nonce: burn_kernel.excess_sig.get_compressed_public_nonce().to_vec(),
                 kernel_excess_signature: burn_kernel.excess_sig.get_signature().to_vec(),
+                sender_offset_public_key: sender_offset_private_key.pub_key.clone()
             };
 
             self.db.insert_burn_proof(

@@ -1357,6 +1357,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     kernel_excess: proof.kernel_excess,
                     kernel_excess_nonce: proof.kernel_excess_nonce,
                     kernel_excess_signature: proof.kernel_excess_signature,
+                    sender_offset_public_key: proof.sender_offset_public_key.to_vec(),
                 }
             },
             Ok((tx_id, None)) => {
@@ -2941,6 +2942,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 kernel_excess: proof.burn_proof.kernel_excess.clone(),
                 kernel_excess_nonce: proof.burn_proof.kernel_excess_nonce.clone(),
                 kernel_excess_signature: proof.burn_proof.kernel_excess_signature.clone(),
+                sender_offset_public_key: proof.burn_proof.sender_offset_public_key.to_vec()
             }),
             merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
                 block_hash: p.block_hash.to_vec(),

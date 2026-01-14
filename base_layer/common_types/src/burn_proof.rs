@@ -39,6 +39,7 @@ pub struct BurnClaimProof {
     pub kernel_excess_nonce: Vec<u8>,
     #[serde(with = "serializers::base64")]
     pub kernel_excess_signature: Vec<u8>,
+    pub sender_offset_public_key: CompressedPublicKey,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
