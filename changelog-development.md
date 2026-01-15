@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.1-pre.2](https://github.com/tari-project/tari/compare/v5.2.1-pre.1...v5.2.1-pre.2) (2026-01-15)
+
+
+### Bug Fixes
+
+* wallet scanning edge case ([#7657](https://github.com/tari-project/tari/issues/7657)) ([c70542d](https://github.com/tari-project/tari/commit/c70542dea56367ce7ed56dd5542039f7f3689f13))
+
 ### [5.2.1-pre.1](https://github.com/tari-project/tari/compare/v5.2.1-pre.0...v5.2.1-pre.1) (2026-01-15)
 
 
