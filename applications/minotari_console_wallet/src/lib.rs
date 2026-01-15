@@ -155,8 +155,6 @@ pub fn run_wallet_with_cli(
         ));
     }
 
-
-
     let on_init = matches!(boot_mode, WalletBoot::New);
     let not_recovery = recovery_seed.is_none();
     let hardware_wallet = matches!(wallet_type, Some(LegacyWalletType::Ledger(_)));
