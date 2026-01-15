@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.2.1-pre.1](https://github.com/tari-project/tari/compare/v5.2.1-pre.0...v5.2.1-pre.1) (2026-01-15)
+
+
+### Features
+
+* remove libtor from console wallet ([#7653](https://github.com/tari-project/tari/issues/7653)) ([d7da75c](https://github.com/tari-project/tari/commit/d7da75c620aa4a9795b59bea49ed8b1ac14c0ea7))
+
+
+### Bug Fixes
+
+* wallet handling of duplicate blocks ([#7656](https://github.com/tari-project/tari/issues/7656)) ([3f0bea1](https://github.com/tari-project/tari/commit/3f0bea17303af88a786a8f5c15a7c91592d78459))
+
 ### [5.2.1-pre.0](https://github.com/tari-project/tari/compare/v5.2.0-rc.1...v5.2.1-pre.0) (2026-01-14)
 
 
