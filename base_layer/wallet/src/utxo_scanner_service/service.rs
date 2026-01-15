@@ -176,7 +176,7 @@ where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
     pub(crate) client_factory: THttpClientFactory,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScannedBlock {
     pub header_hash: HashOutput,
     pub height: u64,

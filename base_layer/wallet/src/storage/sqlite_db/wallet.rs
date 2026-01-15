@@ -1209,6 +1209,6 @@ mod test {
         assert!(result.is_ok());
         let blocks = wallet.get_scanned_blocks().unwrap();
         assert_eq!(blocks.len(), 1);
-        assert_eq!(blocks[0].header_hash, block2.header_hash);
+        assert_eq!(blocks[0], block2);
     }
 }
