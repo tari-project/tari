@@ -880,11 +880,10 @@ mod tests {
         assert!(!resp.has_next_page, "Should not have more pages");
     }
 
-    //this will only run and work in esmeralda
+    // this will only run and work in esmeralda
     #[cfg(tari_target_network_testnet)]
     #[tokio::test]
     async fn large_utxo_handled_correctly() {
-
         use crate::test_helpers::blockchain::create_main_chain;
 
         // Build a small chain: GB -> A -> B -> C
