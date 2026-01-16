@@ -1437,7 +1437,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     failure_message: Default::default(),
                     commitment: proof.commitment.to_vec(),
                     ownership_proof: Some(proof.ownership_proof.into()),
-                    reciprocal_claim_public_key: proof.reciprocal_claim_public_key.to_vec(),
+                    claim_public_key: proof.claim_public_key.to_vec(),
                     kernel_excess: proof.kernel_excess,
                     kernel_excess_nonce: proof.kernel_excess_nonce,
                     kernel_excess_signature: proof.kernel_excess_signature,
@@ -3022,7 +3022,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             claim_proof: Some(tari_rpc::BurnClaimProof {
                 commitment: commitment.as_bytes().to_vec(),
                 ownership_proof: Some(proof.burn_proof.ownership_proof.into()),
-                reciprocal_claim_public_key: proof.burn_proof.reciprocal_claim_public_key.to_vec(),
+                claim_public_key: proof.burn_proof.claim_public_key.to_vec(),
                 kernel_excess: proof.burn_proof.kernel_excess.clone(),
                 kernel_excess_nonce: proof.burn_proof.kernel_excess_nonce.clone(),
                 kernel_excess_signature: proof.burn_proof.kernel_excess_signature.clone(),

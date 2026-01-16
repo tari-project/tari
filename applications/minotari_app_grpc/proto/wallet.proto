@@ -1340,7 +1340,7 @@ service Wallet {
   // - **commitment**: The commitment associated with the burn transaction.
   // - **ownership_proof**: A proof of ownership for the burned coins.
   // - **range_proof**: The range proof associated with the burned coins.
-  // - **reciprocal_claim_public_key**: The public key of the reciprocal claim for the burn.
+  // - **claim_public_key**: The public key used for the burn claim.
   //
   // ### Example JavaScript gRPC client usage:
   // ```javascript
@@ -1364,7 +1364,7 @@ service Wallet {
   //   "failure_message": "",
   //   "commitment": "0xcommitmenthash",
   //   "ownership_proof": "0xownershipproof",
-  //   "reciprocal_claim_public_key": "0xreciprocalpublickey"
+  //   "claim_public_key": "0xclaimpublickey"
   // }
   rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
 
@@ -2090,7 +2090,7 @@ message CreateBurnTransactionResponse{
   // Only provided if a burn claim key is provided
   bytes commitment = 4;
   Signature ownership_proof = 5;
-  bytes reciprocal_claim_public_key = 6;
+  bytes claim_public_key = 6;
   bytes kernel_excess = 7;
   bytes kernel_excess_nonce = 8;
   bytes kernel_excess_signature = 9;
@@ -2657,7 +2657,7 @@ message GetBurnClaimProofResponse {
 message BurnClaimProof {
   bytes commitment = 1;
   Signature ownership_proof = 2;
-  bytes reciprocal_claim_public_key = 3;
+  bytes claim_public_key = 3;
   bytes kernel_excess = 4;
   bytes kernel_excess_nonce = 5;
   bytes kernel_excess_signature = 6;

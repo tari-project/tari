@@ -271,7 +271,7 @@ impl BurnTab {
 
         for item in windowed_view {
             column0_items.push(ListItem::new(Span::raw(
-                item.proof.reciprocal_claim_public_key.to_hex(),
+                item.proof.claim_public_key.to_hex(),
             )));
             column1_items.push(ListItem::new(Span::raw(if item.encoded_merkle_proof.is_some() {
                 "✅"

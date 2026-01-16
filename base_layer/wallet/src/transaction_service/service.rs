@@ -3122,7 +3122,7 @@ where
                 .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
             let proof = BurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
-                reciprocal_claim_public_key: claim_public_key,
+                claim_public_key,
                 commitment,
                 ownership_proof,
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),

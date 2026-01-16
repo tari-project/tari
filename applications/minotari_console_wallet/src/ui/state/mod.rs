@@ -41,7 +41,7 @@ pub struct SignatureBase64 {
 #[derive(Serialize, Deserialize)]
 pub struct BurntProofBase64 {
     #[serde(with = "serializers::base64")]
-    pub reciprocal_claim_public_key: Vec<u8>,
+    pub claim_public_key: Vec<u8>,
     #[serde(with = "serializers::base64")]
     pub commitment: Vec<u8>,
     pub ownership_proof: SignatureBase64,
