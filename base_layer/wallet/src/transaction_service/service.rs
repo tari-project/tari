@@ -3027,7 +3027,6 @@ where
                 &sender_offset_private_key.key_id,
                 payment_id.clone(),
             )?;
-            );
         } else {
             output_builder = output_builder.encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,

@@ -24,7 +24,6 @@ use std::str::FromStr;
 // DAMAGE.
 use std::sync::{Arc, RwLock};
 
-use log::info;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
@@ -75,7 +74,6 @@ use crate::legacy_key_manager::{
 };
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
-pub const LOG_TARGET: &str = "wallet::key_manager::legacy_key_manager::inner";
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
     master_seed: CipherSeed,

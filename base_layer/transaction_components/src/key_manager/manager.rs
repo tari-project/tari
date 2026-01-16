@@ -25,7 +25,7 @@ use std::{ops::Shl, str::FromStr};
 use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
 use digest::{consts::U64, KeyInit};
-use log::{info, trace};
+use log::trace;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
@@ -102,8 +102,6 @@ use crate::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 
-// TODO remove
-const LOG_TARGET: &str = "wallet::key_manager::manager";
 #[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
