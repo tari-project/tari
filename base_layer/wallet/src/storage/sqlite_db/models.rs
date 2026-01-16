@@ -80,6 +80,8 @@ pub(crate) struct BurntProofSql {
     pub updated_at: chrono::NaiveDateTime,
     pub encrypted_data: Option<Vec<u8>>,
     pub value: Option<i64>,
+    // These fields are here to match the schema. They are not
+    // read at present but may be used in future.
     #[allow(dead_code)]
     pub kernel_excess: Option<Vec<u8>>,
     #[allow(dead_code)]
