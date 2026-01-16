@@ -2957,13 +2957,23 @@ where
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
 
-        let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
+      
 
         info!(target: LOG_TARGET, "XXXXX Creating burn output");
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
             .get_random_key(None, None)?;
+      let recovery_key_id = if let Some(ref cp) = claim_public_key {
+
+        info!(target: LOG_TARGET, "XXXXX Creating recovery key id with DH using claim pk: {}", cp);
+        TariKeyId::DHEncryptedData { public_key: cp.clone(), private_key: sender_offset_private_key.key_id.clone().into() }
+            
+            }
+            else {
+
+            self.resources.transaction_key_manager_service.get_view_key().key_id
+        };
         let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
@@ -2981,6 +2991,8 @@ where
                 &sender_offset_private_key.key_id,
                 payment_id.clone(),
             )?;
+            info!(target: LOG_TARGET, "XXXXX Burn data encrypted: {}", output_builder.encrypted_data().to_hex()
+            );
         } else {
             info!(target: LOG_TARGET, "XXXXX Encrypting burn data for recovery");
             output_builder = output_builder.encrypt_data_for_recovery(
@@ -3064,6 +3076,10 @@ where
         // Generate claim proof if needed
         let mut burn_proof = None;
         if let Some(claim_public_key) = claim_public_key {
+
+            for output in &finalized.sent_outputs {
+                info!(target: LOG_TARGET, "XXXXX Burned output encrypted data: {}", output.output.encrypted_data().to_hex());
+            }
             let tx_output = finalized
                 .sent_outputs
                 .first()
@@ -3086,6 +3102,7 @@ where
                 sender_offset_public_key: sender_offset_private_key.pub_key.clone()
             };
 
+            info!(target: LOG_TARGET, "XXXXX Storing burn proof for TxId: {:?}", tx_output.output.encrypted_data());
             self.db.insert_burn_proof(
                 output_hash,
                 &proof,
