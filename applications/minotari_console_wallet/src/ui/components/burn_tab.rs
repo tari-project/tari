@@ -270,9 +270,7 @@ impl BurnTab {
         let mut column2_items = Vec::new();
 
         for item in windowed_view {
-            column0_items.push(ListItem::new(Span::raw(
-                item.proof.claim_public_key.to_hex(),
-            )));
+            column0_items.push(ListItem::new(Span::raw(item.proof.claim_public_key.to_hex())));
             column1_items.push(ListItem::new(Span::raw(if item.encoded_merkle_proof.is_some() {
                 "✅"
             } else {
