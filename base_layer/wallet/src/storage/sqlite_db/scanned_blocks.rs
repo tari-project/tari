@@ -71,7 +71,7 @@ impl ScannedBlockSql {
     }
 
     pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        diesel::insert_into(scanned_blocks::table)
+        diesel::replace_into(scanned_blocks::table)
             .values(self.clone())
             .execute(conn)?;
         Ok(())

@@ -22,7 +22,6 @@ blake2 = "0.10"
 borsh = { workspace = true, features = ["derive"] }
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
 digest = "0.10"
-log = { workspace = true }
 primitive-types = { version = "0.12", features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }

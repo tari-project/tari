@@ -160,7 +160,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        let mining_method = [
+        const MINING_METHOD: &[GrpcMethod] = &[
             GrpcMethod::GetVersion,
             GrpcMethod::GetNewBlockTemplate,
             GrpcMethod::GetNewBlockWithCoinbases,
@@ -175,11 +175,12 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetSyncProgress,
         ];
 
-        let second_layer_methods = [
+        const SECOND_LAYER_METHODS: &[GrpcMethod] = &[
             GrpcMethod::GetVersion,
             GrpcMethod::GetConstants,
             GrpcMethod::GetMempoolTransactions,
             GrpcMethod::GetMempoolStats,
+            GrpcMethod::ListHeaders,
             GrpcMethod::GetTipInfo,
             GrpcMethod::GetActiveValidatorNodes,
             GrpcMethod::GetValidatorNodeChanges,
@@ -188,13 +189,13 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetHeaderByHash,
             GrpcMethod::GetSideChainUtxos,
         ];
-        if self.config.mining_enabled && mining_method.contains(&grpc_method) {
+        if self.config.mining_enabled && MINING_METHOD.contains(&grpc_method) {
             return true;
         }
-        if self.config.second_layer_grpc_enabled && second_layer_methods.contains(&grpc_method) {
+        if self.config.second_layer_grpc_enabled && SECOND_LAYER_METHODS.contains(&grpc_method) {
             return true;
         }
-        self.config.grpc_server_allow_methods.to_vec().contains(&grpc_method)
+        self.config.grpc_server_allow_methods.contains(&grpc_method)
     }
 
     #[allow(clippy::result_large_err)]
@@ -2855,13 +2856,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 public_key,
                 sidechain_id,
                 shard_key,
-                ..
+                activation_epoch,
+                original_registration,
+                minimum_value_promise,
             } in active_validator_nodes
             {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
                     shard_key: shard_key.to_vec(),
-                    sidechain_id: sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]),
+                    sidechain_id: sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or_default(),
+                    claim_public_key: original_registration.claim_public_key().to_vec(),
+                    minimum_value_promise: minimum_value_promise.as_u64(),
+                    activation_epoch: activation_epoch.as_u64(),
                 };
 
                 if tx.send(Ok(active_validator_node)).await.is_err() {

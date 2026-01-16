@@ -821,7 +821,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         {
             Ok(result) => BroadcastSignedOneSidedTransactionResponse {
                 is_success: true,
-                transaction_id: result.as_u64(),
+                transaction_id: result.first().map(|id| id.as_u64()).unwrap_or_default(),
                 failure_message: Default::default(),
             },
             Err(err) => {

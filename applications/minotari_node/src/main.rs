@@ -129,7 +129,7 @@ fn main() {
             "Unknown panic message".to_string()
         };
 
-        error!(target: "tari::p2pool::main", "Panic occurred at {location}: {message}");
+        error!(target: "minotari::base_node", "Panic occurred at {location}: {message}");
 
         // Optionally, write a custom message directly to the file
         let mut file = File::create("minotari-node-panic.log").unwrap();

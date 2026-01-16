@@ -84,7 +84,7 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
             recipient.address.clone(),
             recipient.amount,
             recipient.output_features.clone(),
-            info.payment_id.clone(),
+            recipient.payment_id.clone(),
         )?;
     }
     tx_builder.with_memo(info.payment_id.clone());

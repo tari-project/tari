@@ -60,7 +60,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # Use a "small" suffix to use the build caches where possible, but build caches won't use this
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index
@@ -149,7 +149,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # Use a "small" suffix to use the build caches where possible, but build caches won't use this
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index
@@ -343,7 +343,7 @@ jobs:
       - name: cargo test
         run: cargo +${{ env.toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci --no-fail-fast
       - name: upload artifact
-        uses: actions/upload-artifact@v5 # upload test results as artifact
+        uses: actions/upload-artifact@v6 # upload test results as artifact
         if: always()
         with:
           name: test-results-${{ matrix.tari_target_network.target }}.${{ matrix.tari_target_network.network }}
@@ -361,7 +361,7 @@ jobs:
         run: echo $PR_NUM > pr_num.txt
 
       - name: Upload the PR number
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pr_num
           path: ./pr_num.txt
@@ -372,7 +372,7 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Event File
           path: ${{ github.event_path }}
