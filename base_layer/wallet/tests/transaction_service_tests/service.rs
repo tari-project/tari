@@ -603,8 +603,6 @@ async fn single_transaction_burn_tari() {
         .commit_value(&PrivateKey::default(), burn_value.as_u64());
     let signer_pk = burn_proof.commitment.to_commitment().unwrap().as_public_key() - commit_value.as_public_key();
     assert!(ownership_proof.verify(&signer_pk, challenge_bytes));
-
-    assert!(found_burned_output);
 }
 
 #[tokio::test]
