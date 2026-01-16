@@ -32,34 +32,106 @@ use std::{
 use anyhow::anyhow;
 use futures::{
     channel::mpsc::{self, Sender},
-    future, SinkExt,
+    future,
+    SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinBucketStats,
-    CoinHistogramRequest, CoinHistogramResponse, CoinSplitRequest, CoinSplitResponse, CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse, CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse,
-    FeePerGramStat, GetAddressResponse, GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse,
-    GetBalanceRequest, GetBalanceResponse, GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse,
-    GetBurnClaimProofRequest, GetBurnClaimProofResponse, GetCompleteAddressResponse, GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest, GetFeeEstimateResponse,
-    GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest, GetIdentityResponse,
-    GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest, GetStateRequest,
-    GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse, GetTransactionPayRefsRequest,
-    GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest, GetVersionResponse,
-    ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
-    OutputValidationMode, PrepareDepositMultisigTransactionRequest, PrepareDepositMultisigTransactionResponse,
-    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
-    PrepareWithdrawMultisigTransactionRequest, PrepareWithdrawMultisigTransactionResponse, RangeLimitedCoinJoinRequest,
-    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
-    RescanWalletRequest, RescanWalletResponse, RevalidateRequest, RevalidateResponse, ScanAndImportUtxosRequest,
-    ScanAndImportUtxosResponse, ScanFeedback, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SignMessageRequest,
-    SignMessageResponse, SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse,
-    SubmitValidatorNodeExitRequest, SubmitValidatorNodeExitResponse, TransactionDirection, TransactionEvent,
-    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransactionValidationMode,
-    TransferRequest, TransferResponse, TransferResult, UserPayForFeeRequest, UserPayForFeeResponse, ValidateRequest,
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinBucketStats,
+    CoinHistogramRequest,
+    CoinHistogramResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    FeePerGramStat,
+    GetAddressResponse,
+    GetAllCompletedTransactionsRequest,
+    GetAllCompletedTransactionsResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetBlockHeightTransactionsRequest,
+    GetBlockHeightTransactionsResponse,
+    GetBurnClaimProofRequest,
+    GetBurnClaimProofResponse,
+    GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetFeeEstimateRequest,
+    GetFeeEstimateResponse,
+    GetFeePerGramStatsRequest,
+    GetFeePerGramStatsResponse,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetPaymentByReferenceRequest,
+    GetPaymentByReferenceResponse,
+    GetPaymentIdAddressRequest,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest,
+    GetTransactionPayRefsResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportTransactionsRequest,
+    ImportTransactionsResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    OutputValidationMode,
+    PrepareDepositMultisigTransactionRequest,
+    PrepareDepositMultisigTransactionResponse,
+    PrepareOneSidedTransactionForSigningRequest,
+    PrepareOneSidedTransactionForSigningResponse,
+    PrepareWithdrawMultisigTransactionRequest,
+    PrepareWithdrawMultisigTransactionResponse,
+    RangeLimitedCoinJoinRequest,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    ReplaceByFeeRequest,
+    ReplaceByFeeResponse,
+    RescanWalletRequest,
+    RescanWalletResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    ScanAndImportUtxosRequest,
+    ScanAndImportUtxosResponse,
+    ScanFeedback,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SignMessageRequest,
+    SignMessageResponse,
+    SubmitValidatorEvictionProofRequest,
+    SubmitValidatorEvictionProofResponse,
+    SubmitValidatorNodeExitRequest,
+    SubmitValidatorNodeExitResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransactionValidationMode,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    UserPayForFeeRequest,
+    UserPayForFeeResponse,
+    ValidateRequest,
     ValidateResponse,
 };
 use minotari_node_wallet_client::BaseNodeWalletClient;
@@ -68,14 +140,18 @@ use minotari_wallet::{
     error::WalletStorageError,
     legacy_transaction_protocol::recipient::RecipientState,
     output_manager_service::{
-        error::OutputManagerError, handle::OutputManagerHandle, RangeLimit, UtxoSelectionCriteria,
+        error::OutputManagerError,
+        handle::OutputManagerHandle,
+        RangeLimit,
+        UtxoSelectionCriteria,
     },
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
         storage::models::{self, CompletedTransaction, WalletTransaction},
     },
-    WalletKeyManager, WalletSqlite,
+    WalletKeyManager,
+    WalletSqlite,
 };
 use rand::rngs::OsRng;
 use tari_common_types::{
@@ -83,7 +159,12 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TxId},
     types::{
-        BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        PrivateKey,
         SignatureWithDomain,
     },
 };
@@ -96,7 +177,10 @@ use tari_transaction_components::{
     offline_signing::models::SignedOneSidedTransactionResult,
     transaction_components::{
         memo_field::{MemoField, TxType},
-        OutputFeatures, TransactionOutput, UnblindedOutput, WalletOutput,
+        OutputFeatures,
+        TransactionOutput,
+        UnblindedOutput,
+        WalletOutput,
     },
     MicroMinotari,
 };
@@ -1250,11 +1334,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
                         if let Ok(Some(tx)) = tx {
                             match tx.status() {
-                                LegacyTransactionStatus::Broadcast
-                                | LegacyTransactionStatus::MinedUnconfirmed
-                                | LegacyTransactionStatus::MinedConfirmed
-                                | LegacyTransactionStatus::OneSidedUnconfirmed
-                                | LegacyTransactionStatus::OneSidedConfirmed => break Ok(tx),
+                                LegacyTransactionStatus::Broadcast |
+                                LegacyTransactionStatus::MinedUnconfirmed |
+                                LegacyTransactionStatus::MinedConfirmed |
+                                LegacyTransactionStatus::OneSidedUnconfirmed |
+                                LegacyTransactionStatus::OneSidedConfirmed => break Ok(tx),
                                 LegacyTransactionStatus::Rejected => {
                                     let error = if let Some(reason) = tx.cancelled_reason() {
                                         TransactionServiceError::MempoolRejection {
@@ -2934,12 +3018,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ))
             })?;
 
-
-        info!(
-            target: LOG_TARGET,
-            "XXXX get burn claim proof sender offset public key: {}",
-            proof.burn_proof.sender_offset_public_key
-        );
         Ok(Response::new(GetBurnClaimProofResponse {
             claim_proof: Some(tari_rpc::BurnClaimProof {
                 commitment: commitment.as_bytes().to_vec(),
@@ -2948,7 +3026,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 kernel_excess: proof.burn_proof.kernel_excess.clone(),
                 kernel_excess_nonce: proof.burn_proof.kernel_excess_nonce.clone(),
                 kernel_excess_signature: proof.burn_proof.kernel_excess_signature.clone(),
-                sender_offset_public_key: proof.burn_proof.sender_offset_public_key.to_vec()
+                sender_offset_public_key: proof.burn_proof.sender_offset_public_key.to_vec(),
             }),
             merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
                 block_hash: p.block_hash.to_vec(),

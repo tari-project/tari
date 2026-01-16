@@ -43,8 +43,15 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
     types::{
-        ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, CompressedSignature,
-        FixedHash, HashOutput, PrivateKey, UncompressedPublicKey,
+        ComAndPubSignature,
+        CommitmentFactory,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        UncompressedPublicKey,
     },
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
@@ -54,7 +61,13 @@ use tari_crypto::{
 };
 use tari_max_size::MaxSizeString;
 use tari_script::{
-    push_pubkey_script, script, CompressedCheckSigSchnorrSignature, ExecutionStack, Opcode, ScriptContext, StackItem,
+    push_pubkey_script,
+    script,
+    CompressedCheckSigSchnorrSignature,
+    ExecutionStack,
+    Opcode,
+    ScriptContext,
+    StackItem,
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -69,8 +82,11 @@ use tari_transaction_components::{
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
         offline_signer::{
-            prepare_deposit_multisig_transaction, prepare_one_sided_transaction_for_signing,
-            prepare_withdraw_multisig_transaction, sign_locked_deposit_multisig_transaction, sign_locked_transaction,
+            prepare_deposit_multisig_transaction,
+            prepare_one_sided_transaction_for_signing,
+            prepare_withdraw_multisig_transaction,
+            sign_locked_deposit_multisig_transaction,
+            sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
         },
     },
@@ -78,10 +94,22 @@ use tari_transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
         one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
-        BuildInfo, CodeTemplateRegistration, EncryptedData, KernelFeatures, OutputFeatures, TemplateType, Transaction,
-        TransactionError, TransactionOutput, ValidatorNodeSignature, WalletOutputBuilder,
+        BuildInfo,
+        CodeTemplateRegistration,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        TemplateType,
+        Transaction,
+        TransactionError,
+        TransactionOutput,
+        ValidatorNodeSignature,
+        WalletOutputBuilder,
     },
-    tx_outputs_to_tx_id, MicroMinotari, TransactionBuilder, TransactionBuilderError,
+    tx_outputs_to_tx_id,
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
     wallet_types::{FeeType, LegacyWalletType},
@@ -95,27 +123,42 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    OperationId, base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle}, connectivity_service::WalletConnectivityInterface, output_manager_service::{
-        UtxoSelectionCriteria, error::OutputManagerError, handle::{OutputManagerEvent, OutputManagerHandle}, service::UseOutput, storage::{OutputStatus, database::OutputBackendQuery, models::SpendingPriority}
-    },  transaction_service::{
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::WalletConnectivityInterface,
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::{OutputManagerEvent, OutputManagerHandle},
+        service::UseOutput,
+        storage::{database::OutputBackendQuery, models::SpendingPriority, OutputStatus},
+        UtxoSelectionCriteria,
+    },
+    transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
-            PaymentDetails, TransactionEvent, TransactionEventSender, TransactionServiceRequest,
+            PaymentDetails,
+            TransactionEvent,
+            TransactionEventSender,
+            TransactionServiceRequest,
             TransactionServiceResponse,
         },
         protocols::{
-            check_transaction_size, transaction_broadcast_protocol::TransactionBroadcastProtocol,
+            check_transaction_size,
+            transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_validation_protocol::TransactionValidationProtocol,
         },
         storage::{
             database::{DbKey, TransactionBackend, TransactionDatabase},
             models::{
-                CompletedTransaction, TxCancellationReason,
+                CompletedTransaction,
+                TxCancellationReason,
                 WalletTransaction::{Completed, PendingInbound, PendingOutbound},
             },
         },
-    }, util::watch::Watch, utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle}
+    },
+    util::watch::Watch,
+    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
+    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -584,11 +627,11 @@ where
                         .round_up_features_and_scripts_size(
                             output_features
                                 .get_serialized_size()
-                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                                + script
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                                script
                                     .get_serialized_size()
-                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                                + Covenant::default()
+                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                                Covenant::default()
                                     .get_serialized_size()
                                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
                         );
@@ -1952,8 +1995,8 @@ where
                     .first()
                     .expect("Cannot be empty")
                     .metadata_signature
-                    .to_capk_signature()?
-                    + &total_meta_data_signature.to_schnorr_signature()?,
+                    .to_capk_signature()? +
+                    &total_meta_data_signature.to_schnorr_signature()?,
             ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated metadata_signature");
@@ -1975,8 +2018,8 @@ where
                     .first()
                     .expect("Cannot be empty")
                     .script_signature
-                    .to_capk_signature()?
-                    + &total_script_data_signature.to_schnorr_signature()?,
+                    .to_capk_signature()? +
+                    &total_script_data_signature.to_schnorr_signature()?,
             ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated script_signature");
@@ -1994,8 +2037,8 @@ where
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?,
             );
             trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: input_data {:?}", input.input_data);
-            input_keys = input_keys
-                + input
+            input_keys = input_keys +
+                input
                     .run_and_verify_script(&factory, Some(context))
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?
                     .to_public_key()?;
@@ -2957,21 +3000,16 @@ where
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
 
-      
-
-        info!(target: LOG_TARGET, "XXXXX Creating burn output");
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
             .get_random_key(None, None)?;
-      let recovery_key_id = if let Some(ref cp) = claim_public_key {
-
-        info!(target: LOG_TARGET, "XXXXX Creating recovery key id with DH using claim pk: {}", cp);
-        TariKeyId::DHEncryptedData { public_key: cp.clone(), private_key: sender_offset_private_key.key_id.clone().into() }
-            
+        let recovery_key_id = if let Some(ref cp) = claim_public_key {
+            TariKeyId::DHEncryptedData {
+                public_key: cp.clone(),
+                private_key: sender_offset_private_key.key_id.clone().into(),
             }
-            else {
-
+        } else {
             self.resources.transaction_key_manager_service.get_view_key().key_id
         };
         let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
@@ -2982,19 +3020,15 @@ where
             .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(MicroMinotari::zero());
 
-        info!(target: LOG_TARGET, "XXXXX Encrypting burn data with sender offset: {}", sender_offset_private_key.pub_key.clone());
         if let Some(ref claim_pk) = claim_public_key {
-            info!(target: LOG_TARGET, "XXXXX Encrypting burn data with DH");
             output_builder = output_builder.encrypt_burn_data_with_dh(
                 &self.resources.transaction_key_manager_service,
                 claim_pk,
                 &sender_offset_private_key.key_id,
                 payment_id.clone(),
             )?;
-            info!(target: LOG_TARGET, "XXXXX Burn data encrypted: {}", output_builder.encrypted_data().to_hex()
             );
         } else {
-            info!(target: LOG_TARGET, "XXXXX Encrypting burn data for recovery");
             output_builder = output_builder.encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
@@ -3076,10 +3110,6 @@ where
         // Generate claim proof if needed
         let mut burn_proof = None;
         if let Some(claim_public_key) = claim_public_key {
-
-            for output in &finalized.sent_outputs {
-                info!(target: LOG_TARGET, "XXXXX Burned output encrypted data: {}", output.output.encrypted_data().to_hex());
-            }
             let tx_output = finalized
                 .sent_outputs
                 .first()
@@ -3099,10 +3129,9 @@ where
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
                 kernel_excess_nonce: burn_kernel.excess_sig.get_compressed_public_nonce().to_vec(),
                 kernel_excess_signature: burn_kernel.excess_sig.get_signature().to_vec(),
-                sender_offset_public_key: sender_offset_private_key.pub_key.clone()
+                sender_offset_public_key: sender_offset_private_key.pub_key.clone(),
             };
 
-            info!(target: LOG_TARGET, "XXXXX Storing burn proof for TxId: {:?}", tx_output.output.encrypted_data());
             self.db.insert_burn_proof(
                 output_hash,
                 &proof,
@@ -3812,10 +3841,10 @@ where
                 );
                 let reason = match error {
                     TransactionServiceError::TransactionValidationInProgress => 1,
-                    TransactionServiceError::ProtobufConversionError(_)
-                    | TransactionServiceError::RpcError(_)
-                    | TransactionServiceError::InvalidMessageError(_)
-                    | TransactionServiceError::BaseNodeChanged { .. } => 3,
+                    TransactionServiceError::ProtobufConversionError(_) |
+                    TransactionServiceError::RpcError(_) |
+                    TransactionServiceError::InvalidMessageError(_) |
+                    TransactionServiceError::BaseNodeChanged { .. } => 3,
                     _ => 2,
                 };
                 let _size = self
@@ -3849,10 +3878,10 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_tx.tx_id;
-        if !(completed_tx.status == LegacyTransactionStatus::Completed
-            || completed_tx.status == LegacyTransactionStatus::Broadcast
-            || completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
-            || completed_tx.transaction.body.kernels().is_empty()
+        if !(completed_tx.status == LegacyTransactionStatus::Completed ||
+            completed_tx.status == LegacyTransactionStatus::Broadcast ||
+            completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed) ||
+            completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
@@ -3951,17 +3980,17 @@ where
             if let Some((recipient_address, amount, tx_type, _)) = payment_id.get_transaction_info_details() {
                 (
                     match tx_type {
-                        TxType::PaymentToOther
-                        | TxType::Burn
-                        | TxType::CodeTemplateRegistration
-                        | TxType::ValidatorNodeRegistration
-                        | TxType::CoinSplit
-                        | TxType::PaymentToSelf => TransactionDirection::Outbound,
-                        TxType::CoinJoin
-                        | TxType::ClaimAtomicSwap
-                        | TxType::HtlcAtomicSwapRefund
-                        | TxType::ImportedUtxoNoneRewindable
-                        | TxType::Coinbase => TransactionDirection::Inbound,
+                        TxType::PaymentToOther |
+                        TxType::Burn |
+                        TxType::CodeTemplateRegistration |
+                        TxType::ValidatorNodeRegistration |
+                        TxType::CoinSplit |
+                        TxType::PaymentToSelf => TransactionDirection::Outbound,
+                        TxType::CoinJoin |
+                        TxType::ClaimAtomicSwap |
+                        TxType::HtlcAtomicSwapRefund |
+                        TxType::ImportedUtxoNoneRewindable |
+                        TxType::Coinbase => TransactionDirection::Inbound,
                     },
                     amount,
                     if tx_type == TxType::Burn {
@@ -4308,8 +4337,8 @@ where
                 "Address does not support feature {sending_method} "
             )));
         }
-        if sending_method.contains(TariAddressFeatures::create_interactive_only())
-            && matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_))
+        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
+            matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_))
         {
             return Err(TransactionServiceError::NotSupported(
                 "Interactive transactions are not supported on Ledger wallets".to_string(),

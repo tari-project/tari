@@ -682,14 +682,7 @@ where KM: TransactionKeyManagerInterface
             final_fee,
             output_pair.output.commitment().to_hex()
         );
-        info!(
-            target: LOG_TARGET,
-            "XXXX Needs update: {} for output '{}'",
-            need_update,
-            output_pair.output.commitment().to_hex()
-        );
         if need_update {
-
             memo_field.set_fee(final_fee);
             let encrypted_data = key_manager.encrypt_data_for_recovery(
                 output_pair.output.commitment_mask_key_id(),

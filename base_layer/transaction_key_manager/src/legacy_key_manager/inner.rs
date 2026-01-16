@@ -25,6 +25,7 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
 use log::info;
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
@@ -41,11 +42,6 @@ use tari_common_types::{
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::KeyManagerDomain;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::ByteArrayError;
-
-use crate::legacy_key_manager::wallet_types::LegacyWalletType;
-
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
@@ -70,8 +66,13 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_utilities::ByteArrayError;
 
-use crate::legacy_key_manager::{interface::TransactionKeyManagerBackend, LegacyTariKeyId};
+use crate::legacy_key_manager::{
+    interface::TransactionKeyManagerBackend,
+    wallet_types::LegacyWalletType,
+    LegacyTariKeyId,
+};
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 pub const LOG_TARGET: &str = "wallet::key_manager::legacy_key_manager::inner";
@@ -655,13 +656,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
         value: u64,
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
-        info!(target: LOG_TARGET, "XXXXX sender offset key id: {}", sender_offset_key_id);
-        info!(target: LOG_TARGET, "XXXXX claim public key: {}", claim_public_key); 
         let mask = self.get_private_key(commitment_mask_key_id)?;
         let shared_secret = self.get_diffie_hellman_shared_secret(sender_offset_key_id, claim_public_key)?;
-        info!(target: LOG_TARGET, "XXXXXXX Shared secret for burn data: {}", shared_secret);   
         let encryption_key = one_sided::public_key_to_output_encryption_key(&shared_secret)?;
-        info!(target: LOG_TARGET, "XXXXXXX Encryption key for burn data: {}", encryption_key.reveal());
         let commitment = self.get_commitment(commitment_mask_key_id, &PrivateKey::from(value))?;
 
         EncryptedData::encrypt_data(&encryption_key, &commitment, value.into(), &mask, payment_id)
