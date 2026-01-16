@@ -949,9 +949,7 @@ where KM: TransactionKeyManagerInterface
                 memo_field
             }
         } else {
-            let mut memo = MemoField::default();
-            memo.set_fee(total_fee);
-            memo
+            MemoField::default()
         };
 
         Ok(FinalizedTransaction {
@@ -2035,11 +2033,6 @@ mod test {
     #[allow(clippy::too_many_lines)]
     fn transaction_details_correct() {
         let alice_key_manager = KeyManager::new_random().unwrap();
-        let alice_keys = ViewWallet::new(
-            alice_key_manager.get_spend_key().pub_key,
-            alice_key_manager.get_private_view_key(),
-            None,
-        );
         let spend_key = alice_key_manager.get_spend_key().pub_key;
         let view_key = alice_key_manager.get_view_key().pub_key;
         let alice_address = TariAddress::new_dual_address(
@@ -2051,11 +2044,6 @@ mod test {
         )
         .unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
-        let bob_keys = ViewWallet::new(
-            bob_key_manager.get_spend_key().pub_key,
-            bob_key_manager.get_private_view_key(),
-            None,
-        );
 
         let spend_key = bob_key_manager.get_spend_key().pub_key;
         let view_key = bob_key_manager.get_view_key().pub_key;
