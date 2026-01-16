@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use derivative::Derivative;
-use log::info;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -184,7 +183,7 @@ impl WalletOutputBuilder {
     pub fn covenant(&self) -> &Covenant {
         &self.covenant
     }
-    
+
     pub fn encrypted_data(&self) -> &EncryptedData {
         &self.encrypted_data
     }

@@ -80,7 +80,9 @@ pub(crate) struct BurntProofSql {
     pub updated_at: chrono::NaiveDateTime,
     pub encrypted_data: Option<Vec<u8>>,
     pub value: Option<i64>,
+    #[allow(dead_code)]
     pub kernel_excess: Option<Vec<u8>>,
+    #[allow(dead_code)]
     pub kernel_excess_sig: Option<Vec<u8>>,
 }
 

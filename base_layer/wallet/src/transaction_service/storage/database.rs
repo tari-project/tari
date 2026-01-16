@@ -40,7 +40,6 @@ use tari_transaction_components::{
 };
 
 use crate::{
-    schema::outputs::encrypted_data,
     storage::sqlite_db::models::DbBurnProof,
     transaction_service::{
         error::TransactionStorageError,
