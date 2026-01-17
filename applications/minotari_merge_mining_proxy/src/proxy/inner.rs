@@ -67,6 +67,11 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy::inner";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
 const BUSY_QUALIFYING: &str = "BusyQualifyingMonerodUrl";
+/// Size in bytes of the merge mining tag that is inserted into the Monero coinbase transaction's
+/// extra field. When this tag is inserted at the beginning of the extra field, all subsequent
+/// data (including the pool nonce reserved area) is shifted by this amount, so the `reserved_offset`
+/// must be adjusted accordingly.
+const MERGE_MINING_TAG_SIZE: u64 = 35;
 
 #[derive(Debug, Clone)]
 pub struct InnerService {
@@ -425,6 +430,12 @@ impl InnerService {
         monerod_resp["result"]["blocktemplate_blob"] = final_block_template_data.blocktemplate_blob.clone().into();
         monerod_resp["result"]["blockhashing_blob"] = final_block_template_data.blockhashing_blob.clone().into();
         monerod_resp["result"]["difficulty"] = final_block_template_data.target_difficulty.as_u64().into();
+        // Update reserved_offset to account for the merge mining tag inserted at the beginning
+        // of the coinbase extra field, which shifts all subsequent data including the nonce area.
+        if let Some(original_offset) = monerod_resp["result"]["reserved_offset"].as_u64() {
+            monerod_resp["result"]["reserved_offset"] =
+                (original_offset + MERGE_MINING_TAG_SIZE).into();
+        }
 
         let tari_difficulty = final_block_template_data.template.tari_difficulty;
         let tari_height = final_block_template_data
