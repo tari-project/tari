@@ -654,13 +654,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         value: u64,
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
-        let mask = self.get_private_key(commitment_mask_key_id)?;
-        let shared_secret = self.get_diffie_hellman_shared_secret(sender_offset_key_id, claim_public_key)?;
-        let encryption_key = one_sided::public_key_to_output_encryption_key(&shared_secret)?;
-        let commitment = self.get_commitment(commitment_mask_key_id, &PrivateKey::from(value))?;
-
-        EncryptedData::encrypt_data(&encryption_key, &commitment, value.into(), &mask, payment_id)
-            .map_err(|e| KeyManagerError::UnexpectedError(e.to_string()))
+     self.encrypt_burn_data_with_dh(commitment_mask_key_id,sender_offset_key_id,claim_public_key,value,payment_id)
     }
 
     pub fn stealth_address_script_spending_key(
