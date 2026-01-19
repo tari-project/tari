@@ -134,25 +134,6 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
-    pub fn encrypt_burn_data_with_dh<KM: TransactionKeyManagerInterface>(
-        mut self,
-        key_manager: &KM,
-        claim_public_key: &CompressedPublicKey,
-        sender_offset_key_id: &TariKeyId,
-        payment_id: MemoField,
-    ) -> Result<Self, TransactionError> {
-        self.payment_id = payment_id.clone();
-        self.encrypted_data = key_manager.encrypt_burn_data_with_dh(
-            &self.commitment_mask_key_id,
-            sender_offset_key_id,
-            claim_public_key,
-            self.value.as_u64(),
-            payment_id,
-        )?;
-
-        Ok(self)
-    }
-
     pub fn with_script_key(mut self, script_key_id: TariKeyId) -> Self {
         self.script_key_id = Some(script_key_id);
         self

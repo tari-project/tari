@@ -268,15 +268,6 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, KeyManagerError>;
 
-    fn encrypt_burn_data_with_dh(
-        &self,
-        commitment_mask_key_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
-        claim_public_key: &CompressedPublicKey,
-        value: u64,
-        payment_id: MemoField,
-    ) -> Result<EncryptedData, KeyManagerError>;
-
     fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,

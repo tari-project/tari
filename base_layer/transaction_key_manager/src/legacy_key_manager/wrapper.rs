@@ -510,23 +510,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         )
     }
 
-    fn encrypt_burn_data_with_dh(
-        &self,
-        commitment_mask_key_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
-        claim_public_key: &CompressedPublicKey,
-        value: u64,
-        payment_id: MemoField,
-    ) -> Result<EncryptedData, KeyManagerError> {
-        self.transaction_key_manager_inner.encrypt_burn_data_with_dh(
-            commitment_mask_key_id,
-            sender_offset_key_id,
-            claim_public_key,
-            value,
-            payment_id,
-        )
-    }
-
     fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,
