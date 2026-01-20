@@ -101,7 +101,7 @@ pub struct InitKeysArgs {
 pub struct InitSeedWordsArgs {
     /// Seed words (mnemonic phrase) separated by spaces
     #[clap(long, env = "TARI_SEED_WORDS")]
-    pub seed_words: Option<String>,
+    pub seed_words: String,
 
     /// Optional passphrase for the seed words (BIP39 passphrase, not the encryption passphrase)
     #[clap(long, env = "TARI_SEED_PASSPHRASE")]
@@ -179,10 +179,7 @@ fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
     check_already_initialized()?;
 
     // Get seed words (prompt if not provided)
-    let seed_words_str = match args.seed_words {
-        Some(s) => s,
-        None => prompt_seed_words()?,
-    };
+    let seed_words_str = args.seed_words;
 
     // Parse seed words
     let seed_words = SeedWords::from_str(&seed_words_str)
