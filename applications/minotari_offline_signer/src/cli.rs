@@ -145,11 +145,6 @@ impl Cli {
     }
 }
 
-fn prompt_seed_words() -> Result<String> {
-    println!("Enter your seed words (mnemonic phrase) on a single line, separated by spaces:");
-    rpassword::prompt_password(">> ").map_err(|e| anyhow!("Failed to read seed words: {}", e))
-}
-
 fn check_already_initialized() -> Result<()> {
     if keystore::is_initialized() {
         return Err(anyhow!(
