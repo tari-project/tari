@@ -2496,12 +2496,7 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
 
     // Build a transaction with this fake input
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet).build();
-    let mut builder = TransactionBuilder::new(
-        constants,
-        key_manager.clone(),
-        Network::LocalNet,
-    )
-    .unwrap();
+    let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
 
     builder.with_input(fake_input.clone()).unwrap();
     builder
@@ -2538,7 +2533,6 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
         MemoField::new_empty(),
     )
     .unwrap();
-
 
     // Insert the completed transaction into the database
     alice_ts_interface
