@@ -24,6 +24,7 @@ use std::str::FromStr;
 // DAMAGE.
 use std::sync::{Arc, RwLock};
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
@@ -40,12 +41,6 @@ use tari_common_types::{
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::KeyManagerDomain;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::ByteArrayError;
-
-use crate::legacy_key_manager::wallet_types::LegacyWalletType;
-
-pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
@@ -69,9 +64,15 @@ use tari_transaction_components::{
     },
     MicroMinotari,
 };
+use tari_utilities::ByteArrayError;
 
-use crate::legacy_key_manager::{interface::TransactionKeyManagerBackend, LegacyTariKeyId};
+use crate::legacy_key_manager::{
+    interface::TransactionKeyManagerBackend,
+    wallet_types::LegacyWalletType,
+    LegacyTariKeyId,
+};
 
+pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
 #[derive(Clone)]
 pub struct TransactionKeyManagerInner<TBackend> {
     master_seed: CipherSeed,
