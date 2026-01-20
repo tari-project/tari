@@ -48,7 +48,10 @@ use minotari_app_grpc::{
 };
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
+use tari_common_types::{
+    transaction::LegacyTransactionStatus,
+    types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof},
+};
 use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
     transaction::{
@@ -75,7 +78,7 @@ use tari_transaction_components::{
     MicroMinotari,
 };
 use tari_utilities::hex::Hex;
-use tari_common_types::transaction::LegacyTransactionStatus;
+
 use crate::steps::{
     cucumber_steps_log,
     mining_steps::create_miner,
@@ -934,7 +937,6 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 
     source_tx_ids.push(tx_id);
 
-
     println!("{tx_id}");
 
     cucumber_steps_log(format!(
@@ -1651,7 +1653,6 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
 
         source_tx_ids.append(&mut tx_ids);
 
-
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
@@ -1882,7 +1883,6 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
     let source_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     source_tx_ids.push(tx_id);
-
 
     cucumber_steps_log(format!(
         "Transfer amount {amount} from {sender} to {receiver} at fee 10 succeeded"
@@ -2138,7 +2138,6 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
 
     sender_tx_ids.push(tx_id1);
     sender_tx_ids.push(tx_id2);
-
 
     cucumber_steps_log(format!(
         "Transfer amount {amount} from {sender} to {receiver1} and {receiver2} at fee {fee_per_gram} succeeded"
@@ -2606,7 +2605,6 @@ async fn send_one_sided_stealth_transaction(
     let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     sender_tx_ids.push(tx_id);
-
 
     cucumber_steps_log(format!(
         "One sided stealth transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} \
@@ -3138,7 +3136,6 @@ async fn multi_send_txs_from_wallet(
 
         sender_tx_ids.push(tx_id);
 
-
         cucumber_steps_log(format!(
             "Multi-transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} succeeded"
         ));
@@ -3229,7 +3226,6 @@ async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String
 
     let wallet_tx_ids = world.wallet_tx_ids.get_mut(&sender_wallet_address).unwrap();
     wallet_tx_ids.push(new_tx_id);
-
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
