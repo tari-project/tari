@@ -6,7 +6,7 @@ A standalone binary for signing one-sided Tari transactions offline. This tool a
 
 The offline signing workflow consists of four steps:
 
-1. **Initialize**: Set up the offline signer with your spend and view keys, protected by a passphrase. Keys are encrypted and stored in the OS keystore.
+1. **Initialize**: Set up the offline signer with your keys (either directly or from seed words), protected by a passphrase. Keys are encrypted and stored in the OS keystore.
 
 2. **Prepare**: Use the `minotari_console_wallet` to prepare a one-sided transaction for signing with the `PrepareOneSidedTransactionForSigning` command. This generates a JSON file containing the unsigned transaction data.
 
@@ -18,22 +18,36 @@ The offline signing workflow consists of four steps:
 
 ### Initialize the Signer
 
-First, initialize the signer with your keys. The passphrase will be prompted interactively if not provided:
+You can initialize the signer using either direct keys or seed words (mnemonic phrase).
+
+#### Option 1: Initialize with Keys
 
 ```bash
-minotari_offline_signer init \
+minotari_offline_signer init keys \
     --spend-key <PRIVATE_SPEND_KEY_HEX> \
     --view-key <PRIVATE_VIEW_KEY_HEX>
 ```
 
-Or with a passphrase via environment variable:
+#### Option 2: Initialize with Seed Words
 
 ```bash
-export TARI_PASSPHRASE=<your_passphrase>
-minotari_offline_signer init \
-    --spend-key <PRIVATE_SPEND_KEY_HEX> \
-    --view-key <PRIVATE_VIEW_KEY_HEX>
+# With seed words provided as argument
+minotari_offline_signer init seed-words \
+    --seed-words "word1 word2 word3 ... word24"
+
+# Or interactively (seed words will be prompted securely)
+minotari_offline_signer init seed-words
 ```
+
+If you have a BIP39 passphrase for your seed words:
+
+```bash
+minotari_offline_signer init seed-words \
+    --seed-words "word1 word2 word3 ... word24" \
+    --seed-passphrase "your_bip39_passphrase"
+```
+
+The encryption passphrase (for storing keys in the keystore) will be prompted interactively if not provided via `--passphrase` or `TARI_PASSPHRASE` environment variable.
 
 ### Check Status
 
@@ -64,20 +78,27 @@ minotari_offline_signer clear
 
 ## Commands
 
-| Command  | Description |
-|----------|-------------|
-| `init`   | Initialize the signer with spend and view keys |
-| `sign`   | Sign a one-sided transaction using stored keys |
-| `status` | Check if the signer has been initialized |
-| `clear`  | Clear all stored keys from the keystore |
+| Command              | Description |
+|----------------------|-------------|
+| `init keys`          | Initialize the signer with spend and view keys directly |
+| `init seed-words`    | Initialize the signer with seed words (mnemonic phrase) |
+| `sign`               | Sign a one-sided transaction using stored keys |
+| `status`             | Check if the signer has been initialized |
+| `clear`              | Clear all stored keys from the keystore |
 
 ## Arguments
 
-### `init` Command
+### `init keys` Command
 
 - `--spend-key`: Private spend key in hexadecimal format (can also be set via `TARI_SPEND_KEY` env var)
 - `--view-key`: Private view key in hexadecimal format (can also be set via `TARI_VIEW_KEY` env var)
 - `--passphrase`: Passphrase to encrypt the keys (will prompt if not provided, can also be set via `TARI_PASSPHRASE` env var)
+
+### `init seed-words` Command
+
+- `--seed-words`: Seed words (mnemonic phrase) separated by spaces (will prompt if not provided, can also be set via `TARI_SEED_WORDS` env var)
+- `--seed-passphrase`: Optional BIP39 passphrase for the seed words (can also be set via `TARI_SEED_PASSPHRASE` env var)
+- `--passphrase`: Passphrase to encrypt the keys in the keystore (will prompt if not provided, can also be set via `TARI_PASSPHRASE` env var)
 
 ### `sign` Command
 
@@ -109,7 +130,7 @@ This provides defense-in-depth: even if the OS keystore is compromised, the keys
 
 - **Passphrase protection**: Use a strong, unique passphrase. The passphrase is never stored - only a key derived from it is used for encryption.
 
-- **Key protection**: When initializing, avoid passing keys via command line arguments as they may be visible in shell history. Use environment variables instead.
+- **Key protection**: When initializing, avoid passing keys or seed words via command line arguments as they may be visible in shell history. Use the interactive prompt or environment variables instead.
 
 - **Verify before signing**: Always verify the transaction details before signing, especially the recipient addresses and amounts.
 

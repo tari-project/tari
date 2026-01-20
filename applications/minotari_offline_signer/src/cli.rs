@@ -25,11 +25,14 @@ use std::{fs, path::PathBuf, str::FromStr};
 use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use tari_common::configuration::Network;
-use tari_common_types::types::PrivateKey;
+use tari_common_types::{
+    seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic, seed_words::SeedWords},
+    types::PrivateKey,
+};
 use tari_transaction_components::{
     consensus::ConsensusManager,
     key_manager::{
-        wallet_types::{SpendWallet, WalletType},
+        wallet_types::{SeedWordsWallet, SpendWallet, WalletType},
         KeyManager,
     },
     offline_signing::{
@@ -37,7 +40,7 @@ use tari_transaction_components::{
         sign_locked_transaction,
     },
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, SafePassword};
 
 use crate::{error::OfflineSignerError, keystore};
 
@@ -54,8 +57,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Initialize the offline signer with spend and view keys
-    Init(InitArgs),
+    /// Initialize the offline signer with keys
+    Init {
+        #[clap(subcommand)]
+        method: InitMethod,
+    },
 
     /// Sign a one-sided transaction using stored keys
     Sign(SignArgs),
@@ -67,8 +73,17 @@ pub enum Commands {
     Clear,
 }
 
+#[derive(Debug, Subcommand, Clone)]
+pub enum InitMethod {
+    /// Initialize with spend and view keys directly
+    Keys(InitKeysArgs),
+
+    /// Initialize with seed words (mnemonic phrase)
+    SeedWords(InitSeedWordsArgs),
+}
+
 #[derive(Debug, Args, Clone)]
-pub struct InitArgs {
+pub struct InitKeysArgs {
     /// Private spend key in hexadecimal format
     #[clap(long, env = "TARI_SPEND_KEY")]
     pub spend_key: String,
@@ -78,6 +93,21 @@ pub struct InitArgs {
     pub view_key: String,
 
     /// Passphrase to encrypt the keys
+    #[clap(long, env = "TARI_PASSPHRASE")]
+    pub passphrase: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitSeedWordsArgs {
+    /// Seed words (mnemonic phrase) separated by spaces
+    #[clap(long, env = "TARI_SEED_WORDS")]
+    pub seed_words: Option<String>,
+
+    /// Optional passphrase for the seed words (BIP39 passphrase, not the encryption passphrase)
+    #[clap(long, env = "TARI_SEED_PASSPHRASE")]
+    pub seed_passphrase: Option<String>,
+
+    /// Passphrase to encrypt the keys in the keystore
     #[clap(long, env = "TARI_PASSPHRASE")]
     pub passphrase: String,
 }
@@ -104,7 +134,10 @@ pub struct SignArgs {
 impl Cli {
     pub fn execute(self) -> Result<()> {
         match self.command {
-            Commands::Init(args) => init_keystore(args),
+            Commands::Init { method } => match method {
+                InitMethod::Keys(args) => init_with_keys(args),
+                InitMethod::SeedWords(args) => init_with_seed_words(args),
+            },
             Commands::Sign(args) => sign_transaction(args),
             Commands::Status => check_status(),
             Commands::Clear => clear_keystore(),
@@ -112,13 +145,22 @@ impl Cli {
     }
 }
 
-fn init_keystore(args: InitArgs) -> Result<()> {
-    // Check if already initialized
+fn prompt_seed_words() -> Result<String> {
+    println!("Enter your seed words (mnemonic phrase) on a single line, separated by spaces:");
+    rpassword::prompt_password(">> ").map_err(|e| anyhow!("Failed to read seed words: {}", e))
+}
+
+fn check_already_initialized() -> Result<()> {
     if keystore::is_initialized() {
         return Err(anyhow!(
             "Keystore is already initialized. Use 'clear' command first to reinitialize."
         ));
     }
+    Ok(())
+}
+
+fn init_with_keys(args: InitKeysArgs) -> Result<()> {
+    check_already_initialized()?;
 
     // Parse the private keys from hex
     let spend_key = PrivateKey::from_hex(&args.spend_key)
@@ -134,6 +176,45 @@ fn init_keystore(args: InitArgs) -> Result<()> {
 
     println!("✓ Offline signer initialized successfully!");
     println!("  Keys have been encrypted and stored in the OS keystore.");
+
+    Ok(())
+}
+
+fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
+    check_already_initialized()?;
+
+    // Get seed words (prompt if not provided)
+    let seed_words_str = match args.seed_words {
+        Some(s) => s,
+        None => prompt_seed_words()?,
+    };
+
+    // Parse seed words
+    let seed_words = SeedWords::from_str(&seed_words_str)
+        .map_err(|e| OfflineSignerError::InvalidKey(format!("Invalid seed words: {}", e)))?;
+
+    // Convert optional seed passphrase to SafePassword
+    let seed_passphrase = args.seed_passphrase.map(|p| SafePassword::from(p));
+
+    // Derive cipher seed from mnemonic
+    let cipher_seed = CipherSeed::from_mnemonic(&seed_words, seed_passphrase)
+        .map_err(|e| OfflineSignerError::InvalidKey(format!("Failed to derive seed from mnemonic: {}", e)))?;
+
+    // Create SeedWordsWallet to derive spend and view keys
+    let seed_wallet = SeedWordsWallet::construct_new(cipher_seed)
+        .map_err(|e| OfflineSignerError::InvalidKey(format!("Failed to derive keys from seed: {}", e)))?;
+
+    let spend_key = seed_wallet.spend_key().clone();
+    let view_key = seed_wallet.view_key().clone();
+
+    // Get encryption passphrase (prompt if not provided)
+    let passphrase = args.passphrase;
+
+    // Initialize the keystore
+    keystore::init_keystore(&spend_key, &view_key, &passphrase)?;
+
+    println!("✓ Offline signer initialized successfully from seed words!");
+    println!("  Keys have been derived and encrypted in the OS keystore.");
 
     Ok(())
 }
@@ -209,7 +290,7 @@ fn check_status() -> Result<()> {
         println!("  Keys are stored in the OS keystore");
     } else {
         println!("✗ Offline signer is not initialized");
-        println!("  Run 'init' command to set up keys");
+        println!("  Run 'init keys' or 'init seed-words' command to set up keys");
     }
     Ok(())
 }
