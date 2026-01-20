@@ -1,0 +1,147 @@
+// Copyright 2025. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{fs, path::PathBuf, str::FromStr};
+
+use anyhow::{anyhow, Context, Result};
+use clap::{Args, Parser, Subcommand};
+use tari_common::configuration::Network;
+use tari_common_types::types::PrivateKey;
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    key_manager::{
+        wallet_types::{SpendWallet, WalletType},
+        KeyManager,
+    },
+    offline_signing::{
+        models::{PrepareOneSidedTransactionForSigningResult, TransactionResult},
+        sign_locked_transaction,
+    },
+};
+use tari_utilities::hex::Hex;
+
+use crate::error::OfflineSignerError;
+
+/// Minotari Offline Transaction Signer
+///
+/// A standalone tool for signing one-sided transactions offline using private keys.
+#[derive(Debug, Parser)]
+#[clap(name = "minotari_offline_signer", version, about)]
+pub struct Cli {
+    #[clap(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Commands {
+    /// Sign a one-sided transaction using private spend and view keys
+    Sign(SignArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignArgs {
+    /// Path to the input file containing the prepared transaction (JSON format)
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+
+    /// Path to the output file for the signed transaction (JSON format)
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+
+    /// Private spend key in hexadecimal format
+    #[clap(long, env = "TARI_SPEND_KEY")]
+    pub spend_key: String,
+
+    /// Private view key in hexadecimal format
+    #[clap(long, env = "TARI_VIEW_KEY")]
+    pub view_key: String,
+
+    /// Network to use (mainnet, nextnet, esmeralda, localnet)
+    #[clap(short, long, default_value = "mainnet")]
+    pub network: String,
+}
+
+impl Cli {
+    pub fn execute(self) -> Result<()> {
+        match self.command {
+            Commands::Sign(args) => sign_transaction(args),
+        }
+    }
+}
+
+fn sign_transaction(args: SignArgs) -> Result<()> {
+    // Parse the network
+    let network = Network::from_str(&args.network)
+        .map_err(|_| anyhow!("Invalid network '{}'. Valid options: mainnet, nextnet, esmeralda, localnet", args.network))?;
+
+    // Parse the private keys from hex
+    let spend_key = PrivateKey::from_hex(&args.spend_key)
+        .map_err(|e| OfflineSignerError::InvalidKey(format!("Invalid spend key: {}", e)))?;
+    let view_key = PrivateKey::from_hex(&args.view_key)
+        .map_err(|e| OfflineSignerError::InvalidKey(format!("Invalid view key: {}", e)))?;
+
+    // Validate input file
+    let metadata = fs::metadata(&args.input_file)
+        .with_context(|| format!("Failed to read input file: {:?}", args.input_file))?;
+
+    const MAX_FILE_SIZE: u64 = 10_000_000; // 10MB limit
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
+    }
+
+    // Read and parse the input file
+    let data = fs::read_to_string(&args.input_file)
+        .with_context(|| format!("Failed to read input file: {:?}", args.input_file))?;
+
+    let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)
+        .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
+
+    // Create the key manager with the spend wallet type
+    let spend_wallet = SpendWallet::new(spend_key, view_key, None);
+    let wallet_type = WalletType::SpendWallet(spend_wallet);
+    let key_manager = KeyManager::new(wallet_type)
+        .map_err(|e| OfflineSignerError::KeyManagerError(format!("Failed to create key manager: {}", e)))?;
+
+    // Get consensus constants for the network
+    let consensus_manager = ConsensusManager::builder(network).build();
+    // Use height 0 for consensus constants - this is safe for signing as the constants
+    // relevant to transaction signing don't change with height
+    let consensus_constants = consensus_manager.consensus_constants(0).clone();
+
+    // Sign the transaction
+    let result = sign_locked_transaction(&key_manager, consensus_constants, network, request)
+        .map_err(|e| OfflineSignerError::SigningError(format!("Failed to sign transaction: {}", e)))?;
+
+    // Write the signed transaction to the output file
+    let json_data = result
+        .to_json()
+        .map_err(|e| OfflineSignerError::SerializationError(format!("Failed to serialize result: {}", e)))?;
+
+    fs::write(&args.output_file, json_data)
+        .with_context(|| format!("Failed to write output file: {:?}", args.output_file))?;
+
+    println!("Transaction signed successfully!");
+    println!("Output written to: {:?}", args.output_file);
+
+    Ok(())
+}
+

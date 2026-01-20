@@ -4394,6 +4394,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "minotari_offline_signer"
+version = "5.2.1-pre.2"
+dependencies = [
+ "anyhow",
+ "clap 4.5.23",
+ "serde",
+ "serde_json",
+ "tari_common",
+ "tari_common_types",
+ "tari_transaction_components",
+ "tari_utilities",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "minotari_utils"
 version = "5.2.1-pre.2"
 dependencies = [

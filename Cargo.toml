@@ -42,6 +42,7 @@ members = [
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
     "applications/minotari_utils",
+    "applications/minotari_offline_signer",
     "integration_tests",
     "hashing",
 ]

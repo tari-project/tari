@@ -1,0 +1,25 @@
+[package]
+name = "minotari_offline_signer"
+description = "Offline transaction signing tool for Tari"
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+version = { workspace = true }
+edition = { workspace = true }
+
+[[bin]]
+name = "minotari_offline_signer"
+path = "src/main.rs"
+
+[dependencies]
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true }
+tari_utilities = { workspace = true }
+
+clap = { version = "4.0", features = ["derive", "env"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { version = "1.0" }
+thiserror = { workspace = true }
+
