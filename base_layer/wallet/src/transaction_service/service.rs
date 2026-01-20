@@ -131,6 +131,7 @@ use crate::{
         service::UseOutput,
         storage::{database::OutputBackendQuery, models::SpendingPriority, OutputStatus},
         UtxoSelectionCriteria,
+        UtxoSelectionFilter,
     },
     transaction_service::{
         config::TransactionServiceConfig,
@@ -2326,13 +2327,26 @@ where
             .prepare_transaction_to_send(
                 temp_tx_id,
                 amount,
-                selection_criteria,
+                selection_criteria.clone(),
                 output_features.clone(),
                 fee_per_gram,
                 script,
                 covenant,
             )
             .await?;
+        if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
+            let inputs = tx_builder.inputs();
+            for commitment in commitments {
+                if !inputs.iter().any(|input| input.output.commitment() == &commitment) {
+                    return Err(TransactionServiceError::OutputManagerError(
+                        OutputManagerError::BuildError(format!(
+                            "The required UTXO with commitment {} was not selected",
+                            commitment.to_hex()
+                        )),
+                    ));
+                }
+            }
+        }
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
 
         let payment_id = payment_id

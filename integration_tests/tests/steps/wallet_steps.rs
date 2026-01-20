@@ -937,8 +937,6 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 
     source_tx_ids.push(tx_id);
 
-    println!("{tx_id}");
-
     cucumber_steps_log(format!(
         "One sided transaction with amount {amount} from {sender} to {receiver} at fee {fee} succeeded"
     ));
