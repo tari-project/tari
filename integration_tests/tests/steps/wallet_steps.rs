@@ -75,7 +75,7 @@ use tari_transaction_components::{
     MicroMinotari,
 };
 use tari_utilities::hex::Hex;
-
+use tari_common_types::transaction::LegacyTransactionStatus;
 use crate::steps::{
     cucumber_steps_log,
     mining_steps::create_miner,
@@ -823,10 +823,6 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_default();
-
-    dest_tx_ids.push(tx_id);
-
     cucumber_steps_log(format!(
         "Transfer amount {amount} from {source_wallet} to {dest_wallet} at fee {fee} succeeded"
     ));
@@ -938,9 +934,8 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
 
-    dest_tx_ids.push(tx_id);
+    println!("{tx_id}");
 
     cucumber_steps_log(format!(
         "One sided transaction with amount {amount} from {sender} to {receiver} at fee {fee} succeeded"
@@ -1053,10 +1048,6 @@ async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
     let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     sender_tx_ids.push(tx_id);
-
-    let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
-    receiver_tx_ids.push(tx_id);
 
     cucumber_steps_log(format!(
         "Transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} succeeded"
@@ -1189,7 +1180,6 @@ async fn send_many_interactive_amount_from_wallet_to_wallet_at_fee(
     world
         .wallet_tx_ids
         .insert(sender_wallet_address.clone(), tx_ids.clone());
-    world.wallet_tx_ids.insert(receiver_wallet_address.clone(), tx_ids);
 
     cucumber_steps_log(format!(
         "{number_of_transactions} consecutive interactive transactions with amount {amount} from {sender} to \
@@ -1494,8 +1484,8 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
                 let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
                 let tx_status = res.transactions.first().unwrap().status;
 
-                if tx_status == TransactionStatus::MinedConfirmed as i32 ||
-                    tx_status == TransactionStatus::OneSidedConfirmed as i32
+                if tx_status == LegacyTransactionStatus::MinedConfirmed as i32 ||
+                    tx_status == LegacyTransactionStatus::OneSidedConfirmed as i32
                 {
                     cucumber_steps_log(format!(
                         "Wallet {wallet} has detected transaction with id {tx_id} as Mined_or_OneSidedConfirmed"
@@ -1506,7 +1496,7 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
                 if retry == num_retries {
                     panic!(
                         "Transaction with id {tx_id} does not have status as Mined_or_OneSidedConfirmed, on wallet \
-                         {wallet}"
+                         {wallet}, status is {tx_status}"
                     );
                 }
 
@@ -1661,9 +1651,6 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
 
         source_tx_ids.append(&mut tx_ids);
 
-        let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
-        dest_tx_ids.append(&mut tx_ids);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -1896,9 +1883,6 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
-    dest_tx_ids.push(tx_id);
 
     cucumber_steps_log(format!(
         "Transfer amount {amount} from {sender} to {receiver} at fee 10 succeeded"
@@ -2155,11 +2139,6 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
     sender_tx_ids.push(tx_id1);
     sender_tx_ids.push(tx_id2);
 
-    let receiver1_tx_ids = world.wallet_tx_ids.entry(receiver1_address.clone()).or_default();
-    receiver1_tx_ids.push(tx_id1);
-
-    let receiver2_tx_ids = world.wallet_tx_ids.entry(receiver2_address.clone()).or_default();
-    receiver2_tx_ids.push(tx_id2);
 
     cucumber_steps_log(format!(
         "Transfer amount {amount} from {sender} to {receiver1} and {receiver2} at fee {fee_per_gram} succeeded"
@@ -2358,9 +2337,6 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
 
     sender_tx_ids.push(tx_id);
 
-    let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
-    receiver_tx_ids.push(tx_id);
     world.output_hash = Some(sha_atomic_swap_tx_res.output_hash);
     world.pre_image = Some(sha_atomic_swap_tx_res.pre_image);
 
@@ -2631,9 +2607,6 @@ async fn send_one_sided_stealth_transaction(
 
     sender_tx_ids.push(tx_id);
 
-    let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
-    receiver_tx_ids.push(tx_id);
 
     cucumber_steps_log(format!(
         "One sided stealth transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} \
@@ -3165,9 +3138,6 @@ async fn multi_send_txs_from_wallet(
 
         sender_tx_ids.push(tx_id);
 
-        let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
-        receiver_tx_ids.push(tx_id);
 
         cucumber_steps_log(format!(
             "Multi-transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} succeeded"
@@ -3260,8 +3230,6 @@ async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String
     let wallet_tx_ids = world.wallet_tx_ids.get_mut(&sender_wallet_address).unwrap();
     wallet_tx_ids.push(new_tx_id);
 
-    let receiver_tx_ids = world.wallet_tx_ids.get_mut(&receiver_wallet_address.clone()).unwrap();
-    receiver_tx_ids.push(new_tx_id);
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]

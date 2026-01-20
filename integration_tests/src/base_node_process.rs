@@ -175,6 +175,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.report_grpc_error = true;
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
         base_node_config.base_node.http_wallet_query_service.port = http_port.try_into().unwrap();
+        base_node_config.base_node.http_wallet_query_service.listen_ip = Some("127.0.0.1".to_string().parse().unwrap());
         base_node_config.base_node.http_wallet_query_service.external_address =
             Some(format!("http://127.0.0.1:{http_port}").parse().unwrap());
 
@@ -217,6 +218,13 @@ pub async fn spawn_base_node_with_config(
             .network_discovery
             .min_successful_seed_contacts_for_early_exit = 1;
         base_node_config.base_node.p2p.dht.network_discovery.bootstrap_timeout = Duration::from_secs(5);
+        base_node_config.base_node.p2p.dht.connectivity.update_interval = Duration::from_secs(2);
+        base_node_config
+            .base_node
+            .p2p
+            .dht
+            .connectivity
+            .random_pool_refresh_interval = Duration::from_secs(2);
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;

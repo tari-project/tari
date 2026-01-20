@@ -475,7 +475,6 @@ impl OutputSql {
         // First, get the must-include outputs
         let mut must_include_query = outputs::table
             .into_boxed()
-            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .filter(outputs::value.gt(i64_value))
             .order_by(outputs::spending_priority.desc());
 
@@ -502,7 +501,7 @@ impl OutputSql {
         let i64_amount = i64::try_from(amount).unwrap_or(i64::MAX);
 
         // If must-include outputs are sufficient, return only them
-        if must_include_total >= i64_amount {
+        if must_include_total > i64_amount {
             return Ok(must_include_outputs);
         }
 
