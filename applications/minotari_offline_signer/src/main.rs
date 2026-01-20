@@ -25,12 +25,16 @@
 //! A standalone binary for signing one-sided transactions offline.
 //! This tool allows signing transactions without requiring a full wallet connection,
 //! using only the private spend and view keys.
+//!
+//! Keys are securely stored in the OS keystore (Keychain on macOS, Credential Manager on Windows,
+//! Secret Service on Linux), encrypted with a passphrase using ChaCha20-Poly1305.
 
 use anyhow::Result;
 use clap::Parser;
 
 mod cli;
 mod error;
+mod keystore;
 
 use cli::Cli;
 
@@ -38,4 +42,3 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     cli.execute()
 }
-

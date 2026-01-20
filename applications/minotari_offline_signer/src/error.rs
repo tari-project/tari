@@ -38,5 +38,16 @@ pub enum OfflineSignerError {
 
     #[error("Serialization error: {0}")]
     SerializationError(String),
-}
 
+    #[error("Keystore error: {0}")]
+    KeystoreError(String),
+
+    #[error("Encryption error: {0}")]
+    EncryptionError(String),
+
+    #[error("Decryption error: {0}")]
+    DecryptionError(String),
+
+    #[error("Not initialized: {0}")]
+    NotInitialized(String),
+}
