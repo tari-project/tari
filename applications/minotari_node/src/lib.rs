@@ -183,7 +183,7 @@ pub async fn run_base_node_with_cli(
                 error!(target: LOG_TARGET, "Readiness gRPC server task failed: {e}");
             },
             Err(_) => {
-                error!(target: LOG_TARGET, "Readiness gRPC server shutdown timed out after 5 seconds");
+                error!(target: LOG_TARGET, "Readiness gRPC server shutdown timed out after 1 second");
             },
         }
     }
