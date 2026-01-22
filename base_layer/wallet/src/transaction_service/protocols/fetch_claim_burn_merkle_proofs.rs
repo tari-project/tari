@@ -1,6 +1,8 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::time::Duration;
+
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
@@ -10,7 +12,8 @@ use crate::{
     connectivity_service::WalletConnectivityInterface,
     transaction_service::storage::database::{TransactionBackend, TransactionDatabase},
 };
-
+const RETRY_DELAY: Duration = Duration::from_secs(10);
+const MAX_ATTEMPTS: usize = 10;
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::sync_claim_burn_merkle_proofs";
 
 pub async fn execute<TBackend, TConnectivity>(
@@ -31,9 +34,9 @@ pub async fn execute<TBackend, TConnectivity>(
         if let Err(err) = execute_inner(&db, &connectivity, &confirmed_burns).await {
             // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
             error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tokio::time::sleep(RETRY_DELAY).await;
             attempt += 1;
-            if attempt > 10 {
+            if attempt > MAX_ATTEMPTS {
                 error!(
                     target: LOG_TARGET,
                     "sync_claim_burn_merkle_proofs failed after {} attempts, giving up",
