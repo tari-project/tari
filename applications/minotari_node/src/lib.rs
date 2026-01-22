@@ -169,15 +169,27 @@ pub async fn run_base_node_with_cli(
     let context = CommandContext::new(&ctx, shutdown.clone());
     readiness_handler.send_readiness_status(ReadinessState::Ready);
 
-    // Go, GRPC, go go
-    let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
     readiness_grpc_shutdown.trigger();
     if let Some(task) = readiness_task {
-        if let Err(e) = timeout(std::time::Duration::from_millis(500), task).await {
-            error!("Readiness task failed to shutdown: {e}");
+        match timeout(std::time::Duration::from_secs(1), task).await {
+            Ok(Ok(Ok(()))) => {
+                info!(target: LOG_TARGET, "Readiness gRPC server shutdown successfully");
+            },
+            Ok(Ok(Err(e))) => {
+                error!(target: LOG_TARGET, "Readiness gRPC server returned an error: {e}");
+            },
+            Ok(Err(e)) => {
+                error!(target: LOG_TARGET, "Readiness gRPC server task failed: {e}");
+            },
+            Err(_) => {
+                error!(target: LOG_TARGET, "Readiness gRPC server shutdown timed out after 5 seconds");
+            },
         }
     }
+
+    // Go, GRPC, go go
+    let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
     if config.base_node.grpc_enabled {
         task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
