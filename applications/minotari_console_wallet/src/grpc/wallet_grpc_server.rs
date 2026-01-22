@@ -3217,7 +3217,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             if !db_result.is_empty() {
                 add_to_oms = false;
                 is_found = true;
-                let db_output = &db_result.first().expect("Should not be empty, this is checked").0;
+                let db_output = db_result.first().expect("Should not be empty, this is checked");
                 debug_info.push(format!(
                     "UTXO with hash {} already exists in Output Manager with status: {}",
                     hex, db_output.status

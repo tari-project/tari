@@ -109,7 +109,6 @@ where
         if !confirmed_burnt.is_empty() {
             tokio::spawn(fetch_claim_burn_merkle_proofs::execute(
                 self.db.clone(),
-                self.output_manager.clone(),
                 self.connectivity.clone(),
                 confirmed_burnt,
             ));

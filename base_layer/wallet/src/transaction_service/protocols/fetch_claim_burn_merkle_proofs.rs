@@ -4,25 +4,21 @@
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::ByteArray;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::handle::OutputManagerHandle,
     transaction_service::storage::database::{TransactionBackend, TransactionDatabase},
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::sync_claim_burn_merkle_proofs";
 
-pub async fn execute<TBackend, KM, TConnectivity>(
+pub async fn execute<TBackend, TConnectivity>(
     db: TransactionDatabase<TBackend>,
-    output_manager: OutputManagerHandle<KM>,
     connectivity: TConnectivity,
     confirmed_burns: Vec<FixedHash>,
 ) where
     TBackend: TransactionBackend + 'static,
-    KM: LegacyTransactionKeyManagerInterface,
     TConnectivity: WalletConnectivityInterface,
 {
     debug!(
@@ -30,21 +26,34 @@ pub async fn execute<TBackend, KM, TConnectivity>(
         "Starting sync_claim_burn_merkle_proofs with {} confirmed burns",
         confirmed_burns.len()
     );
-    if let Err(err) = execute_inner(db, output_manager, connectivity, confirmed_burns).await {
-        // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
-        error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
+    let mut attempt = 0usize;
+    loop {
+        if let Err(err) = execute_inner(&db, &connectivity, &confirmed_burns).await {
+            // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
+            error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            attempt += 1;
+            if attempt > 10 {
+                error!(
+                    target: LOG_TARGET,
+                    "sync_claim_burn_merkle_proofs failed after {} attempts, giving up",
+                    attempt
+                );
+                break;
+            }
+            continue;
+        }
+        break;
     }
 }
 
-async fn execute_inner<TBackend, KM, TConnectivity>(
-    db: TransactionDatabase<TBackend>,
-    mut output_manager: OutputManagerHandle<KM>,
-    connectivity: TConnectivity,
-    confirmed_burns: Vec<FixedHash>,
+async fn execute_inner<TBackend, TConnectivity>(
+    db: &TransactionDatabase<TBackend>,
+    connectivity: &TConnectivity,
+    confirmed_burns: &Vec<FixedHash>,
 ) -> anyhow::Result<()>
 where
     TBackend: TransactionBackend + 'static,
-    KM: LegacyTransactionKeyManagerInterface,
     TConnectivity: WalletConnectivityInterface,
 {
     let timer = std::time::Instant::now();
@@ -60,37 +69,16 @@ where
         timer.elapsed()
     );
 
-    let num_expected = confirmed_burns.len();
-    let outputs = output_manager.get_many_outputs(confirmed_burns).await?;
-    if outputs.len() != num_expected {
-        warn!(
-            target: LOG_TARGET,
-            "Some requested outputs were not found. Requested {}, but only found {} in the database",
-            num_expected,
-            outputs.len()
-        );
-    }
-
-    for output in outputs {
-        if !output.1.features().output_type.is_burn() {
+    for output_hash in confirmed_burns {
+        let Some(burn) = db.fetch_burn_proof(output_hash)? else {
             warn!(
                 target: LOG_TARGET,
-                "NEVER HAPPEN: Output with key id {} is not a burn output, skipping",
-                output.1.commitment_mask_key_id()
-            );
-            continue;
-        }
-
-        let output_hash = output.1.output_hash();
-        let Some(burn) = db.fetch_burn_proof(&output_hash)? else {
-            // OK - UTXO not burnt with claim key, so no burn proof
-            debug!(
-                target: LOG_TARGET,
-                "Burn output {} not found in database, skipping",
+                "No burn proof found in database for output {}, skipping",
                 output_hash
             );
             continue;
         };
+
         if burn.kernel_merkle_proof.is_some() {
             // If we're getting the same output again, there could be a reorg so just to be safe we'll refetch.
             warn!(
@@ -123,7 +111,7 @@ where
 
                 // We trust our base node right? ;-) So just store it without validating.
 
-                db.update_burn_proof_set_merkle_proof(&output_hash, &EncodedMerkleProof {
+                db.update_burn_proof_set_merkle_proof(output_hash, &EncodedMerkleProof {
                     block_hash: resp.block_hash,
                     encoded_merkle_proof: resp.encoded_merkle_proof,
                     leaf_index: resp.leaf_index,
