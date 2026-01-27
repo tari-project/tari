@@ -531,13 +531,59 @@ impl BaseNodeWalletClient for Client {
         Ok(response)
     }
 
-    async fn get_mempool_fee_per_gram_stats(&self, _count: u64) -> Result<FeePerGramStat, anyhow::Error> {
-        Ok(FeePerGramStat {
-            order: 1,
+    async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, anyhow::Error> {
+        let server_address = self.http_server_address().await?;
+        debug!(
+            target: LOG_TARGET,
+            "Requesting mempool fee per gram stats with count {} from Base Node wallet service at {}",
+            count, server_address
+        );
+
+        let mut target_url = server_address.join("/get_mempool_fee_per_gram_stats")?;
+        target_url.set_query(Some(format!("count={count}").as_str()));
+
+        let timer = Instant::now();
+        let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed()).await;
+
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {status}. {body}"
+            ));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct FeePerGramStatResponse {
+            order: u64,
+            min_fee_per_gram: u64,
+            avg_fee_per_gram: u64,
+            max_fee_per_gram: u64,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct GetMempoolFeePerGramStatsResponse {
+            stats: Vec<FeePerGramStatResponse>,
+        }
+
+        let response = res.json::<GetMempoolFeePerGramStatsResponse>().await?;
+
+        // Return the first stat or a default if empty
+        let stat = response.stats.into_iter().next().map(|s| FeePerGramStat {
+            order: s.order,
+            min_fee_per_gram: MicroMinotari::from(s.min_fee_per_gram),
+            avg_fee_per_gram: MicroMinotari::from(s.avg_fee_per_gram),
+            max_fee_per_gram: MicroMinotari::from(s.max_fee_per_gram),
+        }).unwrap_or_else(|| FeePerGramStat {
+            order: 0,
             min_fee_per_gram: MicroMinotari::from(1),
             avg_fee_per_gram: MicroMinotari::from(1),
             max_fee_per_gram: MicroMinotari::from(1),
-        }) // Placeholder implementation
+        });
+
+        Ok(stat)
     }
 
     async fn get_kernel_merkle_proof(

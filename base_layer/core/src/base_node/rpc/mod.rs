@@ -95,6 +95,8 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
     ) -> Result<GenerateKernelMerkleProofResponse, Self::Error>;
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error>;
+
+    async fn get_mempool_fee_per_gram_stats(&self, count: usize) -> Result<Vec<models::FeePerGramStat>, Self::Error>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
