@@ -40,7 +40,7 @@ anyhow = { workspace = true }
 async-trait = "0.1.50"
 chrono = { version = "0.4", default-features = false }
 csv = "1.1"
-cucumber = { version = "0.21.1", features = [
+cucumber = { version = "0.22", features = [
     "default",
     "libtest",
     "output-junit",
