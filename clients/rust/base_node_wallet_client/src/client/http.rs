@@ -571,17 +571,22 @@ impl BaseNodeWalletClient for Client {
         let response = res.json::<GetMempoolFeePerGramStatsResponse>().await?;
 
         // Return the first stat or a default if empty
-        let stat = response.stats.into_iter().next().map(|s| FeePerGramStat {
-            order: s.order,
-            min_fee_per_gram: MicroMinotari::from(s.min_fee_per_gram),
-            avg_fee_per_gram: MicroMinotari::from(s.avg_fee_per_gram),
-            max_fee_per_gram: MicroMinotari::from(s.max_fee_per_gram),
-        }).unwrap_or_else(|| FeePerGramStat {
-            order: 0,
-            min_fee_per_gram: MicroMinotari::from(1),
-            avg_fee_per_gram: MicroMinotari::from(1),
-            max_fee_per_gram: MicroMinotari::from(1),
-        });
+        let stat = response
+            .stats
+            .into_iter()
+            .next()
+            .map(|s| FeePerGramStat {
+                order: s.order,
+                min_fee_per_gram: MicroMinotari::from(s.min_fee_per_gram),
+                avg_fee_per_gram: MicroMinotari::from(s.avg_fee_per_gram),
+                max_fee_per_gram: MicroMinotari::from(s.max_fee_per_gram),
+            })
+            .unwrap_or_else(|| FeePerGramStat {
+                order: 0,
+                min_fee_per_gram: MicroMinotari::from(1),
+                avg_fee_per_gram: MicroMinotari::from(1),
+                max_fee_per_gram: MicroMinotari::from(1),
+            });
 
         Ok(stat)
     }
