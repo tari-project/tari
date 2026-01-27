@@ -169,7 +169,6 @@ pub async fn run_base_node_with_cli(
     let context = CommandContext::new(&ctx, shutdown.clone());
     readiness_handler.send_readiness_status(ReadinessState::Ready);
 
-
     readiness_grpc_shutdown.trigger();
     if let Some(task) = readiness_task {
         match timeout(std::time::Duration::from_secs(1), task).await {
