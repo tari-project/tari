@@ -79,7 +79,6 @@ fn encode_json_body(body: &json::Value) -> Result<(ProxyBody, usize), MmProxyErr
 pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Result<Response<ProxyBody>, MmProxyError> {
     let (body, size) = encode_json_body(content)?;
     // Ensure that the content length header is correct
-    // TODO: check if this is necessary
     parts.headers.insert(header::CONTENT_LENGTH, size.into());
     parts
         .headers

@@ -122,8 +122,8 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("Listening on {listen_addr}...");
 
             let mut shutdown = Box::pin(tokio::signal::ctrl_c());
-            let mut listen_fut = Box::pin(listener.accept());
             loop {
+                let mut listen_fut = Box::pin(listener.accept());
                 tokio::select! {
                     _ = &mut shutdown => {
                         info!(target: LOG_TARGET, "Ctrl-C received, shutting down merge mining proxy...");
