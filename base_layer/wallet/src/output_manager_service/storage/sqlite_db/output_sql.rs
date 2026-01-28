@@ -500,7 +500,8 @@ impl OutputSql {
         let must_include_total: i64 = must_include_outputs.iter().map(|o| o.value).sum();
         let i64_amount = i64::try_from(amount).unwrap_or(i64::MAX);
 
-        // If must-include outputs are sufficient, return only them
+        // We cannot do an exact amount, we need more than required because if we do an exact amount, we won't have
+        // enough left for fees.
         if must_include_total > i64_amount {
             return Ok(must_include_outputs);
         }
