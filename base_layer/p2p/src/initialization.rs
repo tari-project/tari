@@ -569,6 +569,7 @@ impl ServiceInitializer for P2pInitializer {
                 network_wire_byte: self.network.as_wire_byte(),
                 user_agent: self.user_agent.clone(),
             })
+            .with_connection_pool_refresh_interval(config.dht.connectivity.random_pool_refresh_interval)
             .with_peer_validator_config(config.dht.peer_validator_config.clone())
             .with_minimize_connections(if self.config.dht.minimize_connections {
                 Some(self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes)
