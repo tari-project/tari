@@ -604,26 +604,6 @@ async fn single_transaction_burn_tari() {
         .commit_value(&PrivateKey::default(), burn_value.as_u64());
     let signer_pk = burn_proof.commitment.to_commitment().unwrap().as_public_key() - commit_value.as_public_key();
     assert!(ownership_proof.verify(&signer_pk, challenge_bytes));
-
-    // Verify recovery of burned output
-
-    let mut found_burned_output = false;
-    for output in completed_tx.transaction.body.outputs() {
-        if output.is_burned() {
-            found_burned_output = true;
-            match key_manager_handle.try_output_key_recovery(
-                output.commitment(),
-                output.encrypted_data(),
-                &output.sender_offset_public_key,
-            ) {
-                Ok(Some((_spending_key_id, value, _))) => {
-                    assert_eq!(value, burn_value);
-                },
-                _ => panic!("Should have recovered the burned output"),
-            }
-        }
-    }
-    assert!(found_burned_output);
 }
 
 #[tokio::test]

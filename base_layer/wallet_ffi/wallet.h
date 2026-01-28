@@ -4263,5 +4263,5 @@ unsigned long long basenode_state_get_latency(struct TariBaseNodeState *ptr,
                                               int *error_out);
 
 #ifdef __cplusplus
-} // extern "C"
-#endif // __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

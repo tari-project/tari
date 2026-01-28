@@ -30,9 +30,16 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BurnClaimProof {
     /// Public key used in the DH exchange to derive the decryption key
-    pub reciprocal_claim_public_key: CompressedPublicKey,
+    pub claim_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedSignature,
+    #[serde(with = "serializers::base64")]
+    pub kernel_excess: Vec<u8>,
+    #[serde(with = "serializers::base64")]
+    pub kernel_excess_nonce: Vec<u8>,
+    #[serde(with = "serializers::base64")]
+    pub kernel_excess_signature: Vec<u8>,
+    pub sender_offset_public_key: CompressedPublicKey,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
