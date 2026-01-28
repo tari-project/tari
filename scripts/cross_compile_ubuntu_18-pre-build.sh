@@ -105,6 +105,7 @@ apt-get install --no-install-recommends --assume-yes \
   libncursesw5-dev \
   libudev-dev \
   libhidapi-dev \
+  libdbus-1-dev \
   zip
 
 echo "Installing rust ..."
