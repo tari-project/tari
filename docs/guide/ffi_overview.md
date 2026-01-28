@@ -910,7 +910,7 @@ The C headers are automatically generated using `cbindgen`:
 ```toml
 # In Cargo.toml
 [build-dependencies]
-cbindgen = "0.24"
+cbindgen = "0.29"
 ```
 
 ```rust
