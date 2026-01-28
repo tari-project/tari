@@ -97,6 +97,7 @@ use tari_transaction_components::{
     key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInterface},
     rpc::models::TipInfoResponse,
     tari_amount::*,
+    transaction_builder::TransactionBuilder,
     transaction_components::{
         memo_field::{MemoField, TxType},
         one_sided::public_key_to_output_encryption_key,
@@ -2429,4 +2430,123 @@ async fn test_get_completed_transactions_by_addresses() {
         .await
         .unwrap();
     assert_eq!(all_txs.len(), 4);
+}
+
+/// Test that verifies ReplaceByFee fails when the must_include UTXOs from the original
+/// transaction are not found in the OutputManagerHandle. This simulates scenarios where
+/// the original transaction's inputs have been spent or are no longer available.
+#[tokio::test]
+async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
+    let factories = CryptoFactories::default();
+    let db_connection = make_wallet_database_memory_connection();
+
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), db_connection, None).await;
+
+    // Create a completed transaction that references inputs that don't exist in the output manager
+    // This simulates a transaction where the original inputs have been spent/removed
+
+    let alice_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    // Create a mock completed transaction with fake input commitments that don't exist
+    let tx_id = TxId::new_random();
+    let amount = MicroMinotari::from(1000);
+
+    // Create a fake transaction with inputs that won't be found in output manager
+    let key_manager = &alice_ts_interface.key_manager_handle;
+
+    // Create a fake input that doesn't exist in the output manager
+    let fake_input = make_input(
+        &mut OsRng,
+        MicroMinotari::from(5000),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+
+    // Build a transaction with this fake input
+    let constants = ConsensusConstantsBuilder::new(Network::LocalNet).build();
+    let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
+
+    builder.with_input(fake_input.clone()).unwrap();
+    builder
+        .with_fee_per_gram(MicroMinotari::from(5))
+        .with_prevent_fee_gt_amount(false);
+
+    // Add a recipient output
+    builder
+        .add_stealth_recipient(
+            bob_address.clone(),
+            amount,
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        )
+        .unwrap();
+
+    let finalized = builder.build().unwrap();
+    let fee = finalized.transaction.body.get_total_fee().unwrap();
+    let tx = finalized.transaction;
+
+    // Create a completed transaction record
+    let completed_tx = CompletedTransaction::new(
+        tx_id,
+        alice_address.clone(),
+        bob_address.clone(),
+        amount,
+        fee,
+        tx,
+        LegacyTransactionStatus::Broadcast,
+        Utc::now(),
+        TransactionDirection::Outbound,
+        None,
+        None,
+        MemoField::new_empty(),
+    )
+    .unwrap();
+
+    // Insert the completed transaction into the database
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            tx_id,
+            Box::new(completed_tx),
+        )))
+        .unwrap();
+
+    // Now try to replace by fee - this should fail because the original inputs
+    // are not in the output manager (they were never added)
+    let fee_increase = MicroMinotari::from(100);
+    let result = alice_ts_interface
+        .transaction_service_handle
+        .replace_by_fee(tx_id, fee_increase)
+        .await;
+
+    // The replace_by_fee should fail because the must_include UTXOs are not found
+    assert!(
+        result.is_err(),
+        "ReplaceByFee should fail when must_include UTXOs are not found in output manager"
+    );
+
+    // Verify the error is related to UTXO selection failure
+    let err = result.unwrap_err();
+    // The error should be an OutputManagerError indicating no UTXOs were selected
+    // because the must_include commitments don't exist
+    assert!(
+        matches!(
+            err,
+            minotari_wallet::transaction_service::error::TransactionServiceError::OutputManagerError(_)
+        ),
+        "Expected OutputManagerError, got: {:?}",
+        err
+    );
 }

@@ -156,6 +156,11 @@ impl CommsBuilder {
         self
     }
 
+    pub fn with_connection_pool_refresh_interval(mut self, interval: Duration) -> Self {
+        self.connectivity_config.connection_pool_refresh_interval = interval;
+        self
+    }
+
     /// Return the node identity for this comms instance.
     pub fn node_identity(&self) -> Option<Arc<NodeIdentity>> {
         self.node_identity.clone()
@@ -307,7 +312,6 @@ impl CommsBuilder {
         if let Some(val) = connections {
             self.connectivity_config.reaper_min_connection_threshold = val;
         }
-        self.connectivity_config.connection_pool_refresh_interval = Duration::from_secs(180);
         self
     }
 
