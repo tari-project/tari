@@ -122,16 +122,34 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("Listening on {listen_addr}...");
 
             let mut shutdown = Box::pin(tokio::signal::ctrl_c());
-            let mut serve_fut = Box::pin(serve(listener, randomx_service));
-            tokio::select! {
-                _ = &mut shutdown => {
-                    info!(target: LOG_TARGET, "Ctrl-C received, shutting down merge mining proxy...");
-                    println!("Ctrl-C: shutting down merge mining proxy...");
-                }
-                result = &mut serve_fut => {
-                    if let Err(e) = result {
-                        error!(target: LOG_TARGET, "Error in merge mining proxy service: {}", e);
+            let mut listen_fut = Box::pin(listener.accept());
+            loop {
+                tokio::select! {
+                    _ = &mut shutdown => {
+                        info!(target: LOG_TARGET, "Ctrl-C received, shutting down merge mining proxy...");
+                        println!("Ctrl-C: shutting down merge mining proxy...");
+                        break;
                     }
+                    result = &mut listen_fut => {
+                        match result {
+                            Ok((tcp, _)) => {
+                                info!(target: LOG_TARGET, "Accepted new connection");
+                                let svc = randomx_service.clone();
+                                let io = TokioIo::new(tcp);
+
+                                tokio::task::spawn(async move {
+                                    if let Err(e) = http1::Builder::new().serve_connection(io, &svc).await {
+                                        error!("Connection error: {}", e);
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                error!(target: LOG_TARGET, "Error accepting connection: {}", e);
+                            }
+
+                        }
+                    }
+
                 }
             }
             Ok(())
@@ -147,24 +165,6 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             Err(err.into())
         },
     }
-}
-
-async fn serve(listener: TcpListener, service: MergeMiningProxyService) -> Result<(), MmProxyError> {
-    loop {
-        let (tcp, _) = listener.accept().await?;
-        info!(target: LOG_TARGET, "Accepted new connection");
-        let svc = service.clone();
-        let io = TokioIo::new(tcp);
-
-        tokio::task::spawn(async move {
-            if let Err(e) = http1::Builder::new().serve_connection(io, &svc).await {
-                error!("Connection error: {}", e);
-            }
-        });
-    }
-
-    #[allow(unreachable_code)]
-    Ok(())
 }
 
 async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {
