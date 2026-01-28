@@ -186,7 +186,7 @@ fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
         .map_err(|e| OfflineSignerError::InvalidKey(format!("Invalid seed words: {}", e)))?;
 
     // Convert optional seed passphrase to SafePassword
-    let seed_passphrase = args.seed_passphrase.map(|p| SafePassword::from(p));
+    let seed_passphrase = args.seed_passphrase.map(SafePassword::from);
 
     // Derive cipher seed from mnemonic
     let cipher_seed = CipherSeed::from_mnemonic(&seed_words, seed_passphrase)
