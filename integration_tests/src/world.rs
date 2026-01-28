@@ -138,7 +138,6 @@ pub enum NodeClient {
 
 impl TariWorld {
     pub async fn new() -> Self {
-        println!("\nWorld initialized - remove this line when called!\n");
         let wallet_private_key = PrivateKey::random(&mut OsRng);
         let default_payment_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&wallet_private_key),
