@@ -23,19 +23,18 @@
 use tari_utilities::hex::from_hex;
 
 use crate::auto_update::dns::UpdateSpec;
-
 pub struct SignedMessageVerifier {
-    maintainers: Vec<pgp::SignedPublicKey>,
+    maintainers: Vec<pgp::composed::SignedPublicKey>,
 }
 
 impl SignedMessageVerifier {
-    pub fn new(maintainers: Vec<pgp::SignedPublicKey>) -> Self {
+    pub fn new(maintainers: Vec<pgp::composed::SignedPublicKey>) -> Self {
         Self { maintainers }
     }
 
     pub fn verify_signed_update(
         &self,
-        signature: &pgp::StandaloneSignature,
+        signature: &pgp::composed::DetachedSignature,
         hashes: &str,
         update: &UpdateSpec,
     ) -> Option<(Vec<u8>, String)> {
@@ -52,7 +51,11 @@ impl SignedMessageVerifier {
             .find(|(hash, _)| update.hash == *hash)
     }
 
-    fn verify_signature(&self, signature: &pgp::StandaloneSignature, message: &str) -> Option<&pgp::SignedPublicKey> {
+    fn verify_signature(
+        &self,
+        signature: &pgp::composed::DetachedSignature,
+        message: &str,
+    ) -> Option<&pgp::composed::SignedPublicKey> {
         self.maintainers
             .iter()
             .find(|pk| signature.verify(pk, message.as_bytes()).is_ok())
@@ -61,7 +64,7 @@ impl SignedMessageVerifier {
 
 #[cfg(test)]
 mod test {
-    use pgp::Deserializable;
+    use pgp::composed::Deserializable;
 
     use super::*;
     use crate::auto_update::maintainers;
@@ -120,6 +123,7 @@ tQrYpH9CNXgX9dC9
 -----END PGP PUBLIC KEY BLOCK-----"#;
 
     const VALID_SIGNATURE: &str = r#"-----BEGIN PGP SIGNATURE-----
+
 iQIzBAEBCAAdFiEEM3uR78XxAn2K7fY9GIWxSVBMCmQFAmDYhicACgkQGIWxSVBM
 CmRVuBAAkdFqPmJAHAu03CBTC6RjHlN+dxVgZ2UjfHzY80pVbiKTLeRoz7bMdVyZ
 nVnf7QEcBMrK21LA/sBp/QmSGhym3AN3QjrFvOLJMWcfKj0gMdFV+z1TxNpZoKhD
@@ -133,24 +137,25 @@ HFwxr8+CkSk5pNVZdusBZabXDnLxJz9k+rEvrB1F/9ZbLP3PzV9nyWcu3htxjcPo
 Ckvq+QUz80XM69HPwpAgFW6QORZdxv4ED/ek4gth3fqmu/bkQ4/vYKozMtr6Rx7D
 l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
 =vcW8
+
 -----END PGP SIGNATURE-----"#;
 
     const MESSAGE: &str = "Philip R. Zimmermann";
 
     #[test]
     fn it_verifies_signed_message() {
-        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
-        let (key, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (sig, _) = pgp::composed::DetachedSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (key, _) = pgp::composed::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         let verifier = SignedMessageVerifier::new(vec![key]);
         let signer = verifier.verify_signature(&sig, MESSAGE).unwrap();
 
-        let (maintainer, _) = pgp::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
+        let (maintainer, _) = pgp::composed::SignedPublicKey::from_string(PUBLIC_KEY).unwrap();
         assert_eq!(*signer, maintainer);
     }
 
     #[test]
     fn it_does_not_validate_with_tampered_message() {
-        let (sig, _) = pgp::StandaloneSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
+        let (sig, _) = pgp::composed::DetachedSignature::from_string(VALID_SIGNATURE.trim()).unwrap();
         let verifier = SignedMessageVerifier::new(maintainers().collect());
         assert!(verifier.verify_signature(&sig, "Zilip R. Phimmermann").is_none());
     }

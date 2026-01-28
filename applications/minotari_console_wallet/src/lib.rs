@@ -54,8 +54,6 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::seeds::cipher_seed::CipherSeed;
-#[cfg(all(unix, feature = "libtor"))]
-use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
@@ -155,24 +153,6 @@ pub fn run_wallet_with_cli(
             shutdown_signal,
             cli.non_interactive_mode,
         ));
-    }
-
-    // Run our own Tor instance, if configured
-    // This is currently only possible on linux/macos
-    #[cfg(all(unix, feature = "libtor"))]
-    if config.wallet.use_libtor && config.wallet.p2p.transport.is_tor() {
-        let data_dir = if let Some(dir) = cli.libtor_data_dir.clone() {
-            dir.join("libtor").join("wallet")
-        } else {
-            cli.common.get_base_path().join("libtor").join("wallet")
-        };
-        let tor = Tor::initialize(data_dir)?;
-        tor.update_comms_transport(&mut config.wallet.p2p.transport)?;
-        tor.run_background();
-        debug!(
-            target: LOG_TARGET,
-            "Updated Tor comms transport: {:?}", config.wallet.p2p.transport
-        );
     }
 
     let on_init = matches!(boot_mode, WalletBoot::New);

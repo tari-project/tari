@@ -1066,7 +1066,7 @@ impl TransactionServiceHandle {
     pub async fn broadcast_signed_one_sided_transaction(
         &mut self,
         request: SignedOneSidedTransactionResult,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request })
@@ -1074,7 +1074,7 @@ impl TransactionServiceHandle {
             .inspect_err(
                 |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::BroadcastSignedOneSidedTransaction({e})"),
             )?? {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::TransactionsSent(tx_ids) => Ok(tx_ids),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::BroadcastSignedOneSidedTransaction".to_string(),
             )),

@@ -205,18 +205,6 @@ on your system:
     cargo install --path=applications/minotari_mcp_wallet --force
     cargo install --path=applications/minotari_mcp_node --force
 
----
-
-Alternatively, `cargo` can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
-anywhere on your system:
-
-    cargo install --path=applications/minotari_node --force
-    cargo install --path=applications/minotari_console_wallet --force
-    cargo install --path=applications/minotari_merge_mining_proxy --force
-    cargo install --path=applications/minotari_miner --force
-    cargo install --path=applications/minotari_mcp_wallet --force
-    cargo install --path=applications/minotari_mcp_node --force
-
 ### Run
 
 The executables will either be inside your `~/tari/target/release` (on Linux) or `%USERPROFILE%\Code\tari\target\release`

@@ -40,6 +40,7 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
 const SYNC_UTXOS_SPEND_TIP_SAFETY_LIMIT: u64 = 1000;
 const WALLET_MAX_BLOCKS_PER_REQUEST: u64 = 100;
+const MAX_UTXO_CHUNK_SIZE: usize = 2000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -79,6 +80,7 @@ pub struct Service<B> {
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     mempool: MempoolHandle,
+    max_utxo_chunk_size: usize,
 }
 
 impl<B: BlockchainBackend + 'static> Service<B> {
@@ -87,6 +89,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             db,
             state_machine,
             mempool,
+            max_utxo_chunk_size: MAX_UTXO_CHUNK_SIZE,
         }
     }
 
@@ -278,11 +281,11 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 };
                 utxos.push(block_response);
             }
-            for output_chunk in outputs.chunks(2000) {
+            for output_chunk in outputs.chunks(self.max_utxo_chunk_size) {
                 let inputs_to_send = if inputs.is_empty() {
                     Vec::new()
                 } else {
-                    let num_to_drain = inputs.len().min(2000);
+                    let num_to_drain = inputs.len().min(self.max_utxo_chunk_size);
                     inputs.drain(..num_to_drain).map(|h| h.to_vec()).collect()
                 };
 
@@ -305,7 +308,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 fetched_chunks += 1;
             }
             // We might still have inputs left to send if they are more than the outputs
-            for input_chunk in inputs.chunks(2000) {
+            for input_chunk in inputs.chunks(self.max_utxo_chunk_size) {
                 let output_block_response = BlockUtxoInfo {
                     outputs: Vec::new(),
                     inputs: input_chunk.iter().map(|h| h.to_vec()).collect::<Vec<_>>().to_vec(),
@@ -345,6 +348,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 {
                     utxos.pop();
                 }
+                has_next_page = false;
                 break;
             }
             if current_header.height + 1 > end_height {
@@ -845,15 +849,15 @@ mod tests {
             .expect("fetch_utxos should succeed");
 
         assert_eq!(resp.blocks.len(), 10, "expected 10 blocks");
-        assert_eq!(resp.blocks[0].height, 0, "Should be block (1)");
-        assert_eq!(resp.blocks[1].height, 1, "Should be block (2)");
-        assert_eq!(resp.blocks[2].height, 2, "Should be block (3)");
-        assert_eq!(resp.blocks[3].height, 3, "Should be block (4)");
-        assert_eq!(resp.blocks[4].height, 4, "Should be block (5)");
-        assert_eq!(resp.blocks[5].height, 5, "Should be block (6)");
-        assert_eq!(resp.blocks[6].height, 6, "Should be block (7)");
-        assert_eq!(resp.blocks[7].height, 7, "Should be block (8)");
-        assert_eq!(resp.blocks[8].height, 8, "Should be block (9)");
+        assert_eq!(resp.blocks[0].height, 0, "Should be block (0)");
+        assert_eq!(resp.blocks[1].height, 1, "Should be block (1)");
+        assert_eq!(resp.blocks[2].height, 2, "Should be block (2)");
+        assert_eq!(resp.blocks[3].height, 3, "Should be block (3)");
+        assert_eq!(resp.blocks[4].height, 4, "Should be block (4)");
+        assert_eq!(resp.blocks[5].height, 5, "Should be block (5)");
+        assert_eq!(resp.blocks[6].height, 6, "Should be block (6)");
+        assert_eq!(resp.blocks[7].height, 7, "Should be block (7)");
+        assert_eq!(resp.blocks[8].height, 8, "Should be block (8)");
         assert_eq!(resp.blocks[9].height, 9, "Should be block (9)");
         let next_hash = chain.get("10").unwrap().hash().to_vec();
         assert_eq!(resp.next_header_to_scan, next_hash, "next header should point to 10");
@@ -874,5 +878,66 @@ mod tests {
         assert_eq!(resp.blocks[2].height, 12, "Should be block (12)");
         assert!(resp.next_header_to_scan.is_empty(), "Should be empty");
         assert!(!resp.has_next_page, "Should not have more pages");
+    }
+
+    // this will only run and work in esmeralda
+    #[cfg(tari_target_network_testnet)]
+    #[tokio::test]
+    async fn large_utxo_handled_correctly() {
+        use crate::test_helpers::blockchain::create_main_chain;
+
+        // Build a small chain: GB -> A -> B -> C
+        let db = create_new_blockchain_with_network(Network::Esmeralda);
+        let (_names, _chain) = create_main_chain(
+            &db,
+            block_specs!(
+                ["1->GB"],
+                ["2->1"],
+                ["3->2"],
+                ["4->3"],
+                ["5->4"],
+                ["6->5"],
+                ["7->6"],
+                ["8->7"],
+                ["9->8"],
+                ["10->9"],
+            ),
+        );
+
+        // Construct the service over this DB
+        let adb = AsyncBlockchainDb::from(db);
+        let state_machine = make_state_machine_handle();
+        let mempool = make_mempool_handle();
+        let mut service = Service::new(adb, state_machine, mempool);
+        service.max_utxo_chunk_size = 500; // set small chunk size for testing
+
+        // Use genesis as the start header hash
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+        let g_hash = genesis.hash().to_vec();
+
+        let resp = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: g_hash.clone(),
+                limit: 5,
+                page: 0,
+                exclude_spent: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos should succeed");
+
+        assert_eq!(resp.blocks.len(), 5, "expected 5 blocks");
+        assert_eq!(resp.blocks[0].height, 0, "Should be block (0)");
+        assert_eq!(resp.blocks[1].height, 0, "Should be block (0)");
+        assert_eq!(resp.blocks[2].height, 1, "Should be block (1)");
+        assert_eq!(resp.blocks[3].height, 2, "Should be block (2)");
+        assert_eq!(resp.blocks[4].height, 3, "Should be block (3)");
+        let header_4 = service.db().fetch_header(4).await.unwrap().unwrap();
+        assert_eq!(
+            header_4.hash().to_vec(),
+            resp.next_header_to_scan,
+            "next header should point to 4"
+        );
+        assert!(!resp.has_next_page, "Should have no more pages");
     }
 }

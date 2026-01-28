@@ -434,11 +434,7 @@ where
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
             },
             OutputManagerRequest::GetManyOutputs { outputs } => {
-                let outputs = self
-                    .fetch_many_outputs(&outputs)?
-                    .into_iter()
-                    .map(|v| (v.clone(), v.into()))
-                    .collect();
+                let outputs = self.fetch_many_outputs(&outputs)?;
                 Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {

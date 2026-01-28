@@ -160,7 +160,7 @@ pub async fn send_burn_transaction_task(
                 if let Some(original_proof) = original_proof {
                     if let Some(filepath) = burn_proof_filepath {
                         let wrapped_proof = BurntProofBase64 {
-                            reciprocal_claim_public_key: original_proof.reciprocal_claim_public_key.to_vec(),
+                            claim_public_key: original_proof.claim_public_key.to_vec(),
                             commitment: original_proof.commitment.to_vec(),
                             ownership_proof: SignatureBase64 {
                                 public_nonce: original_proof.ownership_proof.get_compressed_public_nonce().to_vec(),
