@@ -97,7 +97,7 @@ jobs:
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for ${{ matrix.ledger_target }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.BINFILE }}
           path: "${{ github.workspace }}/dist/${{ env.BINFILE }}.zip*"
@@ -113,7 +113,7 @@ jobs:
 
     steps:
       - name: Download binaries
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           pattern: "${{ env.TS_FILENAME }}*"
 

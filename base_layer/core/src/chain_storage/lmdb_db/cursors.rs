@@ -111,6 +111,10 @@ impl<'a, K: FromKeyBytes, V: DeserializeOwned> LmdbReadCursor<'a, K, V> {
         }
     }
 
+    pub fn access(&self) -> &ConstAccessor<'a> {
+        &self.access
+    }
+
     pub fn seek_first(&mut self) -> Result<bool, ChainStorageError> {
         if let Some((k, v)) = convert_result_kv(self.cursor.first(&self.access))? {
             self.seek_value = Some((k, v));

@@ -2276,7 +2276,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                payment_id,
+                finalized.payment_id.clone(),
                 sent_hashes,
                 vec![],
                 change_hashes,
@@ -2396,7 +2396,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                payment_id,
+                finalized.payment_id.clone(),
                 sent_hashes,
                 vec![],
                 change_hashes,
@@ -2535,6 +2535,8 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(final_fee);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
@@ -2549,7 +2551,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                payment_id,
+                final_payment_id,
                 sent_hashes,
                 vec![],
                 change_hashes,
@@ -2694,6 +2696,8 @@ where
         let received_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
 
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(fee);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
@@ -2708,7 +2712,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                payment_id,
+                final_payment_id,
                 vec![],
                 received_hashes,
                 change_hashes,
@@ -2885,7 +2889,8 @@ where
                 ))?;
 
             tx_ids.push(tx_id);
-
+            let mut final_payment_id = memo.clone();
+            final_payment_id.set_fee(finalized.fee);
             let completed_tx = CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
@@ -2898,7 +2903,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                memo,
+                final_payment_id,
                 vec![sent_hash],
                 vec![],
                 change_hashes.clone(),
@@ -3000,24 +3005,33 @@ where
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
 
-        let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
-
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
             .get_random_key(None, None)?;
-        let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
+        let recovery_key_id = if let Some(ref cp) = claim_public_key {
+            TariKeyId::DHEncryptedData {
+                public_key: cp.clone(),
+                private_key: sender_offset_private_key.key_id.clone().into(),
+            }
+        } else {
+            self.resources.transaction_key_manager_service.get_view_key().key_id
+        };
+        let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&recovery_key_id),
-                payment_id.clone(),
-            )?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
             .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(MicroMinotari::zero())
+            .with_minimum_value_promise(MicroMinotari::zero());
+
+        output_builder = output_builder.encrypt_data_for_recovery(
+            &self.resources.transaction_key_manager_service,
+            Some(&recovery_key_id),
+            payment_id.clone(),
+        )?;
+
+        let output = output_builder
             .sign_metadata_signature(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key.key_id,
@@ -3054,7 +3068,8 @@ where
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
                 finalized.tx_id,
             )));
-
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(finalized.fee);
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
             finalized.tx_id,
             self.resources.one_sided_tari_address.clone(),
@@ -3067,7 +3082,7 @@ where
             TransactionDirection::Outbound,
             None,
             None,
-            payment_id,
+            final_payment_id,
             finalized.sent_output_hashes,
             vec![],
             finalized.change_output_hashes,
@@ -3104,12 +3119,22 @@ where
                 .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
             let proof = BurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
-                reciprocal_claim_public_key: commitment_mask_key.pub_key,
+                claim_public_key,
                 commitment,
                 ownership_proof,
+                kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
+                kernel_excess_nonce: burn_kernel.excess_sig.get_compressed_public_nonce().to_vec(),
+                kernel_excess_signature: burn_kernel.excess_sig.get_signature().to_vec(),
+                sender_offset_public_key: sender_offset_private_key.pub_key.clone(),
             };
 
-            self.db.insert_burn_proof(output_hash, &proof, &burn_kernel)?;
+            self.db.insert_burn_proof(
+                output_hash,
+                &proof,
+                &burn_kernel,
+                tx_output.output.encrypted_data(),
+                tx_output.output.value(),
+            )?;
             burn_proof = Some(proof);
         }
 
@@ -3176,7 +3201,8 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
-
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(fee);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
@@ -3191,7 +3217,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
-                payment_id,
+                final_payment_id,
                 vec![],
                 all_outputs,
                 vec![],
@@ -3251,7 +3277,8 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
-
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(fee);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
@@ -3266,7 +3293,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
-                payment_id,
+                final_payment_id,
                 vec![],
                 all_outputs,
                 vec![],
@@ -3316,7 +3343,8 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
-
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(fee);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
@@ -3331,7 +3359,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
-                payment_id,
+                final_payment_id,
                 vec![],
                 all_outputs,
                 vec![],
@@ -4271,6 +4299,8 @@ where
         payment_id: MemoField,
     ) -> Result<(), TransactionServiceError> {
         let all_outputs = tx.body.outputs().iter().map(|o| o.hash()).collect::<Vec<HashOutput>>();
+        let mut final_payment_id = payment_id.clone();
+        final_payment_id.set_fee(fee);
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
@@ -4285,7 +4315,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
-                payment_id,
+                final_payment_id,
                 vec![],
                 all_outputs,
                 vec![],
@@ -4463,6 +4493,8 @@ where
                     .ok_or(TransactionServiceError::Other(
                         "sent_output_hashes index out of bounds".to_string(),
                     ))?;
+            let mut final_payment_id = payment_id.clone();
+            final_payment_id.set_fee(fee);
             let completed_tx = CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
@@ -4475,7 +4507,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                payment_id.clone(),
+                final_payment_id,
                 vec![sent_hash],
                 vec![],
                 request.signed_transaction.change_hashes.clone(),

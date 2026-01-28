@@ -676,6 +676,12 @@ where KM: TransactionKeyManagerInterface
             );
             need_update = true;
         };
+        info!(
+            target: LOG_TARGET,
+            "[Update fee] Final fee is {} for output '{}'",
+            final_fee,
+            output_pair.output.commitment().to_hex()
+        );
         if need_update {
             memo_field.set_fee(final_fee);
             let encrypted_data = key_manager.encrypt_data_for_recovery(
@@ -1075,9 +1081,9 @@ mod test {
     };
 
     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
-    #[tokio::test]
+    #[test]
     #[allow(clippy::identity_op)]
-    async fn change_edge_case() {
+    fn change_edge_case() {
         // Create some inputs
         let key_manager = KeyManager::new_random().unwrap();
         let p = TestParams::new(&key_manager);
@@ -1132,8 +1138,8 @@ mod test {
         assert_eq!(result.transaction.body.inputs().len(), 1, "There should be 1 input");
     }
 
-    #[tokio::test]
-    async fn too_many_inputs() {
+    #[test]
+    fn too_many_inputs() {
         // Create some inputs
         let key_manager = KeyManager::new_random().unwrap();
         let p = TestParams::new(&key_manager);
@@ -1163,8 +1169,8 @@ mod test {
         // assert_eq!(err, TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
     }
 
-    #[tokio::test]
-    async fn not_enough_funds() {
+    #[test]
+    fn not_enough_funds() {
         // Create some inputs
         let key_manager = KeyManager::new_random().unwrap();
         let p = TestParams::new(&key_manager);
@@ -1191,8 +1197,8 @@ mod test {
         let _err = builder.build().unwrap_err();
     }
 
-    #[tokio::test]
-    async fn zero_recipient_outputs() {
+    #[test]
+    fn zero_recipient_outputs() {
         let key_manager = KeyManager::new_random().unwrap();
         let p1 = TestParams::new(&key_manager);
         let p2 = TestParams::new(&key_manager);
@@ -1233,8 +1239,8 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
-    async fn single_recipient_no_change() {
+    #[test]
+    fn single_recipient_no_change() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
         let key_manager = KeyManager::new_random().unwrap();
@@ -1287,9 +1293,9 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn single_recipient_with_change() {
+    fn single_recipient_with_change() {
         let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
@@ -1346,8 +1352,8 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
-    async fn single_recipient_multiple_inputs_with_change() {
+    #[test]
+    fn single_recipient_multiple_inputs_with_change() {
         let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
@@ -1397,8 +1403,8 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
-    async fn add_stealth_recipient() {
+    #[test]
+    fn add_stealth_recipient() {
         let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
@@ -1476,8 +1482,8 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
-    async fn disallow_fee_larger_than_amount() {
+    #[test]
+    fn disallow_fee_larger_than_amount() {
         // Alice's parameters
         let key_manager = KeyManager::new_random().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
@@ -1517,8 +1523,8 @@ mod test {
         // assert_eq!(err, TransactionBuilderError::FeeGreaterThanAmount);
     }
 
-    #[tokio::test]
-    async fn allow_fee_larger_than_amount() {
+    #[test]
+    fn allow_fee_larger_than_amount() {
         // Alice's parameters
         let key_manager = KeyManager::new_random().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
@@ -1560,8 +1566,8 @@ mod test {
         };
     }
 
-    #[tokio::test]
-    async fn create_multi_recipients_transaction() {
+    #[test]
+    fn create_multi_recipients_transaction() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
         let alice_key_manager = KeyManager::new_random().unwrap();
@@ -1627,9 +1633,9 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn recover_multi_recipients_transaction() {
+    fn recover_multi_recipients_transaction() {
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
             alice_key_manager.get_spend_key().pub_key,
@@ -1883,8 +1889,8 @@ mod test {
         assert_eq!(wrong, 0);
     }
 
-    #[tokio::test]
-    async fn create_very_large_multi_recipients_transaction() {
+    #[test]
+    fn create_very_large_multi_recipients_transaction() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
         let alice_key_manager = KeyManager::new_random().unwrap();
@@ -1935,8 +1941,8 @@ mod test {
 
     /// this test will test recovery of a pregenerated transaction alice sent bob, they both need to recover one output
     /// each
-    #[tokio::test]
-    async fn recover_historic_transaction_data() {
+    #[test]
+    fn recover_historic_transaction_data() {
         let alice_wallet_seeds = "leopard tilt extend file rescue purity day blind office laptop task today stairs \
                                   now stairs conduct fruit pigeon make urban grace gasp suit drill"
             .to_string();
@@ -2027,5 +2033,99 @@ mod test {
         }
         assert_eq!(alice_count, 1); // alice change output
         assert_eq!(bob_count, 1); // bob recipient output
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn transaction_details_correct() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let spend_key = alice_key_manager.get_spend_key().pub_key;
+        let view_key = alice_key_manager.get_view_key().pub_key;
+        let alice_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let spend_key = bob_key_manager.get_spend_key().pub_key;
+        let view_key = bob_key_manager.get_view_key().pub_key;
+        let bob_address = TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let input = create_test_input(MicroMinotari(5000), 0, &alice_key_manager, vec![], None);
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(
+            consensus_constants.clone(),
+            alice_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        let fee_per_gram = MicroMinotari(4);
+        let payment_id =
+            MemoField::new_address_and_data(alice_address, 1.into(), true, TxType::PaymentToOther, vec![]).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .unwrap();
+        builder
+            .add_stealth_recipient(
+                bob_address,
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                payment_id.clone(),
+            )
+            .unwrap();
+        builder.with_memo(payment_id);
+        let finalized = builder.build().unwrap();
+        let tx = finalized.transaction.clone();
+        let mut alice_memo = None;
+        let mut bob_memo = None;
+        for output in tx.body.outputs() {
+            // alice output
+            if let Some(output) = alice_key_manager
+                .try_output_key_recovery(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    &output.sender_offset_public_key,
+                )
+                .unwrap()
+            {
+                alice_memo = Some(output.2);
+            }
+
+            // bob output
+            if let Some(output) = bob_key_manager
+                .try_output_key_recovery(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    &output.sender_offset_public_key,
+                )
+                .unwrap()
+            {
+                bob_memo = Some(output.2);
+            }
+        }
+        let alice_memo = alice_memo.unwrap();
+        let bob_memo = bob_memo.unwrap();
+        assert_eq!(alice_memo.get_tx_type(), Some(TxType::PaymentToOther));
+        assert_eq!(bob_memo.get_tx_type(), Some(TxType::PaymentToOther));
+        assert_eq!(alice_memo.get_fee().unwrap(), tx.body.get_total_fee().unwrap());
+        assert_eq!(bob_memo.get_fee().unwrap(), tx.body.get_total_fee().unwrap());
+        assert_eq!(tx.body.get_total_fee().unwrap(), finalized.fee);
+        assert_eq!(
+            tx.body.get_total_fee().unwrap(),
+            finalized.payment_id.get_fee().unwrap()
+        );
     }
 }

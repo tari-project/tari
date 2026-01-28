@@ -327,7 +327,8 @@ async fn peer_selection() {
 
     let connections = future::join_all(peers.iter().map(|peer| {
         let value = node_identity.clone();
-        async move { create_peer_connection_mock_pair(peer.clone(), value.to_peer()).await }
+        let peer = peer.clone();
+        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
     }))
     .await
     .into_iter()
@@ -348,7 +349,7 @@ async fn peer_selection() {
     }
 
     // Wait for all peers to be connected (i.e. for the connection manager events to be received)
-    let mut _events = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
+    let _events = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
 
     let conns = connectivity
         .select_connections(ConnectivitySelection::random_nodes(10, vec![connections[0]
@@ -389,7 +390,8 @@ async fn pool_management() {
 
     let connections = future::join_all(peers.iter().map(|peer| {
         let value = node_identity.clone();
-        async move { create_peer_connection_mock_pair(peer.clone(), value.to_peer()).await }
+        let peer = peer.clone();
+        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
     }))
     .await
     .into_iter()

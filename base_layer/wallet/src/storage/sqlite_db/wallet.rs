@@ -920,10 +920,13 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
+
+    use chrono::Utc;
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_common_types::{
         encryption::{decrypt_bytes_integral_nonce, Encryptable},
         seeds::cipher_seed::CipherSeed,
+        types::FixedHash,
     };
     use tari_test_utils::random::string;
     use tari_utilities::{
@@ -933,10 +936,13 @@ mod test {
     };
     use tempfile::tempdir;
 
-    use crate::storage::{
-        database::{DbKey, DbValue, WalletBackend},
-        sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
-        sqlite_utilities::run_migration_and_create_sqlite_connection,
+    use crate::{
+        storage::{
+            database::{DbKey, DbValue, WalletBackend},
+            sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
+            sqlite_utilities::run_migration_and_create_sqlite_connection,
+        },
+        utxo_scanner_service::service::ScannedBlock,
     };
     #[test]
     fn test_passphrase() {
@@ -1171,5 +1177,38 @@ mod test {
         .unwrap();
 
         assert_eq!(decrypted_db_seed, seed_bytes);
+    }
+
+    #[test]
+    fn duplicate_blocks() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
+
+        let passphrase = SafePassword::from("an example very very secret key.".to_string());
+
+        let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase).unwrap();
+
+        let block1 = ScannedBlock {
+            header_hash: FixedHash::from_hex("0000000000000000000769b1c3f6a1b4b3c2d1e0f9e8d7c6b5a4b3c2d1e0f9e8")
+                .unwrap(),
+            height: 700000,
+            timestamp: Utc::now().naive_utc(),
+        };
+
+        let block2 = ScannedBlock {
+            header_hash: FixedHash::from_hex("0000000000000000000769b1c3f6a1b4b3c2d1e0f9e8d7c6b5a4b3c2d1e0f9e8")
+                .unwrap(),
+            height: 700001,
+            timestamp: Utc::now().naive_utc(),
+        };
+
+        wallet.save_scanned_block(block1).unwrap();
+        let result = wallet.save_scanned_block(block2.clone());
+        assert!(result.is_ok());
+        let blocks = wallet.get_scanned_blocks().unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0], block2);
     }
 }
