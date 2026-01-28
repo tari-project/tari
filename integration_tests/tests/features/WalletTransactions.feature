@@ -434,7 +434,7 @@ Feature: Wallet Transactions
     When mining node MINER mines 15 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_A to have at least 55000000000 uT
-    When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send a one-sided transaction of 10000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions as Pending
     When I send a user_pay_for_fee from wallet WALLET_A to wallet WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions as Pending
