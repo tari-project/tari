@@ -1917,10 +1917,10 @@ fn create_burn_transaction_response_schema() -> Value {
                 "format": "byte",
                 "description": "Range proof for burned coins"
             },
-            "reciprocal_claim_public_key": {
+            "claim_public_key": {
                 "type": "string",
                 "format": "byte",
-                "description": "Reciprocal claim public key"
+                "description": "Claim public key"
             }
         },
         "additionalProperties": false

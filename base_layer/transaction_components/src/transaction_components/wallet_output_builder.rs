@@ -165,6 +165,10 @@ impl WalletOutputBuilder {
         &self.covenant
     }
 
+    pub fn encrypted_data(&self) -> &EncryptedData {
+        &self.encrypted_data
+    }
+
     pub fn sign_metadata_signature<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,

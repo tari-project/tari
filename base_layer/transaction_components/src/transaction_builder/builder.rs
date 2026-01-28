@@ -676,6 +676,12 @@ where KM: TransactionKeyManagerInterface
             );
             need_update = true;
         };
+        info!(
+            target: LOG_TARGET,
+            "[Update fee] Final fee is {} for output '{}'",
+            final_fee,
+            output_pair.output.commitment().to_hex()
+        );
         if need_update {
             memo_field.set_fee(final_fee);
             let encrypted_data = key_manager.encrypt_data_for_recovery(
