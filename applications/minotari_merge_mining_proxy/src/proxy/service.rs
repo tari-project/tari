@@ -21,18 +21,19 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::Infallible,
     future::Future,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc, RwLock},
-    task::{Context, Poll},
 };
 
-use hyper::{Body, Request, Response, StatusCode};
+use bytes::Bytes;
+use http_body_util::combinators::BoxBody;
+use hyper::{body::Incoming, service::Service, Request, Response, StatusCode};
 use jsonrpc::error::StandardError;
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::protocol::rpc::__macro_reexports::Service;
 use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tracing::{error, trace, warn};
 
@@ -83,20 +84,18 @@ impl MergeMiningProxyService {
     }
 }
 
-#[allow(clippy::type_complexity)]
-impl Service<Request<Body>> for MergeMiningProxyService {
-    type Error = hyper::Error;
+pub type ProxyBody = BoxBody<Bytes, Infallible>;
+
+impl Service<Request<Incoming>> for MergeMiningProxyService {
+    type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-    type Response = Response<Body>;
+    type Response = Response<ProxyBody>;
 
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, mut request: Request<Body>) -> Self::Future {
+    fn call(&self, request: Request<Incoming>) -> Self::Future {
         let inner = self.inner.clone();
         let future = async move {
-            let bytes = match proxy::read_body_until_end(request.body_mut()).await {
+            let (parts, body) = request.into_parts();
+            let bytes = match proxy::read_body_until_end(body).await {
                 Ok(b) => b,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Method: Unknown, Failed to read request: {:?}", err);
@@ -112,7 +111,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
                     return Ok(resp);
                 },
             };
-            let request = request.map(|_| bytes.freeze());
+            let request = Request::from_parts(parts, bytes.freeze());
             let monerod_method = parse_monerod_rpc_method(request.method(), request.uri(), request.body());
 
             match inner.handle(monerod_method, request).await {

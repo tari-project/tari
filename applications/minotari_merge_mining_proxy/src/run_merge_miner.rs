@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::Infallible;
-
-use futures::future;
-use hyper::{service::make_service_fn, Server};
+use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
@@ -39,7 +37,7 @@ use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use tari_common::{load_configuration, DefaultConfigLoader, MAX_GRPC_MESSAGE_SIZE};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
-use tokio::time::Duration;
+use tokio::{net::TcpListener, time::Duration};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
@@ -117,13 +115,43 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         randomx_factory,
         wallet_payment_address,
     )?;
-    let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(randomx_service.clone())));
 
-    match Server::try_bind(&listen_addr) {
-        Ok(builder) => {
+    match TcpListener::bind(listen_addr).await {
+        Ok(listener) => {
             info!(target: LOG_TARGET, "Listening on {listen_addr}...");
             println!("Listening on {listen_addr}...");
-            builder.serve(service).await?;
+
+            let mut shutdown = Box::pin(tokio::signal::ctrl_c());
+            loop {
+                let mut listen_fut = Box::pin(listener.accept());
+                tokio::select! {
+                    _ = &mut shutdown => {
+                        info!(target: LOG_TARGET, "Ctrl-C received, shutting down merge mining proxy...");
+                        println!("Ctrl-C: shutting down merge mining proxy...");
+                        break;
+                    }
+                    result = &mut listen_fut => {
+                        match result {
+                            Ok((tcp, _)) => {
+                                info!(target: LOG_TARGET, "Accepted new connection");
+                                let svc = randomx_service.clone();
+                                let io = TokioIo::new(tcp);
+
+                                tokio::task::spawn(async move {
+                                    if let Err(e) = http1::Builder::new().serve_connection(io, &svc).await {
+                                        error!("Connection error: {}", e);
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                error!(target: LOG_TARGET, "Error accepting connection: {}", e);
+                            }
+
+                        }
+                    }
+
+                }
+            }
             Ok(())
         },
         Err(err) => {
@@ -131,7 +159,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("Fatal: Cannot bind to '{listen_addr}'.");
             println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
             println!("'proxy_host_address' in 'config/config.toml' and for the applicable RandomX '[pools][url]' or");
-            println!("[pools][self-select]' config setting that can be found  in 'config/xmrig_config_***.json' or");
+            println!("'[pools][self-select]' config setting that can be found in 'config/xmrig_config_***.json' or");
             println!("'<xmrig folder>/config.json'.");
             println!();
             Err(err.into())

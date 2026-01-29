@@ -14,15 +14,15 @@ Scenario: Verify UTXO and kernel MMR size in header
     Scenario: Verify gprc can create block with more than 1 coinbase
         Given I have a seed node SEED_A
         When I have 1 base nodes connected to all seed nodes
-        Then generate a block BLOCK_02 with 2 coinbases from node SEED_A
-        Then generate a block BLOCK_02 with 2 coinbases as a single request from node SEED_A
+        When I have wallet WALLET connected to all seed nodes
+        Then I generate a block BLOCK_02 with 2 coinbases from node SEED_A for wallet WALLET
 
     @critical
     Scenario: Verify gprc can create block with zero value coinbase
         Given I have a seed node SEED_A
         When I have 1 base nodes connected to all seed nodes
-        Then generate a block BLOCK_02 with zero value coinbase from node SEED_A
-        Then generate a block BLOCK_02 with zero value coinbase as a single request from node SEED_A
+        When I have wallet WALLET connected to all seed nodes
+        Then I generate a block BLOCK_02 with zero value coinbase from node SEED_A for wallet WALLET
 
     @critical
     Scenario: Verify grpc can create full block with maximum number of coinbases

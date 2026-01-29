@@ -609,6 +609,23 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         };
         Ok(output)
     }
+
+    async fn get_mempool_fee_per_gram_stats(&self, count: usize) -> Result<Vec<models::FeePerGramStat>, Self::Error> {
+        if count > 20 {
+            return Err(Error::general(anyhow::anyhow!(
+                "count must be less than or equal to 20"
+            )));
+        }
+
+        let metadata = self.db.get_chain_metadata().await?;
+        let stats = self
+            .mempool()
+            .get_fee_per_gram_stats(count, metadata.best_block_height())
+            .await
+            .map_err(Error::general)?;
+
+        Ok(stats)
+    }
 }
 
 #[cfg(test)]

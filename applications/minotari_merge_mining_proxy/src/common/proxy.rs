@@ -24,17 +24,17 @@
 
 use std::convert::TryInto;
 
-use bytes::BytesMut;
-use hyper::{body::HttpBody, header, header::HeaderValue, http::response, Body, Response, StatusCode, Version};
-use reqwest::{ResponseBuilderExt, Url};
+use bytes::{BufMut, BytesMut};
+use http_body::Body;
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use hyper::{header, header::HeaderValue, http::response, Response, StatusCode, Version};
 use serde_json as json;
 
-use crate::error::MmProxyError;
+use crate::{error::MmProxyError, proxy::service::ProxyBody};
 
 pub async fn convert_json_to_hyper_json_response(
     resp: json::Value,
     code: StatusCode,
-    url: Url,
 ) -> Result<Response<json::Value>, MmProxyError> {
     let mut builder = Response::builder();
 
@@ -43,7 +43,7 @@ pub async fn convert_json_to_hyper_json_response(
         .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
     headers.append("Content-Type", HeaderValue::from_str("application/json").unwrap());
 
-    builder = builder.version(Version::HTTP_11).status(code).url(url);
+    builder = builder.version(Version::HTTP_11).status(code);
 
     let body = resp;
     let resp = builder.body(body)?;
@@ -55,41 +55,54 @@ pub async fn convert_json_to_hyper_json_response(
 /// # Errors
 ///
 /// Return error when body is invalid.
-pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<Body>, MmProxyError> {
-    let body_str = json::to_string(body)?;
+pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<ProxyBody>, MmProxyError> {
+    let (body, len) = encode_json_body(body)?;
     Response::builder()
         .header(header::CONTENT_TYPE, "application/json".to_string())
-        .header(header::CONTENT_LENGTH, body_str.len())
+        .header(header::CONTENT_LENGTH, len)
         .status(status)
-        .body(body_str.into())
+        .body(body)
         .map_err(Into::into)
 }
 
+fn encode_json_body(body: &json::Value) -> Result<(ProxyBody, usize), MmProxyError> {
+    let bytes = BytesMut::new();
+    let mut writer = bytes.writer();
+    json::to_writer(&mut writer, body)?;
+    let bytes = writer.into_inner().freeze();
+    let len = bytes.len();
+    let body = BoxBody::new(Full::new(bytes));
+    Ok((body, len))
+}
+
 /// Convert parts and content into body response.
-pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<Body> {
-    let resp = json::to_string(content).expect("json::to_string cannot fail when stringifying a json::Value");
+pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Result<Response<ProxyBody>, MmProxyError> {
+    let (body, size) = encode_json_body(content)?;
     // Ensure that the content length header is correct
-    parts.headers.insert(header::CONTENT_LENGTH, resp.len().into());
+    parts.headers.insert(header::CONTENT_LENGTH, size.into());
     parts
         .headers
         .insert(header::CONTENT_TYPE, "application/json".try_into().unwrap());
-    Response::from_parts(parts, resp.into())
+    Ok(Response::from_parts(parts, body))
 }
 
 /// Convert json response to body response.
-pub fn into_body_from_response(resp: Response<json::Value>) -> Response<Body> {
+pub fn into_body_from_response(resp: Response<json::Value>) -> Result<Response<ProxyBody>, MmProxyError> {
     let (parts, body) = resp.into_parts();
     into_response(parts, &body)
 }
 
 /// Reads the body until there is no more to read.
-pub async fn read_body_until_end(body: &mut Body) -> Result<BytesMut, MmProxyError> {
-    let mut bytes = BytesMut::new();
-    while let Some(data) = body.data().await {
-        let data = data?;
-        bytes.extend(data);
-    }
-    Ok(bytes)
+pub async fn read_body_until_end<B>(body: B) -> Result<BytesMut, MmProxyError>
+where
+    B: Body + Unpin,
+    B::Error: std::error::Error + Send + Sync + 'static,
+{
+    let collected = body
+        .collect()
+        .await
+        .map_err(|e| MmProxyError::InvalidMonerodResponse(format!("Failed to read body until the end: {e}")))?;
+    Ok(BytesMut::from(collected.to_bytes().as_ref()))
 }
 
 #[cfg(test)]
@@ -100,11 +113,8 @@ pub mod test {
     async fn test_convert_json_to_hyper_json_response() {
         let resp = json::json!({"test key":"test value"});
         let code = StatusCode::from_u16(200).unwrap();
-        let url = Url::parse("http://test.com/path?test=param").unwrap();
         // println!("{:?}", resp);
-        let hyper = convert_json_to_hyper_json_response(resp.clone(), code, url)
-            .await
-            .unwrap();
+        let hyper = convert_json_to_hyper_json_response(resp.clone(), code).await.unwrap();
         assert_eq!(hyper.status(), code);
         assert_eq!(hyper.body(), &resp);
         assert_eq!(hyper.version(), Version::HTTP_11);
@@ -114,21 +124,21 @@ pub mod test {
     async fn test_json_response_and_read_body_until_end() {
         let status = StatusCode::from_u16(200).unwrap();
         let body = json::json!({"test key":"test value"});
-        let mut response = json_response(status, &body.clone()).unwrap();
+        let response = json_response(status, &body.clone()).unwrap();
         assert_eq!(response.status(), status);
         assert!(response.headers().contains_key("content-type"));
         assert_eq!(response.headers()["content-type"], "application/json");
         assert!(response.headers().contains_key("content-length"));
         assert_eq!(response.headers()["content-length"], body.to_string().len().to_string());
-        let bytes = read_body_until_end(response.body_mut()).await.unwrap();
-        assert_eq!(bytes, body.to_string());
+        let bytes = read_body_until_end(response.into_body()).await.unwrap();
+        assert_eq!(bytes, serde_json::to_vec(&body).unwrap());
     }
 
     #[test]
     pub fn test_into_body_from_response() {
         let body = json::json!({"test key": "test value"});
         let resp = Response::new(body.clone());
-        let response = into_body_from_response(resp);
+        let response = into_body_from_response(resp).unwrap();
         assert!(response.headers().contains_key("content-type"));
         assert_eq!(response.headers()["content-type"], "application/json");
         assert!(response.headers().contains_key("content-length"));
