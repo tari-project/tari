@@ -18,5 +18,10 @@
     "image_name": "minotari_sha3_miner",
     "app_name":   "sha3_miner",
     "app_exec":   "minotari_miner"
+  },
+  {
+    "image_name": "minotari_offline_signer",
+    "app_name":   "offline_signer",
+    "app_exec":   "minotari_offline_signer"
   }
 ]
