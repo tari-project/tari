@@ -785,7 +785,7 @@ mod tests {
         let result = selector.search().unwrap();
         // Should select the large UTXO
         assert_eq!(result.selected_utxos[0].value().as_u64(), 1000);
-        assert!(result.selected_utxos.len() == 1);
+        assert_eq!(result.selected_utxos.len(), 1);
     }
 
     #[test]
