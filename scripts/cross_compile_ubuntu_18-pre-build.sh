@@ -105,7 +105,6 @@ apt-get install --no-install-recommends --assume-yes \
   libncursesw5-dev \
   libudev-dev \
   libhidapi-dev \
-  libdbus-1-dev \
   zip
 
 echo "Installing rust ..."
@@ -117,12 +116,19 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # Cross-CPU compile setup
 if [ "${CROSS_DEB_ARCH}" != "${nativeArch}" ]; then
   echo "Setup Cross CPU Compile ..."
-  sed -i.save -e "s/^deb\ http/deb [arch="${nativeArch}"] http/g" /etc/apt/sources.list
 
   . /etc/lsb-release
   ubuntu_tag=${DISTRIB_CODENAME}
+  ubuntu_major_version=${DISTRIB_RELEASE%.*}  # Extract major version (e.g., "22" from "22.04")
 
-  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]]; then
+  # Check if Ubuntu version is 22 or older
+  use_ports_repo=false
+  if (( ubuntu_major_version <= 22 )); then
+    use_ports_repo=true
+  fi
+
+  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]] && [ "$use_ports_repo" = true ]; then
+    sed -i.save -e "s/^deb\ http/deb [arch="${nativeArch}"] http/g" /etc/apt/sources.list
     cat << EoF > /etc/apt/sources.list.d/${ubuntu_tag}-${crossArch}.list
 deb [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
 # deb-src [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
@@ -190,6 +196,10 @@ EoF
     libudev-dev:${CROSS_DEB_ARCH} \
     libhidapi-dev:${CROSS_DEB_ARCH} \
     libssl-dev:${CROSS_DEB_ARCH}
+
+  # packages needed for minotari_offline_signer
+  apt-get --assume-yes install \
+    libdbus-1-dev:${CROSS_DEB_ARCH}
 
 fi
 

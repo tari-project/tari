@@ -89,4 +89,5 @@ pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
 [target.riscv64gc-unknown-linux-gnu.env]
 passthrough = [
   "PKG_CONFIG_ALLOW_CROSS=true",
+  "PKG_CONFIG_PATH=/usr/lib/riscv64-linux-gnu/pkgconfig",
 ]
