@@ -50,7 +50,7 @@ indexmap = "1.9.1"
 libc = "0.2.65"
 log = { workspace = true, features = ["std"] }
 rand = { workspace = true }
-reqwest = "0.11.11"
+reqwest = "0.12"
 serde_json = { workspace = true }
 tempfile = "3.3.0"
 thiserror = { workspace = true }

@@ -22,7 +22,7 @@ minotari_node_grpc_client = { workspace = true }
 minotari_wallet_grpc_client = { workspace = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
-tari_transaction_components = { workspace = true}
+tari_transaction_components = { workspace = true }
 tari_node_components = { workspace = true }
 tari_comms = { workspace = true }
 tari_core = { workspace = true }
@@ -40,17 +40,19 @@ clap = { version = "3.2", features = ["derive", "env"] }
 config = { version = "0.14.0" }
 crossterm = { version = "0.28" }
 dhat = "0.3.3"
-futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hyper = { version = "0.14.12", features = ["default","server"] }
+hyper = { version = "1.6.0", features = ["full"] }
+hyper-util = "0.1"
+http-body = "1.0"
+http-body-util = "0.1"
 jsonrpc = "0.12.0"
 log = { workspace = true, features = ["std"] }
 monero = { version = "0.21.0", features = ["serde"] }
-reqwest = { version = "0.11.4", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "native-tls", "blocking"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "net", "signal"] }
 url = "2.1.1"
 rand = { workspace = true }
 blake2 = "0.10"
@@ -59,4 +61,4 @@ blake2 = "0.10"
 tari_features = { workspace = true }
 
 [dev-dependencies]
-hyper = { version = "0.14.12", features = ["full"] }
+hyper = { version = "1.6.0", features = ["full"] }
