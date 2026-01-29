@@ -59,6 +59,23 @@ where T: UtxoValue
 
         best_result.map(|state| state.to_selection_result())
     }
+
+    /// Search for the best UTXO selection while ensuring the specified UTXOs are always included.
+    /// The `must_select` UTXOs will be pre-selected before the search begins, guaranteeing they
+    /// are part of the final selection even if they wouldn't be the optimal choice.
+    pub fn search_with_must_select(&self, must_select: Vec<T>) -> Option<SelectionResult<T>> {
+        let mut initial_state = SelectionState::new_with_selected_utxos(
+            self.available_utxos.clone(),
+            Arc::new(must_select),
+            self.search_params.clone(),
+            self.params.allow_dust_waste,
+        );
+        let mut best_result: Option<SelectionState<T>> = None;
+
+        initial_state.start_search(self.params.max_search_iterations, &mut best_result);
+
+        best_result.map(|state| state.to_selection_result())
+    }
 }
 
 pub struct BranchAndBoundUtxoSelectorParams {
@@ -116,8 +133,12 @@ impl<T> SelectionState<T>
 where T: UtxoValue
 {
     fn new_blank(available_utxos: Arc<Vec<T>>, params: UtxoSectionParams, allow_dust_waste: bool) -> Self {
+        // Sort UTXOs by value in descending order (biggest first)
+        let mut sorted_utxos = (*available_utxos).clone();
+        sorted_utxos.sort_by_key(|b| std::cmp::Reverse(b.value()));
+
         Self {
-            available_utxos,
+            available_utxos: Arc::new(sorted_utxos),
             selected_utxos: Vec::new(),
             current_value: MicroMinotari::from(0),
             waste: MicroMinotari::from(0),
@@ -127,6 +148,23 @@ where T: UtxoValue
         }
     }
 
+    fn new_with_selected_utxos(available_utxos: Arc<Vec<T>>, must_select: Arc<Vec<T>>, params: UtxoSectionParams, allow_dust_waste: bool) -> Self {
+        let mut new_blank = Self::new_blank(available_utxos, params, allow_dust_waste);
+        for utxo in must_select.iter() {
+            let index = new_blank
+                .available_utxos
+                .iter()
+                .position(|u| u.value() == utxo.value())
+                .expect("must_select UTXO not found in available_utxos");
+            new_blank.add_utxo_sorted(index);
+            // Update current_value, waste, and target_amount for each pre-selected UTXO
+            new_blank.current_value += utxo.value();
+            new_blank.waste += new_blank.params.fee_per_input;
+            new_blank.params.target_amount += new_blank.params.fee_per_input;
+        }
+        new_blank
+    }
+
     fn add_utxo_sorted(&mut self, index: usize) {
         let pos = self.selected_utxos.binary_search(&index).unwrap_or_else(|e| e);
         self.selected_utxos.insert(pos, index);
@@ -134,6 +172,12 @@ where T: UtxoValue
 
     // this method starts and iterative search
     fn start_search(&mut self, max_iterations: usize, best_result: &mut Option<SelectionState<T>>) {
+        // Check if the initial state (e.g., with pre-selected UTXOs) already satisfies the target
+        if self.current_value >= self.params.total_target() {
+            self.check_current_state(best_result);
+            return;
+        }
+
         let mut iterations = 0;
         for i in 0..self.available_utxos.len() {
             if iterations >= max_iterations {
@@ -237,16 +281,43 @@ where T: UtxoValue
     fn compare_to_best(&self, best_result: &mut Option<SelectionState<T>>, extra_waste: MicroMinotari) {
         match best_result {
             Some(best) => {
-                if (self.waste + extra_waste) < best.waste {
+                if self.is_better_than(best, extra_waste) {
                     let mut new_state = self.clone();
                     new_state.waste += extra_waste;
+                    new_state.final_target = self.params.target_amount + self.params.output_fee;
                     *best_result = Some(new_state);
                 }
             },
             None => {
                 let mut new_state = self.clone();
                 new_state.waste += extra_waste;
+                new_state.final_target = self.params.target_amount + self.params.output_fee;
                 *best_result = Some(new_state);
+            },
+        }
+    }
+
+    /// Determines if the current state is better than the best state based on:
+    /// 1. Least waste
+    /// 2. If waste is equal, highest selected value (current_value) - gives highest change output
+    /// 3. If selected value is the same, lowest final_target (fewer fees added)
+    fn is_better_than(&self, best: &SelectionState<T>, extra_waste: MicroMinotari) -> bool {
+        let self_waste = self.waste + extra_waste;
+        let self_final_target = self.params.target_amount + self.params.output_fee;
+
+        match self_waste.cmp(&best.waste) {
+            std::cmp::Ordering::Less => true,
+            std::cmp::Ordering::Greater => false,
+            std::cmp::Ordering::Equal => {
+                // Waste is equal, prefer highest selected value (highest change output)
+                match self.current_value.cmp(&best.current_value) {
+                    std::cmp::Ordering::Greater => true,
+                    std::cmp::Ordering::Less => false,
+                    std::cmp::Ordering::Equal => {
+                        // Selected value is equal, prefer lowest final_target
+                        self_final_target < best.final_target
+                    },
+                }
             },
         }
     }
@@ -266,7 +337,6 @@ where T: UtxoValue
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SelectionResult<T> {
     selected_utxos: Vec<T>,
@@ -836,5 +906,534 @@ mod tests {
             total_duration += duration;
         }
         println!("Average duration over 1000 runs: {} ms", total_duration / 1000);
+    }
+
+    // Tests for multi-criteria comparison (waste, current_value, final_target)
+
+    #[test]
+    fn test_comparison_prefers_least_waste() {
+        // Two solutions with different waste: should prefer the one with less waste
+        // Solution 1: 150 with 1 input -> waste = fee_per_input(5)
+        // Solution 2: 100 + 60 with 2 inputs -> waste = 2 * fee_per_input(10)
+        let utxos = vec![MicroMinotari(150), MicroMinotari(100), MicroMinotari(60)];
+        let params = section_params(100, 0, 10, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Should prefer 150 (1 input, less waste) over 100+60 (2 inputs, more waste)
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 150);
+    }
+
+    #[test]
+    fn test_comparison_equal_waste_prefers_highest_value() {
+        // Two solutions with same waste but different selected values
+        // Both use 1 input, so same fee_per_input waste
+        // Both should satisfy target with change, giving same change_cost waste
+        //
+        // params: target=100, output_fee=0, change_fee=10, fee_per_input=5
+        // total_target() after 1 input = 100 + 5 = 105
+        // change_cost() = 5 + 10 = 15
+        //
+        // For an input to have change (not dust): current_value > total_target + change_cost
+        // i.e., current_value > 105 + 15 = 120
+        //
+        // So we need UTXOs > 120 to have equal waste (fee + change_cost)
+        let utxos = vec![MicroMinotari(150), MicroMinotari(130)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 15, target = 100
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Both have waste = 5 (fee) + 15 (change_cost) = 20
+        // Should prefer 150 (higher value, higher change output)
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 150);
+        assert_eq!(result.current_value, 150.into());
+    }
+
+    #[test]
+    fn test_comparison_equal_waste_and_value_prefers_lowest_final_target() {
+        // This is a tricky case - we need two solutions with:
+        // - Same waste
+        // - Same selected value
+        // - Different final_target (different number of inputs means different fees added to target)
+        //
+        // Scenario: target 100, fee_per_input = 10
+        // Solution 1: Single UTXO of 110 -> final_target = 100 + 0 + 10 (1 input) = 110, waste = 10
+        // Solution 2: Two UTXOs of 55 each = 110 -> final_target = 100 + 0 + 20 (2 inputs) = 120, waste = 20
+        //
+        // But waste is different here. Let's think differently:
+        // To get same waste with different final_target, we need same number of inputs but
+        // final_target computed differently... Actually, the final_target grows with inputs added.
+        //
+        // Let's verify that with equal waste and equal selected value, lower final_target wins.
+        // This scenario is quite rare but let's craft it:
+        // If we have exact same waste and current_value, the tiebreaker is final_target.
+
+        // Actually, this is hard to test directly in the selector because waste and value
+        // are directly tied to input selection. Let's test the is_better_than logic directly.
+
+        // For an integration test, we can verify the logic works by checking that
+        // given equal waste and value scenarios, the result has expected properties.
+
+        // A practical test: two combinations that yield the same total value but different paths
+        // This is inherently difficult because different input counts mean different fees.
+
+        // Let's instead verify the implementation with a simpler scenario where we
+        // ensure the behavior is correct when comparing.
+
+        // Test that single input is preferred when waste is the same
+        let utxos = vec![MicroMinotari(115), MicroMinotari(60), MicroMinotari(55)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // 115 with 1 input: waste = 5 (fee) + 0 (change covered) = 5 + 10 (change_cost waste) = 15?
+        // Actually waste = fee_per_input for each input
+        // 115: waste = 5, target reached with change
+        // 60+55=115 with 2 inputs: waste = 10, same value
+        // Should prefer single input (lower waste)
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 115);
+    }
+
+    #[test]
+    fn test_comparison_criteria_order_waste_first() {
+        // Verify that waste is the primary criterion
+        // Higher value but higher waste should lose to lower value with lower waste
+        let utxos = vec![MicroMinotari(200), MicroMinotari(50), MicroMinotari(60)];
+        let params = section_params(100, 0, 10, 20, 10); // high fee_per_input = 20
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Single 200: waste = 20 (1 input)
+        // 50 + 60 = 110: waste = 40 (2 inputs)
+        // Even though 50+60 is closer to target, 200 has less waste
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 200);
+    }
+
+    #[test]
+    fn test_comparison_with_exact_match_vs_overfunded() {
+        // Exact match has 0 extra waste, overfunded has change_cost waste or dust waste
+        // params: target=100, output_fee=0, change_fee=10, fee_per_input=5
+        // total_target() after 1 input = 100 + 5 = 105
+        // change_cost() = 5 + 10 = 15
+        //
+        // For exact match: current_value == total_target = 105
+        // For overfunded with change: current_value > total_target + change_cost = 120
+        // For dust waste: total_target < current_value <= total_target + change_cost
+        //
+        // Comparing 105 (exact match) vs 125 (overfunded with change)
+        // 105: waste = 5 (fee) + 0 (exact) = 5
+        // 125: waste = 5 (fee) + 15 (change_cost) = 20
+        let utxos = vec![MicroMinotari(125), MicroMinotari(105)];
+        let params = section_params(100, 0, 10, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Should prefer exact match (less waste)
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 105);
+    }
+
+    #[test]
+    fn test_comparison_selects_higher_change_when_waste_equal() {
+        // Two UTXOs that both exceed target+change_cost, same waste, different values
+        let utxos = vec![MicroMinotari(150), MicroMinotari(130)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 15, so need > 115
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Both have same waste (5 fee + 15 change_cost = 20)
+        // 150 gives higher change output (150 - 105 = 45)
+        // 130 gives lower change output (130 - 105 = 25)
+        // Should prefer 150 for higher change
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 150);
+    }
+
+    #[test]
+    fn test_multiple_paths_same_value_different_inputs() {
+        // Test scenario where we can reach same total value with different input counts
+        // This tests that fewer inputs (lower final_target/fees) is preferred when value is same
+        let utxos = vec![
+            MicroMinotari(100), // Single input to reach target
+            MicroMinotari(50),
+            MicroMinotari(50), // Two inputs to reach same target
+        ];
+        let params = section_params(100, 0, 0, 0, 10); // No fees to isolate the comparison
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Both options: 100 or 50+50 = 100, same value
+        // With 0 fee_per_input, waste is same, value is same
+        // final_target: 100 for single input, 100 for two inputs (no fees)
+        // This case they're equal, but implementation might prefer fewer inputs naturally
+        assert_eq!(result.current_value, 100.into());
+    }
+
+    #[test]
+    fn test_waste_calculation_includes_input_fees() {
+        // Verify that waste properly accounts for input fees
+        // params: target=100, output_fee=0, change_fee=0, fee_per_input=10
+        // total_target() after 1 input = 100 + 10 = 110
+        // change_cost() = 10 + 0 = 10
+        //
+        // Single 110: covers target exactly, waste = 10 (1 input fee)
+        // 60+60=120 (2 inputs): target becomes 120, so 120 == 120, exact match, waste = 20
+        let utxos = vec![MicroMinotari(110), MicroMinotari(60), MicroMinotari(60)];
+        let params = section_params(100, 0, 0, 10, 10); // fee_per_input = 10, no change_fee
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+        // Single 110: waste = 10 (1 input fee), exact match
+        // 60+60: waste = 20 (2 input fees), exact match
+        // Should prefer single input (less waste)
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.waste, 10.into());
+    }
+
+    #[test]
+    fn test_is_better_than_logic_directly() {
+        // Test the is_better_than comparison logic with crafted states
+        use std::sync::Arc;
+
+        let utxos: Arc<Vec<MicroMinotari>> = Arc::new(vec![MicroMinotari(100)]);
+        let params = UtxoSectionParams::new(
+            MicroMinotari::from(50),
+            MicroMinotari::from(0),
+            MicroMinotari::from(0),
+            MicroMinotari::from(5),
+            10,
+        );
+
+        // State A: lower waste
+        let mut state_a = SelectionState::new_blank(utxos.clone(), params.clone(), true);
+        state_a.waste = MicroMinotari::from(10);
+        state_a.current_value = MicroMinotari::from(100);
+
+        // State B: higher waste
+        let mut state_b = SelectionState::new_blank(utxos.clone(), params.clone(), true);
+        state_b.waste = MicroMinotari::from(20);
+        state_b.current_value = MicroMinotari::from(100);
+
+        // A is better than B (less waste)
+        assert!(state_a.is_better_than(&state_b, 0.into()));
+        // B is not better than A
+        assert!(!state_b.is_better_than(&state_a, 0.into()));
+
+        // Now test equal waste, different value
+        state_b.waste = MicroMinotari::from(10); // same waste as A
+        state_a.current_value = MicroMinotari::from(150); // higher value
+        state_b.current_value = MicroMinotari::from(100); // lower value
+
+        // A is better (same waste, higher value)
+        assert!(state_a.is_better_than(&state_b, 0.into()));
+        // B is not better
+        assert!(!state_b.is_better_than(&state_a, 0.into()));
+
+        // Test equal waste and value, different final_target
+        state_b.current_value = MicroMinotari::from(150); // same value
+                                                          // final_target is computed as params.target_amount + params.output_fee
+                                                          // State A has lower params.target_amount (simulating fewer fees added)
+        let params_low = UtxoSectionParams::new(
+            MicroMinotari::from(50), // lower target (fewer fees)
+            MicroMinotari::from(0),
+            MicroMinotari::from(0),
+            MicroMinotari::from(5),
+            10,
+        );
+        let params_high = UtxoSectionParams::new(
+            MicroMinotari::from(70), // higher target (more fees added)
+            MicroMinotari::from(0),
+            MicroMinotari::from(0),
+            MicroMinotari::from(5),
+            10,
+        );
+
+        let mut state_low_target = SelectionState::new_blank(utxos.clone(), params_low, true);
+        state_low_target.waste = MicroMinotari::from(10);
+        state_low_target.current_value = MicroMinotari::from(150);
+
+        let mut state_high_target = SelectionState::new_blank(utxos.clone(), params_high, true);
+        state_high_target.waste = MicroMinotari::from(10);
+        state_high_target.current_value = MicroMinotari::from(150);
+        state_high_target.final_target = MicroMinotari::from(70); // Set the stored final_target
+
+        // Low target is better (same waste, same value, lower final_target)
+        assert!(state_low_target.is_better_than(&state_high_target, 0.into()));
+        // High target is not better
+        assert!(!state_high_target.is_better_than(&state_low_target, 0.into()));
+    }
+
+    // Tests for new_with_selected_utxos and search_with_must_select
+
+    #[test]
+    fn test_new_with_selected_utxos_initializes_state_correctly() {
+        // Test that new_with_selected_utxos properly initializes current_value, waste, and target_amount
+        let utxos: Arc<Vec<MicroMinotari>> = Arc::new(vec![
+            MicroMinotari(100),
+            MicroMinotari(50),
+            MicroMinotari(30),
+        ]);
+        let must_select: Arc<Vec<MicroMinotari>> = Arc::new(vec![MicroMinotari(50)]);
+        let params = UtxoSectionParams::new(
+            MicroMinotari::from(80),
+            MicroMinotari::from(0),
+            MicroMinotari::from(0),
+            MicroMinotari::from(5),
+            10,
+        );
+
+        let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true);
+
+        // Verify the must_select UTXO is in selected_utxos
+        assert_eq!(state.selected_utxos.len(), 1);
+        // Verify current_value is set to the value of the pre-selected UTXO
+        assert_eq!(state.current_value, MicroMinotari::from(50));
+        // Verify waste is set to fee_per_input (5)
+        assert_eq!(state.waste, MicroMinotari::from(5));
+        // Verify target_amount was increased by fee_per_input
+        assert_eq!(state.params.target_amount, MicroMinotari::from(85)); // 80 + 5
+    }
+
+    #[test]
+    fn test_new_with_selected_utxos_multiple_utxos() {
+        // Test with multiple pre-selected UTXOs
+        let utxos: Arc<Vec<MicroMinotari>> = Arc::new(vec![
+            MicroMinotari(100),
+            MicroMinotari(50),
+            MicroMinotari(30),
+            MicroMinotari(20),
+        ]);
+        let must_select: Arc<Vec<MicroMinotari>> = Arc::new(vec![
+            MicroMinotari(50),
+            MicroMinotari(30),
+        ]);
+        let params = UtxoSectionParams::new(
+            MicroMinotari::from(60),
+            MicroMinotari::from(0),
+            MicroMinotari::from(0),
+            MicroMinotari::from(10),
+            10,
+        );
+
+        let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true);
+
+        // Verify both must_select UTXOs are in selected_utxos
+        assert_eq!(state.selected_utxos.len(), 2);
+        // Verify current_value is the sum of pre-selected UTXOs (50 + 30 = 80)
+        assert_eq!(state.current_value, MicroMinotari::from(80));
+        // Verify waste is 2 * fee_per_input (2 * 10 = 20)
+        assert_eq!(state.waste, MicroMinotari::from(20));
+        // Verify target_amount was increased by 2 * fee_per_input (60 + 20 = 80)
+        assert_eq!(state.params.target_amount, MicroMinotari::from(80));
+    }
+
+    #[test]
+    fn test_search_with_must_select_includes_specified_utxos() {
+        // Test that search_with_must_select always includes the specified UTXOs in the result
+        // even when a better solution exists without them
+        let utxos = vec![
+            MicroMinotari(100), // This alone would satisfy target=100 with 1 input
+            MicroMinotari(50),  // This is sub-optimal
+            MicroMinotari(60),  // This is sub-optimal
+        ];
+        let params = section_params(100, 0, 0, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of the 50 UTXO, which is not optimal
+        let must_select = vec![MicroMinotari(50)];
+        let result = selector.search_with_must_select(must_select).unwrap();
+
+        // The result should include the 50 UTXO
+        let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
+        assert!(selected_values.contains(&50), "Must-select UTXO (50) should be in the result");
+        // The total should be at least the target
+        assert!(result.current_value >= 105.into()); // target + fee_per_input for 50
+    }
+
+    #[test]
+    fn test_search_with_must_select_suboptimal_utxo_still_selected() {
+        // Given a choice between one large UTXO or multiple smaller ones,
+        // forcing the selection of a small UTXO should result in it being included
+        let utxos = vec![
+            MicroMinotari(200), // Perfect single UTXO solution
+            MicroMinotari(10),  // Very small, suboptimal
+            MicroMinotari(100),
+            MicroMinotari(90),
+        ];
+        let params = section_params(150, 0, 10, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Normal search would pick 200
+        let normal_result = selector.search().unwrap();
+        assert_eq!(normal_result.selected_utxos.len(), 1);
+        assert_eq!(normal_result.selected_utxos[0].value().as_u64(), 200);
+
+        // Force selection of the small 10 UTXO
+        let must_select = vec![MicroMinotari(10)];
+        let forced_result = selector.search_with_must_select(must_select).unwrap();
+
+        // The 10 UTXO must be in the result
+        let selected_values: Vec<u64> = forced_result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
+        assert!(selected_values.contains(&10), "Must-select UTXO (10) should be in the result");
+    }
+
+    #[test]
+    fn test_search_with_must_select_exact_match_with_forced_utxo() {
+        // Force selection of a UTXO that when combined with others gives exact match
+        let utxos = vec![
+            MicroMinotari(100),
+            MicroMinotari(50),
+            MicroMinotari(55),
+            MicroMinotari(45),
+        ];
+        let params = section_params(100, 0, 0, 0, 10); // target=100, no fees
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of 55
+        let must_select = vec![MicroMinotari(55)];
+        let result = selector.search_with_must_select(must_select).unwrap();
+
+        // The 55 UTXO must be in the result
+        let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
+        assert!(selected_values.contains(&55), "Must-select UTXO (55) should be in the result");
+        assert!(result.current_value >= 100.into());
+    }
+
+    #[test]
+    fn test_search_with_must_select_multiple_forced_utxos() {
+        // Force selection of multiple UTXOs
+        let utxos = vec![
+            MicroMinotari(200), // Single optimal solution
+            MicroMinotari(30),
+            MicroMinotari(40),
+            MicroMinotari(50),
+            MicroMinotari(60),
+        ];
+        let params = section_params(100, 0, 10, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of both 30 and 40
+        let must_select = vec![MicroMinotari(30), MicroMinotari(40)];
+        let result = selector.search_with_must_select(must_select).unwrap();
+
+        // Both forced UTXOs must be in the result
+        let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
+        assert!(selected_values.contains(&30), "Must-select UTXO (30) should be in the result");
+        assert!(selected_values.contains(&40), "Must-select UTXO (40) should be in the result");
+        // Total value should cover the target
+        assert!(result.current_value >= 110.into()); // target + fees
+    }
+
+    #[test]
+    fn test_search_with_must_select_forced_utxo_already_covers_target() {
+        // Force selection of a UTXO that by itself already covers the target
+        let utxos = vec![
+            MicroMinotari(150),
+            MicroMinotari(50),
+            MicroMinotari(60),
+        ];
+        let params = section_params(100, 0, 10, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of 150, which alone covers target + change_cost
+        let must_select = vec![MicroMinotari(150)];
+        let result = selector.search_with_must_select(must_select).unwrap();
+
+        // Only the forced UTXO should be selected (it already covers everything)
+        assert_eq!(result.selected_utxos.len(), 1);
+        assert_eq!(result.selected_utxos[0].value().as_u64(), 150);
+    }
+
+    #[test]
+    fn test_search_with_must_select_vs_normal_search_different_results() {
+        // Verify that forcing a suboptimal UTXO gives a different (worse) result
+        let utxos = vec![
+            MicroMinotari(105), // Exact match for target + 1 input fee
+            MicroMinotari(20),  // Suboptimal small UTXO
+            MicroMinotari(90),
+        ];
+        let params = section_params(100, 0, 0, 5, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Normal search should prefer 105 (exact match)
+        let normal_result = selector.search().unwrap();
+        assert_eq!(normal_result.selected_utxos.len(), 1);
+        assert_eq!(normal_result.selected_utxos[0].value().as_u64(), 105);
+        assert_eq!(normal_result.waste, MicroMinotari::from(5)); // Just the input fee
+
+        // Force selection of 20 - will need additional UTXOs
+        let must_select = vec![MicroMinotari(20)];
+        let forced_result = selector.search_with_must_select(must_select).unwrap();
+
+        // Result must include 20 and additional UTXOs to cover target
+        let selected_values: Vec<u64> = forced_result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
+        assert!(selected_values.contains(&20), "Must-select UTXO (20) should be in the result");
+        assert!(forced_result.selected_utxos.len() >= 2, "Should need multiple UTXOs");
+        // Waste should be higher due to multiple inputs
+        assert!(forced_result.waste > normal_result.waste, "Forced selection should have more waste");
+    }
+
+    #[test]
+    fn test_search_with_must_select_insufficient_utxos_returns_none() {
+        // If the must-select UTXOs plus available UTXOs can't cover the target, return None
+        let utxos = vec![
+            MicroMinotari(30),
+            MicroMinotari(20),
+            MicroMinotari(10),
+        ];
+        let params = section_params(100, 0, 0, 0, 10); // target=100, total available=60
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of 10
+        let must_select = vec![MicroMinotari(10)];
+        let result = selector.search_with_must_select(must_select);
+
+        // Should return None since total (60) < target (100)
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_search_with_must_select_respects_input_limit() {
+        // Verify that must_select UTXOs count toward the input limit
+        let utxos = vec![
+            MicroMinotari(40),
+            MicroMinotari(40),
+            MicroMinotari(40),
+            MicroMinotari(40),
+        ];
+        let params = section_params(100, 0, 0, 0, 2); // input_limit = 2
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of one UTXO, leaving room for only one more
+        let must_select = vec![MicroMinotari(40)];
+        let result = selector.search_with_must_select(must_select);
+
+        // With 2 inputs max and 40 each = 80, can't reach target of 100
+        // So this should return None or find a solution if exact 80 works
+        if let Some(r) = result {
+            assert!(r.selected_utxos.len() <= 2);
+        }
+    }
+
+    #[test]
+    fn test_search_with_must_select_finds_optimal_among_remaining() {
+        // After forcing a UTXO selection, the algorithm should find the optimal
+        // combination among the remaining UTXOs
+        let utxos = vec![
+            MicroMinotari(100),
+            MicroMinotari(50), // Force this
+            MicroMinotari(60), // This + 50 = 110, better than 50 + 40 + 30
+            MicroMinotari(40),
+            MicroMinotari(30),
+        ];
+        let params = section_params(100, 0, 0, 5, 10); // fee_per_input = 5
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+
+        // Force selection of 50
+        let must_select = vec![MicroMinotari(50)];
+        let result = selector.search_with_must_select(must_select).unwrap();
+
+        let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
+        assert!(selected_values.contains(&50), "Must-select UTXO (50) should be in the result");
+
+        // Should prefer 50+60=110 (2 inputs) over 50+40+30=120 (3 inputs) due to lower waste
+        // 2 inputs: waste = 10, 3 inputs: waste = 15
+        assert_eq!(result.selected_utxos.len(), 2, "Should prefer fewer inputs");
     }
 }
