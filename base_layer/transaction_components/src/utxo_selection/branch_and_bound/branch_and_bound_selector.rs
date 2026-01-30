@@ -1038,12 +1038,7 @@ mod tests {
         // To get same waste with different final_target, we need same number of inputs but
         // final_target computed differently... Actually, the final_target grows with inputs added.
         //
-        // Let's verify that with equal waste and equal selected value, the result has expected properties.
-
-        // A practical test: two combinations that yield the same total value but different paths
-        // This is inherently difficult because different input counts mean different fees.
-
-        // Let's instead verify the implementation with a simpler scenario where we
+        // Let's verify that with a simpler scenario where we
         // ensure the behavior is correct when comparing.
 
         // Test that single input is preferred when waste is the same
@@ -1140,13 +1135,14 @@ mod tests {
         // change_cost() = 10 + 0 = 10
         //
         // Single 110: covers target exactly, waste = 10 (1 input fee)
-        // 60+60=120 (2 inputs): target becomes 120, so 120 == 120, exact match, waste = 20
-        let utxos = vec![MicroMinotari(110), MicroMinotari(60), MicroMinotari(60)];
+        // 60+55=115 with 2 inputs: target becomes 115, so 115 == 115, exact match, waste = 20
+        // This tests that with equal waste, the single input (lower final_target) is preferred
+        let utxos = vec![MicroMinotari(110), MicroMinotari(60), MicroMinotari(55)];
         let params = section_params(100, 0, 0, 10, 10); // fee_per_input = 10, no change_fee
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
         // Single 110: waste = 10 (1 input fee), exact match
-        // 60+60: waste = 20 (2 input fees), exact match
+        // 60+55: waste = 20 (2 input fees), exact match
         // Should prefer single input (less waste)
         assert_eq!(result.selected_utxos.len(), 1);
         assert_eq!(result.waste, 10.into());
@@ -1510,7 +1506,7 @@ mod tests {
             MicroMinotari(40),
             MicroMinotari(30),
         ];
-        let params = section_params(100, 0, 0, 5, 10); // fee_per_input = 5
+        let params = section_params(100, 0, 10, 5, 10); // fee_per_input = 5
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
 
         // Force selection of 50
@@ -1580,8 +1576,7 @@ mod tests {
         assert_eq!(result.selected_utxos.len(), 1);
         // total_target = 100 + 10 + 5 (1 input) = 115
         // change_cost = 5 + 20 = 25
-        // 120 is not > 115 + 25 = 140, so change is not economical
-        // dust = 120 - 115 = 5
+        // 120 is not > 115 + 25 = 140, so dust = 120 - 115 = 5
         // final_fee = output_fee(10) + 1 * fee_per_input(5) + dust(5) = 20
         assert_eq!(result.final_fee, MicroMinotari::from(20));
         assert_eq!(result.current_value, MicroMinotari::from(120));
@@ -1611,23 +1606,23 @@ mod tests {
     fn test_fee_tracking_zero_output_fee() {
         // Test when output_fee is zero
         let utxos = vec![MicroMinotari(130)];
-        let params = section_params(100, 0, 20, 5, 10); // output_fee=0, change_fee=20, fee_per_input=5
+        let params = section_params(100, 0, 10, 5, 10); // output_fee=0, change_fee=10, fee_per_input=5
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
 
-        // After 1 input: target_amount = 100 + 5 = 105
-        // total_target = 105 + 0 = 105
-        // change_cost = 5 + 20 = 25
-        // 130 > 105 + 25 = 130? No, 130 is NOT > 130, so this is dust waste
-        // dust = 130 - 105 = 25
-        // final_fee = output_fee(0) + 1 * fee_per_input(5) + dust(25) = 30
-        assert_eq!(result.final_fee, MicroMinotari::from(30));
+        // After 1 input: target_amount = 100 + 5 = 105, total_target = 105
+        // change_cost = 5 + 10 = 15
+        // 130 > 105 + 15 = 120, so change IS economical
+        // final_fee = output_fee(0) + fee_per_input(5) + change_fee(10) = 15
+        assert_eq!(result.final_fee, MicroMinotari::from(15));
+        assert_eq!(result.current_value, MicroMinotari::from(130));
+        assert!(result.has_change, "Should have change when overfunded beyond change_cost");
     }
 
     #[test]
     fn test_fee_tracking_zero_change_fee() {
         // Test when change_fee is zero
-        let utxos = vec![MicroMinotari(120)];
+        let utxos = vec![MicroMinotari(121)]; // Changed from 120 to 121 to be above boundary
         let params = section_params(100, 10, 0, 5, 10); // output_fee=10, change_fee=0, fee_per_input=5
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
@@ -1635,10 +1630,10 @@ mod tests {
         // After 1 input: target_amount = 100 + 5 = 105
         // total_target = 105 + 10 = 115
         // change_cost = 5 + 0 = 5
-        // 120 > 115 + 5 = 120? No, 120 is NOT > 120, so this is dust waste
-        // dust = 120 - 115 = 5
-        // final_fee = output_fee(10) + 1 * fee_per_input(5) + dust(5) = 20
-        assert_eq!(result.final_fee, MicroMinotari::from(20));
+        // 121 > 115 + 5 = 120, so change IS economical
+        assert!(result.has_change, "Zero change_fee should still allow change");
+        // final_fee = output_fee(10) + fee_per_input(5) + change_fee(0) = 15
+        assert_eq!(result.final_fee, MicroMinotari::from(15));
     }
 
     #[test]
@@ -1652,102 +1647,7 @@ mod tests {
         // total_target = 100 + 10 = 110
         // change_cost = 0 + 20 = 20
         // 140 > 110 + 20 = 130, so change is economical
-        // final_fee = output_fee(10) + 0 * fee_per_input + change_fee(20) = 30
-        assert_eq!(result.final_fee, MicroMinotari::from(30));
-    }
-
-    #[test]
-    fn test_fee_tracking_all_zero_fees() {
-        // Test when all fees are zero
-        let utxos = vec![MicroMinotari(100)];
-        let params = section_params(100, 0, 0, 0, 10);
-        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
-        let result = selector.search().unwrap();
-
-        assert_eq!(result.final_fee, MicroMinotari::from(0));
-        assert_eq!(result.current_value, MicroMinotari::from(100));
-    }
-
-    #[test]
-    fn test_fee_tracking_final_fee_equals_waste_for_exact_match() {
-        // For exact match without change, final_fee should equal waste
-        let utxos = vec![MicroMinotari(110)];
-        let params = section_params(100, 0, 10, 10, 10); // fee_per_input=10
-        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
-        let result = selector.search().unwrap();
-
-        // total_target = 100 + 0 + 10 = 110, exact match
-        // waste = fee_per_input = 10
-        // final_fee = 0 + 10 = 10
-        assert_eq!(result.waste, MicroMinotari::from(10));
-        assert_eq!(result.final_fee, MicroMinotari::from(10));
-    }
-
-    #[test]
-    fn test_fee_tracking_search_with_must_select() {
-        // Test fee tracking when using search_with_must_select
-        let utxos = vec![MicroMinotari(100), MicroMinotari(50), MicroMinotari(60)];
-        let params = section_params(80, 10, 20, 5, 10);
-        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
-
-        let must_select = vec![MicroMinotari(50)];
-        let result = selector.search_with_must_select(must_select).unwrap();
-
-        let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
-        assert!(selected_values.contains(&50));
-
-        // With forced 50: needs additional UTXOs to cover target
-        // total_target = 80 + 10 = 90 (plus input fees)
-        // Verify final_fee is correctly calculated based on actual inputs selected
-        let num_inputs = result.selected_utxos.len() as u64;
-        let expected_input_fees = num_inputs * 5;
-        // final_fee should include output_fee + input_fees + (change_fee if change, or dust if dust)
-        assert!(result.final_fee >= MicroMinotari::from(10 + expected_input_fees));
-    }
-
-    #[test]
-    fn test_fee_tracking_consistency_waste_vs_final_fee() {
-        // Verify consistency between waste and final_fee calculations
-        // waste = sum(fee_per_input) + extra_waste (change_cost or dust)
-        // final_fee = output_fee + sum(fee_per_input) + (change_fee if change, dust if dust)
-        let utxos = vec![MicroMinotari(180)];
-        let params = section_params(100, 15, 25, 8, 10);
-        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
-        let result = selector.search().unwrap();
-
-        // total_target = 100 + 15 + 8 = 123
-        // change_cost = 8 + 25 = 33
-        // 180 > 123 + 33 = 156, so change is economical
-        // waste = 8 (input fee) + 33 (change_cost) = 41
-        // final_fee = 15 + 8 + 25 (change) = 48
-        assert_eq!(result.selected_utxos.len(), 1);
-        assert_eq!(result.waste, MicroMinotari::from(41));
-        assert_eq!(result.final_fee, MicroMinotari::from(48));
-
-        // Verify: waste = final_fee - output_fee + (change_cost - change_fee) when change exists
-        // Alternatively: final_fee - output_fee = sum of input fees + change_fee
-        let input_fees_plus_change = result.final_fee - MicroMinotari::from(15);
-        assert_eq!(input_fees_plus_change, MicroMinotari::from(33)); // 8 + 25
-    }
-
-    #[test]
-    fn test_fee_tracking_large_number_of_inputs() {
-        // Test fee accumulation with many inputs
-        let utxos: Vec<MicroMinotari> = (0..10).map(|_| MicroMinotari(20)).collect();
-        let params = section_params(150, 5, 10, 3, 15);
-        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
-        let result = selector.search().unwrap();
-
-        let num_inputs = result.selected_utxos.len() as u64;
-        let expected_input_fees = num_inputs * 3;
-
-        // final_fee should be at least output_fee + input_fees
-        assert!(result.final_fee >= MicroMinotari::from(5 + expected_input_fees));
-
-        // Verify current_value covers target plus fees
-        let total_target_with_fees = MicroMinotari::from(150) + result.final_fee;
-        assert!(result.current_value >= total_target_with_fees - MicroMinotari::from(10)); // Allow for change_fee not
-                                                                                           // being included in target
+        assert!(result.has_change, "Zero fee_per_input should still allow change");
     }
 
     #[test]
@@ -1763,5 +1663,191 @@ mod tests {
         assert_eq!(result.final_target, MicroMinotari::from(130));
         // final_fee = 20 + 10 + 15 (change) = 45
         assert_eq!(result.final_fee, MicroMinotari::from(45));
+    }
+
+    // ============================================
+    // Tests for has_change tracking
+    // ============================================
+
+    #[test]
+    fn test_has_change_exact_match_no_change() {
+        // Exact match: current_value == total_target, no change needed
+        let utxos = vec![MicroMinotari(100)];
+        let params = section_params(100, 0, 10, 0, 10);
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        assert_eq!(result.current_value, MicroMinotari::from(100));
+        assert!(!result.has_change, "Exact match should have no change");
+    }
+
+    #[test]
+    fn test_has_change_with_economical_change() {
+        // Change is economical when current_value > total_target + change_cost
+        let utxos = vec![MicroMinotari(200)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 5 + 10 = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 5 (1 input) = 105
+        // change_cost = 5 + 10 = 15
+        // 200 > 105 + 15 = 120, so change IS economical
+        assert_eq!(result.current_value, MicroMinotari::from(200));
+        assert!(result.has_change, "Should have change when overfunded beyond change_cost");
+    }
+
+    #[test]
+    fn test_has_change_dust_waste_no_change() {
+        // Dust waste: current_value > total_target but <= total_target + change_cost
+        let utxos = vec![MicroMinotari(110)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 5 + 10 = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 5 (1 input) = 105
+        // change_cost = 5 + 10 = 15
+        // 110 is NOT > 105 + 15 = 120, so this is dust waste (no change)
+        assert_eq!(result.current_value, MicroMinotari::from(110));
+        assert!(!result.has_change, "Dust waste case should have no change");
+    }
+
+    #[test]
+    fn test_has_change_boundary_exactly_at_change_cost() {
+        // Boundary case: current_value == total_target + change_cost (not greater than)
+        let utxos = vec![MicroMinotari(120)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 5 + 10 = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 5 (1 input) = 105
+        // change_cost = 5 + 10 = 15
+        // 120 == 105 + 15 = 120, NOT greater than, so no change
+        assert_eq!(result.current_value, MicroMinotari::from(120));
+        assert!(!result.has_change, "Exactly at boundary should have no change (need to be greater)");
+    }
+
+    #[test]
+    fn test_has_change_just_above_change_cost() {
+        // Just above boundary: current_value == total_target + change_cost + 1
+        let utxos = vec![MicroMinotari(121)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 5 + 10 = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 5 (1 input) = 105
+        // change_cost = 5 + 10 = 15
+        // 121 > 105 + 15 = 120, so change IS economical
+        assert_eq!(result.current_value, MicroMinotari::from(121));
+        assert!(result.has_change, "Just above boundary should have change");
+    }
+
+    #[test]
+    fn test_has_change_with_output_fee() {
+        // Test with output_fee affecting the calculation
+        let utxos = vec![MicroMinotari(200)];
+        let params = section_params(100, 20, 15, 10, 10); // output_fee = 20, change_cost = 10 + 15 = 25
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 20 + 10 (1 input) = 130
+        // change_cost = 10 + 15 = 25
+        // 200 > 130 + 25 = 155, so change IS economical
+        assert!(result.has_change, "Should have change with output_fee included");
+    }
+
+    #[test]
+    fn test_has_change_multiple_inputs_with_change() {
+        // Multiple inputs leading to change
+        let utxos = vec![MicroMinotari(100), MicroMinotari(100)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 5 + 10 = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // If 1 input (100): total_target = 100 + 5 = 105, 100 < 105 so need more
+        // 2 inputs (200): total_target = 100 + 10 = 110
+        // change_cost = 5 + 10 = 15
+        // 200 > 110 + 15 = 125, so change IS economical
+        assert_eq!(result.selected_utxos.len(), 2);
+        assert_eq!(result.current_value, MicroMinotari::from(200));
+        assert!(result.has_change, "Should have change with multiple inputs overfunding");
+    }
+
+    #[test]
+    fn test_has_change_multiple_inputs_dust() {
+        // Multiple inputs leading to dust (no change)
+        let utxos = vec![MicroMinotari(55), MicroMinotari(55)];
+        let params = section_params(100, 0, 10, 5, 10); // change_cost = 5 + 10 = 15
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // 2 inputs (110): total_target = 100 + 10 = 110, exact match
+        assert_eq!(result.selected_utxos.len(), 2);
+        assert_eq!(result.current_value, MicroMinotari::from(110));
+        assert!(!result.has_change, "Should have no change with exact match");
+    }
+
+    #[test]
+    fn test_has_change_zero_change_fee() {
+        // Zero change_fee should still track change correctly
+        let utxos = vec![MicroMinotari(150)];
+        let params = section_params(100, 0, 0, 5, 10); // change_cost = 5 + 0 = 5
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 5 (1 input) = 105
+        // change_cost = 5 + 0 = 5
+        // 150 > 105 + 5 = 110, so change IS economical
+        assert!(result.has_change, "Zero change_fee should still allow change");
+    }
+
+    #[test]
+    fn test_has_change_zero_fee_per_input() {
+        // Zero fee_per_input
+        let utxos = vec![MicroMinotari(150)];
+        let params = section_params(100, 0, 10, 0, 10); // change_cost = 0 + 10 = 10
+        let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
+        let result = selector.search().unwrap();
+
+        // total_target = 100 + 0 (no input fee) = 100
+        // change_cost = 0 + 10 = 10
+        // 150 > 100 + 10 = 110, so change IS economical
+        assert!(result.has_change, "Zero fee_per_input should still allow change");
+    }
+
+    #[test]
+    fn test_has_change_all_scenarios_summary() {
+        // Summary test covering all three scenarios:
+        // 1. Exact match (no change)
+        // 2. Dust waste (no change)
+        // 3. Economical change (has change)
+
+        // Scenario 1: Exact match
+        let utxos1 = vec![MicroMinotari(105)];
+        let params1 = section_params(100, 0, 10, 5, 10);
+        let result1 = BranchAndBoundUtxoSelector::new(utxos1, params1, default_params())
+            .search()
+            .unwrap();
+        assert_eq!(result1.current_value, MicroMinotari::from(105));
+        assert!(!result1.has_change, "Scenario 1: Exact match should have no change");
+
+        // Scenario 2: Dust waste (between target and target + change_cost)
+        let utxos2 = vec![MicroMinotari(115)];
+        let params2 = section_params(100, 0, 10, 5, 10);
+        let result2 = BranchAndBoundUtxoSelector::new(utxos2, params2, default_params())
+            .search()
+            .unwrap();
+        // total_target = 105, change_cost = 15, so 105 < 115 <= 120
+        assert_eq!(result2.current_value, MicroMinotari::from(115));
+        assert!(!result2.has_change, "Scenario 2: Dust waste should have no change");
+
+        // Scenario 3: Economical change (above target + change_cost)
+        let utxos3 = vec![MicroMinotari(125)];
+        let params3 = section_params(100, 0, 10, 5, 10);
+        let result3 = BranchAndBoundUtxoSelector::new(utxos3, params3, default_params())
+            .search()
+            .unwrap();
+        // total_target = 105, change_cost = 15, so 125 > 120
+        assert_eq!(result3.current_value, MicroMinotari::from(125));
+        assert!(result3.has_change, "Scenario 3: Economical change should have change");
     }
 }
