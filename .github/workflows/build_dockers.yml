@@ -50,6 +50,7 @@ name: Build docker images
           - minotari_console_wallet
           - minotari_merge_mining_proxy
           - minotari_sha3_miner
+          - minotari_offline_signer
           - 3rdparty_all
           - tor
           #- monerod
