@@ -154,7 +154,7 @@ where T: UtxoValue
             let index = new_blank
                 .available_utxos
                 .iter()
-                .position(|u| u.value() == utxo.value())
+                .position(|u| u == utxo)
                 .expect("must_select UTXO not found in available_utxos");
             new_blank.add_utxo_sorted(index);
             // Update current_value, waste, and target_amount for each pre-selected UTXO
@@ -510,9 +510,9 @@ mod tests {
         let utxos = vec![MicroMinotari(50), MicroMinotari(30)];
         let params = section_params(0, 0, 0, 0, 10);
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
-        let result = selector.search();
+        let result = selector.search().unwrap();
         // With zero target, no UTXOs should be selected
-        assert!(result.is_none());
+        assert!(result.selected_utxos.is_empty());
     }
 
     #[test]
