@@ -138,7 +138,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .inspect_err(|e| error!(target: LOG_TARGET, "Could not parse legacy key id string: {}", e))
             .map_err(|_| KeyManagerError::InvalidKeyId(format!("Could not convert '{}'", key_id)))?;
         self.convert_legacy_tari_key_id_to_current(&legacy_key)
-            .inspect_err(|e| error!(target: LOG_TARGET, "Could not parse legacy key id: {}", e))
+            .inspect_err(|e| error!(target: LOG_TARGET, "Could not convert legacy key id: {}", e))
     }
 
     pub fn convert_legacy_tari_key_id_to_current(
