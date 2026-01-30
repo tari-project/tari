@@ -77,6 +77,10 @@ use tari_transaction_components::{
         WalletOutputBuilder,
     },
     tx_outputs_to_tx_id,
+    utxo_selection::branch_and_bound::{
+        branch_and_bound_selector::SelectionResult,
+        branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
+    },
     MicroMinotari,
     TransactionBuilder,
 };
@@ -109,6 +113,7 @@ use crate::{
         },
         tasks::TxoValidationTask,
         RangeLimit,
+        UtxoSelectionFilter,
         TRANSACTION_INPUTS_LIMIT,
         TRANSACTION_OUTPUTS_LIMIT,
     },
@@ -1720,36 +1725,33 @@ where
     fn select_utxos(
         &mut self,
         amount: MicroMinotari,
-        mut selection_criteria: UtxoSelectionCriteria,
+        selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
     ) -> Result<UtxoSelection, OutputManagerError> {
-        let start = Instant::now();
         debug!(
             target: LOG_TARGET,
             "select_utxos amount: {amount}, fee_per_gram: {fee_per_gram}, num_outputs: {num_outputs}, output_features_and_scripts_byte_size: {total_output_features_and_scripts_byte_size}, \
              selection_criteria: {selection_criteria:?}"
         );
-        let mut utxos = Vec::new();
 
         let fee_calc = self.get_fee_calc();
 
         // Attempt to get the chain tip height
         let tip_height = self.resources.db.get_last_scanned_height()?;
 
-        // Respecting the setting to not choose outputs that reveal the address
-        if self.resources.config.autoignore_onesided_utxos {
-            selection_criteria.excluding_onesided = self.resources.config.autoignore_onesided_utxos;
+        let balance = self.get_balance(tip_height)?;
+        let potential_balance = balance.available_balance + balance.pending_incoming_balance;
+        if balance.available_balance < amount && potential_balance >= amount {
+            return Err(OutputManagerError::FundsPending);
         }
-
-        selection_criteria.excluding_multisig = true;
 
         debug!(
             target: LOG_TARGET,
             "select_utxos selection criteria: {selection_criteria}"
         );
-        let start_new = Instant::now();
+        let start = Instant::now();
         let uo: Vec<DbWalletOutput> = self.resources.db.fetch_unspent_outputs_for_spending(
             &selection_criteria,
             amount,
@@ -1757,18 +1759,31 @@ where
             &self.resources.key_manager,
         )?;
 
-        // OutputSource
+        // build up the list of outputs we must include in the selection
+        let mut must_select = Vec::new();
+        if let UtxoSelectionFilter::SpecificOutputs { commitments } = &selection_criteria.filter {
+            for co in commitments {
+                if let Some(u) = uo.iter().find(|u| u.wallet_output.commitment() == co) {
+                    must_select.push(u.clone());
+                }
+            }
+        }
+
+        if let UtxoSelectionFilter::MustInclude { commitments } = &selection_criteria.filter {
+            for co in commitments {
+                if let Some(u) = uo.iter().find(|u| u.wallet_output.commitment() == co) {
+                    must_select.push(u.clone());
+                }
+            }
+        }
 
         let uo_len = uo.len();
         trace!(
             target: LOG_TARGET,
-            "select_utxos profile - fetch_unspent_outputs_for_spending: {} outputs, {} ms (at {} ms)",
+            "select_utxos profile - fetch_unspent_outputs_for_spending: {} outputs, {} ms",
             uo_len,
-            start_new.elapsed().as_millis(),
             start.elapsed().as_millis(),
         );
-        let start_new = Instant::now();
-
         // For non-standard queries, we want to ensure that the intended UTXOs are selected
         if !selection_criteria.filter.is_standard() && uo.is_empty() {
             return Err(OutputManagerError::NoUtxosSelected {
@@ -1776,88 +1791,77 @@ where
             });
         }
 
-        // Assumes that default Outputfeatures are used for change utxo
-        let output_features_estimate = OutputFeatures::default();
-        let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
-            output_features_estimate
-                .get_serialized_size()
-                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                Covenant::new()
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                TariScript::default()
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-        );
+        let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
+        let output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, total_output_features_and_scripts_byte_size);
+        let input_fee = fee_calc.calculate(fee_per_gram, 0, 1, 0, 0);
+        let bnb = BranchAndBoundUtxoSelectionBuilder::new(uo)
+            .with_target_amount(amount + kernel_fee)
+            .with_fee_per_input(input_fee)
+            .with_fee_per_output(output_fee)
+            .with_change_fee(output_fee)
+            .build()
+            .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?;
 
-        trace!(target: LOG_TARGET, "We found {uo_len} UTXOs to select from");
+        let selection_result = bnb.search_with_must_select(must_select);
 
-        let mut requires_change_output = false;
-        let mut utxos_total_value = MicroMinotari::from(0);
-        let mut fee_without_change = MicroMinotari::from(0);
-        let mut fee_with_change = MicroMinotari::from(0);
-        for o in uo {
-            utxos_total_value += o.wallet_output.value();
+        if selection_result.is_none() {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+        let selection = selection_result.expect("Selection should be valid here");
 
-            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value}");
-            utxos.push(o);
-            // The assumption here is that the only output will be the payment output and change if required
-            fee_without_change = fee_calc.calculate(
-                fee_per_gram,
-                1,
-                utxos.len(),
-                num_outputs,
-                total_output_features_and_scripts_byte_size,
-            );
-            if utxos_total_value == amount + fee_without_change {
-                break;
-            }
-            fee_with_change = fee_calc.calculate(
-                fee_per_gram,
-                1,
-                utxos.len(),
-                num_outputs + 1,
-                total_output_features_and_scripts_byte_size + default_features_and_scripts_size,
-            );
-
-            trace!(target: LOG_TARGET, "-- amt+fee = {amount} + {fee_with_change}");
-            if utxos_total_value > amount + fee_with_change {
-                requires_change_output = true;
-                break;
+        // lets ensure we have a valid solution
+        if let UtxoSelectionFilter::SpecificOutputs { commitments } = &selection_criteria.filter {
+            for co in commitments {
+                if !selection
+                    .selected_utxos
+                    .iter()
+                    .any(|u| u.wallet_output.commitment() == co)
+                {
+                    return Err(OutputManagerError::NoUtxosSelected {
+                        criteria: selection_criteria,
+                    });
+                }
             }
         }
 
-        let perfect_utxo_selection = utxos_total_value == amount + fee_without_change;
-        let enough_spendable = utxos_total_value > amount + fee_with_change;
+        if let UtxoSelectionFilter::MustInclude { commitments } = &selection_criteria.filter {
+            for co in commitments {
+                if !selection
+                    .selected_utxos
+                    .iter()
+                    .any(|u| u.wallet_output.commitment() == co)
+                {
+                    return Err(OutputManagerError::NoUtxosSelected {
+                        criteria: selection_criteria,
+                    });
+                }
+            }
+        }
+        let SelectionResult {
+            selected_utxos: utxos,
+            final_fee,
+            current_value: total_value,
+            waste,
+            final_target: _,
+            has_change,
+        } = selection;
         trace!(
             target: LOG_TARGET,
-            "select_utxos profile - final_selection: {} outputs from {}, {} ms (at {} ms)",
+            "select_utxos profile - got solution with {} outputs, {} ms (waste: {})",
             utxos.len(),
-            uo_len,
-            start_new.elapsed().as_millis(),
             start.elapsed().as_millis(),
+            waste,
         );
 
-        if !perfect_utxo_selection && !enough_spendable {
-            if uo_len == TRANSACTION_INPUTS_LIMIT as usize {
-                return Err(OutputManagerError::TooManyInputsToFulfillTransaction(format!(
-                    "Input limit '{TRANSACTION_INPUTS_LIMIT}' reached"
-                )));
-            }
-            let current_tip_for_time_lock_calculation = tip_height;
-            let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
-            let pending_incoming = balance.pending_incoming_balance;
-            if utxos_total_value + pending_incoming >= amount + fee_with_change {
-                return Err(OutputManagerError::FundsPending);
-            } else {
-                return Err(OutputManagerError::NotEnoughFunds);
-            }
-        }
-
+        let (fee_with_change, fee_without_change) = if has_change {
+            (final_fee, final_fee - output_fee)
+        } else {
+            (final_fee + output_fee, final_fee)
+        };
         Ok(UtxoSelection {
             utxos,
-            requires_change_output,
-            total_value: utxos_total_value,
+            requires_change_output: has_change,
+            total_value,
             fee_without_change,
             fee_with_change,
         })
