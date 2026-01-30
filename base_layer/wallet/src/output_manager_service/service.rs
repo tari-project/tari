@@ -1789,7 +1789,7 @@ where
             return Err(OutputManagerError::NoUtxosSelected {
                 criteria: selection_criteria,
             });
-        }        // Assumes that default Outputfeatures are used for change utxo
+        } // Assumes that default Outputfeatures are used for change utxo
         let output_features_estimate = OutputFeatures::default();
         let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
             output_features_estimate
@@ -1803,16 +1803,21 @@ where
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
 
-            let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
+        let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
         let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size);
-        let output_fee = fee_calc.calculate(fee_per_gram, 0, 0, num_outputs, total_output_features_and_scripts_byte_size);
+        let output_fee = fee_calc.calculate(
+            fee_per_gram,
+            0,
+            0,
+            num_outputs,
+            total_output_features_and_scripts_byte_size,
+        );
         let input_fee = fee_calc.calculate(fee_per_gram, 0, 1, 0, 0);
         let bnb = BranchAndBoundUtxoSelectionBuilder::new(uo)
             .with_target_amount(amount + kernel_fee)
             .with_fee_per_input(input_fee)
-            .with_fee_per_output(default_output_fee)
+            .with_total_output_fee(output_fee)
             .with_change_fee(default_output_fee)
-            .with_recipient_output_fee(output_fee)
             .build()
             .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?;
 

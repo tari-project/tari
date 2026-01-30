@@ -86,7 +86,6 @@ pub struct BranchAndBoundUtxoSelectorParams {
 #[derive(Clone, Debug)]
 pub struct UtxoSectionParams {
     target_amount: MicroMinotari,
-    recipient_output_fee: MicroMinotari,
     output_fee: MicroMinotari,
     change_fee: MicroMinotari,
     fee_per_input: MicroMinotari,
@@ -99,7 +98,6 @@ impl UtxoSectionParams {
         output_fee: MicroMinotari,
         change_fee: MicroMinotari,
         fee_per_input: MicroMinotari,
-        recipient_output_fee: MicroMinotari,
         input_limit: usize,
     ) -> Self {
         Self {
@@ -108,12 +106,7 @@ impl UtxoSectionParams {
             change_fee,
             fee_per_input,
             input_limit,
-            recipient_output_fee,
         }
-    }
-
-    fn total_target(&self) -> MicroMinotari {
-        self.target_amount + self.output_fee
     }
 
     fn change_cost(&self) -> MicroMinotari {
@@ -146,9 +139,9 @@ where T: UtxoValue
             available_utxos: Arc::new(sorted_utxos),
             selected_utxos: Vec::new(),
             current_value: MicroMinotari::from(0),
-            waste: MicroMinotari::from(0),
-            final_fee: params.recipient_output_fee,
-            final_target: params.target_amount + params.recipient_output_fee,
+            waste: params.output_fee,
+            final_fee: params.output_fee,
+            final_target: params.target_amount + params.output_fee,
             has_change: false,
             params,
             allow_dust_waste,
@@ -159,7 +152,7 @@ where T: UtxoValue
         available_utxos: Arc<Vec<T>>,
         must_select: Vec<T>,
         params: UtxoSectionParams,
-        allow_dust_waste: bool
+        allow_dust_waste: bool,
     ) -> Self {
         let mut new_blank = Self::new_blank(available_utxos, params, allow_dust_waste);
         for utxo in &must_select {
@@ -172,9 +165,10 @@ where T: UtxoValue
             // Update current_value, waste, and target_amount for each pre-selected UTXO
             new_blank.current_value += utxo.value();
             new_blank.waste += new_blank.params.fee_per_input;
-            new_blank.params.target_amount += new_blank.params.fee_per_input;
+            new_blank.final_target += new_blank.params.fee_per_input;
             new_blank.final_fee += new_blank.params.fee_per_input;
         }
+
         new_blank
     }
 
@@ -186,7 +180,7 @@ where T: UtxoValue
     // this method starts and iterative search
     fn start_search(&mut self, max_iterations: usize, best_result: &mut Option<SelectionState<T>>) {
         // Check if the initial state (e.g., with pre-selected UTXOs) already satisfies the target
-        if self.current_value >= self.params.total_target() {
+        if self.current_value >= self.final_target {
             self.check_current_state(best_result);
             return;
         }
@@ -196,9 +190,7 @@ where T: UtxoValue
             if iterations >= max_iterations {
                 break;
             }
-            if (self.selected_utxos.len() >= self.params.input_limit) ||
-                (self.current_value >= self.params.total_target())
-            {
+            if (self.selected_utxos.len() >= self.params.input_limit) || (self.current_value >= self.final_target) {
                 // tx is now at the limit, dont search further or we have the target
                 break;
             }
@@ -225,7 +217,7 @@ where T: UtxoValue
             .expect("utxo_index out of bounds")
             .value();
         self.waste += self.params.fee_per_input;
-        self.params.target_amount += self.params.fee_per_input;
+        self.final_target += self.params.fee_per_input;
         self.final_fee += self.params.fee_per_input;
 
         let done = self.check_current_state(best_result);
@@ -261,7 +253,7 @@ where T: UtxoValue
     }
 
     fn check_current_state(&mut self, best_result: &mut Option<SelectionState<T>>) -> bool {
-        let target = self.params.total_target();
+        let target = self.final_target;
         let current_value = self.current_value;
         if current_value >= target {
             if current_value == target {
@@ -303,14 +295,12 @@ where T: UtxoValue
                 if self.is_better_than(best, extra_waste) {
                     let mut new_state = self.clone();
                     new_state.waste += extra_waste;
-                    new_state.final_target = self.params.target_amount + self.params.output_fee;
                     *best_result = Some(new_state);
                 }
             },
             None => {
                 let mut new_state = self.clone();
                 new_state.waste += extra_waste;
-                new_state.final_target = self.params.target_amount + self.params.output_fee;
                 *best_result = Some(new_state);
             },
         }
@@ -322,21 +312,14 @@ where T: UtxoValue
     /// 3. If selected value is the same, lowest final_target (fewer fees added)
     fn is_better_than(&self, best: &SelectionState<T>, extra_waste: MicroMinotari) -> bool {
         let self_waste = self.waste + extra_waste;
-        let self_final_target = self.params.target_amount + self.params.output_fee;
 
         match self_waste.cmp(&best.waste) {
             std::cmp::Ordering::Less => true,
             std::cmp::Ordering::Greater => false,
             std::cmp::Ordering::Equal => {
                 // Waste is equal, prefer highest selected value (highest change output)
-                match self.current_value.cmp(&best.current_value) {
-                    std::cmp::Ordering::Greater => true,
-                    std::cmp::Ordering::Less => false,
-                    std::cmp::Ordering::Equal => {
-                        // Selected value is equal, prefer lowest final_target
-                        self_final_target < best.final_target
-                    },
-                }
+
+                self.current_value > best.current_value
             },
         }
     }
@@ -1155,7 +1138,6 @@ mod tests {
 
     #[test]
     fn test_is_better_than_logic_directly() {
-        // Test the is_better_than comparison logic with crafted states
         use std::sync::Arc;
 
         let utxos: Arc<Vec<MicroMinotari>> = Arc::new(vec![MicroMinotari(100)]);
@@ -1191,39 +1173,6 @@ mod tests {
         assert!(state_a.is_better_than(&state_b, 0.into()));
         // B is not better
         assert!(!state_b.is_better_than(&state_a, 0.into()));
-
-        // Test equal waste and value, different final_target
-        state_b.current_value = MicroMinotari::from(150); // same value
-                                                          // final_target is computed as params.target_amount + params.output_fee
-                                                          // State A has lower params.target_amount (simulating fewer fees added)
-        let params_low = UtxoSectionParams::new(
-            MicroMinotari::from(50), // lower target (fewer fees)
-            MicroMinotari::from(0),
-            MicroMinotari::from(0),
-            MicroMinotari::from(5),
-            10,
-        );
-        let params_high = UtxoSectionParams::new(
-            MicroMinotari::from(70), // higher target (more fees added)
-            MicroMinotari::from(0),
-            MicroMinotari::from(0),
-            MicroMinotari::from(5),
-            10,
-        );
-
-        let mut state_low_target = SelectionState::new_blank(utxos.clone(), params_low, true);
-        state_low_target.waste = MicroMinotari::from(10);
-        state_low_target.current_value = MicroMinotari::from(150);
-
-        let mut state_high_target = SelectionState::new_blank(utxos.clone(), params_high, true);
-        state_high_target.waste = MicroMinotari::from(10);
-        state_high_target.current_value = MicroMinotari::from(150);
-        state_high_target.final_target = MicroMinotari::from(70); // Set the stored final_target
-
-        // Low target is better (same waste, same value, lower final_target)
-        assert!(state_low_target.is_better_than(&state_high_target, 0.into()));
-        // High target is not better
-        assert!(!state_high_target.is_better_than(&state_low_target, 0.into()));
     }
 
     // Tests for new_with_selected_utxos and search_with_must_select
@@ -1250,9 +1199,9 @@ mod tests {
         // Verify waste is set to fee_per_input (5)
         assert_eq!(state.waste, MicroMinotari::from(5));
         // Verify target_amount was increased by fee_per_input
-        assert_eq!(state.params.target_amount, MicroMinotari::from(85)); // 80 + 5
-                                                                         // Verify final_fee includes the fee_per_input for the pre-selected UTXO
-                                                                         // final_fee = output_fee(0) + 1 input * fee_per_input(5) = 5
+        assert_eq!(state.final_target, MicroMinotari::from(85)); // 80 + 5
+                                                                 // Verify final_fee includes the fee_per_input for the pre-selected UTXO
+                                                                 // final_fee = output_fee(0) + 1 input * fee_per_input(5) = 5
         assert_eq!(state.final_fee, MicroMinotari::from(5));
     }
 
@@ -1275,7 +1224,6 @@ mod tests {
         );
 
         let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true);
-
         // Verify both must_select UTXOs are in selected_utxos
         assert_eq!(state.selected_utxos.len(), 2);
         // Verify current_value is the sum of pre-selected UTXOs (50 + 30 = 80)
@@ -1283,7 +1231,7 @@ mod tests {
         // Verify waste is 2 * fee_per_input (2 * 10 = 20)
         assert_eq!(state.waste, MicroMinotari::from(20));
         // Verify target_amount was increased by 2 * fee_per_input (60 + 20 = 80)
-        assert_eq!(state.params.target_amount, MicroMinotari::from(80));
+        assert_eq!(state.final_target, MicroMinotari::from(80));
         // Verify final_fee includes the fee_per_input for both pre-selected UTXOs
         // final_fee = output_fee(0) + 2 inputs * fee_per_input(10) = 20
         assert_eq!(state.final_fee, MicroMinotari::from(20));
@@ -1509,7 +1457,7 @@ mod tests {
             MicroMinotari(40),
             MicroMinotari(30),
         ];
-        let params = section_params(100, 0, 10, 5, 10); // fee_per_input = 5
+        let params = section_params(100, 10, 10, 5, 10); // fee_per_input = 5
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
 
         // Force selection of 50
@@ -1522,11 +1470,13 @@ mod tests {
             "Must-select UTXO (50) should be in the result"
         );
 
-        // Should prefer 50+60=110 (2 inputs) over 50+40+30=120 (3 inputs) due to lower waste
-        // 2 inputs: waste = 10, 3 inputs: waste = 15
+        // Should prefer 50+100=150 (2 inputs) over 50+40+30=120 (3 inputs) due to lower waste
+        // 2 inputs: waste = 35, 3 inputs: waste = 40
         assert_eq!(result.selected_utxos.len(), 2, "Should prefer fewer inputs");
-        // final_fee = output_fee(0) + 2 inputs * fee_per_input(5) = 10
-        assert_eq!(result.final_fee, MicroMinotari::from(10));
+        // final_fee = output_fee(10) + change output (10)+ 2 inputs * fee_per_input(5) = 10
+        assert_eq!(result.final_fee, MicroMinotari::from(30));
+        assert_eq!(result.current_value, MicroMinotari::from(150));
+        assert_eq!(result.waste, MicroMinotari::from(35));
     }
 
     // ============================================
@@ -1619,7 +1569,10 @@ mod tests {
         // final_fee = output_fee(0) + fee_per_input(5) + change_fee(10) = 15
         assert_eq!(result.final_fee, MicroMinotari::from(15));
         assert_eq!(result.current_value, MicroMinotari::from(130));
-        assert!(result.has_change, "Should have change when overfunded beyond change_cost");
+        assert!(
+            result.has_change,
+            "Should have change when overfunded beyond change_cost"
+        );
     }
 
     #[test]
@@ -1696,7 +1649,10 @@ mod tests {
         // change_cost = 5 + 10 = 15
         // 200 > 105 + 15 = 120, so change IS economical
         assert_eq!(result.current_value, MicroMinotari::from(200));
-        assert!(result.has_change, "Should have change when overfunded beyond change_cost");
+        assert!(
+            result.has_change,
+            "Should have change when overfunded beyond change_cost"
+        );
     }
 
     #[test]
@@ -1726,7 +1682,10 @@ mod tests {
         // change_cost = 5 + 10 = 15
         // 120 == 105 + 15 = 120, NOT greater than, so no change
         assert_eq!(result.current_value, MicroMinotari::from(120));
-        assert!(!result.has_change, "Exactly at boundary should have no change (need to be greater)");
+        assert!(
+            !result.has_change,
+            "Exactly at boundary should have no change (need to be greater)"
+        );
     }
 
     #[test]
