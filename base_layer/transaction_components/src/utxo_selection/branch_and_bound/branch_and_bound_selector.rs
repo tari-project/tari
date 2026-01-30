@@ -86,6 +86,7 @@ pub struct BranchAndBoundUtxoSelectorParams {
 #[derive(Clone, Debug)]
 pub struct UtxoSectionParams {
     target_amount: MicroMinotari,
+    recipient_output_fee: MicroMinotari,
     output_fee: MicroMinotari,
     change_fee: MicroMinotari,
     fee_per_input: MicroMinotari,
@@ -98,6 +99,7 @@ impl UtxoSectionParams {
         output_fee: MicroMinotari,
         change_fee: MicroMinotari,
         fee_per_input: MicroMinotari,
+        recipient_output_fee: MicroMinotari,
         input_limit: usize,
     ) -> Self {
         Self {
@@ -106,6 +108,7 @@ impl UtxoSectionParams {
             change_fee,
             fee_per_input,
             input_limit,
+            recipient_output_fee,
         }
     }
 
@@ -144,8 +147,8 @@ where T: UtxoValue
             selected_utxos: Vec::new(),
             current_value: MicroMinotari::from(0),
             waste: MicroMinotari::from(0),
-            final_fee: params.output_fee,
-            final_target: params.target_amount,
+            final_fee: params.recipient_output_fee,
+            final_target: params.target_amount + params.recipient_output_fee,
             has_change: false,
             params,
             allow_dust_waste,
@@ -156,7 +159,7 @@ where T: UtxoValue
         available_utxos: Arc<Vec<T>>,
         must_select: Vec<T>,
         params: UtxoSectionParams,
-        allow_dust_waste: bool,
+        allow_dust_waste: bool
     ) -> Self {
         let mut new_blank = Self::new_blank(available_utxos, params, allow_dust_waste);
         for utxo in &must_select {

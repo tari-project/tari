@@ -42,6 +42,7 @@ pub struct BranchAndBoundUtxoSelectionBuilder<T> {
     output_fee: Option<MicroMinotari>,
     change_fee: Option<MicroMinotari>,
     fee_per_input: Option<MicroMinotari>,
+    recipient_output_fee: Option<MicroMinotari>,
     input_limit: usize,
     allow_dust_waste: bool,
 }
@@ -57,6 +58,7 @@ where T: UtxoValue
             output_fee: None,
             change_fee: None,
             fee_per_input: None,
+            recipient_output_fee: None,
             input_limit: MAX_TRANSACTION_INPUTS,
             allow_dust_waste: true,
         }
@@ -97,14 +99,21 @@ where T: UtxoValue
         self
     }
 
+    pub fn with_recipient_output_fee(mut self, recipient_output_fee: MicroMinotari) -> Self {
+        self.recipient_output_fee = Some(recipient_output_fee);
+        self
+    }
+
     pub fn build(self) -> Result<BranchAndBoundUtxoSelector<T>, String> {
         let target_amount = self.target_amount.ok_or("target_amount is required")?;
         let output_fee = self.output_fee.ok_or("output_fee is required")?;
         let change_fee = self.change_fee.ok_or("change_fee is required")?;
         let fee_per_input = self.fee_per_input.ok_or("fee_per_input is required")?;
+        let recipient_output_fee = self
+            .recipient_output_fee.ok_or("recipient_output_fee is required")?;
 
         let selection_params =
-            UtxoSectionParams::new(target_amount, output_fee, change_fee, fee_per_input, self.input_limit);
+            UtxoSectionParams::new(target_amount, output_fee, change_fee, fee_per_input, recipient_output_fee, self.input_limit);
 
         let params = BranchAndBoundUtxoSelectorParams {
             max_search_iterations: self.max_search_iterations,
