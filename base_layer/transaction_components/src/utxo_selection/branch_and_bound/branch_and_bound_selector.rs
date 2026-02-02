@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Display;
 use std::sync::Arc;
 
 use crate::{utxo_selection::UtxoValue, MicroMinotari};
@@ -312,7 +313,6 @@ where T: UtxoValue
     /// 3. If selected value is the same, lowest final_target (fewer fees added)
     fn is_better_than(&self, best: &SelectionState<T>, extra_waste: MicroMinotari) -> bool {
         let self_waste = self.waste + extra_waste;
-
         match self_waste.cmp(&best.waste) {
             std::cmp::Ordering::Less => true,
             std::cmp::Ordering::Greater => false,
@@ -338,6 +338,24 @@ where T: UtxoValue
             waste: self.waste,
             has_change: self.has_change,
         }
+    }
+}
+
+impl<T> Display for SelectionState<T> where T: UtxoValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+
+        writeln!(f, "Contains: {}/{} utxos",self.selected_utxos.len(), self.available_utxos.len())?;
+        writeln!(f, "final_target: {}/{}, final_fee: {}, waste: {}, has_change: {}", self.current_value, self.final_target,
+                 self.final_fee,
+                 self.waste,
+                 self.has_change)?;
+        let utxos = self
+            .selected_utxos
+            .iter()
+            .map(|&i| self.available_utxos.get(i).expect("utxo_index out of bounds").value().as_u64())
+            .collect::<Vec<u64>>();
+        writeln!(f, "selected_utxos: [{:?}]", utxos)?;
+        Ok(())
     }
 }
 
@@ -809,23 +827,16 @@ mod tests {
         // total_target = 100 + 20 = 120, with 1 input: 130, change_cost = 10 + 15 = 25
         let selector = BranchAndBoundUtxoSelector::new(utxos, params, default_params());
         let result = selector.search().unwrap();
-        assert!(result.current_value >= 120.into());
-        // 200 is selected: total_target = 100 + 20 + 10 = 130
-        // change_cost = 10 + 15 = 25
-        // 200 > 130 + 25 = 155, so change IS economical
-        // final_fee = output_fee(20) + 1 input * fee_per_input(10) + change_fee(15) = 45
-        // Wait - actual result shows 50, let me trace again...
-        // After adding input: target_amount = 100 + 10 = 110
-        // total_target() = 110 + 20 = 130
-        // 200 > 130 + 25 = 155 ✓ change is viable
-        // final_fee starts at 20, then += 10 (input) = 30, then += 15 (change) = 45?
-        // But test shows 50... let me check if there's something with how final_fee is modified
-        // Actually looking at the code, when adding input, params.target_amount is modified
-        // So for 1 input: final_fee = 20 + 10 = 30, then change_fee = 15, total = 45
-        // But getting 50 means there's 5 extra somewhere...
-        // Oh wait, the comparison logic adds change_cost as extra_waste, but change_cost includes fee_per_input
-        // Let me verify the actual value
+        assert_eq!(result.current_value, 150.into());
+        // there are 2 good solutions here, picking [200] or [100,50]
+        // picking [200]: final_fee = output_fee(20) + 1 input * fee_per_input(10) + change_fee(15) = 45
+        // picking [100,50]: final_fee = output_fee(20) + 2 inputs * fee_per_input(10) + extra fee(10) = 50
+        // *Note change is not economical in this case, so no change_fee is added and the fee is just bumped by the excess amount
+        // waste for the solutions are
+        // picking [200]: waste = final_fee (45) + future spend cost of change (10) = 55
+        // picking [100,50]: waste = final_fee (50) + future spend cost of change (0) = 50 as we don't have change
         assert_eq!(result.final_fee, MicroMinotari::from(50));
+        assert_eq!(result.waste, MicroMinotari::from(50));
     }
 
     #[test]
