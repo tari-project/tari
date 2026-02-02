@@ -1875,9 +1875,9 @@ where
         let final_fee = final_fee + kernel_fee;
 
         let (fee_with_change, fee_without_change) = if has_change {
-            (final_fee, final_fee - output_fee)
+            (final_fee, final_fee - default_output_fee)
         } else {
-            (final_fee + output_fee, final_fee)
+            (final_fee + default_output_fee, final_fee)
         };
         Ok(UtxoSelection {
             utxos,

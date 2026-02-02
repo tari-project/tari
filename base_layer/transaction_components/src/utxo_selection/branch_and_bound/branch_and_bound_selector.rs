@@ -310,7 +310,6 @@ where T: UtxoValue
     /// Determines if the current state is better than the best state based on:
     /// 1. Least waste
     /// 2. If waste is equal, highest selected value (current_value) - gives highest change output
-    /// 3. If selected value is the same, lowest final_target (fewer fees added)
     fn is_better_than(&self, best: &SelectionState<T>, extra_waste: MicroMinotari) -> bool {
         let self_waste = self.waste + extra_waste;
         match self_waste.cmp(&best.waste) {
