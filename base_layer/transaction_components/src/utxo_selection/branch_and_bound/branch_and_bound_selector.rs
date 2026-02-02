@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::Display;
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
 use crate::{utxo_selection::UtxoValue, MicroMinotari};
 
@@ -340,18 +339,31 @@ where T: UtxoValue
     }
 }
 
-impl<T> Display for SelectionState<T> where T: UtxoValue {
+impl<T> Display for SelectionState<T>
+where T: UtxoValue
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-
-        writeln!(f, "Contains: {}/{} utxos",self.selected_utxos.len(), self.available_utxos.len())?;
-        writeln!(f, "final_target: {}/{}, final_fee: {}, waste: {}, has_change: {}", self.current_value, self.final_target,
-                 self.final_fee,
-                 self.waste,
-                 self.has_change)?;
+        writeln!(
+            f,
+            "Contains: {}/{} utxos",
+            self.selected_utxos.len(),
+            self.available_utxos.len()
+        )?;
+        writeln!(
+            f,
+            "final_target: {}/{}, final_fee: {}, waste: {}, has_change: {}",
+            self.current_value, self.final_target, self.final_fee, self.waste, self.has_change
+        )?;
         let utxos = self
             .selected_utxos
             .iter()
-            .map(|&i| self.available_utxos.get(i).expect("utxo_index out of bounds").value().as_u64())
+            .map(|&i| {
+                self.available_utxos
+                    .get(i)
+                    .expect("utxo_index out of bounds")
+                    .value()
+                    .as_u64()
+            })
             .collect::<Vec<u64>>();
         writeln!(f, "selected_utxos: [{:?}]", utxos)?;
         Ok(())
@@ -830,8 +842,8 @@ mod tests {
         // there are 2 good solutions here, picking [200] or [100,50]
         // picking [200]: final_fee = output_fee(20) + 1 input * fee_per_input(10) + change_fee(15) = 45
         // picking [100,50]: final_fee = output_fee(20) + 2 inputs * fee_per_input(10) + extra fee(10) = 50
-        // *Note change is not economical in this case, so no change_fee is added and the fee is just bumped by the excess amount
-        // waste for the solutions are
+        // *Note change is not economical in this case, so no change_fee is added and the fee is just bumped by the
+        // excess amount waste for the solutions are
         // picking [200]: waste = final_fee (45) + future spend cost of change (10) = 55
         // picking [100,50]: waste = final_fee (50) + future spend cost of change (0) = 50 as we don't have change
         assert_eq!(result.final_fee, MicroMinotari::from(50));
