@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.0](https://github.com/tari-project/tari/compare/v5.2.1-pre.2...v5.3.0-pre.0) (2026-02-03)
+
+
+### Features
+
+* add branch and bound as utxo selection option ([#7651](https://github.com/tari-project/tari/issues/7651)) ([4e4cec3](https://github.com/tari-project/tari/commit/4e4cec34f5c035d116c088a0ed400c33763d94a8))
+* adds branch and bound to be used by console wallet ([#7671](https://github.com/tari-project/tari/issues/7671)) ([5af622e](https://github.com/tari-project/tari/commit/5af622ef382d1deffd9b9c6dfdc99ecd2e1526f4))
+* offline signer ([#7663](https://github.com/tari-project/tari/issues/7663)) ([d8c76a0](https://github.com/tari-project/tari/commit/d8c76a017b82b7b7ce3efb6e72d5f2b0bef77fe9))
+* wait for shutdown ([#7666](https://github.com/tari-project/tari/issues/7666)) ([e8e9eaf](https://github.com/tari-project/tari/commit/e8e9eaf828cd445d9cd863d57d9efa8ae79af11a))
+
+
+### Bug Fixes
+
+* burn claim flow ([#7658](https://github.com/tari-project/tari/issues/7658)) ([f42e14d](https://github.com/tari-project/tari/commit/f42e14ddac360db0bda56eff43e6c7e00167fb10))
+* fee per stat call for http calls ([#7667](https://github.com/tari-project/tari/issues/7667)) ([68ae120](https://github.com/tari-project/tari/commit/68ae1205801cfc784924fcab4ae1f2f93463a037))
+* transaction displayed fee ([#7659](https://github.com/tari-project/tari/issues/7659)) ([6453d3e](https://github.com/tari-project/tari/commit/6453d3eaf6895373605601b65844268dae4d0198))
+* user pay for fee and replace by fee ([#7662](https://github.com/tari-project/tari/issues/7662)) ([b95e35f](https://github.com/tari-project/tari/commit/b95e35f88096cefa1662ad95bf24366f7856906a))
+* **wallet:** fix fetching kernel merkle proof ([#7665](https://github.com/tari-project/tari/issues/7665)) ([20c4672](https://github.com/tari-project/tari/commit/20c4672f1efaf44c5394171fdc8b67af1964e59f))
+
 ### [5.2.1-pre.2](https://github.com/tari-project/tari/compare/v5.2.1-pre.1...v5.2.1-pre.2) (2026-01-15)
 
 
