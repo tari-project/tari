@@ -63,18 +63,18 @@ where T: UtxoValue
     /// Search for the best UTXO selection while ensuring the specified UTXOs are always included.
     /// The `must_select` UTXOs will be pre-selected before the search begins, guaranteeing they
     /// are part of the final selection even if they wouldn't be the optimal choice.
-    pub fn search_with_must_select(&self, must_select: Vec<T>) -> Option<SelectionResult<T>> {
+    pub fn search_with_must_select(&self, must_select: Vec<T>) -> Result<Option<SelectionResult<T>>, String> {
         let mut initial_state = SelectionState::new_with_selected_utxos(
             self.available_utxos.clone(),
             must_select,
             self.search_params.clone(),
             self.params.allow_dust_waste,
-        );
+        )?;
         let mut best_result: Option<SelectionState<T>> = None;
 
         initial_state.start_search(self.params.max_search_iterations, &mut best_result);
 
-        best_result.map(|state| state.to_selection_result())
+        Ok(best_result.map(|state| state.to_selection_result()))
     }
 }
 
@@ -153,14 +153,14 @@ where T: UtxoValue
         must_select: Vec<T>,
         params: UtxoSectionParams,
         allow_dust_waste: bool,
-    ) -> Self {
+    ) -> Result<Self, String> {
         let mut new_blank = Self::new_blank(available_utxos, params, allow_dust_waste);
         for utxo in &must_select {
             let index = new_blank
                 .available_utxos
                 .iter()
                 .position(|u| u == utxo)
-                .expect("must_select UTXO not found in available_utxos");
+                .ok_or_else(|| format!("UTXO with value {} not found in available UTXOs", utxo.value()))?;
             new_blank.add_utxo_sorted(index);
             // Update current_value, waste, and target_amount for each pre-selected UTXO
             new_blank.current_value += utxo.value();
@@ -169,7 +169,7 @@ where T: UtxoValue
             new_blank.final_fee += new_blank.params.fee_per_input;
         }
 
-        new_blank
+        Ok(new_blank)
     }
 
     fn add_utxo_sorted(&mut self, index: usize) {
@@ -234,7 +234,6 @@ where T: UtxoValue
         if let Some(best) = best_result {
             // we are already worse off than the best here, stop right here
             if self.waste + self.params.fee_per_input >= best.waste {
-
                 // no need to continue searching this branch
                 return iterations;
             }
@@ -1213,7 +1212,7 @@ mod tests {
             10,
         );
 
-        let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true);
+        let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true).unwrap();
 
         // Verify the must_select UTXO is in selected_utxos
         assert_eq!(state.selected_utxos.len(), 1);
@@ -1246,7 +1245,7 @@ mod tests {
             10,
         );
 
-        let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true);
+        let state = SelectionState::new_with_selected_utxos(utxos, must_select, params, true).unwrap();
         // Verify both must_select UTXOs are in selected_utxos
         assert_eq!(state.selected_utxos.len(), 2);
         // Verify current_value is the sum of pre-selected UTXOs (50 + 30 = 80)
@@ -1274,7 +1273,7 @@ mod tests {
 
         // Force selection of the 50 UTXO, which is not optimal
         let must_select = vec![MicroMinotari(50)];
-        let result = selector.search_with_must_select(must_select).unwrap();
+        let result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         // The result should include the 50 UTXO
         let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
@@ -1306,7 +1305,7 @@ mod tests {
 
         // Force selection of the small 10 UTXO
         let must_select = vec![MicroMinotari(10)];
-        let forced_result = selector.search_with_must_select(must_select).unwrap();
+        let forced_result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         // The 10 UTXO must be in the result
         let selected_values: Vec<u64> = forced_result
@@ -1334,7 +1333,7 @@ mod tests {
 
         // Force selection of 55
         let must_select = vec![MicroMinotari(55)];
-        let result = selector.search_with_must_select(must_select).unwrap();
+        let result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         // The 55 UTXO must be in the result
         let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
@@ -1360,7 +1359,7 @@ mod tests {
 
         // Force selection of both 30 and 40
         let must_select = vec![MicroMinotari(30), MicroMinotari(40)];
-        let result = selector.search_with_must_select(must_select).unwrap();
+        let result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         // Both forced UTXOs must be in the result
         let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
@@ -1385,7 +1384,7 @@ mod tests {
 
         // Force selection of 150, which alone covers target + change_cost
         let must_select = vec![MicroMinotari(150)];
-        let result = selector.search_with_must_select(must_select).unwrap();
+        let result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         // Only the forced UTXO should be selected (it already covers everything)
         assert_eq!(result.selected_utxos.len(), 1);
@@ -1411,7 +1410,7 @@ mod tests {
 
         // Force selection of 20 - will need additional UTXOs
         let must_select = vec![MicroMinotari(20)];
-        let forced_result = selector.search_with_must_select(must_select).unwrap();
+        let forced_result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         // Result must include 20 and additional UTXOs to cover target
         let selected_values: Vec<u64> = forced_result
@@ -1440,7 +1439,7 @@ mod tests {
 
         // Force selection of 10
         let must_select = vec![MicroMinotari(10)];
-        let result = selector.search_with_must_select(must_select);
+        let result = selector.search_with_must_select(must_select).unwrap();
 
         // Should return None since total (60) < target (100)
         assert!(result.is_none());
@@ -1460,7 +1459,7 @@ mod tests {
 
         // Force selection of one UTXO, leaving room for only one more
         let must_select = vec![MicroMinotari(40)];
-        let result = selector.search_with_must_select(must_select);
+        let result = selector.search_with_must_select(must_select).unwrap();
 
         // With 2 inputs max and 40 each = 80, can't reach target of 100
         // So this should return None or find a solution if exact 80 works
@@ -1485,7 +1484,7 @@ mod tests {
 
         // Force selection of 50
         let must_select = vec![MicroMinotari(50)];
-        let result = selector.search_with_must_select(must_select).unwrap();
+        let result = selector.search_with_must_select(must_select).unwrap().unwrap();
 
         let selected_values: Vec<u64> = result.selected_utxos.iter().map(|u| u.value().as_u64()).collect();
         assert!(

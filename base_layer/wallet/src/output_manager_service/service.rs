@@ -1821,7 +1821,9 @@ where
             .build()
             .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?;
 
-        let selection_result = bnb.search_with_must_select(must_select);
+        let selection_result = bnb
+            .search_with_must_select(must_select)
+            .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?;
 
         if selection_result.is_none() {
             return Err(OutputManagerError::NotEnoughFunds);
