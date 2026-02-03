@@ -229,13 +229,14 @@ where T: UtxoValue
 
         if self.selected_utxos.len() >= self.params.input_limit {
             // tx is now at the limit, dont search further
-            return current_iterations;
+            return iterations;
         }
         if let Some(best) = best_result {
             // we are already worse off than the best here, stop right here
             if self.waste + self.params.fee_per_input >= best.waste {
+
                 // no need to continue searching this branch
-                return current_iterations;
+                return iterations;
             }
         }
 
