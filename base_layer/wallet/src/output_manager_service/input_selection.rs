@@ -35,7 +35,7 @@ pub enum UtxoSelectionMode {
     ListingOnly,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct UtxoSelectionCriteria {
     pub mode: UtxoSelectionMode,
     pub filter: UtxoSelectionFilter,
@@ -45,6 +45,21 @@ pub struct UtxoSelectionCriteria {
     pub excluding_onesided: bool,
     pub excluding_multisig: bool,
     pub range_limit: Option<RangeLimit>,
+}
+
+impl Default for UtxoSelectionCriteria {
+    fn default() -> Self {
+        Self {
+            mode: UtxoSelectionMode::Safe,
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::Default,
+            excluding: Vec::new(),
+            min_dust: 0,
+            excluding_onesided: false,
+            excluding_multisig: true,
+            range_limit: None,
+        }
+    }
 }
 
 /// Select outputs within the specified amount ranges

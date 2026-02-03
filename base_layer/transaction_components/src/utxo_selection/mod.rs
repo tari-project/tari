@@ -28,7 +28,7 @@ use crate::{
 };
 
 pub mod branch_and_bound;
-pub trait UtxoValue: Clone + Debug {
+pub trait UtxoValue: Clone + Debug + PartialEq {
     fn value(&self) -> MicroMinotari;
 }
 

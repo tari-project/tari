@@ -32,6 +32,8 @@ use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::TariKeyId,
     transaction_components::{MemoField, WalletOutput},
+    utxo_selection::UtxoValue,
+    MicroMinotari,
 };
 
 use crate::output_manager_service::storage::{OutputSource, OutputStatus};
@@ -81,6 +83,12 @@ impl DbWalletOutput {
             spent_in_tx_id,
             payment_id,
         }
+    }
+}
+
+impl UtxoValue for DbWalletOutput {
+    fn value(&self) -> MicroMinotari {
+        self.wallet_output.value()
     }
 }
 

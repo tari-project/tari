@@ -82,7 +82,7 @@ where T: UtxoValue
         self
     }
 
-    pub fn with_output_fee(mut self, output_fee: MicroMinotari) -> Self {
+    pub fn with_total_output_fee(mut self, output_fee: MicroMinotari) -> Self {
         self.output_fee = Some(output_fee);
         self
     }
