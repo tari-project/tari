@@ -78,6 +78,16 @@ docker run -it --rm \
   ubuntu:22.04 bash
 ```
 
+**Docker command options explained:**
+- `-it` - Interactive terminal
+- `--rm` - Remove container when it exits
+- `-v` - Mount volumes (directories from host to container)
+- `-e` - Set environment variables
+- `-w` - Set working directory in container
+- `-p` - Map ports (host:container)
+- `-u` - Run as user
+- `--platform` - Specify target architecture
+
 Inside the container, you can run the cross-compilation setup script for your target platform:
 
 ```bash
