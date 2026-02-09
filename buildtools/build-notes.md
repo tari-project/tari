@@ -25,6 +25,12 @@ Docker provides a clean, isolated build environment and automatically invokes th
 
 ### Using Docker with `cross`
 
+First, install `cross`:
+
+```bash
+cargo install cross
+```
+
 The `cross` tool automatically runs Docker containers and invokes the appropriate `cross_compile_ubuntu_18-pre-build.sh` script for your target platform:
 
 ```bash
