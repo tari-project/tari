@@ -8,7 +8,7 @@ Build options:
 
 ## Building for Linux x86_64 & ARM64
 
-The Tari project supports building for multiple architectures. You can build natively on your platform or cross-compile for different CPU architectures using our automated scripts.
+The Tari project supports building for multiple architectures. The recommended approach is to use Docker for cross-compilation, as it isolates dependency installation and avoids polluting your local system.
 
 ### Clone the Repository
 
@@ -19,37 +19,41 @@ git clone git@github.com:tari-project/tari.git
 cd tari
 ```
 
-## Automated Cross-Compilation Setup
+## Recommended: Building with Docker
 
-The simplest approach is to use the automated cross-compilation scripts, which handle all environment variables and dependency installation.
+Docker provides a clean, isolated build environment and automatically invokes the cross-compilation scripts for the target platform. This is the safest approach as it avoids installing numerous system dependencies on your host machine.
 
-### For Ubuntu 18.04 through 22.04
+### Using Docker with `cross`
 
-Run the unified cross-compilation setup script:
+The `cross` tool automatically runs Docker containers and invokes the appropriate `cross_compile_ubuntu_18-pre-build.sh` script for your target platform:
 
 ```bash
-# Build x86_64 on arm64
-export CROSS_DEB_ARCH=amd64
-bash ./scripts/cross_compile_ubuntu_18-pre-build.sh x86_64-unknown-linux-gnu
+# Single binary
+cross build --locked \
+  --release --features safe \
+  --target aarch64-unknown-linux-gnu
 
-# Build arm64 on x86_64
-export CROSS_DEB_ARCH=arm64
-bash ./scripts/cross_compile_ubuntu_18-pre-build.sh aarch64-unknown-linux-gnu
+# Multiple binaries
+cross build --locked \
+  --release --features safe \
+  --target aarch64-unknown-linux-gnu \
+  --bin minotari_node \
+  --bin minotari_console_wallet \
+  --bin minotari_merge_mining_proxy \
+  --bin minotari_miner
 
-# Build riscv64 on x86_64
-export CROSS_DEB_ARCH=riscv64
-bash ./scripts/cross_compile_ubuntu_18-pre-build.sh riscv64gc-unknown-linux-gnu
+# Build entire workspace
+cross build --locked \
+  --release --features safe \
+  --workspace --exclude tari_integration_tests \
+  --target aarch64-unknown-linux-gnu
 ```
 
-The script automatically:
-- Installs all required development dependencies
-- Configures Ubuntu package repositories for the target architecture
-- Sets up Rust toolchains and targets
-- Configures all necessary environment variables for cross-compilation
+When cross-compiling the entire workspace, use `--workspace --exclude tari_integration_tests` to build all crates except the integration tests, which are designed to run on the native platform.
 
-### Using Docker
+### Manual Docker Usage
 
-Docker provides a consistent build environment across different systems:
+For more control, you can run Docker containers directly and execute builds inside them:
 
 ```bash
 # Simple Ubuntu container
@@ -68,9 +72,25 @@ docker run -it --rm \
   ubuntu:22.04 bash
 ```
 
+Inside the container, you can run the cross-compilation setup script for your target platform:
+
+```bash
+# Inside Docker container, set up for target platform
+export CROSS_DEB_ARCH=amd64
+bash ./scripts/cross_compile_ubuntu_18-pre-build.sh x86_64-unknown-linux-gnu
+
+# Then build
+cargo build --locked \
+  --release --features safe \
+  --target x86_64-unknown-linux-gnu \
+  --workspace --exclude tari_integration_tests
+```
+
+**Note:** The `cross_compile_ubuntu_18-pre-build.sh` script installs system dependencies and should only be run once per target platform inside a container, not on your host machine.
+
 ## Manual Installation (Advanced)
 
-If you prefer manual setup, follow these steps:
+If you want to build on your host machine directly without Docker, you'll need to manually install all dependencies. This approach is not recommended for cross-compilation as it requires significant system-level changes.
 
 ### 1. Install System Dependencies
 
@@ -114,9 +134,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 source "$HOME/.cargo/env"
 ```
 
-### 3. Configure for Cross-Compilation
-
-For ARM64 targets on x86_64:
+### 3. Configure for Cross-Compilation (ARM64 on x86_64)
 
 ```bash
 rustup target add aarch64-unknown-linux-gnu
@@ -138,7 +156,7 @@ sudo apt-get install --assume-yes \
   libdbus-1-dev:arm64
 ```
 
-For x86_64 targets on ARM64:
+### 4. Configure for Cross-Compilation (x86_64 on ARM64)
 
 ```bash
 rustup target add x86_64-unknown-linux-gnu
@@ -159,7 +177,7 @@ sudo apt-get install --assume-yes \
   libdbus-1-dev:amd64
 ```
 
-### 4. Verify Rust Setup
+### 5. Verify Rust Setup
 
 ```bash
 rustup target list --installed
@@ -167,36 +185,16 @@ rustup toolchain list
 rustup show
 ```
 
-## Building
-
-### Debug Build
-
-```bash
-cargo build \
-  --target aarch64-unknown-linux-gnu \
-  --bin minotari_miner
-```
-
-### Release Build
-
-```bash
-cargo build --locked \
-  --release --features safe \
-  --target aarch64-unknown-linux-gnu
-```
-
-### Using Cross
-
-The `cross` tool simplifies cross-compilation by automatically managing environment variables:
+### 6. Build
 
 ```bash
 # Single binary
-cross build --locked \
+cargo build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu
 
 # Multiple binaries
-cross build --locked \
+cargo build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu \
   --bin minotari_node \
@@ -204,20 +202,31 @@ cross build --locked \
   --bin minotari_merge_mining_proxy \
   --bin minotari_miner
 
-# Build entire workspace
-cross build --locked \
+# Entire workspace
+cargo build --locked \
   --release --features safe \
   --workspace --exclude tari_integration_tests \
   --target aarch64-unknown-linux-gnu
 ```
 
-When cross-compiling the entire workspace, use `--workspace --exclude tari_integration_tests` to build all crates except the integration tests, which are designed to run on the native platform.
+**Note:** Cross-compiling on your host machine requires significant system changes and is not recommended. Using Docker is the preferred approach.
 
 ## Troubleshooting
 
-### Missing Environment Variables
+### Build Failures with Missing Dependencies
 
-If you see linker errors during compilation, ensure all cross-compilation environment variables are set correctly. The automated `cross_compile_ubuntu_18-pre-build.sh` script handles this automatically.
+If you encounter linker errors or missing library issues, ensure you're using Docker or have properly set up all cross-compilation dependencies. The Docker approach (using `cross`) automatically handles this for each target platform.
+
+### Understanding the Cross-Compilation Scripts
+
+The `cross_compile_ubuntu_18-pre-build.sh` script is configured in the `Cross.toml` file as a pre-build hook. When using `cross build`, the script is automatically invoked inside a Docker container for your target platform and:
+
+- Installs all required development dependencies for the target architecture
+- Configures Ubuntu package repositories for the target platform
+- Sets up Rust toolchains and targets
+- Configures all necessary environment variables
+
+You should **never run this script directly** on your host machine, as it will modify your system environment and install dependencies you may not want. It's designed to run once per target platform inside an isolated Docker container.
 
 ### Ubuntu 23.04+
 
