@@ -1,5 +1,7 @@
 # Tari Build Notes
 
+**Note:** These build instructions are for targeting **Linux** as the target platform. The scripts and examples assume Linux binaries as the output.
+
 Build options:
 - Native compilation on the target platform
 - Docker containers with cross-compilation support
@@ -34,25 +36,26 @@ cargo install cross
 The `cross` tool automatically runs Docker containers and invokes the appropriate `cross_compile_ubuntu_18-pre-build.sh` script for your target platform:
 
 ```bash
-# Single binary
-cross build --locked \
-  --release --features safe \
-  --target aarch64-unknown-linux-gnu
-
-# Multiple binaries
+# Single binary for ARM64
 cross build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu \
+  --bin minotari_miner
+
+# Multiple binaries for RISC-V
+cross build --locked \
+  --release --features safe \
+  --target riscv64gc-unknown-linux-gnu \
   --bin minotari_node \
   --bin minotari_console_wallet \
   --bin minotari_merge_mining_proxy \
   --bin minotari_miner
 
-# Build entire workspace
+# Build entire workspace for x86_64
 cross build --locked \
   --release --features safe \
   --workspace --exclude tari_integration_tests \
-  --target aarch64-unknown-linux-gnu
+  --target x86_64-unknown-linux-gnu
 ```
 
 When cross-compiling the entire workspace, use `--workspace --exclude tari_integration_tests` to build all crates except the integration tests, which are designed to run on the native platform.
