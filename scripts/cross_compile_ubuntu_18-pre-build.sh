@@ -110,8 +110,12 @@ apt-get install --no-install-recommends --assume-yes \
   zip
 
 echo "Installing rust ..."
-mkdir -p "$HOME/.cargo/bin/"
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+if [ ! -f "$HOME/.cargo/bin/cargo" ]; then
+  mkdir -p "$HOME/.cargo/bin/"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+else
+  echo "Rust is already installed at $HOME/.cargo/bin/cargo"
+fi
 export PATH="$HOME/.cargo/bin:$PATH"
 . "$HOME/.cargo/env"
 
@@ -130,8 +134,9 @@ if [ "${CROSS_DEB_ARCH}" != "${nativeArch}" ]; then
   fi
 
   # Ports Repo for arm64 and riscv64
-  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]] && [ "$use_ports_repo" = true ]; then
-    sed -i.save -e "s/^deb\ http/deb [arch="${nativeArch}"] http/g" /etc/apt/sources.list
+  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]] && [[ "${use_ports_repo}" == true ]]; then
+    echo "Force shipped sources to native platform - ${nativeArch}"
+    sed -i.save -e "s/^deb http/deb [arch=\"${nativeArch}\"] http/g" /etc/apt/sources.list
 
     cat << EoF > /etc/apt/sources.list.d/${ubuntu_tag}-${crossArch}.list
 deb [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
@@ -152,8 +157,9 @@ EoF
   fi
 
   # Archive Repo for x86_64
-  if [[ "${crossArch}" == "amd64" ]] && [ "$use_ports_repo" = false ]; then
-    sed -i.save -e "s/^deb\ http/deb [arch="${nativeArch}"] http/g" /etc/apt/sources.list
+  if [[ "${crossArch}" == "amd64" ]] && [[ "${use_ports_repo}" == true ]]; then
+    echo "Force shipped sources to native platform - ${nativeArch}"
+    sed -i.save -e "s/^deb http/deb [arch=\"${nativeArch}\"] http/g" /etc/apt/sources.list
 
     cat << EoF > /etc/apt/sources.list.d/${ubuntu_tag}-${crossArch}.list
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${ubuntu_tag} main restricted
