@@ -142,7 +142,7 @@ pub async fn run_base_node_with_cli(
             readiness_grpc_shutdown.to_signal(),
         )));
     } else {
-        info!(target: LOG_TARGET, "base_node.grpc_readiness_enabled is set to false. Readiness gRPC server is disabled.");
+        info!(target: LOG_TARGET, "Readiness gRPC server will not be started.");
     }
     readiness_handler.send_readiness_status(ReadinessState::StartingUp);
 
