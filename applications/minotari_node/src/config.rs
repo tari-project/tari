@@ -104,6 +104,8 @@ pub struct BaseNodeConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Enable the readiness gRPC server
+    pub grpc_readiness_enabled: bool,
     /// Enable mining on the base node, overriding other settings regarding mining
     pub mining_enabled: bool,
     /// Enable second layer specific grpc methods.
@@ -208,6 +210,7 @@ impl Default for BaseNodeConfig {
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_readiness_enabled: true,
             mining_enabled: false,
             second_layer_grpc_enabled: false,
             identity_file: PathBuf::from("config/base_node_id.json"),
