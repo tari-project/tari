@@ -76,9 +76,11 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::{
+    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
+    transports::MemoryTransport,
     PeerConnection,
 };
 use tari_core::base_node::{
@@ -90,7 +92,7 @@ use tari_p2p::Network;
 use tari_script::{push_pubkey_script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{random};
+use tari_test_utils::random;
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
@@ -127,8 +129,7 @@ use tokio::{
     time::sleep,
 };
 use url::Url;
-use tari_comms::multiaddr::Multiaddr;
-use tari_comms::transports::MemoryTransport;
+
 use crate::support::{
     base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
