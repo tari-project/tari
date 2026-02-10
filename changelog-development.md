@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.1](https://github.com/tari-project/tari/compare/v5.3.0-pre.0...v5.3.0-pre.1) (2026-02-10)
+
+
+### Features
+
+* make readiness grpc config option ([#7678](https://github.com/tari-project/tari/issues/7678)) ([6f8f361](https://github.com/tari-project/tari/commit/6f8f3617e8e8f36526356aed354c215c72ec9f64))
+
 ## [5.3.0-pre.0](https://github.com/tari-project/tari/compare/v5.2.1-pre.2...v5.3.0-pre.0) (2026-02-03)
 
 
