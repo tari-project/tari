@@ -90,7 +90,7 @@ use tari_p2p::Network;
 use tari_script::{push_pubkey_script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{comms_and_services::get_next_memory_address, random};
+use tari_test_utils::{random};
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
@@ -127,7 +127,8 @@ use tokio::{
     time::sleep,
 };
 use url::Url;
-
+use tari_comms::multiaddr::Multiaddr;
+use tari_comms::transports::MemoryTransport;
 use crate::support::{
     base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
@@ -135,6 +136,11 @@ use crate::support::{
 };
 
 pub type MemoryDBKeyManager = LegacyTransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
+
+pub fn get_next_memory_address() -> Multiaddr {
+    let port = MemoryTransport::acquire_next_memsocket_port();
+    format!("/memory/{port}").parse().unwrap()
+}
 
 async fn setup_transaction_service(
     node_identity: Arc<NodeIdentity>,

@@ -1,5 +1,6 @@
 [package]
 name = "minotari_node_wallet_client"
+description = "A client for the Minotari Node gRPC service, used by the Minotari Console Wallet application"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

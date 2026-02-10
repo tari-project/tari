@@ -4565,7 +4565,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_grpc_client"
-version = "0.1.0"
+version = "5.2.1"
 dependencies = [
  "minotari_app_grpc",
  "tari_common",
@@ -7869,7 +7869,6 @@ dependencies = [
  "futures 0.3.31",
  "futures-test",
  "rand 0.8.5",
- "tari_comms",
  "tari_shutdown",
  "tempfile",
  "tokio",
