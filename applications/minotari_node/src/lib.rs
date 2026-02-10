@@ -133,7 +133,7 @@ pub async fn run_base_node_with_cli(
     let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
     let mut readiness_grpc_shutdown = Shutdown::new();
     let mut readiness_task: Option<JoinHandle<Result<(), anyhow::Error>>> = None;
-    if config.base_node.grpc_enabled {
+    if config.base_node.grpc_readiness_enabled {
         readiness_task = Some(task::spawn(run_grpc(
             readiness_grpc_server,
             grpc_address.clone(),
@@ -142,7 +142,7 @@ pub async fn run_base_node_with_cli(
             readiness_grpc_shutdown.to_signal(),
         )));
     } else {
-        info!(target: LOG_TARGET, "base_node.grpc_enabled is set to false. gRPC server is disabled.");
+        info!(target: LOG_TARGET, "base_node.grpc_readiness_enabled is set to false. Readiness gRPC server is disabled.");
     }
     readiness_handler.send_readiness_status(ReadinessState::StartingUp);
 

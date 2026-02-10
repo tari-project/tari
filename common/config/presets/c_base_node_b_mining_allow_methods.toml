@@ -3,6 +3,7 @@
 #second_layer_grpc_enabled = false
 # Set to false to disable the base node GRPC server (default = true)
 grpc_enabled = true
+grpc_readiness_enabled = true
 
 # The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18142")
 #grpc_address = "/ip4/127.0.0.1/tcp/18142"
