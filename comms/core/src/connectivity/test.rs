@@ -39,7 +39,7 @@ use super::{
 use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerEvent},
     connectivity::ConnectivityEventRx,
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{Peer, PeerFeatures, PeerFlags},
     test_utils::{
         build_peer_manager,
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
@@ -461,4 +461,72 @@ async fn pool_management() {
     unpack_enum!(ConnectivityEvent::PeerDisconnected(..) = events.remove(0));
     let conns = connectivity.get_active_connections().await.unwrap();
     assert!(conns.is_empty());
+}
+
+#[tokio::test]
+async fn seed_peer_release() {
+    let config = ConnectivityConfig {
+        min_connectivity: 1,
+        connection_pool_refresh_interval: Duration::from_millis(100),
+        max_seed_peer_age: Duration::from_secs(3),
+        ..Default::default()
+    };
+
+    let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
+        setup_connectivity_manager(config);
+
+    let peers = add_test_peers(&peer_manager, 2).await;
+
+    // Peer 0 = SEED
+    let mut seed_peer = peers[0].clone();
+    seed_peer.add_flags(PeerFlags::SEED);
+    peer_manager.add_or_update_peer(seed_peer.clone()).await.unwrap();
+
+    // Peer 1 = NORMAL
+    let normal_peer = peers[1].clone();
+
+    // Connect to both
+    let connections = future::join_all(
+        vec![seed_peer.clone(), normal_peer.clone()]
+            .iter()
+            .cloned()
+            .map(|peer| {
+                let my_id = node_identity.clone();
+                async move { create_peer_connection_mock_pair(peer, my_id.to_peer()).await }
+            }),
+    )
+    .await
+    .into_iter()
+    .map(|(_, _, conn, _)| conn)
+    .collect::<Vec<_>>();
+
+    let seed_conn = &connections[0];
+    let normal_conn = &connections[1];
+
+    let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(5));
+    unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
+
+    // Simulate connections
+    cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(seed_conn.clone().into()));
+    cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(normal_conn.clone().into()));
+
+    // Wait for events to propagate
+    let conn_events = collect_try_recv!(event_stream, take = 2, timeout = Duration::from_secs(5));
+    assert_eq!(conn_events.len(), 2, "Expected 2 connection events");
+
+    // Verify Initial State (Age < 3s)
+    let conns = connectivity.get_active_connections().await.unwrap();
+    assert_eq!(conns.len(), 2, "Both peers should be connected initially");
+
+    // Sleep 3.5s to cross the 3s threshold + allow refresh cycle
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+
+    // Verify Disconnection
+    let conns = connectivity.get_active_connections().await.unwrap();
+    assert_eq!(conns.len(), 1, "Seed peer should have been disconnected");
+    assert_eq!(
+        conns[0].peer_node_id(),
+        &normal_peer.node_id,
+        "Remaining peer should be the normal peer"
+    );
 }

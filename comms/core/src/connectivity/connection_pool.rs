@@ -169,7 +169,7 @@ impl ConnectionPool {
 
     pub fn get_inactive_outbound_connections_mut(&mut self, min_age: Duration) -> Vec<&mut PeerConnection> {
         self.filter_connections_mut(|conn| {
-            conn.age() > min_age && conn.handle_count() <= 1 && conn.substream_count() > 2
+            conn.age() > min_age && conn.handle_count() <= 1 && conn.substream_count() < 3
         })
     }
 
