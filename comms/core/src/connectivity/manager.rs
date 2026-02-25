@@ -667,10 +667,8 @@ impl ConnectivityManagerActor {
         let mut seeds_to_disconnect = Vec::new();
         for seed_node_id in &self.seeds {
             if let Some(conn) = self.pool.get_connection(seed_node_id) {
-                if conn.is_connected() {
-                    if conn.age() > self.config.max_seed_peer_age {
-                        seeds_to_disconnect.push(conn.clone());
-                    }
+                if conn.is_connected() && conn.age() > self.config.max_seed_peer_age {
+                    seeds_to_disconnect.push(conn.clone());
                 }
             }
         }

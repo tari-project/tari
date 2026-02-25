@@ -486,15 +486,10 @@ async fn seed_peer_release() {
     let normal_peer = peers[1].clone();
 
     // Connect to both
-    let connections = future::join_all(
-        vec![seed_peer.clone(), normal_peer.clone()]
-            .iter()
-            .cloned()
-            .map(|peer| {
-                let my_id = node_identity.clone();
-                async move { create_peer_connection_mock_pair(peer, my_id.to_peer()).await }
-            }),
-    )
+    let connections = future::join_all([seed_peer.clone(), normal_peer.clone()].into_iter().map(|peer| {
+        let my_id = node_identity.clone();
+        async move { create_peer_connection_mock_pair(peer, my_id.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(_, _, conn, _)| conn)
