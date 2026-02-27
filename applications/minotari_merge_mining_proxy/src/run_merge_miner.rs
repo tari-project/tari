@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::FutureExt;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use log::*;
@@ -115,7 +116,12 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         let mut interval = tokio::time::interval(Duration::from_secs(BLOCK_TEMPLATE_CLEANUP_INTERVAL));
         loop {
             interval.tick().await;
-            cleanup_repo.remove_outdated().await;
+            if let Err(e) = std::panic::AssertUnwindSafe(cleanup_repo.remove_outdated())
+                .catch_unwind()
+                .await
+            {
+                error!(target: LOG_TARGET, "Block template cleanup task panicked: {:?}", e);
+            }
         }
     });
 

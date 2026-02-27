@@ -4276,6 +4276,7 @@ dependencies = [
  "config",
  "crossterm 0.28.1",
  "dhat",
+ "futures 0.3.31",
  "hex",
  "http-body 1.0.1",
  "http-body-util",
