@@ -677,8 +677,10 @@ impl PeerDatabaseSql {
     fn update_peer_sql(peer: Peer) -> Result<UpdatePeerWithAddressesSql, StorageError> {
         let update_peer_sql = UpdatePeerSql {
             node_id: Some(peer.node_id.to_hex()),
+            flags: Some(peer.flags.to_i32()),
             banned_until: Some(peer.banned_until),
             banned_reason: Some(peer.banned_reason.clone()),
+            features: Some(peer.features.to_i32()),
             supported_protocols: Some(serialize_protocols(&peer.supported_protocols)),
             user_agent: Some(peer.user_agent.clone()),
             metadata: Some(serialize_metadata(&peer.metadata)?),
@@ -1756,7 +1758,10 @@ impl PeerDatabaseSql {
         // Perform a join query to fetch peers and their addresses
         let results = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::flags.eq(PeerFlags::SEED.to_i32()))
+            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                "flags & {} != 0",
+                PeerFlags::SEED.to_i32()
+            )))
             .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
         PeerDatabaseSql::peers_from_join_query(results)
@@ -1833,8 +1838,10 @@ pub struct NewPeerSql {
 #[diesel(table_name = peers)]
 pub struct UpdatePeerSql {
     pub node_id: Option<String>,
+    pub flags: Option<i32>,
     pub banned_until: Option<Option<NaiveDateTime>>,
     pub banned_reason: Option<String>,
+    pub features: Option<i32>,
     pub supported_protocols: Option<String>,
     pub user_agent: Option<String>,
     pub metadata: Option<Option<Vec<u8>>>,

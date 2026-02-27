@@ -70,6 +70,9 @@ pub struct ConnectivityConfig {
     /// Time to wait before retrying a circuit-broken peer
     /// Default: 2 minutes
     pub circuit_breaker_retry_interval: Duration,
+    /// Maximum seed peer age
+    /// Default: 15 minutes
+    pub max_seed_peer_age: Duration,
 }
 
 impl Default for ConnectivityConfig {
@@ -90,6 +93,7 @@ impl Default for ConnectivityConfig {
             success_rate_tracking_window: Duration::from_secs(5 * 60),
             circuit_breaker_failure_threshold: 3,
             circuit_breaker_retry_interval: Duration::from_secs(2 * 60),
+            max_seed_peer_age: Duration::from_secs(15 * 60),
         }
     }
 }

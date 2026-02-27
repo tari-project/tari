@@ -161,6 +161,11 @@ impl CommsBuilder {
         self
     }
 
+    pub fn with_max_seed_peer_age(mut self, max_age: Duration) -> Self {
+        self.connectivity_config.max_seed_peer_age = max_age;
+        self
+    }
+
     /// Return the node identity for this comms instance.
     pub fn node_identity(&self) -> Option<Arc<NodeIdentity>> {
         self.node_identity.clone()

@@ -468,6 +468,8 @@ impl ConnectivityManagerActor {
         );
 
         self.clean_connection_pool();
+        self.disconnect_seed_peers(task_id).await;
+
         if self.config.is_connection_reaping_enabled {
             self.reap_inactive_connections(task_id).await;
         }
@@ -640,6 +642,87 @@ impl ConnectivityManagerActor {
                 len,
                 start.elapsed()
             );
+        }
+    }
+
+    async fn refresh_seeds_list(&mut self) {
+        match self.peer_manager.get_seed_peers().await {
+            Ok(seeds) => {
+                self.seeds = seeds.into_iter().map(|p| p.node_id).collect();
+            },
+            Err(err) => {
+                error!(target: LOG_TARGET, "Failed to fetch seed peers: {}", err);
+            },
+        }
+    }
+
+    async fn disconnect_seed_peers(&mut self, task_id: u64) {
+        self.refresh_seeds_list().await;
+
+        if self.seeds.is_empty() {
+            return;
+        }
+
+        // Identify seeds that are too old
+        let mut seeds_to_disconnect = Vec::new();
+        for seed_node_id in &self.seeds {
+            if let Some(conn) = self.pool.get_connection(seed_node_id) {
+                if conn.is_connected() && conn.age() > self.config.max_seed_peer_age {
+                    seeds_to_disconnect.push(conn.clone());
+                }
+            }
+        }
+
+        if seeds_to_disconnect.is_empty() {
+            return;
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "({}) Found {} seed peer(s) eligible for cleanup", task_id, seeds_to_disconnect.len()
+        );
+
+        for mut conn in seeds_to_disconnect {
+            if self.pool.count_connected_nodes() <= self.config.min_connectivity {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) SKIPPING seed disconnect for '{}'. Connected Nodes ({}) <= Min ({})",
+                    task_id,
+                    conn.peer_node_id().short_str(),
+                    self.pool.count_connected_nodes(),
+                    self.config.min_connectivity
+                );
+                break;
+            }
+
+            debug!(
+                target: LOG_TARGET,
+                "({}) Disconnecting seed peer '{}' ...",
+                task_id,
+                conn.peer_node_id().short_str()
+            );
+
+            match disconnect_with_timeout(
+                &mut conn,
+                Minimized::Yes,
+                Some(task_id),
+                "ConnectivityManagerActor disconnect seed",
+            )
+            .await
+            {
+                Ok(_) => {
+                    self.pool.remove(conn.peer_node_id());
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Seed peer '{}' already disconnected ({:?}). Error: {:?}",
+                        conn.peer_node_id().short_str(),
+                        task_id,
+                        err
+                    );
+                },
+            }
         }
     }
 
@@ -1204,27 +1287,24 @@ impl ConnectivityManagerActor {
         // Update circuit breaker metrics
         self.update_circuit_breaker_metrics();
 
+        self.refresh_seeds_list().await;
+
+        // Determine if we should exclude seeds.
+        let excluded_peers = if self.pool.count_connected_nodes() < self.config.min_connectivity {
+            debug!(target: LOG_TARGET, "({}) Critical connectivity level ({} < {}). Allowing proactive dialer to retry Seed Nodes.",
+                task_id,
+                self.pool.count_connected_nodes(),
+                self.config.min_connectivity
+            );
+            vec![]
+        } else {
+            self.seeds.clone()
+        };
+
         // Execute proactive dialing logic
-        if self.seeds.is_empty() {
-            self.seeds = self
-                .peer_manager
-                .get_seed_peers()
-                .await
-                .inspect_err(|err| {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed to get seed peers from PeerManager, using empty list for proactive dialing, seed peers \
-                        will not be excluded as a first pass. ({})", err
-                    );
-                })
-                .unwrap_or(vec![])
-                .iter()
-                .map(|s| s.node_id.clone())
-                .collect();
-        }
         match self
             .proactive_dialer
-            .execute_proactive_dialing(&self.pool, &self.connection_stats, &self.seeds, task_id)
+            .execute_proactive_dialing(&self.pool, &self.connection_stats, &excluded_peers, task_id)
             .await
         {
             Ok(dialed_count) => {
