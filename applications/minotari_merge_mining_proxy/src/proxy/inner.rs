@@ -789,7 +789,10 @@ impl InnerService {
             .map(|s| s.to_string())
         {
             // XMRig sent `extra_nonce`. Append hex zeroes to force weight calculation.
-            let padding = "0".repeat((TARI_MERGE_MINING_DATA_SIZE * 2) as usize);
+            let padding = "0".repeat(
+                usize::try_from(TARI_MERGE_MINING_DATA_SIZE * 2)
+                    .map_err(|err| MmProxyError::ConversionError(err.to_string()))?,
+            );
             let new_extra_nonce = format!("{}{}", extra_nonce, padding);
             params.insert("extra_nonce".to_string(), serde_json::json!(new_extra_nonce));
             params.remove("reserve_size");
@@ -822,11 +825,9 @@ impl InnerService {
 
         // Intercept the getblocktemplate request and ask Monerod to reserve an extra 35 bytes.
         // This forces Monerod to correctly calculate the block weight penalty
-        if monerod_method == MonerodMethod::GetBlockTemplate {
-            if self.modify_monero_template_request(&mut json)? {
-                let json_bytes = serde_json::to_vec(&json).map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
-                body = Bytes::from(json_bytes);
-            }
+        if monerod_method == MonerodMethod::GetBlockTemplate && self.modify_monero_template_request(&mut json)? {
+            let json_bytes = serde_json::to_vec(&json).map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
+            body = Bytes::from(json_bytes);
         }
 
         let start = Instant::now();
