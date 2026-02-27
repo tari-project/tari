@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::FutureExt;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use log::*;
@@ -49,6 +50,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
+const BLOCK_TEMPLATE_CLEANUP_INTERVAL: u64 = 10 * 60; // 10 minutes
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
@@ -106,12 +108,29 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
+    let block_templates = BlockTemplateRepository::new();
+
+    // Run clean up old templates every 10 minutes
+    let cleanup_repo = block_templates.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(BLOCK_TEMPLATE_CLEANUP_INTERVAL));
+        loop {
+            interval.tick().await;
+            if let Err(e) = std::panic::AssertUnwindSafe(cleanup_repo.remove_outdated())
+                .catch_unwind()
+                .await
+            {
+                error!(target: LOG_TARGET, "Block template cleanup task panicked: {:?}", e);
+            }
+        }
+    });
+
     let randomx_service = MergeMiningProxyService::try_create(
         config,
         client,
         base_node_client,
         p2pool_client,
-        BlockTemplateRepository::new(),
+        block_templates,
         randomx_factory,
         wallet_payment_address,
     )?;
