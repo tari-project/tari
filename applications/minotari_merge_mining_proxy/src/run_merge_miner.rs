@@ -49,6 +49,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
+const BLOCK_TEMPLATE_CLEANUP_INTERVAL: u64 = 10 * 60; // 10 minutes
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
@@ -106,12 +107,24 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
+    let block_templates = BlockTemplateRepository::new();
+
+    // Run clean up old templates every 10 minutes
+    let cleanup_repo = block_templates.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(BLOCK_TEMPLATE_CLEANUP_INTERVAL));
+        loop {
+            interval.tick().await;
+            cleanup_repo.remove_outdated().await;
+        }
+    });
+
     let randomx_service = MergeMiningProxyService::try_create(
         config,
         client,
         base_node_client,
         p2pool_client,
-        BlockTemplateRepository::new(),
+        block_templates,
         randomx_factory,
         wallet_payment_address,
     )?;
