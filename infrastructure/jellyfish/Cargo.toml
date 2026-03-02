@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 tari_hashing = { workspace = true }

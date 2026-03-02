@@ -1,5 +1,6 @@
 [package]
 name = "minotari_ledger_wallet_comms"
+description = "Communication utilities for the Minotari Ledger Wallet application"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
