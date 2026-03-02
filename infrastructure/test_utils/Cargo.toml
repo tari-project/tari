@@ -12,7 +12,6 @@ license.workspace = true
 
 [dependencies]
 tari_shutdown = { workspace = true }
-tari_comms = { workspace = true }
 
 futures = { version = "^0.3.1" }
 rand = { workspace = true }

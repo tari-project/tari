@@ -7869,7 +7869,6 @@ dependencies = [
  "futures 0.3.31",
  "futures-test",
  "rand 0.8.5",
- "tari_comms",
  "tari_shutdown",
  "tempfile",
  "tokio",

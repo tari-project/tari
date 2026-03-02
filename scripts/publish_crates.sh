@@ -1,35 +1,32 @@
-#!/usr/bin/env bash
-# NB: The order these are listed in is IMPORTANT! Dependencies must go first
-
-packages=${@:-'
-infrastructure/derive
-infrastructure/shutdown
-infrastructure/storage
-infrastructure/test_utils
-common
-comms
-comms/dht
-base_layer/service_framework
-base_layer/mmr
-base_layer/key_manager
-base_layer/p2p
-base_layer/core
-base_layer/minowallet
-base_layer/minowallet_ffi
-applications/minotari_node
-'}
-p_arr=($packages)
-
-function build_package {
-    list=($@)
-    for p in "${list[@]}"; do
-      echo "************************  Building $path/$p package ************************"
-      cargo publish --manifest-path=./${p}/Cargo.toml
-      sleep 30 # Wait for crates.io to register any dependent packages
-    done
-    echo "************************  $path packages built ************************"
-}
-
-# You need a token with write access to publish these crates
-#cargo login
-build_package ${p_arr[@]}
+cargo publish --package tari_storage
+cargo publish --package tari_shutdown
+cargo publish --package tari_metrics
+cargo publish --package tari_max_size
+cargo publish --package tari_script
+cargo publish --package tari_hashing
+cargo publish --package tari_jellyfish
+cargo publish --package tari_comms_rpc_macros
+cargo publish --package tari_common_sqlite
+cargo publish --package tari_features
+cargo publish --package tari_test_utils
+cargo publish --package tari_common
+cargo publish --package tari_comms
+cargo publish --package tari_comms_dht
+cargo publish --package minotari_ledger_wallet_common
+cargo publish --package tari_common_types
+cargo publish --package tari_sidechain
+cargo publish --package minotari_ledger_wallet_comms
+cargo publish --package tari_service_framework
+cargo publish --package tari_transaction_components
+cargo publish --package tari_transaction_key_manager
+cargo publish --package tari_node_components
+cargo publish --package tari_p2p
+cargo publish --package tari_libtor
+cargo publish --package tari_mmr
+cargo publish --package tari_core
+cargo publish --package minotari_node_wallet_client
+cargo publish --package minotari_wallet
+cargo publish --package minotari_app_grpc
+cargo publish --package minotari_app_utilities
+cargo publish --package minotari_wallet_grpc_client
+cargo publish --package minotari_node_grpc_client
