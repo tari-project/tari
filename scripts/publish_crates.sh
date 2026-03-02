@@ -1,32 +1,48 @@
-cargo publish --package tari_storage
-cargo publish --package tari_shutdown
-cargo publish --package tari_metrics
-cargo publish --package tari_max_size
-cargo publish --package tari_script
-cargo publish --package tari_hashing
-cargo publish --package tari_jellyfish
-cargo publish --package tari_comms_rpc_macros
-cargo publish --package tari_common_sqlite
-cargo publish --package tari_features
-cargo publish --package tari_test_utils
-cargo publish --package tari_common
-cargo publish --package tari_comms
-cargo publish --package tari_comms_dht
-cargo publish --package minotari_ledger_wallet_common
-cargo publish --package tari_common_types
-cargo publish --package tari_sidechain
-cargo publish --package minotari_ledger_wallet_comms
-cargo publish --package tari_service_framework
-cargo publish --package tari_transaction_components
-cargo publish --package tari_transaction_key_manager
-cargo publish --package tari_node_components
-cargo publish --package tari_p2p
-cargo publish --package tari_libtor
-cargo publish --package tari_mmr
-cargo publish --package tari_core
-cargo publish --package minotari_node_wallet_client
-cargo publish --package minotari_wallet
-cargo publish --package minotari_app_grpc
-cargo publish --package minotari_app_utilities
-cargo publish --package minotari_wallet_grpc_client
-cargo publish --package minotari_node_grpc_client
+#!/usr/bin/env bash
+set -e
+
+# The order is important. Dependencies must be published before the crates that depend on them.
+# A sleep is added after each publish to allow crates.io to process the new crate.
+PACKAGES=(
+    "tari_storage"
+    "tari_shutdown"
+    "tari_metrics"
+    "tari_max_size"
+    "tari_script"
+    "tari_hashing"
+    "tari_jellyfish"
+    "tari_comms_rpc_macros"
+    "tari_common_sqlite"
+    "tari_features"
+    "tari_test_utils"
+    "tari_common"
+    "tari_comms"
+    "tari_comms_dht"
+    "minotari_ledger_wallet_common"
+    "tari_common_types"
+    "tari_sidechain"
+    "minotari_ledger_wallet_comms"
+    "tari_service_framework"
+    "tari_transaction_components"
+    "tari_transaction_key_manager"
+    "tari_node_components"
+    "tari_p2p"
+    "tari_libtor"
+    "tari_mmr"
+    "tari_core"
+    "minotari_node_wallet_client"
+    "minotari_wallet"
+    "minotari_app_grpc"
+    "minotari_app_utilities"
+    "minotari_wallet_grpc_client"
+    "minotari_node_grpc_client"
+)
+
+for package in "${PACKAGES[@]}"; do
+    echo "Dry-run Publishing ${package}..."
+    cargo publish --package "${package}" --dry-run
+    echo "Publishing ${package}..."
+    cargo publish --package "${package}"
+done
+
+echo "All packages published successfully."
