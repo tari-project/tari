@@ -2,7 +2,6 @@
 set -e
 
 # The order is important. Dependencies must be published before the crates that depend on them.
-# A sleep is added after each publish to allow crates.io to process the new crate.
 PACKAGES=(
     "tari_storage"
     "tari_shutdown"
