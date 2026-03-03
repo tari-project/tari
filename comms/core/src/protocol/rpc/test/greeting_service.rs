@@ -24,27 +24,27 @@ use std::{
     cmp,
     convert::TryFrom,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
 
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{mpsc, RwLock},
+    sync::{RwLock, mpsc},
     task,
     time,
 };
 
 use crate::{
+    Substream,
     async_trait,
     protocol::{
-        rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
         ProtocolId,
+        rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
     },
     utils,
-    Substream,
 };
 
 #[async_trait]

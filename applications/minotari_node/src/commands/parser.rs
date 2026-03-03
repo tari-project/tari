@@ -23,11 +23,11 @@
 use std::str::FromStr;
 
 use rustyline::{
+    Context,
     completion::Completer,
     error::ReadlineError,
     hint::{Hinter, HistoryHinter},
     line_buffer::LineBuffer,
-    Context,
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
 use strum::{Display, EnumString};

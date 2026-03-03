@@ -32,7 +32,7 @@ use tokio::net::TcpStream;
 use crate::{
     multiaddr::Multiaddr,
     socks::{self, Socks5Client},
-    transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
+    transports::{Transport, dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport},
     types::TransportProtocol,
     utils::network::supports_ipv6,
 };

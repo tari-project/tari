@@ -32,6 +32,9 @@ use minotari_app_utilities::consts;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_spend_key, ledger_get_view_key};
 use minotari_wallet::{
+    Wallet,
+    WalletConfig,
+    WalletSqlite,
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
     storage::{
@@ -39,22 +42,19 @@ use minotari_wallet::{
         sqlite_utilities::initialize_sqlite_database_backends,
     },
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
-    Wallet,
-    WalletConfig,
-    WalletSqlite,
 };
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_common::{
-    configuration::{bootstrap::prompt, MultiaddrList},
+    configuration::{MultiaddrList, bootstrap::prompt},
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
     seeds::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage},
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
-use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
+use tari_comms::{NodeIdentity, multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey};
+use tari_p2p::{PeerSeedsConfig, TransportType, auto_update::AutoUpdateConfig};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     consensus::ConsensusManager,
@@ -62,10 +62,10 @@ use tari_transaction_components::{
     key_manager::wallet_types::LedgerWallet,
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::{LegacyWalletType, ProvidedKeysWallet};
-use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{ByteArray, SafePassword, encoding::MBase58, hex::Hex};
 use zxcvbn::zxcvbn;
 
-use crate::{cli::Cli, wallet_modes::WalletMode, ApplicationConfig};
+use crate::{ApplicationConfig, cli::Cli, wallet_modes::WalletMode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const TARI_WALLET_PASSWORD: &str = "MINOTARI_WALLET_PASSWORD";

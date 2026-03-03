@@ -141,10 +141,10 @@ impl WindowedListState {
         }
         self.num_items = num_items;
         if num_items > 0 {
-            if let Some(p) = self.selected {
-                if p > num_items - 1 {
-                    self.selected = Some(num_items - 1);
-                }
+            if let Some(p) = self.selected &&
+                p > num_items - 1
+            {
+                self.selected = Some(num_items - 1);
             }
         } else {
             self.selected = None;

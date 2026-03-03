@@ -54,15 +54,15 @@ pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 mod context;
 
 mod server;
-pub use server::{mock, NamedProtocolService, RpcServer, RpcServerBuilder, RpcServerError, RpcServerHandle};
+pub use server::{NamedProtocolService, RpcServer, RpcServerBuilder, RpcServerError, RpcServerHandle, mock};
 
 mod client;
 pub use client::{
-    pool,
-    pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient},
     RpcClient,
     RpcClientBuilder,
     RpcClientConfig,
+    pool,
+    pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient},
 };
 
 mod either;
@@ -88,12 +88,11 @@ pub mod __macro_reexports {
     pub use tower::Service;
 
     pub use crate::{
+        Bytes,
         framing::CanonicalFraming,
         protocol::{
+            ProtocolId,
             rpc::{
-                message::{Request, Response},
-                pool::RpcPoolClient,
-                server::{NamedProtocolService, RpcServerError},
                 Body,
                 ClientStreaming,
                 IntoBody,
@@ -101,10 +100,11 @@ pub mod __macro_reexports {
                 RpcClientBuilder,
                 RpcError,
                 RpcStatus,
+                message::{Request, Response},
+                pool::RpcPoolClient,
+                server::{NamedProtocolService, RpcServerError},
             },
-            ProtocolId,
         },
         stream_id::StreamId,
-        Bytes,
     };
 }

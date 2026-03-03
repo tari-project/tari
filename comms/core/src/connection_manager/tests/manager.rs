@@ -34,6 +34,7 @@ use tokio::{
 };
 
 use crate::{
+    PeerConnectionError,
     backoff::ConstantBackoff,
     connection_manager::{
         ConnectionManager,
@@ -48,10 +49,9 @@ use crate::{
         build_peer_manager,
         count_string_occurrences,
         node_identity::{build_node_identity, ordered_node_identities},
-        test_node::{build_connection_manager, TestNodeConfig},
+        test_node::{TestNodeConfig, build_connection_manager},
     },
     transports::{MemoryTransport, TcpTransport},
-    PeerConnectionError,
 };
 
 #[tokio::test]

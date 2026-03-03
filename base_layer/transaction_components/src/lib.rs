@@ -7,10 +7,10 @@ pub mod crypto_factories;
 
 mod coinbase_builder;
 pub use coinbase_builder::{
-    generate_coinbase,
-    generate_coinbase_with_wallet_output,
     CoinbaseBuildError,
     CoinbaseBuilder,
+    generate_coinbase,
+    generate_coinbase_with_wallet_output,
 };
 pub mod consensus;
 pub mod fee;

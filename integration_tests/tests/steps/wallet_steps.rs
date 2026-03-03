@@ -54,19 +54,18 @@ use tari_common_types::{
 };
 use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
+    TariWorld,
     transaction::{
         build_transaction_with_output,
         build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
-    TariWorld,
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
         CoinBaseExtra,
         EncryptedData,
         OutputFeatures,
@@ -74,17 +73,18 @@ use tari_transaction_components::{
         RangeProofType,
         TransactionOutputVersion,
         UnblindedOutput,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 
 use crate::steps::{
-    cucumber_steps_log,
-    mining_steps::create_miner,
     CONFIRMATION_PERIOD,
     HALF_SECOND,
     TWO_MINUTES_WITH_HALF_SECOND_SLEEP,
+    cucumber_steps_log,
+    mining_steps::create_miner,
 };
 
 pub const LOG_TARGET: &str = "cucumber::wallet_steps";
@@ -1734,10 +1734,10 @@ async fn wallet_pending_connection(world: &mut TariWorld, wallet: String) {
         let res: tonic::Response<tari_rpc::GetConnectedHttpPeerResponse> =
             wallet_client.get_connected_http_peer(Empty {}).await.unwrap();
         let res = res.into_inner();
-        if let Some(peer) = res.connected_peer {
-            if peer.is_online {
-                return;
-            }
+        if let Some(peer) = res.connected_peer &&
+            peer.is_online
+        {
+            return;
         }
 
         tokio::time::sleep(Duration::from_secs(1)).await;

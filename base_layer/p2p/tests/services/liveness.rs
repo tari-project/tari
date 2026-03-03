@@ -24,9 +24,9 @@ use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
 use tari_comms::{
+    CommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
-    CommsNode,
 };
 use tari_comms_dht::Dht;
 use tari_p2p::{

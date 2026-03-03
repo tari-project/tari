@@ -36,7 +36,7 @@ pub struct TorProxyOpts {
 }
 
 impl TorProxyOpts {
-    pub fn to_bypass_predicate(&self) -> impl Predicate<Multiaddr> {
+    pub fn to_bypass_predicate(&self) -> impl Predicate<Multiaddr> + Send + Sync + 'static {
         let config = self.clone();
         move |addr: &Multiaddr| -> bool {
             config.bypass_addresses.contains(addr) || (config.bypass_for_tcpip && is_tcp_address(addr))

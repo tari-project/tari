@@ -94,13 +94,7 @@ impl CommandContext {
                 conn.address(),
                 conn.direction(),
                 format_duration_basic(conn.age()),
-                {
-                    if ua.is_empty() {
-                        "<unknown>"
-                    } else {
-                        ua.as_ref()
-                    }
-                },
+                { if ua.is_empty() { "<unknown>" } else { ua.as_ref() } },
                 if is_seed { "SEED" } else { "    " },
                 format!(
                     "{}hnd: {}, ss: {}, rpc: {}",

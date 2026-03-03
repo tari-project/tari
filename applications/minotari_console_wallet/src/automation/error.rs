@@ -42,7 +42,7 @@ use tari_transaction_components::{
     tari_amount::MicroMinotariError,
     transaction_components::TransactionError,
 };
-use tari_utilities::{hex::HexError, ByteArrayError};
+use tari_utilities::{ByteArrayError, hex::HexError};
 use thiserror::Error;
 use tokio::task::JoinError;
 

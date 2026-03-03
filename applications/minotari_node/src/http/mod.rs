@@ -5,10 +5,10 @@ use std::net::IpAddr;
 
 use tari_core::{
     base_node::{
-        rpc::{query_service, BaseNodeWalletQueryService},
         StateMachineHandle,
+        rpc::{BaseNodeWalletQueryService, query_service},
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     mempool::service::MempoolHandle,
 };
 use tari_shutdown::ShutdownSignal;

@@ -32,9 +32,9 @@ use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{consensus::BaseConsensusBuilderError, proof_of_work::monero_rx::MergeMineError};
 use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
 use tari_transaction_components::{
+    CoinbaseBuildError,
     key_manager::error::KeyManagerError,
     tari_proof_of_work::DifficultyError,
-    CoinbaseBuildError,
 };
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};

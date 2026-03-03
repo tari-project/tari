@@ -33,15 +33,15 @@ use tari_comms::{
     utils,
 };
 use tari_node_components::blocks::BlockHeader;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::mpsc, task};
 
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     proto,
-    proto::base_node::{sync_utxos_response::Txo, SyncUtxosRequest, SyncUtxosResponse},
+    proto::base_node::{SyncUtxosRequest, SyncUtxosResponse, sync_utxos_response::Txo},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
@@ -213,7 +213,7 @@ where B: BlockchainBackend + 'static
                                 "Output '{}' RPC conversion error ({})",
                                 output.hash().to_hex(),
                                 e
-                            )))
+                            )));
                         },
                     }
                 }
@@ -257,14 +257,14 @@ where B: BlockchainBackend + 'static
                             return Err(RpcStatus::general(&format!(
                                 "Mined info for input '{}' not found",
                                 input.output_hash().to_hex()
-                            )))
+                            )));
                         },
                         Err(e) => {
                             return Err(RpcStatus::general(&format!(
                                 "Input '{}' not found ({})",
                                 input.output_hash().to_hex(),
                                 e
-                            )))
+                            )));
                         },
                     };
                     trace!(target: LOG_TARGET, "Spent TXO (commitment '{}') to peer", input_commitment.to_hex());

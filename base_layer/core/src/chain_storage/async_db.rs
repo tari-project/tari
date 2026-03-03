@@ -23,7 +23,7 @@ use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
 use log::*;
 use primitive_types::U512;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
@@ -56,9 +56,6 @@ use super::{BlockchainCheckStatus, MinedInfo, TemplateRegistrationEntry, Validat
 use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
-        blockchain_database::MmrRoots,
-        kernel_merkle_proof::KernelMerkleProof,
-        utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -69,6 +66,9 @@ use crate::{
         HorizonData,
         MmrTree,
         TargetDifficulties,
+        blockchain_database::MmrRoots,
+        kernel_merkle_proof::KernelMerkleProof,
+        utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
     },
     common::rolling_vec::RollingVec,
     proof_of_work::TargetDifficultyWindow,
@@ -448,7 +448,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::blockchain::{create_new_blockchain, TempDatabase};
+    use crate::test_helpers::blockchain::{TempDatabase, create_new_blockchain};
 
     impl AsyncBlockchainDb<TempDatabase> {
         pub fn sample() -> Self {

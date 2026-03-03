@@ -9,6 +9,7 @@ use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
+    MicroMinotari,
     rpc::{
         models,
         models::{
@@ -25,10 +26,9 @@ use tari_transaction_components::{
         },
     },
     transaction_components::{Transaction, TransactionOutput},
-    MicroMinotari,
 };
-use tari_utilities::hex::{to_hex, Hex};
-use tokio::sync::{mpsc, RwLock};
+use tari_utilities::hex::{Hex, to_hex};
+use tokio::sync::{RwLock, mpsc};
 use url::Url;
 
 use crate::{BaseNodeWalletClient, JsonRpcResponse};

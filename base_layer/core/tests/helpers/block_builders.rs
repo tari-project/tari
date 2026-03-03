@@ -21,17 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{convert::TryFrom, sync::Arc};
 
-use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
-use rand::{rngs::OsRng, RngCore};
+use jmt::{JellyfishMerkleTree, KeyHash, mock::MockTreeStore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_types::types::{CompressedCommitment, FixedHash};
 use tari_core::{
+    KernelMmr,
+    PrunedOutputMmr,
     blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
     consensus::BaseNodeConsensusManager,
     kernel_mr_hash_from_mmr,
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
-    KernelMmr,
-    PrunedOutputMmr,
+    proof_of_work::{AchievedTargetDifficulty, sha3x_difficulty},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_node_components::blocks::{
@@ -44,10 +44,11 @@ use tari_node_components::blocks::{
 };
 use tari_script::script;
 use tari_transaction_components::{
-    consensus::{emission::Emission, ConsensusConstants},
+    MicroMinotari,
+    consensus::{ConsensusConstants, emission::Emission},
     key_manager::{KeyManager, TransactionKeyManagerInterface, TxoStage},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
+    test_helpers::{TestParams, TransactionSchema, create_wallet_output_with_data, spend_utxos},
     transaction_components::{
         CoinBaseExtra,
         KernelBuilder,
@@ -60,7 +61,6 @@ use tari_transaction_components::{
         TransactionOutput,
         WalletOutput,
     },
-    MicroMinotari,
 };
 use tari_utilities::ByteArray;
 

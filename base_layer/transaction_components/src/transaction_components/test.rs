@@ -30,7 +30,7 @@ use tari_crypto::{
     range_proof::RangeProofService,
     tari_utilities::hex::Hex,
 };
-use tari_script::{inputs, script, ExecutionStack, StackItem};
+use tari_script::{ExecutionStack, StackItem, inputs, script};
 use tari_test_utils::unpack_enum;
 
 use super::*;
@@ -38,18 +38,18 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    key_manager::{wallet_types::WalletType, KeyManager, TransactionKeyManagerInterface},
-    tari_amount::{uT, T},
+    key_manager::{KeyManager, TransactionKeyManagerInterface, wallet_types::WalletType},
+    tari_amount::{T, uT},
     test_helpers,
     test_helpers::{TestParams, UtxoTestParams},
     transaction_components::{
-        covenants::Covenant,
-        transaction_output::batch_verify_range_proofs,
         MemoField,
         OutputFeatures,
+        covenants::Covenant,
+        transaction_output::batch_verify_range_proofs,
     },
     txn_schema,
-    validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
+    validation::{AggregatedBodyValidationError, transaction::TransactionInternalConsistencyValidator},
 };
 
 #[tokio::test]

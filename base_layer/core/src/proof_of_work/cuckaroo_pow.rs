@@ -41,7 +41,7 @@ use std::{
 };
 
 use blake2::{Blake2b, Digest};
-use digest::{consts::U32, FixedOutput};
+use digest::{FixedOutput, consts::U32};
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyError};
 use thiserror::Error;

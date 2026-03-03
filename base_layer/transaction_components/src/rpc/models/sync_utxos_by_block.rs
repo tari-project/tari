@@ -28,7 +28,7 @@ pub struct SyncUtxosByBlockResponseV0 {
 
 impl From<SyncUtxosByBlockResponseV1> for SyncUtxosByBlockResponseV0 {
     fn from(value: SyncUtxosByBlockResponseV1) -> Self {
-        use base64::{prelude::BASE64_STANDARD, Engine};
+        use base64::{Engine, prelude::BASE64_STANDARD};
         let blocks = value
             .blocks
             .into_iter()
@@ -73,7 +73,7 @@ pub struct SyncUtxosByBlockResponseV1 {
 
 impl From<SyncUtxosByBlockResponseV0> for SyncUtxosByBlockResponseV1 {
     fn from(value: SyncUtxosByBlockResponseV0) -> Self {
-        use base64::{prelude::BASE64_STANDARD, Engine};
+        use base64::{Engine, prelude::BASE64_STANDARD};
         let blocks = value
             .blocks
             .into_iter()

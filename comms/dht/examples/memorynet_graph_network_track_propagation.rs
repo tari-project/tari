@@ -61,11 +61,11 @@ use tokio::sync::mpsc;
 
 use crate::{
     graphing_utilities::utilities::{
+        PythonRenderType,
         create_message_propagation_graphs,
         network_graph_snapshot,
         run_python_network_graph_render,
         track_join_message_drain_messaging_events,
-        PythonRenderType,
     },
     memory_net::utilities::{
         do_network_wide_propagation,

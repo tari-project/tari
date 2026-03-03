@@ -23,7 +23,7 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use rand::RngCore;
-use tokio::sync::{oneshot::Sender as OneshotSender, RwLock};
+use tokio::sync::{RwLock, oneshot::Sender as OneshotSender};
 
 use crate::common::RequestKey;
 /// Generate a new random request key to uniquely identify a request and its corresponding responses.

@@ -24,14 +24,14 @@ use std::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{
-    de::{self, Visitor},
     Deserialize,
     Deserializer,
     Serialize,
     Serializer,
+    de::{self, Visitor},
 };
 use tari_crypto::hashing::AsFixedBytes;
-use tari_utilities::{hex::*, ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError, hex::*};
 
 use super::BulletRangeProofHasherBlake256;
 use crate::types::FixedHash;

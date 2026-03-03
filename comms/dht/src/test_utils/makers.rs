@@ -24,20 +24,20 @@ use std::{convert::TryInto, sync::Arc};
 use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_comms::{
+    Bytes,
     message::{InboundMessage, MessageExt, MessageTag},
     net_address::MultiaddressesWithStats,
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         NodeIdentity,
         Peer,
         PeerFeatures,
         PeerFlags,
         PeerManager,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     transports::MemoryTransport,
     types::{CommsDHKE, CommsPublicKey, CommsSecretKey, TransportProtocol},
-    Bytes,
 };
 use tari_utilities::ByteArray;
 
@@ -47,7 +47,7 @@ use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
     message_signature::MessageSignature,
-    outbound::{message::DhtOutboundMessage, DhtOutboundError},
+    outbound::{DhtOutboundError, message::DhtOutboundMessage},
     proto::envelope::{DhtEnvelope, DhtMessageType},
     test_utils::create_test_peer,
     version::DhtProtocolVersion,

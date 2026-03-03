@@ -66,20 +66,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_comms::{
-    peer_manager::{Peer, PeerManagerError},
-    protocol::rpc::RpcServerHandle,
     CommsNode,
     NodeIdentity,
+    peer_manager::{Peer, PeerManagerError},
+    protocol::rpc::RpcServerHandle,
 };
 use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
-    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
+    base_node::{LocalNodeCommsInterface, state_machine_service::states::StatusInfo},
+    chain_storage::{LMDBDatabase, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
     mempool::service::LocalMempoolService,
 };
@@ -90,9 +90,9 @@ use tokio::{sync::watch, time};
 pub use watch_command::WatchCommand;
 
 use crate::{
+    ApplicationConfig,
     builder::BaseNodeContext,
     commands::{nom_parser::ParsedCommand, parser::FromHex},
-    ApplicationConfig,
 };
 
 #[derive(Debug, Parser)]

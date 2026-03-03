@@ -38,7 +38,7 @@ pub use range_proof_type::RangeProofType;
 pub use side_chain::*;
 use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash};
 use tari_script::TariScript;
-use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
+use tari_utilities::{Hidden, hidden_type, safe_array::SafeArray};
 pub use transaction::Transaction;
 pub use transaction_builder::CoreTransactionBuilder;
 pub use transaction_input::{SpentOutput, TransactionInput};

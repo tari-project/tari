@@ -54,12 +54,12 @@ use minotari_app_grpc::{
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
-    configuration::bootstrap::{grpc_default_port, ApplicationType},
-    exit_codes::{ExitCode, ExitError},
     MAX_GRPC_MESSAGE_SIZE,
+    configuration::bootstrap::{ApplicationType, grpc_default_port},
+    exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
+use tari_comms::{NodeIdentity, multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     task::{self, JoinHandle},

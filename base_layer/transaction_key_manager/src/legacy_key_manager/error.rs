@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_utilities::{hex::HexError, ByteArrayError};
+use tari_utilities::{ByteArrayError, hex::HexError};
 use thiserror::Error;
 
 /// Error enum for the [KeyManagerStorage]

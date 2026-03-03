@@ -37,7 +37,7 @@ use std::{
 
 use futures::ready;
 use log::*;
-use snow::{error::StateProblem, HandshakeState, TransportState};
+use snow::{HandshakeState, TransportState, error::StateProblem};
 use tari_utilities::ByteArray;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
@@ -374,7 +374,7 @@ where TSocket: AsyncRead + Unpin
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         format!("DecryptionError: {e}"),
-                    )))
+                    )));
                 },
             }
         }
@@ -524,7 +524,7 @@ where TSocket: AsyncWrite + Unpin
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         format!("EncryptionError: {e}"),
-                    )))
+                    )));
                 },
             }
         }
@@ -709,13 +709,13 @@ impl From<TransportState> for NoiseState {
 #[cfg(test)]
 mod test {
     use futures::future::join;
-    use snow::{params::NoiseParams, Builder, Error, Keypair};
+    use snow::{Builder, Error, Keypair, params::NoiseParams};
 
     use super::*;
     use crate::{memsocket::MemorySocket, noise::config::NOISE_PARAMETERS};
 
-    async fn build_test_connection(
-    ) -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {
+    async fn build_test_connection()
+    -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {
         let parameters: NoiseParams = NOISE_PARAMETERS.parse().expect("Invalid protocol name");
 
         let dialer_keypair = Builder::new(parameters.clone()).generate_keypair()?;

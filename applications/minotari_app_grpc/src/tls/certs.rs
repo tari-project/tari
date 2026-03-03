@@ -26,7 +26,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rcgen::{generate_simple_self_signed, Certificate, CertificateParams, DnType, IsCa::Ca};
+use rcgen::{Certificate, CertificateParams, DnType, IsCa::Ca, generate_simple_self_signed};
 
 use crate::tls::error::GrpcTlsError;
 

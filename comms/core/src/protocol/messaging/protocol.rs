@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt,
     fmt::Display,
     time::Duration,
@@ -39,18 +39,18 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 use super::error::MessagingProtocolError;
 use crate::{
+    PeerConnection,
     connectivity::ConnectivityRequester,
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
     peer_manager::NodeId,
     protocol::{
-        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
         ProtocolEvent,
         ProtocolId,
         ProtocolNotification,
+        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
     },
-    PeerConnection,
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging";

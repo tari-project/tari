@@ -22,12 +22,12 @@
 
 #![allow(clippy::indexing_slicing)]
 use tui::{
+    Frame,
     backend::Backend,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::Span,
     widgets::{Block, Borders, Tabs},
-    Frame,
 };
 
 use crate::ui::{components::Component, state::AppState};

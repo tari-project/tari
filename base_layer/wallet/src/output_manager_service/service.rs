@@ -22,11 +22,11 @@
 use std::{collections::HashMap, fmt, fmt::Display, ops::Range, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -44,27 +44,26 @@ use tari_common_types::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{
-    inputs,
-    push_pubkey_script,
-    script,
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     Opcode,
     StackItem,
     TariScript,
+    inputs,
+    push_pubkey_script,
+    script,
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
+    MicroMinotari,
+    TransactionBuilder,
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
-        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
         EncryptedData,
         KernelFeatures,
         OutputFeatures,
@@ -75,23 +74,28 @@ use tari_transaction_components::{
         TransactionOutputVersion,
         WalletOutput,
         WalletOutputBuilder,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
     },
     tx_outputs_to_tx_id,
     utxo_selection::branch_and_bound::{
         branch_and_bound_selector::SelectionResult,
         branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
     },
-    MicroMinotari,
-    TransactionBuilder,
 };
-use tari_transaction_key_manager::legacy_key_manager::{wallet_types::FeeType, LegacyTransactionKeyManagerInterface};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTransactionKeyManagerInterface, wallet_types::FeeType};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
+        RangeLimit,
+        TRANSACTION_INPUTS_LIMIT,
+        TRANSACTION_OUTPUTS_LIMIT,
+        UtxoSelectionFilter,
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
         handle::{
@@ -105,17 +109,13 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
+            OutputSource,
+            OutputStatus,
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
             sqlite_db::CoinBucket,
-            OutputSource,
-            OutputStatus,
         },
         tasks::TxoValidationTask,
-        RangeLimit,
-        UtxoSelectionFilter,
-        TRANSACTION_INPUTS_LIMIT,
-        TRANSACTION_OUTPUTS_LIMIT,
     },
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
@@ -550,12 +550,12 @@ where
         // mined heights)
         let (mut last_height, mut max_mined_height, mut block_hash) = (0u64, None, None);
         for uo in outputs {
-            if let Some(height) = uo.mined_height {
-                if last_height < height {
-                    last_height = height;
-                    max_mined_height = uo.mined_height;
-                    block_hash = uo.mined_in_block;
-                }
+            if let Some(height) = uo.mined_height &&
+                last_height < height
+            {
+                last_height = height;
+                max_mined_height = uo.mined_height;
+                block_hash = uo.mined_in_block;
             }
         }
         Ok(OutputInfoByTxId {
@@ -2961,27 +2961,26 @@ where
                     let script_private_key = matched_key.clone().1;
 
                     if let Ok((committed_value, spending_key, payment_id)) =
-                        EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
-                    {
-                        if output.verify_mask(
+                        EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data) &&
+                        output.verify_mask(
                             &self.resources.factories.range_proof,
                             &spending_key,
                             committed_value.into(),
-                        )? {
-                            let commitment_mask_key_id =
-                                self.resources.key_manager.create_encrypted_key(spending_key, None)?;
+                        )?
+                    {
+                        let commitment_mask_key_id =
+                            self.resources.key_manager.create_encrypted_key(spending_key, None)?;
 
-                            let rewound_output = WalletOutput::new_from_transaction_output(
-                                committed_value,
-                                commitment_mask_key_id,
-                                payment_id,
-                                output,
-                                ExecutionStack::new(vec![]),
-                                script_private_key,
-                            );
+                        let rewound_output = WalletOutput::new_from_transaction_output(
+                            committed_value,
+                            commitment_mask_key_id,
+                            payment_id,
+                            output,
+                            ExecutionStack::new(vec![]),
+                            script_private_key,
+                        );
 
-                            scanned_outputs.push((rewound_output, OutputSource::OneSided));
-                        }
+                        scanned_outputs.push((rewound_output, OutputSource::OneSided));
                     }
                 }
                 // it is not some known key, so lets try and see if this is a stealth tx for us
@@ -3050,8 +3049,10 @@ where
         for output in outputs {
             // 2. Check if the script is a multisig script
 
-            if let [Opcode::CheckMultiSigVerify(_m, _n, pubkeys, _msg), Opcode::PushPubKey(scanned_pk)] =
-                output.script.as_slice()
+            if let [
+                Opcode::CheckMultiSigVerify(_m, _n, pubkeys, _msg),
+                Opcode::PushPubKey(scanned_pk),
+            ] = output.script.as_slice()
             {
                 debug!(
                     target: LOG_TARGET,

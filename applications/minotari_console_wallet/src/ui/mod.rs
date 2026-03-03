@@ -32,17 +32,17 @@ mod ui_burnt_proof;
 mod ui_error;
 mod widgets;
 
-use std::io::{stdout, Stdout};
+use std::io::{Stdout, stdout};
 
 pub use app::*;
 use crossterm::{
     event::{KeyCode, KeyEventState, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use log::*;
 use tokio::runtime::Handle;
-use tui::{backend::CrosstermBackend, Terminal};
+use tui::{Terminal, backend::CrosstermBackend};
 use ui_error::UiError;
 
 use crate::utils::events::{Event, EventStream};

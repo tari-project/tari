@@ -31,7 +31,7 @@ use tari_transaction_components::{
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
@@ -138,7 +138,7 @@ impl Display for PrioritizedTransaction {
 mod tests {
     use tari_transaction_components::{
         key_manager::KeyManager,
-        tari_amount::{uT, MicroMinotari, T},
+        tari_amount::{MicroMinotari, T, uT},
         test_helpers::create_tx,
     };
 

@@ -42,6 +42,7 @@ use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
+    MicroMinotari,
     multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
     offline_signing::models::{
         PrepareDepositMultisigTransactionResult,
@@ -61,7 +62,6 @@ use tari_transaction_components::{
         Transaction,
         TransactionOutput,
     },
-    MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::FeeType;
 use tari_utilities::hex::Hex;
@@ -69,7 +69,8 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
-    output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
+    OperationId,
+    output_manager_service::{UtxoSelectionCriteria, service::UseOutput},
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -80,7 +81,6 @@ use crate::{
             WalletTransaction,
         },
     },
-    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::handle";

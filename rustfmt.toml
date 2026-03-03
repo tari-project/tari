@@ -1,7 +1,7 @@
 binop_separator = "Back"
 use_small_heuristics = "Default"
 comment_width = 120
-edition = "2021"
+edition = "2024"
 format_code_in_doc_comments = true
 format_strings = true
 group_imports = "StdExternalCrate"

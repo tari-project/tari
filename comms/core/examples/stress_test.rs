@@ -103,10 +103,8 @@ async fn run() -> Result<(), Error> {
     if let Some(node_identity_path) = node_identity_path.as_ref() {
         save_json(comms_node.node_identity_ref(), node_identity_path)?;
     }
-    if !is_tcp {
-        if let Some(tor_identity_path) = tor_identity_path.as_ref() {
-            save_json(&tor_identity.unwrap(), tor_identity_path)?;
-        }
+    if !is_tcp && let Some(tor_identity_path) = tor_identity_path.as_ref() {
+        save_json(&tor_identity.unwrap(), tor_identity_path)?;
     }
 
     println!("Stress test service started!");

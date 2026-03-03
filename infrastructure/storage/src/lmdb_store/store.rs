@@ -13,12 +13,6 @@ use std::{
 };
 
 use lmdb_zero::{
-    db,
-    error,
-    error::LmdbResultExt,
-    open,
-    put,
-    traits::AsLmdbBytes,
     ConstAccessor,
     Cursor,
     CursorIter,
@@ -32,9 +26,15 @@ use lmdb_zero::{
     Stat,
     WriteAccessor,
     WriteTransaction,
+    db,
+    error,
+    error::LmdbResultExt,
+    open,
+    put,
+    traits::AsLmdbBytes,
 };
 use log::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
@@ -459,7 +459,9 @@ impl LMDBStore {
                 size_used_bytes / BYTES_PER_MB,
                 size_left_bytes / BYTES_PER_MB
             );
-            Self::resize(env, config, increase_threshold_by)?;
+            unsafe {
+                Self::resize(env, config, increase_threshold_by)?;
+            }
         }
         Ok(())
     }
@@ -493,7 +495,9 @@ impl LMDBStore {
         let start = Instant::now();
         let env_info = env.info()?;
         let current_mapsize = env_info.mapsize;
-        env.set_mapsize(current_mapsize + config.grow_size_bytes + increase_threshold_by.unwrap_or_default())?;
+        unsafe {
+            env.set_mapsize(current_mapsize + config.grow_size_bytes + increase_threshold_by.unwrap_or_default())?;
+        }
         let env_info = env.info()?;
         let new_mapsize = env_info.mapsize;
         debug!(

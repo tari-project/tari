@@ -25,9 +25,9 @@ use std::{
     collections::HashMap,
     convert::TryFrom,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
         RwLock,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 

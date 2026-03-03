@@ -22,7 +22,7 @@
 
 use std::{future::Future, pin::Pin};
 
-use futures::{future, FutureExt};
+use futures::{FutureExt, future};
 use tari_shutdown::Shutdown;
 use tokio::{runtime, runtime::Runtime, task, task::JoinError};
 

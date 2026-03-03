@@ -29,17 +29,17 @@ use tari_comms::{connectivity::ConnectivityEvent, protocol::messaging::Messaging
 use tari_core::{
     base_node::{
         comms_interface::BlockEvent,
-        state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
+        state_machine_service::states::{StateInfo, StatusInfo, events_and_states::ListeningInfo},
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::TxStorageResponse,
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
+        DifficultyCalculator,
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
-        DifficultyCalculator,
     },
 };
 use tari_node_components::blocks::{ChainBlock, NewBlock};
@@ -48,7 +48,7 @@ use tari_transaction_components::{
     consensus::NetworkConsensus,
     crypto_factories::CryptoFactories,
     key_manager::KeyManager,
-    tari_amount::{uT, T},
+    tari_amount::{T, uT},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     test_helpers::{schema_to_transaction, spend_utxos},
     transaction_components::OutputFeatures,
@@ -67,7 +67,7 @@ use crate::{
             create_genesis_block_with_utxos,
         },
         event_stream::event_stream_next,
-        nodes::{random_node_identity, wait_until_online, BaseNodeBuilder},
+        nodes::{BaseNodeBuilder, random_node_identity, wait_until_online},
     },
     tests::assert_block_add_result_added,
 };
@@ -472,11 +472,13 @@ async fn propagate_and_forward_invalid_block() {
     let block1_hash = block1.hash();
 
     let mut bob_connectivity_events = bob_node.comms.connectivity().get_event_subscription();
-    assert!(alice_node
-        .outbound_nci
-        .propagate_block(NewBlock::from(block1.block()), vec![])
-        .await
-        .is_ok());
+    assert!(
+        alice_node
+            .outbound_nci
+            .propagate_block(NewBlock::from(block1.block()), vec![])
+            .await
+            .is_ok()
+    );
 
     #[allow(unused_assignments)]
     let mut has_banned = false;
@@ -496,18 +498,24 @@ async fn propagate_and_forward_invalid_block() {
     }
     assert!(has_banned);
 
-    assert!(!bob_node
-        .blockchain_db
-        .chain_block_or_orphan_block_exists(*block1_hash)
-        .unwrap());
-    assert!(!carol_node
-        .blockchain_db
-        .chain_block_or_orphan_block_exists(*block1_hash)
-        .unwrap());
-    assert!(!dan_node
-        .blockchain_db
-        .chain_block_or_orphan_block_exists(*block1_hash)
-        .unwrap());
+    assert!(
+        !bob_node
+            .blockchain_db
+            .chain_block_or_orphan_block_exists(*block1_hash)
+            .unwrap()
+    );
+    assert!(
+        !carol_node
+            .blockchain_db
+            .chain_block_or_orphan_block_exists(*block1_hash)
+            .unwrap()
+    );
+    assert!(
+        !dan_node
+            .blockchain_db
+            .chain_block_or_orphan_block_exists(*block1_hash)
+            .unwrap()
+    );
 
     alice_node.shutdown().await;
     bob_node.shutdown().await;

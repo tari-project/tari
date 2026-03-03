@@ -30,16 +30,16 @@
 use std::{cmp, fmt, fmt::Display, sync::Arc, time::Instant};
 
 use chrono::{DateTime, Utc};
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::{
+    PeerConnection,
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
     types::CommsPublicKey,
-    PeerConnection,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{
@@ -55,14 +55,14 @@ use tokio::{
 };
 
 use crate::{
+    DhtConfig,
+    DhtDiscoveryRequester,
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     dedup::DedupCacheDatabase,
     discovery::DhtDiscoveryError,
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
     storage::{DhtDatabase, DhtMetadataKey},
-    DhtConfig,
-    DhtDiscoveryRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -942,9 +942,9 @@ mod test {
     use std::{convert::TryFrom, time::Duration};
 
     use tari_comms::test_utils::mocks::{
+        ConnectivityManagerMockState,
         create_connectivity_mock,
         create_peer_connection_mock_pair,
-        ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
 
@@ -953,13 +953,13 @@ mod test {
         envelope::NodeDestination,
         storage::MIGRATIONS,
         test_utils::{
+            DhtDiscoveryMockState,
             build_peer_manager,
             build_peer_manager_with_node_identity,
             create_dht_discovery_mock,
             create_good_standing_peer,
             make_client_identity,
             make_node_identity,
-            DhtDiscoveryMockState,
         },
     };
 
@@ -1360,11 +1360,13 @@ mod test {
 
         actor.spawn();
 
-        assert!(requester
-            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            requester
+                .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let ts = Utc::now();
         requester
             .set_metadata(DhtMetadataKey::OfflineTimestamp, ts)

@@ -31,16 +31,16 @@ use tari_utilities::hex::Hex;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
+    PeerManager,
     connection_manager::error::ConnectionManagerError,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim, PeerManagerError},
-    peer_validator::{validate_peer_identity_claim, PeerValidatorConfig, PeerValidatorError},
+    peer_validator::{PeerValidatorConfig, PeerValidatorError, validate_peer_identity_claim},
     proto::identity::PeerIdentityMsg,
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
     types::CommsPublicKey,
-    PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
@@ -319,13 +319,12 @@ async fn maybe_ban<T, E: ToString + Into<ConnectionManagerError>>(
     ban_duration: Option<Duration>,
     err: E,
 ) -> Result<T, ConnectionManagerError> {
-    if let Some(ban_duration) = ban_duration {
-        if let Err(pe) = peer_manager
+    if let Some(ban_duration) = ban_duration &&
+        let Err(pe) = peer_manager
             .ban_peer(authenticated_public_key, ban_duration, err.to_string())
             .await
-        {
-            error!(target: LOG_TARGET, "Failed to ban peer due to internal error: {}. Original ban error: {}", pe, err.to_string());
-        }
+    {
+        error!(target: LOG_TARGET, "Failed to ban peer due to internal error: {}. Original ban error: {}", pe, err.to_string());
     }
 
     Err(err.into())

@@ -22,7 +22,7 @@
 
 use std::fmt;
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 
 /// Represents a tag for a message
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Default)]

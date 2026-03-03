@@ -21,13 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_mmr::{
-    common::{is_leaf, node_index, LeafIndex},
     MerkleProof,
     MerkleProofError,
+    common::{LeafIndex, is_leaf, node_index},
 };
 use tari_utilities::hex::{self, Hex};
 
-use crate::support::{create_mmr, int_to_hash, MmrTestHasherBlake256};
+use crate::support::{MmrTestHasherBlake256, create_mmr, int_to_hash};
 
 #[test]
 fn zero_size_mmr() {
@@ -88,9 +88,11 @@ fn for_leaf_node() {
     let leaf_pos = LeafIndex(28);
     let hash = int_to_hash(leaf_pos.0);
     let proof = MerkleProof::for_leaf_node(&mmr, leaf_pos).unwrap();
-    assert!(proof
-        .verify_leaf::<MmrTestHasherBlake256>(&root, &hash, leaf_pos)
-        .is_ok())
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &hash, leaf_pos)
+            .is_ok()
+    )
 }
 
 const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["2e53af27cab59e217386f5138cbac4f0ee53087e8fd1500b8ef836d7e80fd9a8","aa72bf6d136aac5df8faec94246439f7045487a1bd9984101f46fa926f527e8d"],"peaks":["fd11974cff85dcac247817c33efaf3f7b8c9bc43e980dd80553af84231389088"]}"#;
@@ -117,15 +119,19 @@ fn deserialization() {
     // Verify JSON-derived proof
     let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
     println!("{proof}");
-    assert!(proof
-        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
-        .is_ok());
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
+            .is_ok()
+    );
 
     // Verify bincode-derived proof
     let bin_proof = hex::from_hex(BINCODE_PROOF).unwrap();
     let proof: MerkleProof = bincode::deserialize(&bin_proof).unwrap();
     println!("{proof}");
-    assert!(proof
-        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
-        .is_ok());
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
+            .is_ok()
+    );
 }

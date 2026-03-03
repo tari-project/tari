@@ -21,16 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod connection_manager;
-pub use connection_manager::{create_connection_manager_mock, ConnectionManagerMock, ConnectionManagerMockState};
+pub use connection_manager::{ConnectionManagerMock, ConnectionManagerMockState, create_connection_manager_mock};
 
 mod connectivity_manager;
-pub use connectivity_manager::{create_connectivity_mock, ConnectivityManagerMock, ConnectivityManagerMockState};
+pub use connectivity_manager::{ConnectivityManagerMock, ConnectivityManagerMockState, create_connectivity_mock};
 
 mod peer_connection;
 pub use peer_connection::{
+    PeerConnectionMock,
+    PeerConnectionMockState,
     create_dummy_peer_connection,
     create_peer_connection_mock_pair,
     new_peer_connection_mock_pair,
-    PeerConnectionMock,
-    PeerConnectionMockState,
 };

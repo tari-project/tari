@@ -24,7 +24,7 @@ use std::sync::{LazyLock, Mutex};
 
 use log::debug;
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use semver::Version;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -33,7 +33,7 @@ use tari_common_types::{
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_script::CompressedCheckSigSchnorrSignature;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     error::LedgerDeviceError,
@@ -51,15 +51,15 @@ pub enum ScriptSignatureKey {
 /// Verify that the ledger application is working properly.
 pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
     static VERIFIED: LazyLock<Mutex<Option<Result<(), LedgerDeviceError>>>> = LazyLock::new(|| Mutex::new(None));
-    if let Ok(mut verified) = VERIFIED.try_lock() {
-        if verified.is_none() {
-            match verify() {
-                Ok(_) => {
-                    debug!(target: LOG_TARGET, "Ledger application 'Minotari Wallet' running and verified");
-                    *verified = Some(Ok(()))
-                },
-                Err(e) => return Err(e),
-            }
+    if let Ok(mut verified) = VERIFIED.try_lock() &&
+        verified.is_none()
+    {
+        match verify() {
+            Ok(_) => {
+                debug!(target: LOG_TARGET, "Ledger application 'Minotari Wallet' running and verified");
+                *verified = Some(Ok(()))
+            },
+            Err(e) => return Err(e),
         }
     }
     Ok(())
@@ -78,7 +78,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
                 "Ledger application is not the 'Minotari Wallet' application ({e})"
-            )))
+            )));
         },
     }
 
@@ -98,7 +98,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
                 "'Minotari Wallet' application version check ({e})",
-            )))
+            )));
         },
     }
 
@@ -130,14 +130,14 @@ fn verify() -> Result<(), LedgerDeviceError> {
                 return Err(LedgerDeviceError::Processing(format!(
                     "Error 2: 'Minotari Wallet' application could not retrieve a public key ({e:?}). Please update \
                      the firmware on your device."
-                )))
+                )));
             },
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
                 "Error 3: 'Minotari Wallet' application could not create a signature ({e:?}). Please update the \
                  firmware on your device."
-            )))
+            )));
         },
     };
     match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
@@ -154,7 +154,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
             return Err(LedgerDeviceError::Processing(format!(
                 "Error 5: 'Minotari Wallet' application could not create a signature ({e:?}). Please update the \
                  firmware on your device."
-            )))
+            )));
         },
     }
 

@@ -35,31 +35,31 @@ use std::{
     future::Future,
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use bytes::Bytes;
 use futures::{
-    future,
-    future::{BoxFuture, Either},
-    task::{Context, Poll},
     FutureExt,
     SinkExt,
     StreamExt,
+    future,
+    future::{BoxFuture, Either},
+    task::{Context, Poll},
 };
 use log::*;
 use prost::Message;
-use tari_shutdown::{oneshot_trigger::OneshotSignal, Shutdown, ShutdownSignal};
+use tari_shutdown::{Shutdown, ShutdownSignal, oneshot_trigger::OneshotSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, oneshot, watch, Mutex},
+    sync::{Mutex, mpsc, oneshot, watch},
     time,
 };
 use tower::{Service, ServiceExt};
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
 
 use super::message::RpcMethod;
 use crate::{
@@ -68,18 +68,18 @@ use crate::{
     peer_manager::NodeId,
     proto,
     protocol::{
+        ProtocolId,
         rpc,
         rpc::{
-            body::ClientStreaming,
-            message::{BaseRequest, RpcMessageFlags},
             Handshake,
             NamedProtocolService,
             Response,
             RpcError,
             RpcServerError,
             RpcStatus,
+            body::ClientStreaming,
+            message::{BaseRequest, RpcMessageFlags},
         },
-        ProtocolId,
     },
     stream_id,
     stream_id::StreamId,

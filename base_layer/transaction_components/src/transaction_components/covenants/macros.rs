@@ -181,15 +181,15 @@ mod test {
     use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
-        hex::{from_hex, Hex},
         ByteArray,
+        hex::{Hex, from_hex},
     };
 
     use crate::transaction_components::covenants::{
+        Covenant,
         arguments::CovenantArg,
         filters::CovenantFilter,
         token::CovenantToken,
-        Covenant,
     };
 
     #[test]

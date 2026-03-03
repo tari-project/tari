@@ -28,6 +28,8 @@ use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManage
 use tokio::sync::broadcast;
 
 use crate::{
+    WalletKeyManager,
+    WalletSqlite,
     client::http_client_factory::HttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
     storage::{
@@ -39,8 +41,6 @@ use crate::{
         handle::UtxoScannerEvent,
         service::{UtxoScannerResources, UtxoScannerService},
     },
-    WalletKeyManager,
-    WalletSqlite,
 };
 
 #[derive(Default, Clone, PartialEq)]
@@ -112,7 +112,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             None => {
                 return Err(anyhow::anyhow!(
                     "Node URL must be set before building the UTXO scanner service."
-                ))
+                ));
             },
         };
         let resources = UtxoScannerResources {
@@ -156,7 +156,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             None => {
                 return Err(anyhow::anyhow!(
                     "No client factory was set before building the UTXO scanner service."
-                ))
+                ));
             },
         };
 

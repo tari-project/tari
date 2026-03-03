@@ -29,22 +29,22 @@ use futures::TryFutureExt;
 use log::*;
 use minotari_app_grpc::{
     authentication::ServerAuthenticationInterceptor,
-    tari_rpc::{wallet_server::Wallet, GetBalanceRequest},
+    tari_rpc::{GetBalanceRequest, wallet_server::Wallet},
     tls::identity::read_identity,
 };
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::{
-    exit_codes::{ExitCode, ExitError},
     MAX_GRPC_MESSAGE_SIZE,
+    exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
+    Request,
     codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
-    Request,
 };
 use tui::backend::CrosstermBackend;
 use url::Url;

@@ -23,8 +23,8 @@
 use std::fmt::Debug;
 
 use crate::{
-    transaction_components::{UnblindedOutput, WalletOutput},
     MicroMinotari,
+    transaction_components::{UnblindedOutput, WalletOutput},
 };
 
 pub mod branch_and_bound;

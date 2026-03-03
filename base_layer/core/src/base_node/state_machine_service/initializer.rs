@@ -23,14 +23,15 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms::{PeerManager, connectivity::ConnectivityRequester};
 use tari_comms_dht::Dht;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tari_transaction_components::crypto_factories::CryptoFactories;
 use tokio::sync::{broadcast, watch};
 
 use crate::{
     base_node::{
+        LocalNodeCommsInterface,
         chain_metadata_service::ChainMetadataHandle,
         state_machine_service::{
             handle::StateMachineHandle,
@@ -38,9 +39,8 @@ use crate::{
             states::StatusInfo,
         },
         sync::SyncValidators,
-        LocalNodeCommsInterface,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };

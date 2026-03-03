@@ -29,15 +29,15 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        peer::Peer,
-        peer_id::PeerId,
-        peer_storage_sql::PeerStorageSql,
         NodeDistance,
         NodeId,
         PeerFeatures,
         PeerFlags,
         PeerManagerError,
         ThisPeerIdentity,
+        peer::Peer,
+        peer_id::PeerId,
+        peer_storage_sql::PeerStorageSql,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
@@ -385,7 +385,7 @@ impl fmt::Debug for PeerManager {
 pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     use std::borrow::BorrowMut;
 
-    use rand::{rngs::OsRng, Rng};
+    use rand::{Rng, rngs::OsRng};
 
     use crate::peer_manager::PeerFlags;
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
@@ -462,7 +462,7 @@ fn random_onion3_host() -> String {
 pub fn create_test_peer_with_onion_address(ban_flag: bool, features: PeerFeatures) -> Peer {
     use std::borrow::BorrowMut;
 
-    use rand::{rngs::OsRng, Rng};
+    use rand::{Rng, rngs::OsRng};
 
     use crate::peer_manager::PeerFlags;
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
@@ -539,7 +539,7 @@ pub fn create_test_peer_internal_addresses_only(ban_flag: bool, features: PeerFe
 
 #[cfg(test)]
 fn add_internal_addresses(peer: &mut Peer) {
-    use rand::{prelude::SliceRandom, Rng};
+    use rand::{Rng, prelude::SliceRandom};
 
     let mut addresses = Vec::new();
     // IPv4 Loopback
@@ -651,8 +651,8 @@ mod test {
 
     use super::*;
     use crate::peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         STALE_PEER_THRESHOLD_DURATION,
+        database::{MIGRATIONS, PeerDatabaseSql},
     };
 
     fn create_peer_manager() -> PeerManager {
@@ -672,22 +672,28 @@ mod test {
         let peer_manager = create_peer_manager();
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
         // Create 20 peers were the 1st and last one is bad
-        assert!(peer_manager
-            .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
-            .await
-            .is_ok());
-        for _i in 0..18 {
-            test_peers.push(create_test_peer(false, PeerFeatures::COMMUNICATION_NODE));
-            assert!(peer_manager
+        assert!(
+            peer_manager
                 .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
                 .await
-                .is_ok());
+                .is_ok()
+        );
+        for _i in 0..18 {
+            test_peers.push(create_test_peer(false, PeerFeatures::COMMUNICATION_NODE));
+            assert!(
+                peer_manager
+                    .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
+                    .await
+                    .is_ok()
+            );
         }
         test_peers.push(create_test_peer(true, PeerFeatures::COMMUNICATION_NODE));
-        assert!(peer_manager
-            .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
-            .await
-            .is_ok());
+        assert!(
+            peer_manager
+                .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
+                .await
+                .is_ok()
+        );
 
         // Test Valid Direct
         let selected_peers = peer_manager
@@ -699,22 +705,26 @@ mod test {
         assert_eq!(selected_peers.public_key, test_peers[2].public_key);
         // Test Invalid Direct
         let unmanaged_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
-        assert!(peer_manager
-            .direct_identity_node_id(&unmanaged_peer.node_id)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            peer_manager
+                .direct_identity_node_id(&unmanaged_peer.node_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // Test Flood
         let selected_peers = peer_manager.get_not_banned_or_deleted_peers().await.unwrap();
         assert_eq!(selected_peers.len(), 18);
         for peer_identity in &selected_peers {
-            assert!(!peer_manager
-                .find_by_node_id(&peer_identity.node_id)
-                .await
-                .unwrap()
-                .unwrap()
-                .is_banned(),);
+            assert!(
+                !peer_manager
+                    .find_by_node_id(&peer_identity.node_id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .is_banned(),
+            );
         }
 
         // Test Closest - No exclusions
@@ -884,9 +894,11 @@ mod test {
 
             let closest = peer_manager.closest_n_good_standing_peers(n, *features).await.unwrap();
 
-            assert!(closest
-                .iter()
-                .all(|p| network_region_node_id.distance(&p.node_id) <= node_threshold));
+            assert!(
+                closest
+                    .iter()
+                    .all(|p| network_region_node_id.distance(&p.node_id) <= node_threshold)
+            );
         }
     }
 

@@ -26,12 +26,12 @@ use tari_comms::{
     multiaddr::Multiaddr,
     socks,
     tor::{self, TorIdentity},
-    transports::{predicate::FalsePredicate, SocksConfig},
+    transports::{SocksConfig, predicate::FalsePredicate},
     types::TransportProtocol,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
 
-use crate::{initialization::CommsInitializationError, SocksAuthentication, TorControlAuthentication};
+use crate::{SocksAuthentication, TorControlAuthentication, initialization::CommsInitializationError};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]

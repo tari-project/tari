@@ -22,14 +22,14 @@
 
 use derive_more::IntoIterator;
 use nom::{
+    Err,
+    IResult,
     branch::alt,
     bytes::complete::{tag, take_until, take_while1},
     character::complete::multispace0,
     error::Error,
     multi::many0,
     sequence::{delimited, preceded},
-    Err,
-    IResult,
 };
 
 /// A parser that splits a line into parts

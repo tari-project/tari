@@ -25,7 +25,7 @@ use tari_transaction_components::transaction_components::Transaction;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseNodeConsensusManager,
-    validation::{aggregate_body::AggregateBodyChainLinkedValidator, TransactionValidator, ValidationError},
+    validation::{TransactionValidator, ValidationError, aggregate_body::AggregateBodyChainLinkedValidator},
 };
 
 pub struct TransactionChainLinkedValidator<B> {

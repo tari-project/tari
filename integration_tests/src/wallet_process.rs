@@ -23,18 +23,18 @@
 use std::{path::PathBuf, str::FromStr, thread};
 
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_console_wallet::{run_wallet_with_cli, Cli};
-use minotari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
+use minotari_console_wallet::{Cli, run_wallet_with_cli};
+use minotari_wallet::{WalletConfig, transaction_service::config::TransactionRoutingMechanism};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use tari_common::{configuration::CommonConfig, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
+use tari_p2p::{Network, PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{TariWorld, get_peer_addresses, get_port, wait_for_service};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {

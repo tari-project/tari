@@ -23,13 +23,13 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use tari_service_framework::{
-    reply_channel,
-    reply_channel::SenderService,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    reply_channel,
+    reply_channel::SenderService,
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::time::sleep;

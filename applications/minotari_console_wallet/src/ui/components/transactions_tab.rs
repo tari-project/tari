@@ -14,19 +14,19 @@ use tari_common_types::{
 use tari_transaction_components::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
-    Frame,
 };
 
 use crate::ui::{
-    components::{balance::Balance, styles, Component},
-    state::{AppState, CompletedTransactionInfo},
-    widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
+    components::{Component, balance::Balance, styles},
+    state::{AppState, CompletedTransactionInfo},
+    widgets::{MultiColumnList, WindowedListState, draw_dialog},
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::transaction_tab";
@@ -196,11 +196,11 @@ impl TransactionsTab {
 
         let completed_txs = app_state.get_completed_txs();
         self.completed_list_state.set_num_items(completed_txs.len());
-        if let Some(detailed_tx) = &self.detailed_transaction {
-            if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
-                let found_index = completed_txs.iter().position(|tx| tx.tx_id == detailed_tx.tx_id);
-                self.completed_list_state.select(found_index);
-            }
+        if let Some(detailed_tx) = &self.detailed_transaction &&
+            self.selected_tx_list == SelectedTransactionList::CompletedTxs
+        {
+            let found_index = completed_txs.iter().position(|tx| tx.tx_id == detailed_tx.tx_id);
+            self.completed_list_state.select(found_index);
         }
         let mut completed_list_state = self
             .completed_list_state
@@ -589,15 +589,15 @@ impl TransactionsTab {
         // Search in completed transactions
         let completed_txs = app_state.get_completed_txs();
         for (index, tx) in completed_txs.iter().enumerate() {
-            if let Some(payref_hex) = &tx.payment_reference_hex {
-                if payref_hex.to_lowercase().contains(&search_term) {
-                    // Found a match - select this transaction
-                    self.selected_tx_list = SelectedTransactionList::CompletedTxs;
-                    self.completed_list_state.select(Some(index));
-                    self.pending_list_state.select(None);
-                    self.detailed_transaction = Some((*tx).clone());
-                    return;
-                }
+            if let Some(payref_hex) = &tx.payment_reference_hex &&
+                payref_hex.to_lowercase().contains(&search_term)
+            {
+                // Found a match - select this transaction
+                self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                self.completed_list_state.select(Some(index));
+                self.pending_list_state.select(None);
+                self.detailed_transaction = Some((*tx).clone());
+                return;
             }
         }
 
@@ -701,16 +701,14 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 self.confirmation_dialog = false;
                 return;
             } else if 'y' == c {
-                if self.selected_tx_list == SelectedTransactionList::PendingTxs {
-                    if let Some(i) = self.pending_list_state.selected() {
-                        if let Some(pending_tx) = app_state.get_pending_tx(i).cloned() {
-                            if let Err(e) = Handle::current().block_on(app_state.cancel_transaction(pending_tx.tx_id)) {
-                                self.error_message = Some(format!(
-                                    "Could not cancel pending transaction.\n{e}\nPress Enter to continue."
-                                ));
-                            }
-                        }
-                    }
+                if self.selected_tx_list == SelectedTransactionList::PendingTxs &&
+                    let Some(i) = self.pending_list_state.selected() &&
+                    let Some(pending_tx) = app_state.get_pending_tx(i).cloned() &&
+                    let Err(e) = Handle::current().block_on(app_state.cancel_transaction(pending_tx.tx_id))
+                {
+                    self.error_message = Some(format!(
+                        "Could not cancel pending transaction.\n{e}\nPress Enter to continue."
+                    ));
                 }
                 self.confirmation_dialog = false;
                 return;

@@ -37,26 +37,26 @@ use tari_common::{
 };
 use tari_core::{
     chain_storage::{
-        async_db::AsyncBlockchainDb,
-        create_lmdb_database_with_stats_channel,
-        create_recovery_lmdb_database,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
         Validators,
+        async_db::AsyncBlockchainDb,
+        create_lmdb_database_with_stats_channel,
+        create_recovery_lmdb_database,
     },
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
+        DifficultyCalculator,
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
-        DifficultyCalculator,
     },
 };
 use tari_transaction_components::crypto_factories::CryptoFactories;
 
-use crate::{grpc::readiness_grpc_server::ReadinessStatusHandler, BaseNodeConfig, DatabaseType};
+use crate::{BaseNodeConfig, DatabaseType, grpc::readiness_grpc_server::ReadinessStatusHandler};
 
 pub const LOG_TARGET: &str = "base_node::app";
 

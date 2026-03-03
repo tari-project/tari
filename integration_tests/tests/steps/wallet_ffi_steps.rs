@@ -25,7 +25,7 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
-use tari_integration_tests::{wallet_ffi::get_mnemonic_word_list_for_language, FfiConnectivityStatus, TariWorld};
+use tari_integration_tests::{FfiConnectivityStatus, TariWorld, wallet_ffi::get_mnemonic_word_list_for_language};
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 
 use crate::steps::cucumber_steps_log;
@@ -364,14 +364,16 @@ async fn ffi_detects_transaction(
     status: String,
 ) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    assert!([
-        "TRANSACTION_STATUS_BROADCAST",
-        "TRANSACTION_STATUS_MINED_UNCONFIRMED",
-        "TRANSACTION_STATUS_MINED",
-        "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED",
-        "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED"
-    ]
-    .contains(&status.as_str()));
+    assert!(
+        [
+            "TRANSACTION_STATUS_BROADCAST",
+            "TRANSACTION_STATUS_MINED_UNCONFIRMED",
+            "TRANSACTION_STATUS_MINED",
+            "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED",
+            "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED"
+        ]
+        .contains(&status.as_str())
+    );
     cucumber_steps_log(format!(
         "Waiting for {wallet} to have detected {comparison} {count} {status} transaction(s)"
     ));

@@ -22,7 +22,7 @@
 
 use std::{fmt::Debug, sync::Arc};
 
-use futures::{future, Stream, StreamExt};
+use futures::{Stream, StreamExt, future};
 use log::*;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -135,7 +135,7 @@ where
 
     /// Create a subscription stream to a particular topic. The provided label is used to identify which consumer is
     /// lagging.
-    pub fn get_subscription(&self, topic: T, label: &'static str) -> impl Stream<Item = M> {
+    pub fn get_subscription(&self, topic: T, label: &'static str) -> impl Stream<Item = M> + use<T, M> {
         wrappers::BroadcastStream::new(self.sender.subscribe()).filter_map({
             move |result| {
                 let opt = match result {

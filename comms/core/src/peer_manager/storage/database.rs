@@ -26,15 +26,15 @@ use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
 use diesel::{
     self,
-    dsl::not,
-    prelude::*,
-    r2d2::{ConnectionManager, PooledConnection},
     ExpressionMethods,
     QueryDsl,
     RunQueryDsl,
     SqliteConnection,
+    dsl::not,
+    prelude::*,
+    r2d2::{ConnectionManager, PooledConnection},
 };
-use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+use diesel_migrations::{EmbeddedMigrations, embed_migrations};
 use log::{trace, warn};
 use multiaddr::Multiaddr;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
@@ -43,15 +43,15 @@ use tari_utilities::{hex, hex::Hex};
 use crate::{
     net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        generate_peer_id_as_i64,
-        peer_id::peer_id_from_i64,
-        storage::schema::{multi_addresses, node_identity, peers},
         NodeDistance,
         NodeId,
         Peer,
         PeerFeatures,
         PeerFlags,
         PeerId,
+        generate_peer_id_as_i64,
+        peer_id::peer_id_from_i64,
+        storage::schema::{multi_addresses, node_identity, peers},
     },
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
@@ -1199,11 +1199,11 @@ impl PeerDatabaseSql {
         exclude_failed: bool,
         randomize: bool,
     ) -> Result<Vec<Peer>, StorageError> {
-        if let Some(n) = n {
-            if n == 0 {
-                warn!(target: LOG_TARGET, "'0' requested for 'get_available_dial_candidates'");
-                return Ok(Vec::new());
-            }
+        if let Some(n) = n &&
+            n == 0
+        {
+            warn!(target: LOG_TARGET, "'0' requested for 'get_available_dial_candidates'");
+            return Ok(Vec::new());
         }
         let mut conn = self.connection.get_pooled_connection()?;
         let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
@@ -1512,11 +1512,11 @@ impl PeerDatabaseSql {
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
         transport_protocols: &[TransportProtocol],
     ) -> Result<Vec<String>, StorageError> {
-        if let Some(n) = n {
-            if n == 0 {
-                warn!(target: LOG_TARGET, "'0' requested for 'get_active_peer_node_ids'");
-                return Ok(Vec::new());
-            }
+        if let Some(n) = n &&
+            n == 0
+        {
+            warn!(target: LOG_TARGET, "'0' requested for 'get_active_peer_node_ids'");
+            return Ok(Vec::new());
         }
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
         let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
@@ -2069,25 +2069,25 @@ mod tests {
     use chrono::TimeDelta;
     use diesel::{self, ExpressionMethods, QueryDsl, RunQueryDsl};
     use tari_common_sqlite::connection::DbConnection;
-    use tari_utilities::{hex::Hex, ByteArray};
+    use tari_utilities::{ByteArray, hex::Hex};
 
     use crate::{
         multiaddr::Multiaddr,
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
+            NodeId,
+            Peer,
+            PeerFeatures,
+            PeerFlags,
             create_test_peer,
             create_test_peer_add_internal_addresses,
             create_test_peer_internal_addresses_only,
-            database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
+            database::{MIGRATIONS, NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql},
             manager::create_test_peer_with_onion_address,
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
                 schema::{multi_addresses, peers},
             },
-            NodeId,
-            Peer,
-            PeerFeatures,
-            PeerFlags,
         },
         protocol::ProtocolId,
         types::{CommsPublicKey, TransportProtocol},
@@ -2214,13 +2214,17 @@ mod tests {
         assert!(nodes_with_onion_addresses.is_empty());
 
         // - Has external address
-        assert!(nodes_with_all_addresses
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
+        assert!(
+            nodes_with_all_addresses
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) })
+        );
         // - Has internal address
-        assert!(nodes_with_all_addresses
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+        assert!(
+            nodes_with_all_addresses
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) })
+        );
 
         // Add peer with onion addresses only
         let onion_peer = create_test_peer_with_onion_address(false, PeerFeatures::COMMUNICATION_NODE);
@@ -2608,10 +2612,12 @@ mod tests {
         assert!(deleted_peer.deleted_at.is_some());
 
         // Test 'peer_exists_by_node_id'
-        assert!(peers_db
-            .peer_exists_by_node_id(&node_peers[2].node_id)
-            .unwrap()
-            .is_some());
+        assert!(
+            peers_db
+                .peer_exists_by_node_id(&node_peers[2].node_id)
+                .unwrap()
+                .is_some()
+        );
 
         // Test 'get_peer_by_public_key'
         let peer = peers_db
@@ -2621,10 +2627,12 @@ mod tests {
         assert_eq!(peer, node_peers[3]);
 
         // Test 'peer_exists_by_public_key'
-        assert!(peers_db
-            .peer_exists_by_public_key(&node_peers[4].public_key)
-            .unwrap()
-            .is_some());
+        assert!(
+            peers_db
+                .peer_exists_by_public_key(&node_peers[4].public_key)
+                .unwrap()
+                .is_some()
+        );
 
         // Test 'get_all_peers'
         let all_peers = peers_db.get_all_peers(None).unwrap();
@@ -2649,12 +2657,16 @@ mod tests {
         // node peer 1 is deleted, node peer 4 is banned
         // wallet peer 1 is deleted, wallet peer 4 is banned
         assert_eq!(n_peers.len(), 20);
-        assert!(!n_peers
-            .iter()
-            .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id));
-        assert!(!n_peers
-            .iter()
-            .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id));
+        assert!(
+            !n_peers
+                .iter()
+                .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id)
+        );
+        assert!(
+            !n_peers
+                .iter()
+                .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id)
+        );
 
         // Test 'set_last_seen'
         let last_seen = chrono::Utc::now().naive_utc() -
@@ -2705,15 +2717,19 @@ mod tests {
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
         // Verify deleted & banned
-        assert!(!closest_nodes
-            .iter()
-            .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id));
+        assert!(
+            !closest_nodes
+                .iter()
+                .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id)
+        );
         // Verify stale
         assert!(!closest_nodes.iter().any(|n| n.node_id == node_peers[8].node_id));
         // Verify excluded
-        assert!(!closest_nodes
-            .iter()
-            .any(|n| n.node_id == node_peers[6].node_id || n.node_id == node_peers[7].node_id));
+        assert!(
+            !closest_nodes
+                .iter()
+                .any(|n| n.node_id == node_peers[6].node_id || n.node_id == node_peers[7].node_id)
+        );
         // Verify all are nodes
         assert!(closest_nodes.iter().all(|n| n.features.is_node()));
         // Verify sorting by distance
@@ -2741,20 +2757,26 @@ mod tests {
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
         // Verify deleted & banned
-        assert!(!closest_peers
-            .iter()
-            .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id));
+        assert!(
+            !closest_peers
+                .iter()
+                .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id)
+        );
         // Verify stale
         assert!(!closest_peers.iter().any(|n| n.node_id == node_peers[8].node_id));
         // Verify excluded
-        assert!(!closest_peers
-            .iter()
-            .any(|n| n.node_id == node_peers[6].node_id || n.node_id == node_peers[7].node_id));
+        assert!(
+            !closest_peers
+                .iter()
+                .any(|n| n.node_id == node_peers[6].node_id || n.node_id == node_peers[7].node_id)
+        );
         // Verify all are nodes
         let node_ids_from_closest_nodes = closest_nodes.iter().map(|n| n.node_id.clone()).collect::<Vec<_>>();
-        assert!(closest_peers
-            .iter()
-            .all(|n| node_ids_from_closest_nodes.contains(&n.node_id)));
+        assert!(
+            closest_peers
+                .iter()
+                .all(|n| node_ids_from_closest_nodes.contains(&n.node_id))
+        );
         // Verify sorting by distance
         for i in 0..closest_peers.len() - 1 {
             assert!(
@@ -2780,15 +2802,19 @@ mod tests {
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
         // Verify deleted & banned
-        assert!(!closest_peers
-            .iter()
-            .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id));
+        assert!(
+            !closest_peers
+                .iter()
+                .any(|n| n.node_id == wallet_peers[1].node_id || n.node_id == wallet_peers[4].node_id)
+        );
         // Verify stale
         assert!(!closest_peers.iter().any(|n| n.node_id == wallet_peers[8].node_id));
         // Verify excluded
-        assert!(!closest_peers
-            .iter()
-            .any(|n| n.node_id == wallet_peers[6].node_id || n.node_id == wallet_peers[7].node_id));
+        assert!(
+            !closest_peers
+                .iter()
+                .any(|n| n.node_id == wallet_peers[6].node_id || n.node_id == wallet_peers[7].node_id)
+        );
         // Verify all are nodes
         assert!(closest_peers.iter().all(|n| n.features.is_client()));
         // Verify sorting by distance
@@ -2812,9 +2838,11 @@ mod tests {
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned
-        assert!(!random_peers
-            .iter()
-            .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id));
+        assert!(
+            !random_peers
+                .iter()
+                .any(|n| n.node_id == node_peers[1].node_id || n.node_id == node_peers[4].node_id)
+        );
         // Verify excluded
         assert!(!random_peers.iter().any(|n| n.node_id == node_peers[0].node_id));
 
@@ -3056,13 +3084,17 @@ mod tests {
             .unwrap();
         assert_eq!(nodes_with_all_addresses.len(), 40);
         // - Has external address
-        assert!(nodes_with_all_addresses
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
+        assert!(
+            nodes_with_all_addresses
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) })
+        );
         // - Has internal address
-        assert!(nodes_with_all_addresses
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+        assert!(
+            nodes_with_all_addresses
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) })
+        );
 
         // Add peers with internal addresses only
         for _i in 0..4 {
@@ -3090,9 +3122,11 @@ mod tests {
             .unwrap();
         assert_eq!(nodes_with_external_addresses_only.len(), 40);
         // - Has external address only
-        assert!(nodes_with_external_addresses_only
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) }));
+        assert!(
+            nodes_with_external_addresses_only
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) })
+        );
     }
 
     #[test]

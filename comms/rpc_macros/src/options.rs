@@ -23,9 +23,9 @@
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    parse::{Parse, ParseBuffer},
     Ident,
     Token,
+    parse::{Parse, ParseBuffer},
 };
 
 #[allow(dead_code)]
@@ -77,7 +77,7 @@ impl Parse for RpcTraitOptions {
                         name,
                         "expected `protocol_name`, `dep_module`, `server_struct` or `client_struct`, found `{}`",
                         n
-                    ))
+                    ));
                 },
             }
 

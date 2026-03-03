@@ -23,14 +23,14 @@
 use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_comms::peer_manager::NodeId;
 use tari_node_components::blocks::{Block, NewBlock};
-use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_service_framework::{Service, reply_channel::SenderService};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::base_node::comms_interface::{
-    error::CommsInterfaceError,
     FetchMempoolTransactionsResponse,
     NodeCommsRequest,
     NodeCommsResponse,
+    error::CommsInterfaceError,
 };
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]

@@ -39,10 +39,10 @@ use crate::{
     chain_storage::{BlockchainDatabase, ChainStorageError},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{
-        blockchain::{create_new_blockchain, TempDatabase},
+        BlockSpec,
+        blockchain::{TempDatabase, create_new_blockchain},
         create_block,
         default_coinbase_entities,
-        BlockSpec,
     },
 };
 

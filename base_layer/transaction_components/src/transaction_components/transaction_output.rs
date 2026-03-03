@@ -55,11 +55,11 @@ use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
+    MicroMinotari,
     consensus::DomainSeparatedConsensusHasher,
     helpers::borsh::SerializedSize,
     transaction_components,
     transaction_components::{
-        covenants::Covenant,
         EncryptedData,
         OutputFeatures,
         OutputType,
@@ -67,8 +67,8 @@ use crate::{
         TransactionError,
         TransactionInput,
         WalletOutput,
+        covenants::Covenant,
     },
-    MicroMinotari,
 };
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -584,13 +584,13 @@ pub fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
-    use super::{batch_verify_range_proofs, TransactionOutput};
+    use super::{TransactionOutput, batch_verify_range_proofs};
     use crate::{
+        MicroMinotari,
         crypto_factories::CryptoFactories,
         key_manager::{KeyManager, TransactionKeyManagerInterface},
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
-        MicroMinotari,
     };
 
     #[tokio::test]
@@ -726,14 +726,16 @@ mod test {
     async fn invalid_revealed_value_proofs_are_blocked() {
         let key_manager = KeyManager::new_random().unwrap();
         let test_params = TestParams::new(&key_manager);
-        assert!(create_output(
-            &test_params,
-            MicroMinotari(20),
-            MicroMinotari::zero(),
-            RangeProofType::BulletProofPlus,
-            &key_manager
-        )
-        .is_ok());
+        assert!(
+            create_output(
+                &test_params,
+                MicroMinotari(20),
+                MicroMinotari::zero(),
+                RangeProofType::BulletProofPlus,
+                &key_manager
+            )
+            .is_ok()
+        );
         match create_output(
             &test_params,
             MicroMinotari(20),

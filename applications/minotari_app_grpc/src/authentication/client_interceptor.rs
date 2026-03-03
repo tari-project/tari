@@ -22,11 +22,11 @@
 
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tonic::{
+    Request,
+    Status,
     codegen::http::header::AUTHORIZATION,
     metadata::{Ascii, MetadataValue},
     service::Interceptor,
-    Request,
-    Status,
 };
 
 use crate::authentication::{BasicAuthCredentials, BasicAuthError};
@@ -66,7 +66,7 @@ impl Interceptor for ClientAuthenticationInterceptor {
 mod test {
     use tari_common_types::grpc_authentication::GrpcAuthentication;
     use tari_utilities::SafePassword;
-    use tonic::{codegen::http::header::AUTHORIZATION, service::Interceptor, Request};
+    use tonic::{Request, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
     use super::ClientAuthenticationInterceptor;
     use crate::authentication::ServerAuthenticationInterceptor;

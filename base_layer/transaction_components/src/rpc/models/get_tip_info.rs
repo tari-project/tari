@@ -3,8 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 use utoipa::{
-    openapi::{schema::SchemaType, Object, OneOf, Schema, Type},
     ToSchema,
+    openapi::{Object, OneOf, Schema, Type, schema::SchemaType},
 };
 
 #[derive(Serialize, Deserialize, ToSchema, Clone)]

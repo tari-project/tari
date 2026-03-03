@@ -34,7 +34,7 @@ pub use error::NoiseError;
 
 mod socket;
 pub use socket::NoiseSocket;
-use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
+use tari_utilities::{Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::Zeroize;
 
 pub(crate) const NOISE_KEY_LEN: usize = 32;

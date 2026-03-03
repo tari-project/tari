@@ -24,7 +24,7 @@
 #![allow(clippy::indexing_slicing)]
 use std::{sync::Arc, time::Duration};
 
-use futures::{future, StreamExt};
+use futures::{StreamExt, future};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_try_recv, streams, unpack_enum};
 use tokio::sync::{broadcast, mpsc};
@@ -37,17 +37,17 @@ use super::{
     selection::ConnectivitySelection,
 };
 use crate::{
+    Minimized,
+    NodeIdentity,
+    PeerManager,
     connection_manager::{ConnectionManagerError, ConnectionManagerEvent},
     connectivity::ConnectivityEventRx,
     peer_manager::{Peer, PeerFeatures, PeerFlags},
     test_utils::{
         build_peer_manager,
-        mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
+        mocks::{ConnectionManagerMockState, create_connection_manager_mock, create_peer_connection_mock_pair},
         node_identity::{build_many_node_identities, build_node_identity},
     },
-    Minimized,
-    NodeIdentity,
-    PeerManager,
 };
 
 #[allow(clippy::type_complexity)]
@@ -352,9 +352,9 @@ async fn peer_selection() {
     let _events = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
 
     let conns = connectivity
-        .select_connections(ConnectivitySelection::random_nodes(10, vec![connections[0]
-            .peer_node_id()
-            .clone()]))
+        .select_connections(ConnectivitySelection::random_nodes(10, vec![
+            connections[0].peer_node_id().clone(),
+        ]))
         .await
         .unwrap();
     assert_eq!(conns.len(), 9);

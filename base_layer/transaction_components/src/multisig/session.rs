@@ -20,24 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
     types::{CompressedPublicKey, FixedHash},
 };
 use tari_script::{
-    push_pubkey_script,
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     Opcode,
     StackItem,
     TariScript,
+    push_pubkey_script,
 };
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 
 use crate::{
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
     consensus::ConsensusConstants,
     fee::Fee,
     helpers::borsh::SerializedSize,
@@ -45,17 +48,14 @@ use crate::{
     multisig::script::{derive_multisig_ephemeral_pubkeys, get_multi_sig_script_components},
     transaction_builder::FinalizedTransaction,
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
         OutputFeatures,
         Transaction,
         TransactionError,
         WalletOutput,
         WalletOutputBuilder,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
-    TransactionBuilder,
-    TransactionBuilderError,
 };
 
 pub struct MultisigSession<TKeyManagerInterface> {

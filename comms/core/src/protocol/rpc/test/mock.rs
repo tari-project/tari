@@ -22,37 +22,37 @@
 
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
         RwLock,
+        atomic::{AtomicUsize, Ordering},
     },
     task::{Context, Poll},
 };
 
 use bytes::Bytes;
 use futures::future;
-use tower::{util::BoxService, Service};
+use tower::{Service, util::BoxService};
 
 use crate::{
     message::MessageExt,
-    peer_manager::{create_test_peer, PeerFeatures},
+    peer_manager::{PeerFeatures, create_test_peer},
     protocol::{
+        ProtocolId,
         rpc::{
+            Request,
+            Response,
+            RpcError,
+            RpcStatus,
             body::{Body, ClientStreaming},
             client::RpcClient,
             context::RpcCommsBackend,
             message::RpcMethod,
             server::{NamedProtocolService, RpcServerError},
-            Request,
-            Response,
-            RpcError,
-            RpcStatus,
         },
-        ProtocolId,
     },
     test_utils::{
         build_peer_manager,
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
     },
 };
 

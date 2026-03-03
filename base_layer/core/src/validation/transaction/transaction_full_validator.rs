@@ -30,7 +30,7 @@ use super::TransactionChainLinkedValidator;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseNodeConsensusManager,
-    validation::{traits::TransactionValidator, ValidationError},
+    validation::{ValidationError, traits::TransactionValidator},
 };
 
 pub struct TransactionFullValidator<B> {

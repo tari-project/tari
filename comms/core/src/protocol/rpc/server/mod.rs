@@ -51,26 +51,28 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future, stream::FuturesUnordered, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, future, stream::FuturesUnordered};
 use log::*;
 use prost::Message;
 use router::Router;
 use tokio::{sync::mpsc, task::JoinHandle, time};
 use tokio_stream::Stream;
-use tower::{make::MakeService, Service};
-use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
+use tower::{Service, make::MakeService};
+use tracing::{Instrument, Level, debug, error, instrument, span, trace, warn};
 
 use super::{
+    Handshake,
+    RPC_MAX_FRAME_SIZE,
     body::Body,
     context::{RequestContext, RpcCommsProvider},
     error::HandshakeRejectReason,
     message::{Request, Response, RpcMessageFlags},
     not_found::ProtocolServiceNotFound,
     status::RpcStatus,
-    Handshake,
-    RPC_MAX_FRAME_SIZE,
 };
 use crate::{
+    Bytes,
+    Substream,
     bounded_executor::BoundedExecutor,
     framing,
     framing::CanonicalFraming,
@@ -78,20 +80,18 @@ use crate::{
     peer_manager::NodeId,
     proto,
     protocol::{
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+        ProtocolNotificationRx,
         rpc,
         rpc::{
             body::BodyBytes,
             message::{RpcMethod, RpcResponse},
             server::early_close::EarlyClose,
         },
-        ProtocolEvent,
-        ProtocolId,
-        ProtocolNotification,
-        ProtocolNotificationRx,
     },
     stream_id::{Id, StreamId},
-    Bytes,
-    Substream,
 };
 
 const LOG_TARGET: &str = "comms::rpc::server";

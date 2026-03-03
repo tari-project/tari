@@ -32,7 +32,7 @@ use log::*;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
     burn_proof::{BurnClaimProof, EncodedMerkleProof},
-    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{
@@ -45,10 +45,10 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel},
     MicroMinotari,
+    transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hidden};
+use tari_utilities::{ByteArray, Hidden, hex::Hex};
 use thiserror::Error;
 use tokio::time::Instant;
 use zeroize::Zeroize;
@@ -608,7 +608,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                     return Err(TransactionStorageError::ValueNotFound(
                         DbKey::PendingOutboundTransaction(tx_id),
-                    ))
+                    ));
                 },
                 Err(e) => return Err(e),
             }
@@ -648,7 +648,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                     return Err(TransactionStorageError::ValueNotFound(
                         DbKey::PendingInboundTransaction(tx_id),
-                    ))
+                    ));
                 },
                 Err(e) => return Err(e),
             };
@@ -690,7 +690,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                     return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
                         tx_id,
-                    )))
+                    )));
                 },
                 Err(e) => return Err(e),
             }
@@ -1281,21 +1281,21 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut query = completed_transactions::table.into_boxed();
 
         // Apply status filter if provided
-        if let Some(status_bitflag) = status_filter {
-            if status_bitflag != 0 {
-                // Build a vector of status values to filter by
-                let mut status_values: Vec<i32> = Vec::new();
+        if let Some(status_bitflag) = status_filter &&
+            status_bitflag != 0
+        {
+            // Build a vector of status values to filter by
+            let mut status_values: Vec<i32> = Vec::new();
 
-                for i in 0..32 {
-                    let status_bit = 1u64 << i;
-                    if (status_bitflag & status_bit) != 0 {
-                        status_values.push(i);
-                    }
+            for i in 0..32 {
+                let status_bit = 1u64 << i;
+                if (status_bitflag & status_bit) != 0 {
+                    status_values.push(i);
                 }
+            }
 
-                if !status_values.is_empty() {
-                    query = query.filter(completed_transactions::status.eq_any(status_values));
-                }
+            if !status_values.is_empty() {
+                query = query.filter(completed_transactions::status.eq_any(status_values));
             }
         }
 
@@ -2778,11 +2778,11 @@ mod test {
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
-    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
-    use rand::{rngs::OsRng, RngCore};
+    use rand::{RngCore, rngs::OsRng};
     use tari_common::configuration::Network;
-    use tari_common_sqlite::{sqlite_connection_pool::SqliteConnectionPool, PRAGMA_BUSY_TIMEOUT};
+    use tari_common_sqlite::{PRAGMA_BUSY_TIMEOUT, sqlite_connection_pool::SqliteConnectionPool};
     use tari_common_types::{
         encryption::Encryptable,
         tari_address::TariAddress,
@@ -2793,15 +2793,15 @@ mod test {
     use tari_script::script;
     use tari_test_utils::random::string;
     use tari_transaction_components::{
+        MicroMinotari,
         key_manager::KeyManager,
-        test_helpers::{create_wallet_output_with_data, TestParams},
+        test_helpers::{TestParams, create_wallet_output_with_data},
         transaction_builder::TransactionBuilder,
         transaction_components::{
-            memo_field::{MemoField, TxType},
             OutputFeatures,
             Transaction,
+            memo_field::{MemoField, TxType},
         },
-        MicroMinotari,
     };
     use tempfile::tempdir;
 
@@ -3114,10 +3114,12 @@ mod test {
             .unwrap()
             .commit(&mut conn)
             .unwrap();
-        assert!(CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
-            .unwrap()
-            .commit(&mut conn)
-            .is_err());
+        assert!(
+            CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
+                .unwrap()
+                .commit(&mut conn)
+                .is_err()
+        );
 
         CompletedTransactionSql::try_from(completed_tx2, &cipher)
             .unwrap()
@@ -3148,10 +3150,12 @@ mod test {
             .unwrap()
             .delete(&mut conn)
             .unwrap();
-        assert!(InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
-            .unwrap()
-            .delete(&mut conn)
-            .is_err());
+        assert!(
+            InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
+                .unwrap()
+                .delete(&mut conn)
+                .is_err()
+        );
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &mut conn).is_err());
 
         assert!(OutboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &mut conn).is_ok());
@@ -3159,10 +3163,12 @@ mod test {
             .unwrap()
             .delete(&mut conn)
             .unwrap();
-        assert!(OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
-            .unwrap()
-            .delete(&mut conn)
-            .is_err());
+        assert!(
+            OutboundTransactionSql::try_from(outbound_tx1.clone(), &cipher)
+                .unwrap()
+                .delete(&mut conn)
+                .is_err()
+        );
         assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, false, &mut conn).is_err());
 
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &mut conn).is_ok());
@@ -3170,10 +3176,12 @@ mod test {
             .unwrap()
             .delete(&mut conn)
             .unwrap();
-        assert!(CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
-            .unwrap()
-            .delete(&mut conn)
-            .is_err());
+        assert!(
+            CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
+                .unwrap()
+                .delete(&mut conn)
+                .is_err()
+        );
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &mut conn).is_err());
 
         InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)

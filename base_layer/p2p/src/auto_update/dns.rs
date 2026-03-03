@@ -29,10 +29,10 @@ use std::{
 use anyhow::anyhow;
 use futures::future;
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_utilities::hex::{from_hex, Hex, HexError};
+use tari_utilities::hex::{Hex, HexError, from_hex};
 use thiserror::Error;
 
-use super::{error::AutoUpdateError, AutoUpdateConfig, Version};
+use super::{AutoUpdateConfig, Version, error::AutoUpdateError};
 use crate::dns::DnsClient;
 
 const LOG_TARGET: &str = "p2p::auto_update::dns";

@@ -27,13 +27,13 @@ use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_core::{
     base_node::{
+        SyncValidators,
         chain_metadata_service::PeerChainMetadata,
         state_machine_service::{
-            states::{Listening, StateEvent, StatusInfo, SyncStatus::Lagging},
             BaseNodeStateMachine,
             BaseNodeStateMachineConfig,
+            states::{Listening, StateEvent, StatusInfo, SyncStatus::Lagging},
         },
-        SyncValidators,
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::BaseNodeConsensusManagerBuilder,
@@ -42,7 +42,7 @@ use tari_core::{
     test_helpers::blockchain::create_test_blockchain_db,
     validation::mocks::MockValidator,
 };
-use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
+use tari_p2p::{P2pConfig, services::liveness::config::LivenessConfig};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
@@ -62,10 +62,10 @@ use crate::helpers::{
     block_builders::{append_block, chain_block, create_genesis_block, find_header_with_achieved_difficulty},
     chain_metadata::MockChainMetadata,
     nodes::{
+        BaseNodeBuilder,
         create_network_with_multiple_base_nodes_with_config,
         random_node_identity,
         wait_until_online,
-        BaseNodeBuilder,
     },
 };
 
@@ -303,7 +303,8 @@ async fn test_listening_initial_fallen_behind() {
 async fn test_event_channel() {
     let network = Network::Esmeralda;
     if std::env::var("TARI_NETWORK").is_err() {
-        std::env::set_var("TARI_NETWORK", network.as_key_str());
+        // SAFETY: This test is not run in parallel with tests that depend on this env var.
+        unsafe { std::env::set_var("TARI_NETWORK", network.as_key_str()) };
     }
     if Network::get_current_or_user_setting_or_default() != network {
         let _ = Network::set_current(network);

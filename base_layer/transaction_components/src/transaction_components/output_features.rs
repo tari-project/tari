@@ -37,13 +37,13 @@ use tari_sidechain::EvictionProof;
 
 use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
 use crate::transaction_components::{
-    range_proof_type::RangeProofType,
-    side_chain::SideChainFeature,
     CodeTemplateRegistration,
     ConfidentialOutputData,
     OutputType,
     ValidatorNodeRegistration,
     ValidatorNodeSignature,
+    range_proof_type::RangeProofType,
+    side_chain::SideChainFeature,
 };
 
 /// Coinbase outputs are allowed to have metadata, but it has the following length limit

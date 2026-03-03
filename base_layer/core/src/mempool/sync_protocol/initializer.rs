@@ -24,19 +24,19 @@ use std::time::Duration;
 
 use log::*;
 use tari_comms::{
+    Substream,
     connectivity::ConnectivityRequester,
     protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
-    Substream,
 };
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tokio::{sync::mpsc, time::sleep};
 
 use crate::{
-    base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
+    base_node::{StateMachineHandle, comms_interface::LocalNodeCommsInterface},
     mempool::{
-        sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
         MempoolServiceConfig,
+        sync_protocol::{MEMPOOL_SYNC_PROTOCOL, MempoolSyncProtocol},
     },
 };
 
@@ -60,7 +60,7 @@ impl MempoolSyncInitializer {
         }
     }
 
-    pub fn get_protocol_extension(&self) -> impl ProtocolExtension {
+    pub fn get_protocol_extension(&self) -> impl ProtocolExtension + use<> {
         let notif_tx = self.notif_tx.clone();
         move |context: &mut ProtocolExtensionContext| -> Result<(), ProtocolExtensionError> {
             context.add_protocol([MEMPOOL_SYNC_PROTOCOL.clone()], &notif_tx);

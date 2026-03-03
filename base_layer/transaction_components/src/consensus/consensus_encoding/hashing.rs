@@ -185,7 +185,8 @@ mod tests {
                     .finalize();
 
             // Generate an inferred network hash
-            std::env::set_var("TARI_NETWORK", network.as_key_str());
+            // SAFETY: This test is not run in parallel, and the environment variable is removed after use.
+            unsafe { std::env::set_var("TARI_NETWORK", network.as_key_str()) };
             println!(
                 "TARI_NETWORK:    {:?}",
                 std::env::var("TARI_NETWORK").unwrap_or_default()
@@ -197,7 +198,8 @@ mod tests {
             let inferred_network_hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
                 .chain(&input)
                 .finalize();
-            std::env::remove_var("TARI_NETWORK");
+            // SAFETY: This test is not run in parallel, and the environment variable was set earlier in this test.
+            unsafe { std::env::remove_var("TARI_NETWORK") };
 
             // They should be equal
             assert_eq!(hash_specify_network, inferred_network_hash);

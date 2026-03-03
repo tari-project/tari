@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use lmdb_zero::error;
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use tari_storage::lmdb_store::BYTES_PER_MB;
 
 use crate::chain_storage::ChainStorageError;
@@ -59,13 +59,13 @@ where T: Serialize + ?Sized {
             serialize_time
         );
     }
-    if let Some(size) = size_hint {
-        if buf.len() > size {
-            warn!(
-                target: LOG_TARGET,
-                "lmdb_replace - Serialized size hint was too small. Expected {}, got {}", size, buf.len()
-            );
-        }
+    if let Some(size) = size_hint &&
+        buf.len() > size
+    {
+        warn!(
+            target: LOG_TARGET,
+            "lmdb_replace - Serialized size hint was too small. Expected {}, got {}", size, buf.len()
+        );
     }
     Ok(buf)
 }

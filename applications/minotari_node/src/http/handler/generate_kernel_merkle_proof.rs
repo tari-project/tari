@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Extension,
+    Json,
     extract::Query,
     http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    Extension,
-    Json,
 };
 use log::debug;
 use serde::Deserialize;
@@ -17,14 +17,14 @@ use tari_common_types::{
     types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::GenerateKernelMerkleProofResponse;
 use tari_utilities::ByteArray;
 use tonic::service::AxumBody;
 
-use crate::http::handler::{error_handler_with_message, ErrorResponse};
+use crate::http::handler::{ErrorResponse, error_handler_with_message};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::generate_kernel_merkle_proof";
 

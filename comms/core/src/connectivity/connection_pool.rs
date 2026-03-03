@@ -24,7 +24,7 @@ use std::{collections::HashMap, fmt, time::Duration};
 
 use nom::lib::std::collections::hash_map::Entry;
 
-use crate::{peer_manager::NodeId, Minimized, PeerConnection};
+use crate::{Minimized, PeerConnection, peer_manager::NodeId};
 
 /// Status type for connections
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

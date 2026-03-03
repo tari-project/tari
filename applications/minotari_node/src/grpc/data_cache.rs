@@ -40,38 +40,22 @@ impl DataCache {
 
     pub async fn get_monero_randomx_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<u64> {
         let res = &self.inner_data_cache.read().await.monero_randomx_estimated_hash_rate;
-        if res.tip == *current_tip {
-            Some(res.data)
-        } else {
-            None
-        }
+        if res.tip == *current_tip { Some(res.data) } else { None }
     }
 
     pub async fn get_tari_randomx_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<u64> {
         let res = &self.inner_data_cache.read().await.tari_randomx_estimated_hash_rate;
-        if res.tip == *current_tip {
-            Some(res.data)
-        } else {
-            None
-        }
+        if res.tip == *current_tip { Some(res.data) } else { None }
     }
 
     pub async fn get_cuckaroo_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<tari_rpc::UDecimalValue> {
         let res = &self.inner_data_cache.read().await.cuckaroo_estimated_hash_rate;
-        if res.tip == *current_tip {
-            Some(res.data)
-        } else {
-            None
-        }
+        if res.tip == *current_tip { Some(res.data) } else { None }
     }
 
     pub async fn get_sha3x_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<u64> {
         let res = &self.inner_data_cache.read().await.sha3x_estimated_hash_rate;
-        if res.tip == *current_tip {
-            Some(res.data)
-        } else {
-            None
-        }
+        if res.tip == *current_tip { Some(res.data) } else { None }
     }
 
     pub async fn set_monero_randomx_estimated_hash_rate(&self, hash_rate: u64, current_tip: FixedHash) {

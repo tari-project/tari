@@ -28,7 +28,7 @@ use tari_utilities::message_format::MessageFormat;
 use super::dht_setting_entry::DhtMetadataEntry;
 use crate::{
     schema::dht_metadata,
-    storage::{dht_setting_entry::NewDhtMetadataEntry, DhtMetadataKey},
+    storage::{DhtMetadataKey, dht_setting_entry::NewDhtMetadataEntry},
 };
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");

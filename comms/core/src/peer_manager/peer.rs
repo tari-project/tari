@@ -36,9 +36,9 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::hex::serialize_to_hex;
 
 use super::{
-    node_id::{deserialize_node_id_from_hex, NodeId},
-    peer_id::PeerId,
     PeerFeatures,
+    node_id::{NodeId, deserialize_node_id_from_hex},
+    peer_id::PeerId,
 };
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},

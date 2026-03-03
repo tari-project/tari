@@ -25,7 +25,7 @@ use std::{
     time::Duration,
 };
 
-use futures::{pin_mut, stream::StreamExt, Stream};
+use futures::{Stream, pin_mut, stream::StreamExt};
 use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::types::BlockHash;
@@ -51,16 +51,16 @@ use tokio::{
 
 use crate::{
     base_node::{
+        BaseNodeStateMachineConfig,
+        StateMachineHandle,
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
         state_machine_service::states::StateInfo,
-        BaseNodeStateMachineConfig,
-        StateMachineHandle,
     },
     chain_storage::{BlockchainBackend, ChainStorageError},
     common::{
-        waiting_requests::{generate_request_key, WaitingRequests},
         RequestKey,
+        waiting_requests::{WaitingRequests, generate_request_key},
     },
     proto as shared_protos,
     proto::base_node as proto,

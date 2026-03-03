@@ -22,7 +22,7 @@
 
 use core::time::Duration;
 
-use diesel::{connection::SimpleConnection, dsl::sql, sql_types::Text, RunQueryDsl, SqliteConnection};
+use diesel::{RunQueryDsl, SqliteConnection, connection::SimpleConnection, dsl::sql, sql_types::Text};
 use log::trace;
 
 use crate::connection::DbConnection;

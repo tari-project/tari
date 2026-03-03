@@ -24,8 +24,8 @@ use core::time::Duration;
 use std::{convert::TryFrom, fmt::Display, path::PathBuf};
 
 use diesel::{
-    r2d2::{ConnectionManager, Pool, PooledConnection},
     SqliteConnection,
+    r2d2::{ConnectionManager, Pool, PooledConnection},
 };
 use log::*;
 

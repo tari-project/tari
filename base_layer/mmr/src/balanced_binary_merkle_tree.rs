@@ -26,7 +26,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{common::hash_together, Hash};
+use crate::{Hash, common::hash_together};
 
 pub(crate) fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleTreeError> {
     u32::try_from(value).map_err(|_| BalancedBinaryMerkleTreeError::MathOverFlow)
@@ -136,7 +136,7 @@ mod test {
     use digest::consts::U32;
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
-    use crate::{balanced_binary_merkle_tree::BalancedBinaryMerkleTreeError, BalancedBinaryMerkleTree};
+    use crate::{BalancedBinaryMerkleTree, balanced_binary_merkle_tree::BalancedBinaryMerkleTreeError};
     hash_domain!(TestDomain, "com.tari.test.testing", 0);
 
     #[test]

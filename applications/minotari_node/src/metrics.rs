@@ -23,9 +23,9 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::bootstrap::ApplicationType, SubConfigPath};
+use tari_common::{SubConfigPath, configuration::bootstrap::ApplicationType};
 use tari_comms::NodeIdentity;
-use tari_metrics::{server::MetricsServerBuilder, Registry};
+use tari_metrics::{Registry, server::MetricsServerBuilder};
 use tari_shutdown::ShutdownSignal;
 use tokio::task;
 

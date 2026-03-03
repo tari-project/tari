@@ -28,6 +28,9 @@ use tari_common_types::types::HashOutput;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
+        BaseNodeStateMachine,
+        BaseNodeStateMachineConfig,
+        SyncValidators,
         chain_metadata_service::PeerChainMetadata,
         state_machine_service::states::{
             BlockSync,
@@ -38,9 +41,6 @@ use tari_core::{
             StatusInfo,
         },
         sync::SyncPeer,
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
-        SyncValidators,
     },
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
@@ -50,7 +50,7 @@ use tari_core::{
     validation::mocks::MockValidator,
 };
 use tari_node_components::blocks::ChainBlock;
-use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
+use tari_p2p::{P2pConfig, services::liveness::LivenessConfig};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
     key_manager::KeyManager,
@@ -65,7 +65,7 @@ use tokio::sync::{broadcast, watch};
 
 use crate::helpers::{
     block_builders::{append_block, create_genesis_block},
-    nodes::{create_network_with_multiple_base_nodes_with_config, NodeInterfaces},
+    nodes::{NodeInterfaces, create_network_with_multiple_base_nodes_with_config},
     sample_blockchains,
 };
 
@@ -260,28 +260,34 @@ pub fn delete_some_blocks_and_headers(
         node.blockchain_db.write(txn).unwrap();
         match instruction {
             WhatToDelete::BlocksAndHeaders => {
-                assert!(!node
-                    .blockchain_db
-                    .chain_block_or_orphan_block_exists(*blocks[i].hash())
-                    .unwrap());
-                assert!(node
-                    .blockchain_db
-                    .fetch_header_by_block_hash(*blocks[i].hash())
-                    .unwrap()
-                    .is_none());
+                assert!(
+                    !node
+                        .blockchain_db
+                        .chain_block_or_orphan_block_exists(*blocks[i].hash())
+                        .unwrap()
+                );
+                assert!(
+                    node.blockchain_db
+                        .fetch_header_by_block_hash(*blocks[i].hash())
+                        .unwrap()
+                        .is_none()
+                );
             },
             WhatToDelete::Blocks => {
-                assert!(!node
-                    .blockchain_db
-                    .chain_block_or_orphan_block_exists(*blocks[i].hash())
-                    .unwrap());
+                assert!(
+                    !node
+                        .blockchain_db
+                        .chain_block_or_orphan_block_exists(*blocks[i].hash())
+                        .unwrap()
+                );
             },
             WhatToDelete::Headers => {
-                assert!(node
-                    .blockchain_db
-                    .fetch_header_by_block_hash(*blocks[i].hash())
-                    .unwrap()
-                    .is_none());
+                assert!(
+                    node.blockchain_db
+                        .fetch_header_by_block_hash(*blocks[i].hash())
+                        .unwrap()
+                        .is_none()
+                );
             },
         }
     }

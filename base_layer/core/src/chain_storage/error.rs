@@ -22,20 +22,20 @@
 
 use lmdb_zero::error;
 use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
-use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
+use tari_mmr::{MerkleProofError, error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
 use tari_node_components::blocks::BlockError;
 use tari_storage::lmdb_store::LMDBError;
 use tari_transaction_components::{
-    tari_proof_of_work::PowError,
-    transaction_components::TransactionError,
     BanPeriod,
     BanReason,
+    tari_proof_of_work::PowError,
+    transaction_components::TransactionError,
 };
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
-use crate::{chain_storage::MmrTree, validation::ValidationError, MrHashError};
+use crate::{MrHashError, chain_storage::MmrTree, validation::ValidationError};
 #[derive(Debug, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed: {0}")]
@@ -64,9 +64,7 @@ pub enum ChainStorageError {
     InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
-    #[error(
-        "PayRef index not available: current `{current_height}`, start `{start_height}`, target `{target_height}`"
-    )]
+    #[error("PayRef index not available: current `{current_height}`, start `{start_height}`, target `{target_height}`")]
     PayRefIndexNotAvailable {
         current_height: u64,
         start_height: u64,

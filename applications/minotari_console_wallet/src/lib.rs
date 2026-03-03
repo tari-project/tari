@@ -44,7 +44,7 @@ pub use cli::{
     SetBaseNodeArgs,
     WhoisArgs,
 };
-use init::{change_password, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
+use init::{WalletBoot, change_password, init_wallet, start_wallet, tari_splash_screen};
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -57,7 +57,7 @@ use tari_common_types::seeds::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
 use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
-use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
+use wallet_modes::{WalletMode, command_mode, grpc_mode, recovery_mode, script_mode, tui_mode};
 
 pub use crate::config::ApplicationConfig;
 use crate::{

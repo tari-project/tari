@@ -22,12 +22,12 @@
 
 #![allow(clippy::indexing_slicing)]
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::Span,
     widgets::{List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 /// A Tui-rs list with columns

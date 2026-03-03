@@ -24,7 +24,7 @@ use std::{ffi::CString, ptr::null_mut};
 
 use libc::c_void;
 
-use super::{ffi_bytes::FFIBytes, ffi_import, PrivateKey};
+use super::{PrivateKey, ffi_bytes::FFIBytes, ffi_import};
 
 pub struct PublicKey {
     ptr: *mut c_void,

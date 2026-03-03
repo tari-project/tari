@@ -31,9 +31,9 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{
+    DhtProtocolVersion,
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
-    DhtProtocolVersion,
 };
 
 macro_rules! unwrap_oms_send_msg {

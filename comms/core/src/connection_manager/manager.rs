@@ -32,7 +32,7 @@ use tokio::{
     task,
     time,
 };
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
 
 use super::{
     dialer::{Dialer, DialerRequest},
@@ -42,10 +42,12 @@ use super::{
     requester::ConnectionManagerRequest,
 };
 #[cfg(feature = "metrics")]
-use crate::connection_manager::metrics;
-#[cfg(feature = "metrics")]
 use crate::connection_manager::ConnectionDirection;
+#[cfg(feature = "metrics")]
+use crate::connection_manager::metrics;
 use crate::{
+    Minimized,
+    PeerManager,
     backoff::Backoff,
     connection_manager::ConnectionId,
     multiplexing::Substream,
@@ -55,8 +57,6 @@ use crate::{
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
-    Minimized,
-    PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";

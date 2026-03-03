@@ -64,7 +64,7 @@ impl BlockHeaderSha3 {
     }
 
     pub fn random_nonce(&mut self) {
-        use rand::{rngs::OsRng, RngCore};
+        use rand::{RngCore, rngs::OsRng};
         self.header.nonce = OsRng.next_u64();
     }
 

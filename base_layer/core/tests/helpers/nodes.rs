@@ -26,47 +26,47 @@ use std::{path::Path, sync::Arc, time::Duration};
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_comms::{
+    CommsNode,
+    UnspawnedCommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::{messaging::MessagingEventSender, rpc::RpcServer},
     transports::MemoryTransport,
-    CommsNode,
-    UnspawnedCommsNode,
 };
-use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
+use tari_comms_dht::{Dht, outbound::OutboundMessageRequester};
 use tari_core::{
     base_node,
     base_node::{
+        LocalNodeCommsInterface,
+        StateMachineHandle,
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         comms_interface::OutboundNodeCommsInterface,
         service::BaseNodeServiceInitializer,
-        LocalNodeCommsInterface,
-        StateMachineHandle,
     },
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{
-        service::{LocalMempoolService, MempoolHandle},
         Mempool,
         MempoolConfig,
         MempoolServiceConfig,
         MempoolServiceInitializer,
         OutboundMempoolServiceInterface,
+        service::{LocalMempoolService, MempoolHandle},
     },
     proof_of_work::randomx_factory::RandomXFactory,
-    test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, TempDatabase},
+    test_helpers::blockchain::{TempDatabase, create_store_with_consensus_and_validators_and_config},
     validation::{
-        mocks::MockValidator,
-        transaction::TransactionChainLinkedValidator,
         CandidateBlockValidator,
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
+        mocks::MockValidator,
+        transaction::TransactionChainLinkedValidator,
     },
 };
 use tari_p2p::{
-    comms_connector::{pubsub_connector, InboundDomainConnector},
-    initialization::initialize_local_test_comms,
-    services::liveness::{config::LivenessConfig, LivenessHandle, LivenessInitializer},
     P2pConfig,
+    comms_connector::{InboundDomainConnector, pubsub_connector},
+    initialization::initialize_local_test_comms,
+    services::liveness::{LivenessHandle, LivenessInitializer, config::LivenessConfig},
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;

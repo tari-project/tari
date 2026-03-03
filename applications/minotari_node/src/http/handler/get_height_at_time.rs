@@ -4,26 +4,26 @@
 use std::sync::Arc;
 
 use axum::{
+    Extension,
+    Json,
     extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Extension,
-    Json,
 };
 use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
 use tonic::service::AxumBody;
 
 use crate::{
-    http::{
-        cache_config::{apply_cache_control, RouteKey},
-        handler::{error_handler_with_message, ErrorResponse},
-    },
     HttpCacheConfig,
+    http::{
+        cache_config::{RouteKey, apply_cache_control},
+        handler::{ErrorResponse, error_handler_with_message},
+    },
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_height_at_time";

@@ -30,10 +30,10 @@ use tari_common_types::{
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::TariKeyId,
     transaction_components::{MemoField, WalletOutput},
     utxo_selection::UtxoValue,
-    MicroMinotari,
 };
 
 use crate::output_manager_service::storage::{OutputSource, OutputStatus};

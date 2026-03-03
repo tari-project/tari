@@ -22,13 +22,13 @@
 use crate::{
     key_manager::TransactionKeyManagerInterface,
     transaction_components::{
-        covenants::{
-            context::CovenantContext,
-            test::{create_context, create_outputs},
-            Covenant,
-        },
         TransactionInput,
         TransactionOutput,
+        covenants::{
+            Covenant,
+            context::CovenantContext,
+            test::{create_context, create_outputs},
+        },
     },
 };
 

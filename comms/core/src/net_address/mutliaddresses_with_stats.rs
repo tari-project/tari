@@ -13,7 +13,7 @@ use log::trace;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
-use crate::net_address::{multiaddr_with_stats::PeerAddressSource, MultiaddrWithStats};
+use crate::net_address::{MultiaddrWithStats, multiaddr_with_stats::PeerAddressSource};
 
 const LOG_TARGET: &str = "comms::net_address::multiaddresses_with_stats";
 

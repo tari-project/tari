@@ -23,9 +23,9 @@
 use log::*;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_utilities::SafePassword;
-use tonic::{codegen::http::header::AUTHORIZATION, service::Interceptor, Request, Status};
+use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
-use crate::authentication::{salted_password::create_salted_hashed_password, BasicAuthCredentials};
+use crate::authentication::{BasicAuthCredentials, salted_password::create_salted_hashed_password};
 
 const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
 

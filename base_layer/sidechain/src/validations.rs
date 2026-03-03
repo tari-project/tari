@@ -36,15 +36,15 @@ pub fn check_proof_elements(
                 validate_qc(qc, quorum_threshold, check_vn, expected_decision)?;
                 debug!(target: LOG_TARGET, "Quorum certificate OK");
 
-                if let Some(last_parent) = last_parent {
-                    if *last_parent != justifies {
-                        return Err(SidechainProofValidationError::InvalidProof {
-                            details: format!(
-                                "Parent block ID {last_parent} does not match the parent block ID {justifies} in the \
-                                 quorum certificate"
-                            ),
-                        });
-                    }
+                if let Some(last_parent) = last_parent &&
+                    *last_parent != justifies
+                {
+                    return Err(SidechainProofValidationError::InvalidProof {
+                        details: format!(
+                            "Parent block ID {last_parent} does not match the parent block ID {justifies} in the \
+                             quorum certificate"
+                        ),
+                    });
                 }
 
                 if proven_3_chain < 3 {

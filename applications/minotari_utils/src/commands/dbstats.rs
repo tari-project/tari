@@ -25,14 +25,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bytesize::ByteSize;
 use clap::Args;
 use csv;
 use lmdb_zero::{Database, DatabaseOptions, ReadTransaction};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 use tari_core::chain_storage::{create_readonly_lmdb_environment, get_all_database_names};
 
 use crate::{cli::Cli, config::AppConfig};
@@ -501,28 +501,28 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
 
     // Get statistics for each database
     for db_name in db_names {
-        if let Ok(database) = Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) {
-            if let Ok(db_stat) = ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database)) {
-                let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-                let total_size = total_pages * page_size;
-                let avg_size = if db_stat.entries > 0 {
-                    total_size / db_stat.entries
-                } else {
-                    0
-                };
+        if let Ok(database) = Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) &&
+            let Ok(db_stat) = ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database))
+        {
+            let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+            let total_size = total_pages * page_size;
+            let avg_size = if db_stat.entries > 0 {
+                total_size / db_stat.entries
+            } else {
+                0
+            };
 
-                databases.push(DatabaseStats {
-                    name: db_name.to_string(),
-                    entries: db_stat.entries,
-                    total_size,
-                    avg_size,
-                    depth: db_stat.depth,
-                    total_pages,
-                    leaf_pages: db_stat.leaf_pages,
-                    branch_pages: db_stat.branch_pages,
-                    overflow_pages: db_stat.overflow_pages,
-                });
-            }
+            databases.push(DatabaseStats {
+                name: db_name.to_string(),
+                entries: db_stat.entries,
+                total_size,
+                avg_size,
+                depth: db_stat.depth,
+                total_pages,
+                leaf_pages: db_stat.leaf_pages,
+                branch_pages: db_stat.branch_pages,
+                overflow_pages: db_stat.overflow_pages,
+            });
         }
     }
 

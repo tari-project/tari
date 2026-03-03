@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use axum::{http::StatusCode, Extension, Json};
+use axum::{Extension, Json, http::StatusCode};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use tari_core::{base_node::rpc::query_service, chain_storage::BlockchainBackend, mempool::service::MempoolHandle};

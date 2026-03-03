@@ -44,60 +44,60 @@ use tari_common_types::{
         SignatureWithDomain,
     },
 };
-use tari_comms::{types::CommsSecretKey, NodeIdentity};
+use tari_comms::{NodeIdentity, types::CommsSecretKey};
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_hashing::WalletMessageSigningDomain;
 use tari_p2p::auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService};
-use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript, push_pubkey_script};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
+    MicroMinotari,
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{wallet_types::KeyDigest, SecretTransactionKeyManagerInterface, TariKeyId},
+    key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, wallet_types::KeyDigest},
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
         EncryptedData,
         OutputFeatures,
         UnblindedOutput,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
-    wallet_types::LegacyWalletType,
     KeyManagerBranch,
     LegacyTransactionKeyManagerInitializer,
     LegacyTransactionKeyManagerInterface,
     TransactionKeyManagerBackend,
+    wallet_types::LegacyWalletType,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use url::Url;
 
 use crate::{
-    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
     client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     config::WalletConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
     consts,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
+        OutputManagerServiceInitializer,
         error::OutputManagerError,
         handle::OutputManagerHandle,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
         },
-        OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
+        TransactionServiceInitializer,
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
-        TransactionServiceInitializer,
     },
     util::wallet_identity::WalletIdentity,
-    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
+    utxo_scanner_service::{RECOVERY_KEY, handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer},
 };
 
 const LOG_TARGET: &str = "wallet";

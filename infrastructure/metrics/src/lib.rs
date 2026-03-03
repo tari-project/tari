@@ -9,8 +9,6 @@ use std::sync::{Arc, RwLock};
 use once_cell::sync::Lazy;
 use prometheus::opts;
 pub use prometheus::{
-    core::Collector,
-    proto,
     Counter,
     CounterVec,
     Error,
@@ -25,6 +23,8 @@ pub use prometheus::{
     IntGauge,
     IntGaugeVec,
     Registry,
+    core::Collector,
+    proto,
 };
 
 static DEFAULT_REGISTRY: Lazy<Arc<RwLock<Registry>>> = Lazy::new(|| Arc::new(RwLock::new(Registry::default())));

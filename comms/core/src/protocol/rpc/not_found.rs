@@ -27,10 +27,10 @@ use futures::future;
 use tower::Service;
 
 use super::{
+    RpcStatus,
     body::Body,
     message::{Request, Response},
     server::RpcServerError,
-    RpcStatus,
 };
 use crate::protocol::ProtocolId;
 

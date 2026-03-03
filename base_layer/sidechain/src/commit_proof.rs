@@ -10,7 +10,7 @@ use tari_common_types::{
     types::{CompressedPublicKey, FixedHash, PrivateKey, UncompressedPublicKey},
 };
 use tari_crypto::signatures::CompressedSchnorrSignature;
-use tari_hashing::{layer2, ValidatorNodeHashDomain};
+use tari_hashing::{ValidatorNodeHashDomain, layer2};
 use tari_jellyfish::{LeafKey, SparseMerkleProofExt, TreeHash};
 use tari_utilities::ByteArray;
 

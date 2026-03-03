@@ -28,12 +28,12 @@ use std::{
 
 use log::*;
 use tari_comms::{
+    BytesMut,
     message::{MessageTag, MessagingReplyTx},
     protocol::messaging::SendFailReason,
-    BytesMut,
 };
 use tokio::{
-    sync::{mpsc, oneshot, watch, Mutex, RwLock},
+    sync::{Mutex, RwLock, mpsc, oneshot, watch},
     time,
     time::sleep,
 };
@@ -41,11 +41,11 @@ use tokio::{
 use crate::{
     broadcast_strategy::BroadcastStrategy,
     outbound::{
+        DhtOutboundRequest,
+        OutboundMessageRequester,
         message::{SendFailure, SendMessageResponse},
         message_params::FinalSendMessageParams,
         message_send_state::MessageSendState,
-        DhtOutboundRequest,
-        OutboundMessageRequester,
     },
 };
 

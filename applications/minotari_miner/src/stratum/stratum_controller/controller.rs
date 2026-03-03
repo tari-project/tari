@@ -27,7 +27,7 @@ use log::*;
 use minotari_app_grpc::tari_rpc::BlockHeader;
 use tari_common_types::types::FixedHash;
 use tari_max_size::MaxSizeBytes;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     miner::Miner,
@@ -136,55 +136,51 @@ impl Controller {
                 };
             }
             let mut submit = true;
-            if let Some(reporter) = miner.as_mut() {
-                if let Some(report) = (*reporter).next().await {
-                    if let Some(header) = report.header.clone() {
-                        if report.difficulty < self.current_difficulty_target {
-                            submit = false;
-                            debug!(
-                                target: LOG_TARGET_FILE,
-                                "Mined difficulty {} below target difficulty {}. Not submitting.",
-                                report.difficulty,
-                                self.current_difficulty_target
-                            );
-                        }
+            if let Some(reporter) = miner.as_mut() &&
+                let Some(report) = (*reporter).next().await &&
+                let Some(header) = report.header.clone()
+            {
+                if report.difficulty < self.current_difficulty_target {
+                    submit = false;
+                    debug!(
+                        target: LOG_TARGET_FILE,
+                        "Mined difficulty {} below target difficulty {}. Not submitting.",
+                        report.difficulty,
+                        self.current_difficulty_target
+                    );
+                }
 
-                        if submit {
-                            // Mined a block fitting the difficulty
-                            let block_header: tari_node_components::blocks::BlockHeader =
-                                tari_node_components::blocks::BlockHeader::try_from(header)
-                                    .map_err(Error::MissingData)?;
-                            let hash = block_header.hash().to_hex();
-                            info!(
-                                target: LOG_TARGET,
-                                "Miner found share with hash {}, nonce {} and difficulty {:?}",
-                                hash,
-                                block_header.nonce,
-                                report.difficulty
-                            );
-                            debug!(
-                                target: LOG_TARGET_FILE,
-                                "Miner found share with hash {}, difficulty {:?} and data {:?}",
-                                hash,
-                                report.difficulty,
-                                block_header
-                            );
-                            self.client_tx
-                                .as_mut()
-                                .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?
-                                .send(types::client_message::ClientMessage::FoundSolution(
-                                    self.current_job_id,
-                                    hash,
-                                    block_header.nonce,
-                                ))?;
-                            self.keep_alive_time = SystemTime::now();
-                            continue;
-                        } else {
-                            display_report(&report, self.num_mining_threads).await;
-                        }
-                    } else {
-                        display_report(&report, self.num_mining_threads).await;
-                    }
+                if submit {
+                    // Mined a block fitting the difficulty
+                    let block_header: tari_node_components::blocks::BlockHeader =
+                        tari_node_components::blocks::BlockHeader::try_from(header).map_err(Error::MissingData)?;
+                    let hash = block_header.hash().to_hex();
+                    info!(
+                        target: LOG_TARGET,
+                        "Miner found share with hash {}, nonce {} and difficulty {:?}",
+                        hash,
+                        block_header.nonce,
+                        report.difficulty
+                    );
+                    debug!(
+                        target: LOG_TARGET_FILE,
+                        "Miner found share with hash {}, difficulty {:?} and data {:?}",
+                        hash,
+                        report.difficulty,
+                        block_header
+                    );
+                    self.client_tx
+                        .as_mut()
+                        .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?
+                        .send(types::client_message::ClientMessage::FoundSolution(
+                            self.current_job_id,
+                            hash,
+                            block_header.nonce,
+                        ))?;
+                    self.keep_alive_time = SystemTime::now();
+                    continue;
+                } else {
+                    display_report(&report, self.num_mining_threads).await;
                 }
             }
             if self.keep_alive_time.elapsed()?.as_secs() >= 30 {

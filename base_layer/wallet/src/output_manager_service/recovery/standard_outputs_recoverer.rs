@@ -25,22 +25,22 @@ use std::{str::FromStr, time::Instant};
 use log::*;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::keys::SecretKey;
-use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
+use tari_script::{ExecutionStack, Opcode, TariScript, inputs, script};
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::TariKeyId,
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
-    MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
     handle::RecoveredOutput,
     storage::{
+        OutputSource,
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::{DbWalletOutput, KnownOneSidedPaymentScript},
-        OutputSource,
     },
 };
 

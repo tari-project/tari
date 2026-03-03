@@ -15,10 +15,11 @@
 /// Example use:
 /// `cargo run --release --example ledger_demo`
 /// -----------------------------------------------------------------------------------------------
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{Select, theme::ColorfulTheme};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
+        ScriptSignatureKey,
         ledger_get_app_name,
         ledger_get_dh_shared_secret,
         ledger_get_one_sided_metadata_signature,
@@ -31,19 +32,18 @@ use minotari_ledger_wallet_comms::{
         ledger_get_version,
         ledger_get_view_key,
         verify_ledger_application,
-        ScriptSignatureKey,
     },
     error::LedgerDeviceError,
     ledger_wallet::get_transport,
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey},
 };
 use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 #[allow(clippy::too_many_lines)]
 fn main() {

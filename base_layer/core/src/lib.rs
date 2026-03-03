@@ -45,13 +45,13 @@ mod domain_hashing {
     use digest::consts::U32;
     use tari_common_types::types::{FixedHash, FixedHashSizeError};
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_hashing::{hashers::KernelMmrHasherBlake256, ValidatorNodeMerkleHashDomain};
+    use tari_hashing::{ValidatorNodeMerkleHashDomain, hashers::KernelMmrHasherBlake256};
     use tari_mmr::{
+        Hash,
+        MerkleMountainRange,
         error::MerkleMountainRangeError,
         pruned_hashset::PrunedHashSet,
         sparse_merkle_tree::SparseMerkleTree,
-        Hash,
-        MerkleMountainRange,
     };
 
     pub type KernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, Vec<Hash>>;

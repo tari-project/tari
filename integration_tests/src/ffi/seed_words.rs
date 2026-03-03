@@ -24,7 +24,7 @@ use std::{ffi::CString, ptr, ptr::null_mut};
 
 use libc::{c_char, c_void};
 
-use super::{ffi_import, FFIString};
+use super::{FFIString, ffi_import};
 use crate::ffi::ffi_import::TariSeedWords;
 
 pub struct SeedWords {

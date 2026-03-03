@@ -87,8 +87,8 @@ mod test {
         covenant,
         key_manager::KeyManager,
         transaction_components::{
-            covenants::test::{create_context, create_input, create_outputs},
             OutputType,
+            covenants::test::{create_context, create_input, create_outputs},
         },
     };
 

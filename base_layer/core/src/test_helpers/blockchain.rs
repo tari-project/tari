@@ -28,10 +28,10 @@ use std::{
 };
 
 use jmt::{
-    mock::MockTreeStore,
-    storage::{TreeReader, TreeUpdateBatch, TreeWriter},
     JellyfishMerkleTree,
     KeyHash,
+    mock::MockTreeStore,
+    storage::{TreeReader, TreeUpdateBatch, TreeWriter},
 };
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -57,7 +57,6 @@ use super::{create_block, create_consensus_constants, mine_to_difficulty};
 use crate::{
     blocks::{BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder},
     chain_storage::{
-        create_lmdb_database,
         AccumulatedDataRebuildStatus,
         BlockAddResult,
         BlockchainBackend,
@@ -84,14 +83,15 @@ use crate::{
         TemplateRegistrationEntry,
         ValidatorNodeRegistrationInfo,
         Validators,
+        create_lmdb_database,
     },
-    consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, BaseNodeConsensusManager},
+    consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparerBuilder},
     proof_of_work::AchievedTargetDifficulty,
-    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
+    test_helpers::{BlockSpec, block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities},
     validation::{
+        DifficultyCalculator,
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         mocks::MockValidator,
-        DifficultyCalculator,
     },
 };
 

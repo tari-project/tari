@@ -31,11 +31,11 @@ use std::marker::PhantomData;
 
 use log::*;
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    async_trait,
+    reply_channel,
 };
 use tokio::sync::broadcast;
 

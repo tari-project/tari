@@ -31,11 +31,11 @@ use crate::{
     message::InboundMessage,
     pipeline,
     protocol::{
-        messaging::MessagingEventSender,
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,
         ProtocolId,
+        messaging::MessagingEventSender,
     },
 };
 

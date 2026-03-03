@@ -23,11 +23,11 @@
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 use crate::{
+    MicroMinotari,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     transaction_components::{OutputType::Coinbase, Transaction},
-    validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, AggregatedBodyValidationError},
-    MicroMinotari,
+    validation::{AggregatedBodyValidationError, aggregate_body::AggregateBodyInternalConsistencyValidator},
 };
 
 pub struct TransactionInternalConsistencyValidator {

@@ -29,51 +29,51 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{
+    NodeIdentity,
+    UnspawnedCommsNode,
     multiaddr::{Error as MultiaddrError, Multiaddr},
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcServer,
     tor::TorIdentity,
-    NodeIdentity,
-    UnspawnedCommsNode,
 };
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{
         self,
+        LocalNodeCommsInterface,
+        StateMachineHandle,
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::BaseNodeServiceInitializer,
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
         tari_pulse_service::TariPulseServiceInitializer,
-        LocalNodeCommsInterface,
-        StateMachineHandle,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
+    chain_storage::{BlockchainBackend, BlockchainDatabase, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
-    mempool::{self, service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
+    mempool::{self, Mempool, MempoolServiceInitializer, MempoolSyncInitializer, service::MempoolHandle},
     proof_of_work::randomx_factory::RandomXFactory,
 };
 use tari_p2p::{
+    P2pConfig,
+    TransportType,
     auto_update::SoftwareUpdaterService,
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
     peer_seeds::SeedPeer,
     services::{
-        liveness::{config::LivenessConfig, LivenessInitializer},
+        liveness::{LivenessInitializer, config::LivenessConfig},
         monitor_peers::MonitorPeersInitializer,
     },
-    P2pConfig,
-    TransportType,
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::crypto_factories::CryptoFactories;
 
 use crate::{
-    config::WalletHttpServiceConfig,
-    http::create_base_node_wallet_http_server,
     ApplicationConfig,
     HttpCacheConfig,
+    config::WalletHttpServiceConfig,
+    http::create_base_node_wallet_http_server,
 };
 
 const LOG_TARGET: &str = "c::bn::initialization";

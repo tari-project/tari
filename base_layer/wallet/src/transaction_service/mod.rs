@@ -26,16 +26,16 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_comms::NodeIdentity;
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    async_trait,
+    reply_channel,
 };
 use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
 use tari_transaction_key_manager::legacy_key_manager::{
-    wallet_types::LegacyWalletType,
     LegacyTransactionKeyManagerInterface,
+    wallet_types::LegacyWalletType,
 };
 use tokio::sync::broadcast;
 

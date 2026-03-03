@@ -22,12 +22,12 @@
 
 #![allow(clippy::indexing_slicing)]
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 
 /// Help function to create a centered rectangle with absolute dimensions

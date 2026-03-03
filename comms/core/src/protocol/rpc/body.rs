@@ -24,20 +24,20 @@ use std::{fmt, marker::PhantomData, pin::Pin};
 
 use bytes::BytesMut;
 use futures::{
+    Stream,
+    StreamExt,
     ready,
     stream::BoxStream,
     task::{Context, Poll},
-    Stream,
-    StreamExt,
 };
 use pin_project::pin_project;
 use prost::bytes::Buf;
 use tokio::sync::mpsc;
 
 use crate::{
+    Bytes,
     message::MessageExt,
     protocol::rpc::{Response, RpcStatus},
-    Bytes,
 };
 
 pub trait IntoBody {
@@ -299,7 +299,7 @@ impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
 #[cfg(test)]
 mod test {
     use bytes::Bytes;
-    use futures::{stream, StreamExt};
+    use futures::{StreamExt, stream};
     use prost::Message;
 
     use crate::{message::MessageExt, protocol::rpc::body::Body};

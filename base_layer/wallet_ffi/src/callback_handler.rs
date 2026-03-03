@@ -48,7 +48,7 @@ use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS},
+    connectivity_service::{DEGRADED_LATENCY_THRESHOLD, OnlineStatus, UNKNOWN_LATENCY_MS},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,

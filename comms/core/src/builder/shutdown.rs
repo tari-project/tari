@@ -26,7 +26,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::{future, future::JoinAll, FutureExt};
+use futures::{FutureExt, future, future::JoinAll};
 use tari_shutdown::ShutdownSignal;
 
 /// Future which resolves once comms has shut down

@@ -25,11 +25,11 @@ use std::collections::{HashMap, VecDeque};
 use futures::pin_mut;
 use log::*;
 use tari_comms::{
+    Minimized,
+    PeerConnection,
     connection_manager::ConnectionDirection,
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
-    Minimized,
-    PeerConnection,
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::{

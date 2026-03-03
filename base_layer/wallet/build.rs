@@ -5,6 +5,6 @@ use tari_common::build::StaticApplicationInfo;
 
 fn main() {
     // generate version info
-    let gen = StaticApplicationInfo::initialize().unwrap();
-    gen.write_consts_to_outdir("consts.rs").unwrap();
+    let info = StaticApplicationInfo::initialize().unwrap();
+    info.write_consts_to_outdir("consts.rs").unwrap();
 }

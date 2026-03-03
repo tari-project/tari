@@ -26,7 +26,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]

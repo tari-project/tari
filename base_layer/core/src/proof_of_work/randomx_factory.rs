@@ -195,10 +195,10 @@ impl RandomXFactoryInner {
             return Ok(vm);
         }
 
-        if self.vms.len() >= self.max_vms {
-            if let Some(oldest_key) = self.vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone()) {
-                self.vms.remove(&oldest_key);
-            }
+        if self.vms.len() >= self.max_vms &&
+            let Some(oldest_key) = self.vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone())
+        {
+            self.vms.remove(&oldest_key);
         }
 
         let vm = RandomXVMInstance::create(key, self.flags, cache, dataset)?;

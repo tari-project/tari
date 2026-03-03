@@ -25,7 +25,7 @@ use std::{fmt, fs, io, net::TcpListener, path::PathBuf, thread};
 use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
 use tor_hash_passwd::EncryptedKey;

@@ -22,14 +22,14 @@
 
 use std::{iter, sync::Arc};
 
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{Rng, distributions::Alphanumeric};
 use tari_common_sqlite::connection::DbConnection;
 
 #[cfg(test)]
 use crate::peer_manager::{Peer, PeerManagerError};
 use crate::{
-    peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
     PeerManager,
+    peer_manager::database::{MIGRATIONS, PeerDatabaseSql},
 };
 
 #[cfg(test)]

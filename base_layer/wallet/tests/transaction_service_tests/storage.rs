@@ -41,7 +41,7 @@ use minotari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -52,18 +52,18 @@ use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
-    test_helpers::{create_wallet_output_with_data, TestParams},
+    test_helpers::{TestParams, create_wallet_output_with_data},
     transaction_builder::TransactionBuilder,
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
         OutputFeatures,
         Transaction,
         TransactionOutputVersion,
         WalletOutput,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
 };
 use tempfile::tempdir;
 
@@ -247,9 +247,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     assert_eq!(inbound_address, inbound_txs[0].source_address);
 
-    assert!(db
-        .get_pending_transaction_counterparty_address_by_tx_id(100u64.into())
-        .is_err());
+    assert!(
+        db.get_pending_transaction_counterparty_address_by_tx_id(100u64.into())
+            .is_err()
+    );
 
     let outbound_address = db
         .get_pending_transaction_counterparty_address_by_tx_id(outbound_txs[0].tx_id)

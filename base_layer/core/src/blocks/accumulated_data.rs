@@ -28,7 +28,7 @@ use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
-use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
+use tari_mmr::{ArrayLike, pruned_hashset::PrunedHashSet};
 use tari_node_components::blocks::{BlockError, BlockHeaderAccumulatedData};
 use tari_transaction_components::{consensus::ConsensusConstants, tari_proof_of_work::PowAlgorithm};
 

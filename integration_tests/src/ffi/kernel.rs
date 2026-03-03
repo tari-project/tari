@@ -24,7 +24,7 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use super::{ffi_import, FFIString};
+use super::{FFIString, ffi_import};
 
 pub struct Kernel {
     ptr: *mut c_void,

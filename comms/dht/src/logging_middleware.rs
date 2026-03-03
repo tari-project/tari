@@ -24,7 +24,7 @@ use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
 
 use futures::task::Context;
 use log::*;
-use tower::{layer::Layer, Service};
+use tower::{Service, layer::Layer};
 
 const LOG_TARGET: &str = "comms::middleware::message_logging";
 

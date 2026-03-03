@@ -23,7 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_utilities::utilities::{parse_emoji_id_or_public_key, UniNodeId};
+use minotari_app_utilities::utilities::{UniNodeId, parse_emoji_id_or_public_key};
 use tari_common_types::emoji::EmojiId;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;

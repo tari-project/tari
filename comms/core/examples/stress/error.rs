@@ -23,12 +23,12 @@ use std::io;
 
 use tari_common_sqlite::error::StorageError;
 use tari_comms::{
+    CommsBuilderError,
+    PeerConnectionError,
     connectivity::ConnectivityError,
     message::OutboundMessage,
     peer_manager::PeerManagerError,
     tor,
-    CommsBuilderError,
-    PeerConnectionError,
 };
 use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;

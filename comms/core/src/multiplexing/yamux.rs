@@ -22,7 +22,7 @@
 
 use std::{future::poll_fn, io, marker::PhantomData, pin::Pin, task::Poll};
 
-use futures::{channel::oneshot, task::Context, Stream};
+use futures::{Stream, channel::oneshot, task::Context};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::mpsc,

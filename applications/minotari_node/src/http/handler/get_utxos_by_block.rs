@@ -4,17 +4,17 @@
 use std::{fmt::Display, sync::Arc};
 
 use axum::{
+    Extension,
+    Json,
     extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Extension,
-    Json,
 };
 use log::debug;
 use serde::Deserialize;
 use tari_common_types::types::HashOutput;
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::{GetUtxosByBlockRequest, GetUtxosByBlockResponse};
@@ -22,11 +22,11 @@ use tari_utilities::hex::Hex;
 use tonic::service::AxumBody;
 
 use crate::{
-    http::{
-        cache_config::{apply_cache_control, RouteKey},
-        handler::{error_handler_with_message, util::from_hex, ErrorResponse},
-    },
     HttpCacheConfig,
+    http::{
+        cache_config::{RouteKey, apply_cache_control},
+        handler::{ErrorResponse, error_handler_with_message, util::from_hex},
+    },
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxos_by_block";

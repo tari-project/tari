@@ -27,29 +27,29 @@ use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     conversions::transaction_output::grpc_output_with_payref,
     tari_rpc::{
-        base_node_client::BaseNodeClient,
-        pow_algo::PowAlgos,
-        sha_p2_pool_client::ShaP2PoolClient,
         Block,
         GetNewBlockRequest,
         PowAlgo,
         SubmitBlockRequest,
         SubmitBlockResponse,
+        base_node_client::BaseNodeClient,
+        pow_algo::PowAlgos,
+        sha_p2_pool_client::ShaP2PoolClient,
     },
 };
 use minotari_app_utilities::parse_miner_input::{
+    BaseNodeGrpcClient,
+    ShaP2PoolGrpcClient,
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
     wallet_payment_address,
-    BaseNodeGrpcClient,
-    ShaP2PoolGrpcClient,
 };
 use tari_common::{
-    exit_codes::{ExitCode, ExitError},
-    load_configuration,
     DefaultConfigLoader,
     MAX_GRPC_MESSAGE_SIZE,
+    exit_codes::{ExitCode, ExitError},
+    load_configuration,
 };
 use tari_common_types::{
     tari_address::TariAddress,
@@ -58,14 +58,14 @@ use tari_common_types::{
 use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
+    MicroMinotari,
     generate_coinbase,
     key_manager::KeyManager,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
-        memo_field::{MemoField, TxType},
         CoinBaseExtra,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};
@@ -74,7 +74,7 @@ use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 use crate::{
     cli::Cli,
     config::MinerConfig,
-    errors::{err_empty, MinerError},
+    errors::{MinerError, err_empty},
     miner::{Miner, MiningReport},
     stratum::stratum_controller::controller::Controller,
 };
@@ -158,18 +158,17 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         let mut base_node_client = node_clients.base_node_client;
         let mut p2pool_node_client = node_clients.p2pool_node_client;
 
-        if let Err(e) = verify_base_node_responses(&mut base_node_client, &config).await {
-            if let MinerError::BaseNodeNotResponding(_) = e {
-                error!(target: LOG_TARGET, "{e}");
-                println!();
-                let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods allowed in \
-                           its 'config.toml'? Please ensure these methods are enabled in:\n  \
-                           'grpc_server_allow_methods': \"get_new_block_template\", \"get_tip_info\", \
-                           \"get_new_block\", \"submit_block\"";
-                println!("{msg}");
-                println!();
-                return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
-            }
+        if let Err(e) = verify_base_node_responses(&mut base_node_client, &config).await &&
+            let MinerError::BaseNodeNotResponding(_) = e
+        {
+            error!(target: LOG_TARGET, "{e}");
+            println!();
+            let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods allowed in its \
+                       'config.toml'? Please ensure these methods are enabled in:\n  'grpc_server_allow_methods': \
+                       \"get_new_block_template\", \"get_tip_info\", \"get_new_block\", \"submit_block\"";
+            println!("{msg}");
+            println!();
+            return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
         }
 
         let mut blocks_found: u64 = 0;
@@ -227,10 +226,10 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                     if submitted {
                         blocks_found += 1;
                     }
-                    if let Some(max_blocks) = cli.miner_max_blocks {
-                        if blocks_found >= max_blocks {
-                            return Ok(());
-                        }
+                    if let Some(max_blocks) = cli.miner_max_blocks &&
+                        blocks_found >= max_blocks
+                    {
+                        return Ok(());
                     }
                 },
             }
@@ -377,10 +376,10 @@ async fn get_new_block(
     wallet_payment_address: &TariAddress,
     consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
-    if config.sha_p2pool_enabled {
-        if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
-            return get_new_block_p2pool_node(config, client, wallet_payment_address).await;
-        }
+    if config.sha_p2pool_enabled &&
+        let Some(client) = sha_p2pool_client.lock().await.as_mut()
+    {
+        return get_new_block_p2pool_node(config, client, wallet_payment_address).await;
     }
 
     get_new_block_base_node(
@@ -503,17 +502,17 @@ async fn submit_block(
     block: Block,
     wallet_payment_address: &TariAddress,
 ) -> Result<SubmitBlockResponse, MinerError> {
-    if config.sha_p2pool_enabled {
-        if let Some(client) = sha_p2pool_client {
-            return Ok(client
-                .submit_block(SubmitBlockRequest {
-                    block: Some(block),
-                    wallet_payment_address: wallet_payment_address.to_hex(),
-                })
-                .await
-                .map_err(MinerError::from)?
-                .into_inner());
-        }
+    if config.sha_p2pool_enabled &&
+        let Some(client) = sha_p2pool_client
+    {
+        return Ok(client
+            .submit_block(SubmitBlockRequest {
+                block: Some(block),
+                wallet_payment_address: wallet_payment_address.to_hex(),
+            })
+            .await
+            .map_err(MinerError::from)?
+            .into_inner());
     }
 
     Ok(base_node_client
@@ -568,25 +567,25 @@ async fn mining_cycle(
     while let Some(report) = reports.next().await {
         if let Some(header) = report.header.clone() {
             let mut submit = true;
-            if let Some(min_diff) = cli.miner_min_diff {
-                if report.difficulty < min_diff {
-                    submit = false;
-                    debug!(
-                        target: LOG_TARGET_FILE,
-                        "Mined difficulty {} below minimum difficulty {}. Not submitting.", report.difficulty, min_diff
-                    );
-                }
+            if let Some(min_diff) = cli.miner_min_diff &&
+                report.difficulty < min_diff
+            {
+                submit = false;
+                debug!(
+                    target: LOG_TARGET_FILE,
+                    "Mined difficulty {} below minimum difficulty {}. Not submitting.", report.difficulty, min_diff
+                );
             }
-            if let Some(max_diff) = cli.miner_max_diff {
-                if report.difficulty > max_diff {
-                    submit = false;
-                    debug!(
-                        target: LOG_TARGET_FILE,
-                        "Mined difficulty {} greater than maximum difficulty {}. Not submitting.",
-                        report.difficulty,
-                        max_diff
-                    );
-                }
+            if let Some(max_diff) = cli.miner_max_diff &&
+                report.difficulty > max_diff
+            {
+                submit = false;
+                debug!(
+                    target: LOG_TARGET_FILE,
+                    "Mined difficulty {} greater than maximum difficulty {}. Not submitting.",
+                    report.difficulty,
+                    max_diff
+                );
             }
             if submit {
                 // Mined a block fitting the difficulty
@@ -658,10 +657,10 @@ async fn validate_tip(
         .await?
         .into_inner();
     let longest_height = tip.clone().metadata.unwrap().best_block_height;
-    if let Some(height) = mine_until_height {
-        if longest_height >= height {
-            return Err(MinerError::MineUntilHeightReached(height));
-        }
+    if let Some(h) = mine_until_height &&
+        longest_height >= h
+    {
+        return Err(MinerError::MineUntilHeightReached(h));
     }
     if height <= longest_height {
         return Err(MinerError::MinerLostBlock(height));

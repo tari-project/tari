@@ -4,24 +4,24 @@
 use std::sync::Arc;
 
 use axum::{
+    Extension,
+    Json,
     extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Extension,
-    Json,
 };
 use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::BlockHeader;
 use tonic::service::AxumBody;
 
 use crate::http::{
-    cache_config::{apply_cache_control, HttpCacheConfig, RouteKey},
-    handler::{error_handler_with_message, ErrorResponse},
+    cache_config::{HttpCacheConfig, RouteKey, apply_cache_control},
+    handler::{ErrorResponse, error_handler_with_message},
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";

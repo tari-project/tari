@@ -4,25 +4,25 @@
 use std::sync::Arc;
 
 use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
     Extension,
     Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use log::debug;
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
 use tari_transaction_components::rpc::models::TipInfoResponse;
 use tonic::service::AxumBody;
 
 use crate::{
-    http::{
-        cache_config::{apply_cache_control, RouteKey},
-        handler::{error_handler_with_message, ErrorResponse},
-    },
     HttpCacheConfig,
+    http::{
+        cache_config::{RouteKey, apply_cache_control},
+        handler::{ErrorResponse, error_handler_with_message},
+    },
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_tip_info";

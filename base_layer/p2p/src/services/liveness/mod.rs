@@ -64,14 +64,14 @@ use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms::{PeerManager, connectivity::ConnectivityRequester};
 use tari_comms_dht::Dht;
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    async_trait,
+    reply_channel,
 };
 use tokio::sync::broadcast;
 
@@ -105,7 +105,7 @@ impl LivenessInitializer {
     }
 
     /// Get a stream of inbound PingPong messages
-    fn ping_stream(&self) -> impl Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>> {
+    fn ping_stream(&self) -> impl Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>> + use<> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::PingPong, "Liveness")
             .map(map_decode::<PingPongMessage>)

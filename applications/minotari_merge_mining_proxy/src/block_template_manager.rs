@@ -24,14 +24,14 @@
 use std::{cmp, convert::TryFrom, sync::Arc};
 
 use log::*;
-use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo};
+use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo, pow_algo::PowAlgos};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
+    AuxChainHashes,
     consensus::BaseNodeConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray},
-    AuxChainHashes,
 };
 use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
@@ -40,7 +40,7 @@ use tari_transaction_components::{
     tari_proof_of_work::Difficulty,
     transaction_components::{CoinBaseExtra, MemoField, TransactionKernel, TransactionOutput},
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},

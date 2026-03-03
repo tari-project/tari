@@ -32,7 +32,7 @@ mod benches {
     #![allow(clippy::indexing_slicing)]
     use std::sync::Arc;
 
-    use criterion::{criterion_group, Criterion};
+    use criterion::{Criterion, criterion_group};
     use tari_common::configuration::Network;
     use tari_core::{
         consensus::BaseNodeConsensusManager,
@@ -43,8 +43,8 @@ mod benches {
     use tari_transaction_components::{
         crypto_factories::CryptoFactories,
         key_manager::KeyManager,
-        tari_amount::{uT, T},
-        transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
+        tari_amount::{T, uT},
+        transaction_components::{MAX_TRANSACTION_OUTPUTS, OutputFeatures, Transaction},
         tx,
     };
     use tokio::runtime::Runtime;

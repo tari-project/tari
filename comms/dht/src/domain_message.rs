@@ -22,7 +22,7 @@
 
 use std::cmp;
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 
 /// Trait that exposes conversion to a protobuf i32 enum type.
 pub trait ToProtoEnum {

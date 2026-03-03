@@ -27,9 +27,9 @@ use crate::{
     framing,
     memsocket::MemorySocket,
     protocol::rpc::{
+        Handshake,
         error::HandshakeRejectReason,
         handshake::{RpcHandshakeError, SUPPORTED_RPC_VERSIONS},
-        Handshake,
     },
 };
 

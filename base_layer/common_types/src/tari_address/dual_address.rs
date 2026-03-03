@@ -26,18 +26,18 @@ use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_max_size::MaxSizeBytes;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{Hex, from_hex};
 
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
     emoji::{EMOJI, REVERSE_EMOJI},
     tari_address::{
-        TariAddressError,
-        TariAddressFeatures,
         INTERNAL_DUAL_BASE58_MAX_SIZE,
         INTERNAL_DUAL_BASE58_MIN_SIZE,
         MAX_ENCRYPTED_DATA_SIZE,
         TARI_ADDRESS_INTERNAL_DUAL_SIZE,
+        TariAddressError,
+        TariAddressFeatures,
     },
     types::CompressedPublicKey,
 };

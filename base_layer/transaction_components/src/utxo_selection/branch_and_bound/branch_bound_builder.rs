@@ -21,16 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    MicroMinotari,
     transaction_components::MAX_TRANSACTION_INPUTS,
     utxo_selection::{
+        UtxoValue,
         branch_and_bound::branch_and_bound_selector::{
             BranchAndBoundUtxoSelector,
             BranchAndBoundUtxoSelectorParams,
             UtxoSectionParams,
         },
-        UtxoValue,
     },
-    MicroMinotari,
 };
 
 const MAX_SEARCH_ITERATIONS: usize = 100_000;

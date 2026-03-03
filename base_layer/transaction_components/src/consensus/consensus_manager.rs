@@ -26,13 +26,13 @@ use tari_common::configuration::Network;
 use thiserror::Error;
 
 use crate::{
+    MicroMinotari,
     consensus::{
-        emission::{Emission, EmissionSchedule},
         ConsensusConstants,
         NetworkConsensus,
+        emission::{Emission, EmissionSchedule},
     },
     transaction_components::TransactionKernel,
-    MicroMinotari,
 };
 
 /// A simple struct to hold the maturity and effective height
@@ -119,7 +119,7 @@ impl ConsensusManager {
                     return Err(format!(
                         "Coinbase total ({}) + fee ({}) exceeds max transactions allowance",
                         total, kernel.fee
-                    ))
+                    ));
                 },
             }
         }

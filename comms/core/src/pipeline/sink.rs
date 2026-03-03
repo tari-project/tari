@@ -22,7 +22,7 @@
 
 use std::{future, task::Poll};
 
-use futures::{future::BoxFuture, task::Context, FutureExt};
+use futures::{FutureExt, future::BoxFuture, task::Context};
 use tower::Service;
 
 use super::PipelineError;

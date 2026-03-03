@@ -71,12 +71,12 @@ impl CrosstermEvents {
                         .unwrap_or_else(|| Duration::from_millis(1)),
                 ) {
                     Ok(true) => {
-                        if let Ok(CEvent::Key(key)) = event::read() {
-                            if tx.send(Event::Input(key)).is_err() {
-                                info!(target: LOG_TARGET, "Tick event channel shutting down");
-                                // A send operation can only fail if the receiving end of a channel is disconnected.
-                                break;
-                            }
+                        if let Ok(CEvent::Key(key)) = event::read() &&
+                            tx.send(Event::Input(key)).is_err()
+                        {
+                            info!(target: LOG_TARGET, "Tick event channel shutting down");
+                            // A send operation can only fail if the receiving end of a channel is disconnected.
+                            break;
                         }
                     },
                     Ok(false) => {},

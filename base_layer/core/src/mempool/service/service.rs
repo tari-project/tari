@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use futures::{pin_mut, stream::StreamExt, Stream};
+use futures::{Stream, pin_mut, stream::StreamExt};
 use log::*;
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
@@ -39,10 +39,10 @@ use tokio::{sync::mpsc, task};
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     mempool::service::{
-        error::MempoolServiceError,
-        inbound_handlers::MempoolInboundHandlers,
         MempoolRequest,
         MempoolResponse,
+        error::MempoolServiceError,
+        inbound_handlers::MempoolInboundHandlers,
     },
     proto,
 };

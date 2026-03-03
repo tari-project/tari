@@ -32,15 +32,6 @@ use libc::{c_ulonglong, c_void};
 use tari_transaction_components::transaction_components::memo_field::MemoField;
 
 use super::{
-    ffi_import::{
-        self,
-        wallet_create,
-        TariBalance,
-        TariCompletedTransaction,
-        TariPendingInboundTransaction,
-        TariTransactionSendStatus,
-        TariWallet,
-    },
     Balance,
     CompletedTransactions,
     FeePerGramStats,
@@ -48,6 +39,15 @@ use super::{
     PendingOutboundTransactions,
     WalletAddress,
     WalletDbConfig,
+    ffi_import::{
+        self,
+        TariBalance,
+        TariCompletedTransaction,
+        TariPendingInboundTransaction,
+        TariTransactionSendStatus,
+        TariWallet,
+        wallet_create,
+    },
 };
 use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
 

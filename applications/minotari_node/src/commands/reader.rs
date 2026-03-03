@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rustyline::{error::ReadlineError, Editor};
+use rustyline::{Editor, error::ReadlineError};
 use tokio::{
     sync::mpsc,
     task::{self, JoinHandle},
@@ -46,13 +46,15 @@ impl CommandReader {
     pub fn new(mut rustyline: Editor<Parser>) -> Self {
         let (tx_next, mut rx_next) = mpsc::channel(1);
         let (tx_event, rx_event) = mpsc::channel(1);
-        let task = task::spawn_blocking(move || loop {
-            if rx_next.blocking_recv().is_none() {
-                break;
-            }
-            let event = rustyline.readline(">> ");
-            if tx_event.blocking_send(event).is_err() {
-                break;
+        let task = task::spawn_blocking(move || {
+            loop {
+                if rx_next.blocking_recv().is_none() {
+                    break;
+                }
+                let event = rustyline.readline(">> ");
+                if tx_event.blocking_send(event).is_err() {
+                    break;
+                }
             }
         });
         Self {

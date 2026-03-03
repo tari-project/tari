@@ -25,7 +25,7 @@ use tari_core::{base_node::state_machine_service::states::StateEvent, chain_stor
 
 use crate::helpers::{
     sync,
-    sync::{state_event, WhatToDelete},
+    sync::{WhatToDelete, state_event},
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

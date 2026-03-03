@@ -13,12 +13,12 @@ use url::Url;
 
 use crate::{
     base_node::{
-        rpc::{sync_utxos_by_block_task::SyncUtxosByBlockTask, BaseNodeWalletService},
-        state_machine_service::states::StateInfo,
         StateMachineHandle,
+        rpc::{BaseNodeWalletService, sync_utxos_by_block_task::SyncUtxosByBlockTask},
+        state_machine_service::states::StateInfo,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::{service::MempoolHandle, TxStorageResponse},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    mempool::{TxStorageResponse, service::MempoolHandle},
     proto,
     proto::{
         base_node::{

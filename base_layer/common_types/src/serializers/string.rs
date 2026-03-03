@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 
 pub fn serialize<S: Serializer, T: ToString + Serialize>(v: &T, s: S) -> Result<S::Ok, S::Error> {
     if s.is_human_readable() {

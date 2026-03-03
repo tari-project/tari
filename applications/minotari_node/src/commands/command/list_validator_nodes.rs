@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::epoch::VnEpoch;
 use tari_core::chain_storage::ValidatorNodeRegistrationInfo;
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::hex::{Hex, to_hex};
 
 use super::{CommandContext, HandleCommand};
 use crate::table::Table;

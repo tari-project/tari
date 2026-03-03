@@ -3,7 +3,7 @@
 
 use tari_common_types::types::{BlockHash, FixedHash};
 use tari_hashing::hashers::KernelMmrHasherBlake256;
-use tari_mmr::{common::LeafIndex, MerkleProof, MerkleProofError};
+use tari_mmr::{MerkleProof, MerkleProofError, common::LeafIndex};
 
 #[derive(Debug, Clone)]
 pub struct KernelMerkleProof {

@@ -26,8 +26,8 @@ use lmdb_zero::{ConstAccessor, Cursor, LmdbResultExt};
 use serde::de::DeserializeOwned;
 
 use crate::chain_storage::{
-    lmdb_db::{composite_key::CompositeKey, helpers::deserialize},
     ChainStorageError,
+    lmdb_db::{composite_key::CompositeKey, helpers::deserialize},
 };
 
 pub struct KeyPrefixCursor<'a, V> {
@@ -53,10 +53,10 @@ where V: DeserializeOwned
 
     /// Returns the item on or after the key prefix, progressing forwards until the key prefix no longer matches
     pub fn next(&mut self) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
-        if !self.has_seeked {
-            if let Some((k, val)) = self.seek_gte(self.prefix_key)? {
-                return Ok(Some((k, val)));
-            }
+        if !self.has_seeked &&
+            let Some((k, val)) = self.seek_gte(self.prefix_key)?
+        {
+            return Ok(Some((k, val)));
         }
 
         match self.cursor.next(&self.access).to_opt()? {

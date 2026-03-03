@@ -25,31 +25,31 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
+    Minimized,
+    NodeIdentity,
+    PeerManager,
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
     test_utils::{
         count_string_occurrences,
-        mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
         node_identity::ordered_node_identities_by_distance,
     },
-    Minimized,
-    NodeIdentity,
-    PeerManager,
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
 use tokio::sync::broadcast;
 
 use crate::{
+    DhtConfig,
     connectivity::{DhtConnectivity, MetricsCollector},
     test_utils::{
+        DhtMockState,
         build_peer_manager,
         create_dht_actor_mock,
         create_good_standing_peer,
         make_node_identity,
-        DhtMockState,
     },
-    DhtConfig,
 };
 
 async fn setup(
@@ -168,12 +168,16 @@ async fn added_neighbours() {
     let (dht_connectivity, _, connectivity, peer_manager, _, _shutdown) = setup(config, node_identity, peers).await;
 
     let added_peers = peer_manager.get_peers_by_node_ids(&peer_node_ids).await.unwrap();
-    assert!(added_peers
-        .iter()
-        .any(|p| peer_node_ids.iter().any(|node_id| node_id == &p.node_id)));
-    assert!(peer_node_ids
-        .iter()
-        .any(|p| peer_node_ids.iter().any(|node_id| node_id == p)));
+    assert!(
+        added_peers
+            .iter()
+            .any(|p| peer_node_ids.iter().any(|node_id| node_id == &p.node_id))
+    );
+    assert!(
+        peer_node_ids
+            .iter()
+            .any(|p| peer_node_ids.iter().any(|node_id| node_id == p))
+    );
 
     dht_connectivity.spawn();
 
@@ -283,16 +287,20 @@ async fn insert_neighbour() {
 
     // First 8 inserts should not remove a peer (because num_neighbouring_nodes == 8)
     for ni in shuffled.iter().take(8) {
-        assert!(dht_connectivity
-            .insert_neighbour_ordered_by_distance(ni.node_id().clone())
-            .is_none());
+        assert!(
+            dht_connectivity
+                .insert_neighbour_ordered_by_distance(ni.node_id().clone())
+                .is_none()
+        );
     }
 
     // Next 2 inserts will always remove a node id
     for ni in shuffled.iter().skip(8) {
-        assert!(dht_connectivity
-            .insert_neighbour_ordered_by_distance(ni.node_id().clone())
-            .is_some())
+        assert!(
+            dht_connectivity
+                .insert_neighbour_ordered_by_distance(ni.node_id().clone())
+                .is_some()
+        )
     }
 
     // Check the first 7 node ids match our neighbours, the last element depends on distance and ordering of inserts

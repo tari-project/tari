@@ -87,6 +87,8 @@ use std::{
 };
 
 use super::{
+    LeafKeyRef,
+    TreeHash,
     store::TreeStoreReader,
     types::{
         Child,
@@ -99,14 +101,12 @@ use super::{
         NibblePath,
         Node,
         NodeKey,
+        SPARSE_MERKLE_PLACEHOLDER_HASH,
         SparseMerkleProof,
         SparseMerkleProofExt,
         SparseMerkleRangeProof,
         Version,
-        SPARSE_MERKLE_PLACEHOLDER_HASH,
     },
-    LeafKeyRef,
-    TreeHash,
 };
 
 // INITIAL-MODIFICATION: the original used a known key size (32) as a limit
@@ -590,7 +590,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                                     siblings.reverse();
                                     siblings
                                 }),
-                            ))
+                            ));
                         },
                     };
                 },
@@ -631,11 +631,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
             .zip(rightmost_key_to_prove.iter_bits())
             .filter_map(|(sibling, bit)| {
                 // We only need to keep the siblings on the right.
-                if bit {
-                    None
-                } else {
-                    Some(*sibling)
-                }
+                if bit { None } else { Some(*sibling) }
             })
             .rev()
             .collect();
@@ -777,7 +773,7 @@ pub struct StaleNodeIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{jmt_node_hash, memory_store::MemoryTreeStore, StaleTreeNode, TreeStoreWriter};
+    use crate::{StaleTreeNode, TreeStoreWriter, jmt_node_hash, memory_store::MemoryTreeStore};
 
     fn leaf_key(seed: u64) -> LeafKey {
         LeafKey::new(jmt_node_hash(&seed))

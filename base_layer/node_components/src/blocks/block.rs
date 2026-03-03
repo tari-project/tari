@@ -32,6 +32,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_transaction_components::{
+    MicroMinotari,
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
@@ -45,7 +46,6 @@ use tari_transaction_components::{
         TransactionKernel,
         TransactionOutput,
     },
-    MicroMinotari,
 };
 use thiserror::Error;
 

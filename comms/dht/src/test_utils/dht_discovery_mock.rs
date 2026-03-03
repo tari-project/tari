@@ -22,9 +22,9 @@
 
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
         RwLock,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -34,8 +34,8 @@ use tari_comms::peer_manager::Peer;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
     DhtDiscoveryError,
+    discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";

@@ -24,8 +24,8 @@ use tari_comms::protocol::rpc::mock::RpcRequestMock;
 
 use crate::{
     mempool::{
-        test_utils::mock::{create_mempool_service_mock, MempoolMockState},
         MempoolRpcService,
+        test_utils::mock::{MempoolMockState, create_mempool_service_mock},
     },
     test_helpers::create_peer_manager,
 };

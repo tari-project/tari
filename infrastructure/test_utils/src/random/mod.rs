@@ -22,7 +22,7 @@
 
 use std::iter;
 
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
 
 /// Generate a random alphanumeric string of the given size using the default `ThreadRng`.
 pub fn string(len: usize) -> String {

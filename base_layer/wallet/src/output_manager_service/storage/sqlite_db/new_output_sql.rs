@@ -29,7 +29,7 @@ use tari_utilities::ByteArray;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{models::DbWalletOutput, OutputStatus},
+        storage::{OutputStatus, models::DbWalletOutput},
     },
     schema::outputs,
 };

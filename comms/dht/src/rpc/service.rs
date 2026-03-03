@@ -24,10 +24,10 @@ use std::{cmp, convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
+    PeerManager,
     peer_manager::{NodeId, Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
     utils,
-    PeerManager,
 };
 use tari_utilities::ByteArray;
 use tokio::{sync::mpsc, task};

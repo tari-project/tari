@@ -30,10 +30,10 @@ use tari_comms::peer_manager::NodeId;
 use crate::base_node::metrics;
 use crate::{
     base_node::{
+        BaseNodeStateMachine,
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, StateEvent, StateInfo, StatusInfo},
         sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
-        BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
 };
@@ -173,11 +173,11 @@ impl HeaderSyncState {
                     timer.elapsed()
                 );
                 // Move the sync peer used in header sync to the front of the queue
-                if let Some(pos) = self.sync_peers.iter().position(|p| *p == sync_peer) {
-                    if pos > 0 {
-                        let sync_peer = self.sync_peers.remove(pos);
-                        self.sync_peers.insert(0, sync_peer);
-                    }
+                if let Some(pos) = self.sync_peers.iter().position(|p| *p == sync_peer) &&
+                    pos > 0
+                {
+                    let sync_peer = self.sync_peers.remove(pos);
+                    self.sync_peers.insert(0, sync_peer);
                 }
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer, sync_result)

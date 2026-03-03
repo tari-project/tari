@@ -37,7 +37,7 @@ mod reorg_pool;
 
 mod rpc;
 
-pub use rpc::{create_mempool_rpc_service, MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
+pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService, create_mempool_rpc_service};
 #[cfg(feature = "metrics")]
 mod metrics;
 

@@ -97,10 +97,8 @@ use std::{
 };
 
 use fs2::FileExt;
-use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
+use jmt::{JellyfishMerkleTree, KeyHash, storage::TreeWriter};
 use lmdb_zero::{
-    open,
-    traits::AsLmdbBytes,
     ConstTransaction,
     Database,
     EnvBuilder,
@@ -108,10 +106,12 @@ use lmdb_zero::{
     LmdbResultExt,
     ReadTransaction,
     WriteTransaction,
+    open,
+    traits::AsLmdbBytes,
 };
 use log::*;
 use primitive_types::{U256, U512};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
@@ -130,10 +130,11 @@ use tari_common_types::{
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_sidechain::ShardGroup;
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
+use tari_storage::lmdb_store::{BYTES_PER_MB, LMDBBuilder, LMDBConfig, LMDBStore, db};
 use tari_transaction_components::{
+    MicroMinotari,
     aggregated_body::AggregateBody,
-    consensus::{consensus_constants::BlockVersion, ConsensusConstants},
+    consensus::{ConsensusConstants, consensus_constants::BlockVersion},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
         OutputType,
@@ -145,11 +146,10 @@ use tari_transaction_components::{
         TransactionOutput,
         ValidatorNodeRegistration,
     },
-    MicroMinotari,
 };
 use tari_utilities::{
-    hex::{to_hex, Hex},
     ByteArray,
+    hex::{Hex, to_hex},
 };
 use tokio::sync::watch;
 
@@ -161,11 +161,28 @@ use super::{
     stats_collector::{DatabaseStats, LMDBStatsCollector},
 };
 use crate::{
+    PrunedKernelMmr,
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
+        BlockchainBackend,
+        ChainTipData,
+        DbBasicStats,
+        DbSize,
+        HorizonData,
+        InputMinedInfo,
+        MinedInfo,
+        MmrTree,
+        Reorg,
+        TemplateRegistrationEntry,
+        ValidatorNodeEntry,
+        ValidatorNodeRegistrationInfo,
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
+            TransactionInputRowData,
+            TransactionInputRowDataRef,
+            TransactionKernelRowData,
+            TransactionOutputRowData,
             composite_key::{CompositeKey, InputKey, OutputKey},
             helpers::deserialize,
             lmdb::{
@@ -197,30 +214,13 @@ use crate::{
                 LmdbRowBlockHeaderAccumulatedDataV2,
             },
             validator_node_store::ValidatorNodeStore,
-            TransactionInputRowData,
-            TransactionInputRowDataRef,
-            TransactionKernelRowData,
-            TransactionOutputRowData,
         },
         smt_hasher::SmtHasher,
         stats::DbTotalSizeStats,
         utxo_mined_info::OutputMinedInfo,
-        BlockchainBackend,
-        ChainTipData,
-        DbBasicStats,
-        DbSize,
-        HorizonData,
-        InputMinedInfo,
-        MinedInfo,
-        MmrTree,
-        Reorg,
-        TemplateRegistrationEntry,
-        ValidatorNodeEntry,
-        ValidatorNodeRegistrationInfo,
     },
     consensus::BaseNodeConsensusManager,
     proof_of_work::monero_rx::MoneroPowData,
-    PrunedKernelMmr,
 };
 
 type DatabaseRef = Arc<Database<'static>>;
@@ -1707,11 +1707,11 @@ impl LMDBDatabase {
             batch.push((smt_key, None));
 
             let features = input_with_output_data.features()?;
-            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() {
-                if let Some(vn_reg) = sidechain_feature.validator_node_registration() {
-                    self.validator_node_store(txn)
-                        .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
-                }
+            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
+                let Some(vn_reg) = sidechain_feature.validator_node_registration()
+            {
+                self.validator_node_store(txn)
+                    .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
             }
             trace!(
                 target: LOG_TARGET,
@@ -2388,13 +2388,12 @@ impl LMDBDatabase {
 
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
-        let res = LmdbTreeWriter::new(
+        LmdbTreeWriter::new(
             txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
-        );
-        res
+        )
     }
 }
 
@@ -4337,15 +4336,15 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         &MetadataKey::PayrefRebuildStatus.as_u32(),
                     )?
                     .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()));
-                    if let MetadataValue::PayrefRebuildStatus(status) = status_key {
-                        if status.is_rebuilt {
-                            info!(
-                                target: LOG_TARGET,
-                                "[MIGRATIONS] v{migrate_from_version}: PayRef index already rebuilt in the background"
-                            );
-                            payref_index_done = true;
-                            continue;
-                        }
+                    if let MetadataValue::PayrefRebuildStatus(status) = status_key &&
+                        status.is_rebuilt
+                    {
+                        info!(
+                            target: LOG_TARGET,
+                            "[MIGRATIONS] v{migrate_from_version}: PayRef index already rebuilt in the background"
+                        );
+                        payref_index_done = true;
+                        continue;
                     }
                     info!(
                         target: LOG_TARGET,

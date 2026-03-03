@@ -23,14 +23,14 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_comms::{
+    CommsNode,
     message::MessageTag,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     transports::MemoryTransport,
     types::CommsPublicKey,
-    CommsNode,
 };
-use tari_comms_dht::{envelope::DhtMessageHeader, Dht, DhtProtocolVersion};
+use tari_comms_dht::{Dht, DhtProtocolVersion, envelope::DhtMessageHeader};
 use tari_p2p::{
     comms_connector::InboundDomainConnector,
     domain_message::DomainMessage,

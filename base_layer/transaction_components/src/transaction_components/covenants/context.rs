@@ -21,13 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transaction_components::{
+    TransactionInput,
     covenants::{
         arguments::CovenantArg,
         error::CovenantError,
         filters::CovenantFilter,
         token::{CovenantToken, CovenantTokenCollection},
     },
-    TransactionInput,
 };
 
 /// The covenant execution context provides a reference to the transaction input being verified, the tokenized covenant

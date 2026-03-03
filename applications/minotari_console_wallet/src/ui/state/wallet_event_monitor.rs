@@ -30,7 +30,7 @@ use minotari_wallet::{
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::transaction::TxId;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use crate::{
     notifier::Notifier,
@@ -286,10 +286,10 @@ impl WalletEventMonitor {
             warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
 
-        if inner.has_time_locked_balance() {
-            if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
-                warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
-            }
+        if inner.has_time_locked_balance() &&
+            let Err(e) = self.balance_enquiry_debounce_tx.send(())
+        {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 

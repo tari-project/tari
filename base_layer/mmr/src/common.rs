@@ -27,7 +27,7 @@ use std::convert::TryInto;
 
 use digest::Digest;
 
-use crate::{error::MerkleMountainRangeError, Hash};
+use crate::{Hash, error::MerkleMountainRangeError};
 
 const ALL_ONES: usize = usize::MAX;
 

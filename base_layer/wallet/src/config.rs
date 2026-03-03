@@ -29,13 +29,13 @@ use std::{
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tari_common::{
+    SubConfigPath,
     configuration::{
-        bootstrap::{wallet_get_default_seed_https_address, wallet_http_service_default_port},
-        serializers,
         Network,
         StringList,
+        bootstrap::{wallet_get_default_seed_https_address, wallet_http_service_default_port},
+        serializers,
     },
-    SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;

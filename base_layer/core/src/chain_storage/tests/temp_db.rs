@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
-use lmdb_zero::{db, ReadTransaction, WriteTransaction};
+use lmdb_zero::{ReadTransaction, WriteTransaction, db};
 use tari_storage::lmdb_store::{DatabaseRef, LMDBBuilder, LMDBConfig};
 use tari_test_utils::paths::create_temporary_data_path;
 

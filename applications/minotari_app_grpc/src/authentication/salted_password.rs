@@ -21,9 +21,9 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use argon2::{
-    password_hash::{Decimal, SaltString},
     Argon2,
     PasswordHasher,
+    password_hash::{Decimal, SaltString},
 };
 use rand::rngs::OsRng;
 use zeroize::Zeroizing;

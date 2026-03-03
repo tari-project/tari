@@ -71,7 +71,7 @@ pub type TariBaseNodeState = c_void;
 #[cfg_attr(windows, link(name = "minotari_wallet_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "minotari_wallet_ffi"))]
 #[allow(dead_code)]
-extern "C" {
+unsafe extern "C" {
     pub fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector;
     pub fn tari_vector_push_string(tv: *mut TariVector, s: *const c_char, error_ptr: *mut i32);
     pub fn destroy_tari_vector(v: *mut TariVector);
@@ -252,7 +252,7 @@ extern "C" {
         error_out: *mut c_int,
     ) -> *mut TariWalletAddress;
     pub fn completed_transaction_get_status(transaction: *mut TariCompletedTransaction, error_out: *mut c_int)
-        -> c_int;
+    -> c_int;
     pub fn completed_transaction_get_amount(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
@@ -565,7 +565,7 @@ extern "C" {
         error_out: *mut c_int,
     ) -> *mut TariFeePerGramStats;
     pub fn fee_per_gram_stats_get_length(fee_per_gram_stats: *mut TariFeePerGramStats, error_out: *mut c_int)
-        -> c_uint;
+    -> c_uint;
     pub fn fee_per_gram_stats_get_at(
         fee_per_gram_stats: *mut TariFeePerGramStats,
         position: c_uint,

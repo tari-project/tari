@@ -33,26 +33,26 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_crypto::tari_utilities::{ByteArray, hex::Hex};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::TariKeyId,
     transaction_components::{OutputType, TransactionOutput},
-    MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tokio::time::Instant;
 
 use crate::{
     output_manager_service::{
+        UtxoSelectionCriteria,
         error::OutputManagerStorageError,
         service::Balance,
         storage::{
+            OutputStatus,
             database::{DbKey, DbKeyValuePair, DbValue, OutputBackendQuery, OutputManagerBackend, WriteOperation},
             models::{DbWalletOutput, KnownOneSidedPaymentScript},
-            OutputStatus,
         },
-        UtxoSelectionCriteria,
     },
     schema::{known_one_sided_payment_scripts, outputs, scanned_blocks},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
@@ -1687,23 +1687,23 @@ pub struct CoinBucket {
 mod test {
     #![allow(clippy::indexing_slicing)]
 
-    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
-    use rand::{rngs::OsRng, RngCore};
+    use rand::{RngCore, rngs::OsRng};
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{
-        key_manager::KeyManager,
-        test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
         MicroMinotari,
+        key_manager::KeyManager,
+        test_helpers::{TestParams, create_wallet_output_with_data},
+        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
     };
     use tempfile::tempdir;
 
     use crate::output_manager_service::storage::{
-        models::DbWalletOutput,
-        sqlite_db::{new_output_sql::NewOutputSql, output_sql::OutputSql, OutputStatus, UpdateOutput},
         OutputSource,
+        models::DbWalletOutput,
+        sqlite_db::{OutputStatus, UpdateOutput, new_output_sql::NewOutputSql, output_sql::OutputSql},
     };
 
     pub fn make_input(val: MicroMinotari, key_manager: &KeyManager) -> (TransactionInput, WalletOutput) {

@@ -21,7 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use cucumber::{then, when};
-use tari_integration_tests::{merge_mining_proxy::register_merge_mining_proxy_process, TariWorld};
+use tari_integration_tests::{TariWorld, merge_mining_proxy::register_merge_mining_proxy_process};
 
 // Merge mining proxy steps
 

@@ -35,6 +35,7 @@ use tokio::{
 };
 
 use crate::{
+    CommsNode,
     backoff::ConstantBackoff,
     builder::CommsBuilder,
     connection_manager::ConnectionManagerEvent,
@@ -44,21 +45,20 @@ use crate::{
     multiplexing::Substream,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         Peer,
         PeerFeatures,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     pipeline,
     pipeline::SinkService,
     protocol::{
-        messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
         ProtocolEvent,
         ProtocolId,
         Protocols,
+        messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
     },
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
-    CommsNode,
 };
 
 async fn spawn_node(

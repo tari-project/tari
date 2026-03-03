@@ -26,7 +26,9 @@ use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedH
 use tari_script::TariScript;
 
 use crate::transaction_components::{
+    OutputType,
     covenants::{
+        Covenant,
         arguments::{BytesArg, CovenantArg},
         decoder::{CovenantDecodeError, CovenantReadExt},
         fields::OutputField,
@@ -43,9 +45,7 @@ use crate::transaction_components::{
             OutputHashEqFilter,
             XorFilter,
         },
-        Covenant,
     },
-    OutputType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

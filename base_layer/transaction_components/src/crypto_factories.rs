@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use tari_common_types::types::{
     CommitmentFactory,
-    RangeProofService,
     RANGE_PROOF_AGGREGATION_FACTOR,
     RANGE_PROOF_BIT_LENGTH,
+    RangeProofService,
 };
 
 /// A convenience struct wrapping cryptographic factories that are used throughout the rest of the code base

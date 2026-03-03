@@ -8,8 +8,8 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_transaction_components::{
-    transaction_components::{OutputType, TransactionOutput},
     MicroMinotari,
+    transaction_components::{OutputType, TransactionOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 

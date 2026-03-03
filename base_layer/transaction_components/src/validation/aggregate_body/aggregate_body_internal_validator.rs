@@ -38,19 +38,21 @@ use tari_script::ScriptContext;
 use tari_utilities::hex::Hex;
 
 use crate::{
+    MicroMinotari,
     aggregated_body::AggregateBody,
     consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
     transaction_components::{
-        transaction_output::batch_verify_range_proofs,
         KernelSum,
         SideChainFeature,
         TransactionError,
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
+        transaction_output::batch_verify_range_proofs,
     },
     validation::{
+        AggregatedBodyValidationError,
         helpers::{
             check_covenant_length,
             check_permitted_output_types,
@@ -62,9 +64,7 @@ use crate::{
             validate_kernel_version,
             validate_output_version,
         },
-        AggregatedBodyValidationError,
     },
-    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
@@ -529,7 +529,7 @@ mod test {
     use crate::{
         key_manager::KeyManager,
         test_helpers,
-        transaction_components::{covenants::Covenant, KernelFeatures, OutputFeatures, TransactionInputVersion},
+        transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion, covenants::Covenant},
     };
     mod check_lock_height {
         use super::*;

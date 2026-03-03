@@ -42,6 +42,10 @@ use std::{
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
+    Minimized,
+    NodeIdentity,
+    PeerConnection,
+    PeerManager,
     connectivity::{
         ConnectivityError,
         ConnectivityEvent,
@@ -51,16 +55,12 @@ use tari_comms::{
     },
     multiaddr,
     peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
-    Minimized,
-    NodeIdentity,
-    PeerConnection,
-    PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, task, task::JoinHandle, time, time::MissedTickBehavior};
 
-use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
+use crate::{DhtActorError, DhtConfig, DhtRequester, connectivity::metrics::MetricsError, event::DhtEvent};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -840,12 +840,11 @@ impl DhtConnectivity {
             },
         }
 
-        if self.random_pool.len() > self.config.num_random_nodes {
-            if let Some(removed_peer) = self.random_pool.pop() {
-                if self.config.minimize_connections {
-                    self.previous_random.push(removed_peer.clone());
-                }
-            }
+        if self.random_pool.len() > self.config.num_random_nodes &&
+            let Some(removed_peer) = self.random_pool.pop() &&
+            self.config.minimize_connections
+        {
+            self.previous_random.push(removed_peer.clone());
         }
     }
 
@@ -865,30 +864,30 @@ impl DhtConnectivity {
         if !self.config.excluded_dial_addresses.is_empty() {
             let mut neighbours = Vec::with_capacity(self.neighbours.len());
             for peer in &self.neighbours {
-                if let Ok(addresses) = self.peer_manager.get_peer_multi_addresses(peer).await {
-                    if !addresses.iter().all(|addr| {
+                if let Ok(addresses) = self.peer_manager.get_peer_multi_addresses(peer).await &&
+                    !addresses.iter().all(|addr| {
                         self.config
                             .excluded_dial_addresses
                             .iter()
                             .any(|v| v.contains(addr.address()))
-                    }) {
-                        neighbours.push(peer.clone());
-                    }
+                    })
+                {
+                    neighbours.push(peer.clone());
                 }
             }
             self.neighbours = neighbours;
 
             let mut random_pool = Vec::with_capacity(self.random_pool.len());
             for peer in &self.random_pool {
-                if let Ok(addresses) = self.peer_manager.get_peer_multi_addresses(peer).await {
-                    if !addresses.iter().all(|addr| {
+                if let Ok(addresses) = self.peer_manager.get_peer_multi_addresses(peer).await &&
+                    !addresses.iter().all(|addr| {
                         self.config
                             .excluded_dial_addresses
                             .iter()
                             .any(|v| v.contains(addr.address()))
-                    }) {
-                        random_pool.push(peer.clone());
-                    }
+                    })
+                {
+                    random_pool.push(peer.clone());
                 }
             }
             self.random_pool = random_pool;

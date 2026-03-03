@@ -30,19 +30,19 @@ use tokio_stream::StreamExt;
 use crate::{
     connection_manager::PeerConnection,
     protocol::{
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
         rpc::{
+            NamedProtocolService,
+            RpcServer,
             test::{
                 greeting_service::{GreetingClient, GreetingServer, GreetingService, SlowStreamRequest},
                 mock::create_mocked_rpc_context,
             },
-            NamedProtocolService,
-            RpcServer,
         },
-        ProtocolEvent,
-        ProtocolId,
-        ProtocolNotification,
     },
-    test_utils::mocks::{new_peer_connection_mock_pair, PeerConnectionMockState},
+    test_utils::mocks::{PeerConnectionMockState, new_peer_connection_mock_pair},
 };
 
 async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectionMockState, Shutdown) {
@@ -77,8 +77,8 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
 mod lazy_pool {
     use super::*;
     use crate::{
-        protocol::rpc::client::pool::{LazyPool, RpcClientPoolError},
         Minimized,
+        protocol::rpc::client::pool::{LazyPool, RpcClientPoolError},
     };
 
     #[tokio::test]

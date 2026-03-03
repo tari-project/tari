@@ -25,10 +25,10 @@ pub mod hash {
     use std::fmt;
 
     use serde::{
-        de::{self, SeqAccess, Visitor},
-        ser::SerializeSeq,
         Deserializer,
         Serializer,
+        de::{self, SeqAccess, Visitor},
+        ser::SerializeSeq,
     };
     use tari_utilities::hex::{self, Hex};
 

@@ -41,16 +41,17 @@ use tari_common_types::{
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     crypto_factories::CryptoFactories,
     key_manager::{
-        error::KeyManagerError,
-        wallet_types::WalletType,
         KeyManager,
         SecretTransactionKeyManagerInterface,
         TariKeyAndId,
         TariKeyId,
         TransactionKeyManagerInterface,
         TxoStage,
+        error::KeyManagerError,
+        wallet_types::WalletType,
     },
     transaction_components::{
         EncryptedData,
@@ -61,15 +62,14 @@ use tari_transaction_components::{
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
-    MicroMinotari,
 };
 
 use crate::legacy_key_manager::{
-    wallet_types::LegacyWalletType,
     LegacyTariKeyId,
     LegacyTransactionKeyManagerInterface,
     TransactionKeyManagerBackend,
     TransactionKeyManagerInner,
+    wallet_types::LegacyWalletType,
 };
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
 /// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index

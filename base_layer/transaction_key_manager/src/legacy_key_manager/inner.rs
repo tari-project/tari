@@ -43,16 +43,17 @@ use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::KeyManagerDomain;
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     crypto_factories::CryptoFactories,
     key_manager::{
-        error::KeyManagerError,
-        wallet_types::{KeyDigest, WalletType, HASHER_LABEL_DERIVE_KEY, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH},
         KeyManager,
         SecretTransactionKeyManagerInterface,
         TariKeyAndId,
         TariKeyId,
         TransactionKeyManagerInterface,
         TxoStage,
+        error::KeyManagerError,
+        wallet_types::{HASHER_LABEL_DERIVE_KEY, KeyDigest, SPEND_KEY_BRANCH, VIEW_KEY_BRANCH, WalletType},
     },
     transaction_components::{
         EncryptedData,
@@ -63,15 +64,14 @@ use tari_transaction_components::{
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
-    MicroMinotari,
 };
 use tari_utilities::ByteArrayError;
 
 use crate::legacy_key_manager::{
-    interface::TransactionKeyManagerBackend,
-    wallet_types::LegacyWalletType,
     LegacySerializedKeyString,
     LegacyTariKeyId,
+    interface::TransactionKeyManagerBackend,
+    wallet_types::LegacyWalletType,
 };
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";

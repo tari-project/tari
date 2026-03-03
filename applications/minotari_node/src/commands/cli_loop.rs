@@ -9,18 +9,18 @@ use crossterm::{
     terminal,
 };
 use futures::{FutureExt, StreamExt};
-use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
+use rustyline::{CompletionType, Config, EditMode, Editor, config::OutputStreamType, error::ReadlineError};
 use tari_shutdown::ShutdownSignal;
 use tokio::{signal, time};
 
 use crate::{
+    LOG_TARGET,
     commands::{
         cli,
         command::{Args, CommandContext, WatchCommand},
         parser::Parser,
         reader::CommandReader,
     },
-    LOG_TARGET,
 };
 
 pub struct CliLoop {
@@ -141,10 +141,10 @@ impl CliLoop {
                                 println!("Watched command `{line}` failed: {err}");
                             } else {
                                 let args: Result<Args, _> = line.parse();
-                                if let Ok(command) = args {
-                                    if command.is_quit() {
-                                        self.done = true;
-                                    }
+                                if let Ok(command) = args
+                                    && command.is_quit()
+                                {
+                                    self.done = true;
                                 }
                             }
                             continue;
@@ -198,10 +198,10 @@ impl CliLoop {
                                 println!("Watched command `{line}` failed: {err}");
                             } else {
                                 let args: Result<Args, _> = line.parse();
-                                if let Ok(command) = args {
-                                    if command.is_quit() {
-                                        self.done = true;
-                                    }
+                                if let Ok(command) = args
+                                    && command.is_quit()
+                                {
+                                    self.done = true;
                                 }
                             }
                             continue;

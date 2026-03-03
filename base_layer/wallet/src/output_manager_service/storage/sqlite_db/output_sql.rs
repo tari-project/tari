@@ -52,6 +52,7 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::TariKeyId,
     transaction_components::{
         EncryptedData,
@@ -61,26 +62,25 @@ use tari_transaction_components::{
         TransactionOutputVersion,
         WalletOutput,
     },
-    MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 
 use crate::{
     output_manager_service::{
+        TRANSACTION_INPUTS_LIMIT,
+        UtxoSelectionFilter,
+        UtxoSelectionOrdering,
         error::OutputManagerStorageError,
         input_selection::{UtxoSelectionCriteria, UtxoSelectionMode},
         service::Balance,
         storage::{
+            OutputSource,
+            OutputStatus,
             database::{OutputBackendQuery, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
             sqlite_db::{CoinBucket, UpdateOutput, UpdateOutputSql},
-            OutputSource,
-            OutputStatus,
         },
-        UtxoSelectionFilter,
-        UtxoSelectionOrdering,
-        TRANSACTION_INPUTS_LIMIT,
     },
     schema::outputs,
 };
@@ -756,7 +756,7 @@ impl OutputSql {
                 _ => {
                     return Err(OutputManagerStorageError::UnexpectedResult(
                         "Unexpected category in balance query".to_string(),
-                    ))
+                    ));
                 },
             }
         }
@@ -876,7 +876,7 @@ impl OutputSql {
                 _ => {
                     return Err(OutputManagerStorageError::UnexpectedResult(
                         "Unexpected category in balance query".to_string(),
-                    ))
+                    ));
                 },
             }
         }

@@ -26,10 +26,10 @@ use async_trait::async_trait;
 
 use super::RpcError;
 use crate::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::{NodeId, OrNotFound, Peer},
     PeerConnection,
     PeerManager,
+    connectivity::{ConnectivityRequester, ConnectivitySelection},
+    peer_manager::{NodeId, OrNotFound, Peer},
 };
 
 /// Abstraction of the comms backend calls provided to RPC services.

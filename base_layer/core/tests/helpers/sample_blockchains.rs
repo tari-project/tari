@@ -26,14 +26,14 @@ use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
-    test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
+    test_helpers::blockchain::{TempDatabase, create_store_with_consensus},
     validation::DifficultyCalculator,
 };
 use tari_node_components::blocks::ChainBlock;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusConstantsBuilder},
     key_manager::KeyManager,
-    tari_amount::{uT, T},
+    tari_amount::{T, uT},
     transaction_components::WalletOutput,
     txn_schema,
 };

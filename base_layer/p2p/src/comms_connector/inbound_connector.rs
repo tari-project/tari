@@ -23,7 +23,7 @@
 use std::{pin::Pin, sync::Arc, task::Poll};
 
 use anyhow::anyhow;
-use futures::{task::Context, Future};
+use futures::{Future, task::Context};
 use log::*;
 use tari_comms::pipeline::PipelineError;
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};

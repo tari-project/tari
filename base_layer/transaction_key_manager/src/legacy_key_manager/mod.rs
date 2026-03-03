@@ -39,14 +39,14 @@ mod initializer;
 pub use initializer::LegacyTransactionKeyManagerInitializer;
 
 mod inner;
+pub use inner::LEDGER_NOT_SUPPORTED;
 /// This is a memory database implementation of the `TransactionKeyManager` trait.
 pub use inner::TransactionKeyManagerInner;
-pub use inner::LEDGER_NOT_SUPPORTED;
 
 pub mod error;
 
 pub mod memory_key_manager;
-pub use memory_key_manager::{create_new_random_key_manager, MemoryKeyManager};
+pub use memory_key_manager::{MemoryKeyManager, create_new_random_key_manager};
 
 pub mod tari_key_manager;
 

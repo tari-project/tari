@@ -23,11 +23,11 @@ use std::iter;
 
 use log::*;
 use monero::{
+    VarInt,
     blockdata::transaction::{ExtraField, RawExtraField, SubField},
     consensus,
     consensus::Encodable,
     cryptonote::hash::Hashable,
-    VarInt,
 };
 use primitive_types::U256;
 use sha2::{Digest, Sha256};
@@ -421,24 +421,24 @@ mod test {
 
     use borsh::{BorshDeserialize, BorshSerialize};
     use monero::{
-        blockdata::transaction::TxOutTarget,
-        consensus::deserialize,
-        util::ringct::{RctSig, RctSigBase, RctType},
         Hash,
         PublicKey,
         Transaction,
         TransactionPrefix,
         TxIn,
         TxOut,
+        blockdata::transaction::TxOutTarget,
+        consensus::deserialize,
+        util::ringct::{RctSig, RctSigBase, RctType},
     };
     use serial_test::serial;
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
     use tari_transaction_components::tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
     use tari_utilities::{
-        epoch_time::EpochTime,
-        hex::{from_hex, Hex},
         ByteArray,
+        epoch_time::EpochTime,
+        hex::{Hex, from_hex},
     };
 
     use super::*;
@@ -1299,7 +1299,8 @@ mod test {
     fn test_tari_randomx_difficulty() {
         let network = Network::Esmeralda;
         if std::env::var("TARI_NETWORK").is_err() {
-            std::env::set_var("TARI_NETWORK", network.as_key_str());
+            // SAFETY: This test is marked #[serial] and not run in parallel.
+            unsafe { std::env::set_var("TARI_NETWORK", network.as_key_str()) };
         }
         if Network::get_current_or_user_setting_or_default() != network {
             let _ = Network::set_current(network);

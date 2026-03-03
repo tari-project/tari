@@ -31,14 +31,14 @@ use std::{
 };
 
 use blake2::{
-    digest::{Update, VariableOutput},
     Blake2bVar,
+    digest::{Update, VariableOutput},
 };
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use tari_utilities::{
-    hex::{to_hex, Hex},
     ByteArray,
     ByteArrayError,
+    hex::{Hex, to_hex},
 };
 use thiserror::Error;
 

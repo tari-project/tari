@@ -152,7 +152,7 @@ mod test {
         tari_proof_of_work::{Difficulty, PowAlgorithm},
     };
 
-    use super::{display_u_decimal_value, HashRateMovingAverage, NANOS_PER_UNIT};
+    use super::{HashRateMovingAverage, NANOS_PER_UNIT, display_u_decimal_value};
 
     #[test]
     fn window_is_empty() {

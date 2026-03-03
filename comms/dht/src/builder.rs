@@ -25,11 +25,11 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_common_sqlite::connection::DbConnectionUrl;
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
+use tari_comms::{NodeIdentity, PeerManager, connectivity::ConnectivityRequester};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
-use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion, Dht, DhtConfig};
+use crate::{Dht, DhtConfig, dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion};
 
 /// Builder for the DHT.
 ///

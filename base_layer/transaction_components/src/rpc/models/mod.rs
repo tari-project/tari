@@ -1,6 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use utoipa::openapi::{schema::SchemaType, Object, OneOf, Schema, Type};
+use utoipa::openapi::{Object, OneOf, Schema, Type, schema::SchemaType};
 
 mod fee_per_gram;
 mod generate_kernel_merkle_proof;

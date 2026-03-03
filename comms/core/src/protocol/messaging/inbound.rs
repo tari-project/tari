@@ -22,7 +22,7 @@
 
 use std::io;
 
-use futures::{future, future::Either, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, future, future::Either};
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -33,7 +33,7 @@ use tokio::{
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::{MessagingEvent, MessagingProtocol};
-use crate::{message::InboundMessage, PeerConnection};
+use crate::{PeerConnection, message::InboundMessage};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 

@@ -35,8 +35,8 @@ use tari_common_types::{
     types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel, TransactionOutput},
     MicroMinotari,
+    transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel, TransactionOutput},
 };
 
 use crate::{

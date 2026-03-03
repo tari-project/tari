@@ -30,12 +30,12 @@ use std::{
 };
 
 use diesel::{
-    r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
+    r2d2::{ConnectionManager, PooledConnection},
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use log::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -79,10 +79,10 @@ impl DbConnectionUrl {
 
     /// Sets relative paths to use a common base path
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
-        if let DbConnectionUrl::File(inner) = self {
-            if !inner.is_absolute() {
-                *inner = base_path.as_ref().join(inner.as_path());
-            }
+        if let DbConnectionUrl::File(inner) = self &&
+            !inner.is_absolute()
+        {
+            *inner = base_path.as_ref().join(inner.as_path());
         }
     }
 }
@@ -148,10 +148,10 @@ impl DbConnection {
         debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}'");
 
         // Ensure the path exists
-        if let DbConnectionUrl::File(ref path) = db_url {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
+        if let DbConnectionUrl::File(path) = db_url &&
+            let Some(parent) = path.parent()
+        {
+            std::fs::create_dir_all(parent)?;
         }
 
         let mut pool = SqliteConnectionPool::new(
@@ -250,20 +250,19 @@ impl Drop for DbConnection {
     fn drop(&mut self) {
         let path = self.pool.db_path();
 
-        if path.exists() {
-            if let Some(parent) = path.parent() {
-                if parent.starts_with(DbConnection::temp_db_dir()) {
-                    debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
-                    // Explicitly cleanup and drop the connection pool to ensure all connections are released
-                    let pool_state = self.pool.cleanup();
-                    debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {pool_state:?}");
-                    debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
-                    if let Err(e) = fs::remove_dir_all(parent) {
-                        error!(target: LOG_TARGET, "Failed to clean up temp dir: {e}");
-                    } else {
-                        debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", parent.display());
-                    }
-                }
+        if path.exists() &&
+            let Some(parent) = path.parent() &&
+            parent.starts_with(DbConnection::temp_db_dir())
+        {
+            debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
+            // Explicitly cleanup and drop the connection pool to ensure all connections are released
+            let pool_state = self.pool.cleanup();
+            debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {pool_state:?}");
+            debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
+            if let Err(e) = fs::remove_dir_all(parent) {
+                error!(target: LOG_TARGET, "Failed to clean up temp dir: {e}");
+            } else {
+                debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", parent.display());
             }
         }
     }
@@ -283,10 +282,10 @@ mod test {
     use std::sync::Arc;
 
     use diesel::{
+        RunQueryDsl,
         connection::SimpleConnection,
         dsl::sql,
         sql_types::{Integer, Text},
-        RunQueryDsl,
     };
     use diesel_migrations::embed_migrations;
     use tokio::{sync::Barrier, task::JoinSet};

@@ -39,20 +39,20 @@ use tari_common_types::{
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
+    MicroMinotari,
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
-        one_sided::public_key_to_output_encryption_key,
         EncryptedData,
         TransactionOutput,
         WalletOutput,
+        one_sided::public_key_to_output_encryption_key,
     },
-    MicroMinotari,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
-    wallet_types::LegacyWalletType,
     LegacyTransactionKeyManagerInterface,
+    wallet_types::LegacyWalletType,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::broadcast, time::sleep};
 
 use crate::{
@@ -64,10 +64,10 @@ use crate::{
         protocols::check_faux_transaction_status::SAFETY_HEIGHT_MARGIN,
     },
     utxo_scanner_service::{
-        handle::UtxoScannerEvent,
-        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
-        uxto_scanner_service_builder::UtxoScannerMode,
         RECOVERY_KEY,
+        handle::UtxoScannerEvent,
+        service::{SCANNED_BLOCK_CACHE_SIZE, ScannedBlock, UtxoScannerResources},
+        uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
 
@@ -251,30 +251,30 @@ where
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
             // check if we are already synced.
-            if let Some(last_scanned_block) = &last_scanned_block {
-                if last_scanned_block.header_hash == tip_hash {
-                    debug!(
-                        target: LOG_TARGET,
-                        "{:?}: Scanning complete to current tip (height: {}) in {:.2?}",
-                        self.mode,
-                        last_scanned_block.height,
-                        timer.elapsed()
-                    );
-                    let latency = wallet_service_client
-                        .get_last_request_latency()
-                        .await
-                        .unwrap_or_default();
-                    let node = wallet_service_client.get_address().await;
-                    return Ok(SyncResult {
-                        final_height: last_scanned_block.height,
-                        num_recovered: total_num_recovered,
-                        value_recovered: total_value_recovered,
-                        scanned_blocks,
-                        elapsed: timer.elapsed(),
-                        latency,
-                        node,
-                    });
-                }
+            if let Some(last_scanned_block) = &last_scanned_block &&
+                last_scanned_block.header_hash == tip_hash
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "{:?}: Scanning complete to current tip (height: {}) in {:.2?}",
+                    self.mode,
+                    last_scanned_block.height,
+                    timer.elapsed()
+                );
+                let latency = wallet_service_client
+                    .get_last_request_latency()
+                    .await
+                    .unwrap_or_default();
+                let node = wallet_service_client.get_address().await;
+                return Ok(SyncResult {
+                    final_height: last_scanned_block.height,
+                    num_recovered: total_num_recovered,
+                    value_recovered: total_value_recovered,
+                    scanned_blocks,
+                    elapsed: timer.elapsed(),
+                    latency,
+                    node,
+                });
             }
 
             // Otherwise choose a starting point for the scan
@@ -539,31 +539,31 @@ where
                         current_height,
                         block_hash.to_hex(), prev_scanned_block
                     );
-                    if let Some(scanned_block) = prev_scanned_block {
-                        if block_hash != scanned_block.header_hash {
-                            trace!(
+                    if let Some(scanned_block) = prev_scanned_block &&
+                        block_hash != scanned_block.header_hash
+                    {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Saving scanned block at height {} with header hash {}",
+                            current_height,
+                            block_hash.to_hex()
+                        );
+                        self.resources.db.save_scanned_block(scanned_block.clone())?;
+                        last_saved_hash = Some(scanned_block.header_hash);
+                        if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                            debug!(
                                 target: LOG_TARGET,
-                                "Saving scanned block at height {} with header hash {}",
-                                current_height,
-                                block_hash.to_hex()
+                                "Scanned up to block {current_height} with a current tip_height of {tip_height}"
                             );
-                            self.resources.db.save_scanned_block(scanned_block.clone())?;
-                            last_saved_hash = Some(scanned_block.header_hash);
-                            if current_height % PROGRESS_REPORT_INTERVAL == 0 {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Scanned up to block {current_height} with a current tip_height of {tip_height}"
-                                );
 
-                                let latency = client.get_last_request_latency().await.unwrap_or_default();
-                                let node = client.get_address().await;
-                                self.publish_event(UtxoScannerEvent::Progress {
-                                    current_height,
-                                    tip_height,
-                                    current_node: node,
-                                    latency,
-                                });
-                            }
+                            let latency = client.get_last_request_latency().await.unwrap_or_default();
+                            let node = client.get_address().await;
+                            self.publish_event(UtxoScannerEvent::Progress {
+                                current_height,
+                                tip_height,
+                                current_node: node,
+                                latency,
+                            });
                         }
                     }
                     prev_scanned_block = Some(ScannedBlock {

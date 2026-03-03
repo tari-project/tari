@@ -26,7 +26,7 @@ use std::{
 };
 
 use ledger_transport::{APDUAnswer, APDUCommand};
-use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
+use ledger_transport_hid::{TransportNativeHID, hidapi::HidApi};
 use minotari_ledger_wallet_common::common_types::Instruction;
 use tari_utilities::ByteArray;
 

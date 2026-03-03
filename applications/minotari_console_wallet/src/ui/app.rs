@@ -22,19 +22,21 @@
 
 #![allow(clippy::indexing_slicing)]
 use log::trace;
-use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
+use minotari_wallet::{WalletConfig, WalletSqlite, error::WalletError, util::wallet_identity::WalletIdentity};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tokio::runtime::Handle;
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout},
-    Frame,
 };
 
 use crate::{
     notifier::Notifier,
     ui::{
+        MAX_WIDTH,
         components::{
+            Component,
             base_node::BaseNode,
             burn_tab::BurnTab,
             events_component::EventsComponent,
@@ -45,10 +47,8 @@ use crate::{
             send_tab::SendTab,
             tabs_container::TabsContainer,
             transactions_tab::TransactionsTab,
-            Component,
         },
         state::AppState,
-        MAX_WIDTH,
     },
 };
 

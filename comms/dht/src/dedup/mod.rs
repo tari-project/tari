@@ -30,7 +30,7 @@ use std::task::Poll;
 
 use blake2::Blake2b;
 pub use dedup_cache::DedupCacheDatabase;
-use digest::{consts::U32, Digest};
+use digest::{Digest, consts::U32};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use tari_comms::pipeline::PipelineError;
@@ -39,7 +39,7 @@ use tari_crypto::{
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
 use tari_utilities::hex::Hex;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
     actor::DhtRequester,

@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use borsh::BorshSerialize;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use serial_test::serial;
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
@@ -35,20 +35,20 @@ use tari_core::{
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
         monero_rx,
-        monero_rx::{verify_header, FixedByteArray, MoneroPowData},
+        monero_rx::{FixedByteArray, MoneroPowData, verify_header},
         randomx_factory::RandomXFactory,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     validation::{
-        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
-        header::HeaderFullValidator,
-        mocks::MockValidator,
         BlockBodyValidator,
         CandidateBlockValidator,
         DifficultyCalculator,
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
         ValidationError,
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+        header::HeaderFullValidator,
+        mocks::MockValidator,
     },
 };
 use tari_node_components::blocks::{Block, BlockHeaderValidationError, BlockValidationError, ChainBlock};
@@ -57,19 +57,19 @@ use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::{
-        consensus_constants::{BlockVersion, PowAlgorithmConstants},
         ConsensusConstantsBuilder,
+        consensus_constants::{BlockVersion, PowAlgorithmConstants},
     },
     crypto_factories::CryptoFactories,
     key_manager::{KeyManager, TransactionKeyManagerInterface},
-    tari_amount::{uT, T},
+    tari_amount::{T, uT},
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowData},
-    test_helpers::{create_wallet_output_with_data, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
+    test_helpers::{TestParams, UtxoTestParams, create_wallet_output_with_data, schema_to_transaction, spend_utxos},
     transaction_components::{CoinBaseExtra, OutputFeatures, TransactionError},
     txn_schema,
     validation::AggregatedBodyValidationError,
 };
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 use tiny_keccak::{Hasher, Keccak};
 use tokio::time::Instant;
 
@@ -92,7 +92,8 @@ use crate::{
 async fn test_monero_blocks() {
     let network = Network::Esmeralda;
     if std::env::var("TARI_NETWORK").is_err() {
-        std::env::set_var("TARI_NETWORK", network.as_key_str());
+        // SAFETY: This test is marked #[serial] and not run in parallel.
+        unsafe { std::env::set_var("TARI_NETWORK", network.as_key_str()) };
     }
     if Network::get_current_or_user_setting_or_default() != network {
         let _ = Network::set_current(network);
@@ -536,25 +537,29 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     // this block should be okay
-    assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
-        .is_ok());
+    assert!(
+        body_only_validator
+            .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+            .is_ok()
+    );
 
     // lets break the chain sequence
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
-    assert!(header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &new_block.header,
-            genesis.header(),
-            &[],
-            None,
-            FixedHash::zero()
-        )
-        .is_err());
+    assert!(
+        header_validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &new_block.header,
+                genesis.header(),
+                &[],
+                None,
+                FixedHash::zero()
+            )
+            .is_err()
+    );
 
     // lets have unknown inputs;
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
@@ -606,9 +611,11 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
-        .is_err());
+    assert!(
+        body_only_validator
+            .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+            .is_err()
+    );
 
     // lets check duplicate txos
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
@@ -639,9 +646,11 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
-        .is_err());
+    assert!(
+        body_only_validator
+            .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+            .is_err()
+    );
 
     // check mmr roots
     let mut new_block = db.prepare_new_block(template).unwrap();
@@ -670,9 +679,11 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
-        .is_err());
+    assert!(
+        body_only_validator
+            .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -732,16 +743,18 @@ OutputFeatures::default()),
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
 
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
-    assert!(header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &new_block.header,
-            genesis.header(),
-            &timestamps,
-            None,
-            FixedHash::zero()
-        )
-        .is_ok());
+    assert!(
+        header_validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &new_block.header,
+                genesis.header(),
+                &timestamps,
+                None,
+                FixedHash::zero()
+            )
+            .is_ok()
+    );
 
     // Lets break ftl rules
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
@@ -753,16 +766,18 @@ OutputFeatures::default()),
         .checked_add(EpochTime::from(10))
         .unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
-    assert!(header_validator
-        .validate(
-            &*db.db_read_access().unwrap(),
-            &new_block.header,
-            genesis.header(),
-            &[],
-            None,
-            FixedHash::zero()
-        )
-        .is_err());
+    assert!(
+        header_validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &new_block.header,
+                genesis.header(),
+                &[],
+                None,
+                FixedHash::zero()
+            )
+            .is_err()
+    );
 
     // lets break difficulty
     let mut new_block = db.prepare_new_block(template).unwrap();

@@ -37,7 +37,7 @@ pub struct TxId(u64);
 impl TxId {
     /// Create a new random TxId. Only for temporary use.
     pub fn new_random() -> Self {
-        use rand::{rngs::OsRng, RngCore};
+        use rand::{RngCore, rngs::OsRng};
         TxId(OsRng.next_u64())
     }
 

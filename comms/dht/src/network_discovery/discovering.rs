@@ -22,18 +22,19 @@
 
 use std::{collections::HashSet, convert::TryInto};
 
-use futures::{stream::FuturesUnordered, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream::FuturesUnordered};
 use log::*;
 use tari_comms::{
+    PeerConnection,
     connectivity::ConnectivityError,
     peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerId},
     protocol::rpc::{ClientStreaming, RpcStatus},
     types::CommsPublicKey,
-    PeerConnection,
 };
 use tari_utilities::hex::Hex;
 
 use super::{
+    NetworkDiscoveryError,
     state_machine::{
         DhtNetworkDiscoveryRoundInfo,
         DiscoveryParams,
@@ -41,15 +42,14 @@ use super::{
         NetworkDiscoveryContext,
         StateEvent,
     },
-    NetworkDiscoveryError,
 };
 use crate::{
+    DhtConfig,
     actor::OffenceSeverity,
     peer_validator::PeerValidator,
     proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc,
     rpc::{DhtClient, UnvalidatedPeerInfo},
-    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";

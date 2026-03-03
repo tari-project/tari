@@ -7,24 +7,24 @@ use log::*;
 use minotari_ledger_wallet_comms::accessor_methods::ledger_get_public_spend_key;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_transaction_components::{
-    transaction_components::memo_field::{MemoField, TxType},
     MicroMinotari,
+    transaction_components::memo_field::{MemoField, TxType},
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Paragraph, TableState, Wrap},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
-    components::{balance::Balance, Component, KeyHandled},
+    components::{Component, KeyHandled, balance::Balance},
     state::{AppState, UiTransactionSendStatus},
     widgets::draw_dialog,
 };

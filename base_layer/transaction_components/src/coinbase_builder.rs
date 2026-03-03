@@ -25,20 +25,18 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     types::{CompressedCommitment, PrivateKey},
 };
-use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript, push_pubkey_script};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
     consensus::{
-        emission::{Emission, EmissionSchedule},
         ConsensusConstants,
+        emission::{Emission, EmissionSchedule},
     },
-    key_manager::{error::KeyManagerError, TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    tari_amount::{uT, MicroMinotari},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage, error::KeyManagerError},
+    tari_amount::{MicroMinotari, uT},
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
         CoinBaseExtra,
         CoreTransactionBuilder,
         KernelBuilder,
@@ -52,6 +50,8 @@ use crate::{
         TransactionOutput,
         TransactionOutputVersion,
         WalletOutput,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
     },
 };
 
@@ -482,16 +482,16 @@ mod test {
 
     use super::*;
     use crate::{
+        CoinbaseBuilder,
         aggregated_body::AggregateBody,
         coinbase_builder::CoinbaseBuildError,
-        consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
+        consensus::{ConsensusManager, ConsensusManagerBuilder, emission::Emission},
         crypto_factories::CryptoFactories,
         key_manager::KeyManager,
         tari_amount::uT,
-        test_helpers::{create_consensus_constants, TestParams},
+        test_helpers::{TestParams, create_consensus_constants},
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
-        CoinbaseBuilder,
     };
 
     fn get_builder() -> (
@@ -725,16 +725,17 @@ mod test {
                 MemoField::new_empty(),
             )
             .unwrap();
-        assert!(tx3
-            .body
-            .check_coinbase_output(
-                block_reward,
-                rules.consensus_constants(0).coinbase_min_maturity(),
-                &factories,
-                42,
-                1
-            )
-            .is_ok());
+        assert!(
+            tx3.body
+                .check_coinbase_output(
+                    block_reward,
+                    rules.consensus_constants(0).coinbase_min_maturity(),
+                    &factories,
+                    42,
+                    1
+                )
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -825,10 +826,11 @@ mod test {
             &excess,
             &kernel_message,
         );
-        assert!(sig
-            .to_schnorr_signature()
-            .unwrap()
-            .verify_raw_uniform(&excess.to_public_key().unwrap(), &sig_challenge));
+        assert!(
+            sig.to_schnorr_signature()
+                .unwrap()
+                .verify_raw_uniform(&excess.to_public_key().unwrap(), &sig_challenge)
+        );
 
         // we fix the signature and the excess with the now included offset.
         coinbase_kernel2.excess_sig = sig;

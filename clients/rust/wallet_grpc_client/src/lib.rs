@@ -24,7 +24,7 @@ use std::ops::{Deref, DerefMut};
 
 use tari_common::MAX_GRPC_MESSAGE_SIZE;
 use tonic::{
-    codegen::{http::uri::InvalidUri, InterceptedService},
+    codegen::{InterceptedService, http::uri::InvalidUri},
     transport::Endpoint,
 };
 

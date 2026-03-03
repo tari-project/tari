@@ -14,27 +14,27 @@ use std::{
 use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
-use rand::{rngs::OsRng, thread_rng, RngCore};
+use rand::{RngCore, rngs::OsRng, thread_rng};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
+    CommsBuilder,
+    CommsNode,
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         NodeIdentity,
         Peer,
         PeerFeatures,
         PeerFlags,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     pipeline,
     pipeline::SinkService,
-    protocol::{messaging::MessagingProtocolExtension, ProtocolId},
+    protocol::{ProtocolId, messaging::MessagingProtocolExtension},
     tor,
     types::CommsPublicKey,
-    CommsBuilder,
-    CommsNode,
 };
 use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;

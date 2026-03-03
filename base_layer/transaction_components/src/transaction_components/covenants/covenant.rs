@@ -33,6 +33,8 @@ use super::decoder::CovenantDecodeError;
 use crate::{
     helpers::byte_counter::ByteCounter,
     transaction_components::{
+        TransactionInput,
+        TransactionOutput,
         covenants::{
             context::CovenantContext,
             decoder::CovenantTokenDecoder,
@@ -42,8 +44,6 @@ use crate::{
             output_set::OutputSet,
             token::{CovenantToken, CovenantTokenCollection},
         },
-        TransactionInput,
-        TransactionOutput,
     },
 };
 
@@ -197,8 +197,8 @@ mod test {
         key_manager::KeyManager,
         test_helpers::UtxoTestParams,
         transaction_components::covenants::{
-            test::{create_input, create_outputs},
             Covenant,
+            test::{create_input, create_outputs},
         },
     };
 

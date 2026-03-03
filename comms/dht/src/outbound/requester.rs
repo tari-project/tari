@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body, BytesMut};
+use tari_comms::{BytesMut, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
 use tokio::sync::{mpsc, oneshot};
 
 use super::message::DhtOutboundRequest;
@@ -30,11 +30,11 @@ use crate::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{
+        DhtOutboundError,
+        MessageSendStates,
         message::{OutboundEncryption, SendMessageResponse},
         message_params::{FinalSendMessageParams, SendMessageParams},
         message_send_state::MessageSendState,
-        DhtOutboundError,
-        MessageSendStates,
     },
 };
 

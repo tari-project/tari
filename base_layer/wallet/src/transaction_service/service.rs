@@ -29,7 +29,7 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, pin_mut, stream::FuturesUnordered};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
@@ -54,25 +54,28 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::{NodeIdentity, types::CommsPublicKey};
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
 use tari_max_size::MaxSizeString;
 use tari_script::{
-    push_pubkey_script,
-    script,
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     Opcode,
     ScriptContext,
     StackItem,
+    push_pubkey_script,
+    script,
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     fee::Fee,
@@ -91,9 +94,6 @@ use tari_transaction_components::{
         },
     },
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
-        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
         BuildInfo,
         CodeTemplateRegistration,
         EncryptedData,
@@ -105,33 +105,34 @@ use tari_transaction_components::{
         TransactionOutput,
         ValidatorNodeSignature,
         WalletOutputBuilder,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
     },
     tx_outputs_to_tx_id,
-    MicroMinotari,
-    TransactionBuilder,
-    TransactionBuilderError,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
-    wallet_types::{FeeType, LegacyWalletType},
     LegacyTransactionKeyManagerInterface,
+    wallet_types::{FeeType, LegacyWalletType},
 };
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{mpsc::Sender, oneshot, Mutex},
+    sync::{Mutex, mpsc::Sender, oneshot},
     task::JoinHandle,
 };
 use uuid::Uuid;
 
 use crate::{
+    OperationId,
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
+        UtxoSelectionCriteria,
+        UtxoSelectionFilter,
         error::OutputManagerError,
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
-        storage::{database::OutputBackendQuery, models::SpendingPriority, OutputStatus},
-        UtxoSelectionCriteria,
-        UtxoSelectionFilter,
+        storage::{OutputStatus, database::OutputBackendQuery, models::SpendingPriority},
     },
     transaction_service::{
         config::TransactionServiceConfig,
@@ -159,7 +160,6 @@ use crate::{
     },
     util::watch::Watch,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
-    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -3626,14 +3626,14 @@ where
     async fn cancel_completed_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         let transaction = self.db.get_any_transaction(tx_id)?;
 
-        if let Some(transaction) = transaction {
-            if transaction.is_mined() {
-                return Err(TransactionServiceError::FailedToCancelTransaction(format!(
-                    "Invalid transaction status: {}",
-                    transaction.status()
-                )));
-            }
-        };
+        if let Some(transaction) = transaction &&
+            transaction.is_mined()
+        {
+            return Err(TransactionServiceError::FailedToCancelTransaction(format!(
+                "Invalid transaction status: {}",
+                transaction.status()
+            )));
+        }
 
         let _unused = self
             .db

@@ -25,15 +25,15 @@ use tari_crypto::{
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
 };
 use tari_utilities::{
-    hex::{from_hex, to_hex, Hex, HexError},
     ByteArray,
+    hex::{Hex, HexError, from_hex, to_hex},
 };
 
 use crate::{
-    error::ScriptError,
-    op_codes::{HashValue, ScalarValue},
     CheckSigSchnorrSignature,
     CompressedCheckSigSchnorrSignature,
+    error::ScriptError,
+    op_codes::{HashValue, ScalarValue},
 };
 
 pub const MAX_STACK_SIZE: usize = 255;
@@ -380,7 +380,7 @@ fn counter(values: [u8; 6], item: &StackItem) -> [u8; 6] {
 mod test {
     use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
-    use digest::{consts::U32, Digest};
+    use digest::{Digest, consts::U32};
     use rand::rngs::OsRng;
     use tari_crypto::{
         compressed_commitment::CompressedCommitment,
@@ -389,17 +389,17 @@ mod test {
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::{
-        hex::{from_hex, Hex},
+        hex::{Hex, from_hex},
         message_format::MessageFormat,
     };
 
     use crate::{
-        op_codes::ScalarValue,
         CheckSigSchnorrSignature,
         CompressedCheckSigSchnorrSignature,
         ExecutionStack,
         HashValue,
         StackItem,
+        op_codes::ScalarValue,
     };
 
     #[test]

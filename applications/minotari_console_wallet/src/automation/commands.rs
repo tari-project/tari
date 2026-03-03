@@ -37,20 +37,20 @@ use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_wallet::{
+    TransactionStage,
+    WalletConfig,
+    WalletKeyManager,
+    WalletSqlite,
     output_manager_service::{
+        UtxoSelectionCriteria,
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
-        UtxoSelectionCriteria,
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
         storage::models::WalletTransaction,
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
-    TransactionStage,
-    WalletConfig,
-    WalletKeyManager,
-    WalletSqlite,
 };
 use serde::Serialize;
 use sha2::Sha256;
@@ -73,11 +73,11 @@ use tari_common_types::{
 };
 use tari_core::blocks::pre_mine::get_pre_mine_items;
 use tari_crypto::ristretto::RistrettoSecretKey;
-use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
-use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
+use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
+use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    key_manager::{wallet_types::WalletType, TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, wallet_types::WalletType},
     multisig::script::is_multisig_utxo,
     offline_signing::models::{
         PrepareDepositMultisigTransactionResult,
@@ -86,11 +86,8 @@ use tari_transaction_components::{
         SignedOneSidedTransactionResult,
         TransactionResult,
     },
-    tari_amount::{uT, MicroMinotari, Minotari},
+    tari_amount::{MicroMinotari, Minotari, uT},
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
-        one_sided::public_key_to_output_encryption_key,
         EncryptedData,
         OutputFeatures,
         Transaction,
@@ -101,10 +98,13 @@ use tari_transaction_components::{
         TransactionOutputVersion,
         UnblindedOutput,
         WalletOutput,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::public_key_to_output_encryption_key,
     },
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
-use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{ByteArray, SafePassword, encoding::MBase58, hex::Hex};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -113,17 +113,6 @@ use tokio::{
 use super::error::CommandError;
 use crate::{
     automation::{
-        utils::{
-            create_pre_mine_output_dir,
-            get_file_name,
-            move_session_file_to_session_dir,
-            out_dir,
-            read_and_verify,
-            read_session_info,
-            read_verify_session_info,
-            write_json_object_to_file_as_line,
-            write_to_json_file,
-        },
         PreMineSpendStep1SessionInfo,
         PreMineSpendStep2OutputsForLeader,
         PreMineSpendStep2OutputsForSelf,
@@ -136,6 +125,17 @@ use crate::{
         Step3OutputsForParties,
         Step3OutputsForSelf,
         Step4OutputsForLeader,
+        utils::{
+            create_pre_mine_output_dir,
+            get_file_name,
+            move_session_file_to_session_dir,
+            out_dir,
+            read_and_verify,
+            read_session_info,
+            read_verify_session_info,
+            write_json_object_to_file_as_line,
+            write_to_json_file,
+        },
     },
     cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
     init::init_wallet,
@@ -2229,7 +2229,7 @@ pub async fn command_runner(
                         (_, _) => {
                             return Err(CommandError::General(
                                 "Either seed words or cipher seed must be provided".to_string(),
-                            ))
+                            ));
                         },
                     };
 

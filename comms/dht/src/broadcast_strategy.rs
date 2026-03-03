@@ -155,58 +155,78 @@ mod test {
         assert!(!BroadcastStrategy::Broadcast(Default::default()).is_direct());
         assert!(!BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),);
         assert!(!BroadcastStrategy::Flood(Default::default()).is_direct());
-        assert!(!BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-            node_id: NodeId::default(),
-            excluded_peers: Default::default(),
-            connected_only: false
-        }))
-        .is_direct(),);
+        assert!(
+            !BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
+                node_id: NodeId::default(),
+                excluded_peers: Default::default(),
+                connected_only: false
+            }))
+            .is_direct(),
+        );
         assert!(!BroadcastStrategy::Random(0, vec![]).is_direct());
     }
 
     #[test]
     fn direct_public_key() {
-        assert!(BroadcastStrategy::DirectPublicKey(Box::default())
+        assert!(
+            BroadcastStrategy::DirectPublicKey(Box::default())
+                .direct_public_key()
+                .is_some()
+        );
+        assert!(
+            BroadcastStrategy::DirectNodeId(Box::default())
+                .direct_public_key()
+                .is_none()
+        );
+        assert!(
+            BroadcastStrategy::Broadcast(Default::default(),)
+                .direct_public_key()
+                .is_none()
+        );
+        assert!(
+            BroadcastStrategy::Flood(Default::default())
+                .direct_public_key()
+                .is_none()
+        );
+        assert!(
+            BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
+                node_id: NodeId::default(),
+                excluded_peers: Default::default(),
+                connected_only: false
+            }))
             .direct_public_key()
-            .is_some());
-        assert!(BroadcastStrategy::DirectNodeId(Box::default())
-            .direct_public_key()
-            .is_none());
-        assert!(BroadcastStrategy::Broadcast(Default::default(),)
-            .direct_public_key()
-            .is_none());
-        assert!(BroadcastStrategy::Flood(Default::default())
-            .direct_public_key()
-            .is_none());
-        assert!(BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-            node_id: NodeId::default(),
-            excluded_peers: Default::default(),
-            connected_only: false
-        }))
-        .direct_public_key()
-        .is_none(),);
+            .is_none(),
+        );
         assert!(BroadcastStrategy::Random(0, vec![]).direct_public_key().is_none());
     }
 
     #[test]
     fn direct_node_id() {
-        assert!(BroadcastStrategy::DirectPublicKey(Box::default())
-            .direct_node_id()
-            .is_none());
-        assert!(BroadcastStrategy::DirectNodeId(Box::default())
-            .direct_node_id()
-            .is_some());
-        assert!(BroadcastStrategy::Broadcast(Default::default(),)
-            .direct_node_id()
-            .is_none());
+        assert!(
+            BroadcastStrategy::DirectPublicKey(Box::default())
+                .direct_node_id()
+                .is_none()
+        );
+        assert!(
+            BroadcastStrategy::DirectNodeId(Box::default())
+                .direct_node_id()
+                .is_some()
+        );
+        assert!(
+            BroadcastStrategy::Broadcast(Default::default(),)
+                .direct_node_id()
+                .is_none()
+        );
         assert!(BroadcastStrategy::Flood(Default::default()).direct_node_id().is_none());
-        assert!(BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-            node_id: NodeId::default(),
-            excluded_peers: Default::default(),
-            connected_only: false
-        }))
-        .direct_node_id()
-        .is_none(),);
+        assert!(
+            BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
+                node_id: NodeId::default(),
+                excluded_peers: Default::default(),
+                connected_only: false
+            }))
+            .direct_node_id()
+            .is_none(),
+        );
         assert!(BroadcastStrategy::Random(0, vec![]).direct_node_id().is_none());
     }
 }

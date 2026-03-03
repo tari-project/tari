@@ -24,9 +24,9 @@ use chrono::Utc;
 use futures::channel::mpsc;
 use minotari_app_grpc::tari_rpc::{
     self,
-    readiness_status::{State, Status as ReadinessStatusEnum},
     MigrationProgress,
     ReadinessStatus,
+    readiness_status::{State, Status as ReadinessStatusEnum},
 };
 use tari_core::chain_storage::DatabaseStats;
 use tokio::sync::watch;

@@ -25,17 +25,17 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{Hex, from_hex};
 
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
     emoji::{EMOJI, REVERSE_EMOJI},
     tari_address::{
-        TariAddressError,
-        TariAddressFeatures,
         INTERNAL_SINGLE_MAX_BASE58_SIZE,
         INTERNAL_SINGLE_MIN_BASE58_SIZE,
         TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
+        TariAddressError,
+        TariAddressFeatures,
     },
     types::CompressedPublicKey,
 };

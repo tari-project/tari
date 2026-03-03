@@ -23,7 +23,7 @@
 use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, stream::FuturesUnordered};
 use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
@@ -39,23 +39,23 @@ use crate::{
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
     peer_manager::{
-        create_test_peer,
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         NodeIdentity,
         Peer,
         PeerFeatures,
         PeerFlags,
         PeerManager,
+        create_test_peer,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     protocol::{
-        messaging::{MessagingEvent, SendFailReason},
         ProtocolEvent,
         ProtocolId,
         ProtocolNotification,
+        messaging::{MessagingEvent, SendFailReason},
     },
     test_utils::{
-        mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_peer_connection_mock_pair},
         node_id,
         node_identity::build_node_identity,
     },

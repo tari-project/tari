@@ -23,10 +23,6 @@
 use std::{fmt::Debug, time::Instant};
 
 use lmdb_zero::{
-    del,
-    error::{self, LmdbResultExt},
-    put,
-    traits::{AsLmdbBytes, CreateCursor, FromLmdbBytes},
     ConstTransaction,
     Cursor,
     CursorIter,
@@ -34,20 +30,24 @@ use lmdb_zero::{
     Error,
     MaybeOwned,
     WriteTransaction,
+    del,
+    error::{self, LmdbResultExt},
+    put,
+    traits::{AsLmdbBytes, CreateCursor, FromLmdbBytes},
 };
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use tari_storage::lmdb_store::BYTES_PER_MB;
 use tari_utilities::hex::to_hex;
 
 use crate::chain_storage::{
+    OrNotFound,
     error::ChainStorageError,
     lmdb_db::{
         cursors::KeyPrefixCursor,
         helpers::{deserialize, serialize},
         lmdb_db::TypedDatabaseRef,
     },
-    OrNotFound,
 };
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
@@ -123,10 +123,10 @@ where
 {
     let val_buf = serialize(val, None)?;
     txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
-        if let lmdb_zero::Error::Code(code) = &e {
-            if *code == lmdb_zero::error::MAP_FULL {
-                return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
-            }
+        if let lmdb_zero::Error::Code(code) = &e &&
+            *code == lmdb_zero::error::MAP_FULL
+        {
+            return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
         }
         error!(
             target: LOG_TARGET,
@@ -152,10 +152,10 @@ where
     let start = Instant::now();
     // put::Flags::empty(): This will replace the value if it exists, or insert a new value if it does not.
     let res = txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
-        if let lmdb_zero::Error::Code(code) = &e {
-            if *code == lmdb_zero::error::MAP_FULL {
-                return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
-            }
+        if let lmdb_zero::Error::Code(code) = &e &&
+            *code == lmdb_zero::error::MAP_FULL
+        {
+            return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
         }
         error!(
             target: LOG_TARGET,

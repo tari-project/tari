@@ -24,8 +24,8 @@
 
 use config::Config;
 use minotari_wallet::WalletConfig;
-use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
-use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
+use tari_common::{ConfigurationError, DefaultConfigLoader, configuration::CommonConfig};
+use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
 
 #[derive(Clone, Debug)]
 pub struct ApplicationConfig {

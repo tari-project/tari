@@ -147,10 +147,10 @@ mod tests {
     // Helper function to create a test address with checksum
     fn create_test_address(size: usize) -> Vec<u8> {
         let mut address = vec![0u8; size - 1]; // -1 for checksum
-                                               // Set some test data
+        // Set some test data
         address[0] = 0x01; // Network/version
         address[1] = 0x02; // Features
-                           // Public spend key at positions 34..66
+        // Public spend key at positions 34..66
         for i in 34..66 {
             if i < address.len() {
                 address[i] = u8::try_from(i - 34).expect("index within u8 range");

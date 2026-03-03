@@ -30,10 +30,11 @@ use integer_encoding::VarIntWriter;
 use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedHash};
 use tari_max_size::MaxSizeBytes;
 use tari_script::TariScript;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use super::decoder::CovenantDecodeError;
 use crate::transaction_components::{
+    OutputType,
     covenants::{
         byte_codes,
         covenant::Covenant,
@@ -42,7 +43,6 @@ use crate::transaction_components::{
         error::CovenantError,
         fields::{OutputField, OutputFields},
     },
-    OutputType,
 };
 
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
@@ -129,9 +129,9 @@ impl CovenantArg {
 
     /// Parses the `CovenantArg` data to bytes and writes it to an IO writer
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        use byte_codes::*;
         #[allow(clippy::enum_glob_use)]
         use CovenantArg::*;
+        use byte_codes::*;
 
         match self {
             Hash(hash) => {

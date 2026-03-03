@@ -26,12 +26,12 @@ use crate::{
     consensus::consensus_constants::ConsensusConstants,
     helpers::borsh::SerializedSize,
     transaction_components::{
-        covenants::Covenant,
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
         EncryptedData,
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
+        covenants::Covenant,
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     },
     validation::AggregatedBodyValidationError,
 };

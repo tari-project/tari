@@ -24,7 +24,7 @@ use std::{convert::Infallible, net::SocketAddr, string::FromUtf8Error};
 
 use prometheus::{Encoder, Registry, TextEncoder};
 use tokio::{task, task::JoinError};
-use warp::{reject::Reject, Filter, Rejection, Reply};
+use warp::{Filter, Rejection, Reply, reject::Reject};
 
 const LOG_TARGET: &str = "app::metrics_server";
 

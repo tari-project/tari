@@ -22,7 +22,7 @@
 
 use thiserror::Error;
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError, PeerConnectionError};
+use crate::{PeerConnectionError, connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
 
 /// Errors for the Connectivity actor.
 #[derive(Debug, Error)]

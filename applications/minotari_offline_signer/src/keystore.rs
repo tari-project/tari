@@ -25,17 +25,17 @@
 //! Keys are encrypted with ChaCha20-Poly1305 using a key derived from the passphrase via Argon2id,
 //! then stored in the OS keyring (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux).
 
-use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     ChaCha20Poly1305,
     Nonce,
+    aead::{Aead, KeyInit},
 };
 use keyring::Entry;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use zeroize::Zeroizing;
 
 use crate::error::OfflineSignerError;

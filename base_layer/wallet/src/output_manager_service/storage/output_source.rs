@@ -67,7 +67,7 @@ impl TryFrom<i32> for OutputSource {
             _ => {
                 return Err(OutputManagerStorageError::ConversionError {
                     reason: "Was expecting value between 0 and 13 for OutputSource".to_string(),
-                })
+                });
             },
         })
     }

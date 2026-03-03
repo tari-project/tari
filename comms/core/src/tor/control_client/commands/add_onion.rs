@@ -155,7 +155,7 @@ impl TorCommand for AddOnion<'_> {
                         k => {
                             return Err(
                                 ParseError(format!("Server returned unrecognised private key type '{k}'")).into(),
-                            )
+                            );
                         },
                     };
                 },

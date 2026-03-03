@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 
-use crate::{common::find_peaks, error::MerkleMountainRangeError, ArrayLike, Hash, MerkleMountainRange};
+use crate::{ArrayLike, Hash, MerkleMountainRange, common::find_peaks, error::MerkleMountainRangeError};
 
 /// This is a specialised struct that represents a pruned hash set for Merkle Mountain Ranges.
 ///
@@ -123,10 +123,10 @@ impl ArrayLike for PrunedHashSet {
 
     fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
         for index in 0..self.len()? {
-            if let Some(stored_item) = self.get(index) {
-                if stored_item == *item {
-                    return Ok(Some(index));
-                }
+            if let Some(stored_item) = self.get(index) &&
+                stored_item == *item
+            {
+                return Ok(Some(index));
             }
         }
         Ok(None)

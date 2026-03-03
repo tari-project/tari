@@ -22,7 +22,7 @@
 
 use std::{pin::Pin, task::Poll};
 
-use futures::{ready, stream::FusedStream, task::Context, Future, FutureExt, Stream};
+use futures::{Future, FutureExt, Stream, ready, stream::FusedStream, task::Context};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tower_service::Service;
@@ -204,7 +204,7 @@ impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
 mod test {
     use std::fmt::Debug;
 
-    use futures::{executor::block_on, future, StreamExt};
+    use futures::{StreamExt, executor::block_on, future};
     use tari_test_utils::unpack_enum;
     use tower::ServiceExt;
 

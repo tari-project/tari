@@ -35,12 +35,12 @@ use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        identity_signature::IdentitySignature,
-        node_id::NodeId,
         Peer,
         PeerFeatures,
         PeerFlags,
         PeerIdentityClaim,
+        identity_signature::IdentitySignature,
+        node_id::NodeId,
     },
     types::{CommsPublicKey, CommsSecretKey},
 };
@@ -233,7 +233,7 @@ impl NodeIdentity {
                 Utc::now(),
             ),
         };
-        let peer = Peer::new(
+        Peer::new(
             self.public_key().clone(),
             self.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -244,9 +244,7 @@ impl NodeIdentity {
             self.features(),
             Default::default(),
             Default::default(),
-        );
-
-        peer
+        )
     }
 }
 

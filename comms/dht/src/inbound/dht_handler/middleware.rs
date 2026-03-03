@@ -31,11 +31,11 @@ use tower::Service;
 
 use super::task::ProcessDhtMessage;
 use crate::{
+    DhtConfig,
+    DhtRequester,
     discovery::DhtDiscoveryRequester,
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
-    DhtConfig,
-    DhtRequester,
 };
 
 #[derive(Clone)]

@@ -36,17 +36,15 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof},
 };
-use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
+use tari_script::{ExecutionStack, Opcode, TariScript, inputs, script};
 
 use super::TransactionOutputVersion;
 use crate::{
+    MicroMinotari,
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId, TransactionKeyManagerInterface},
     transaction_components,
     transaction_components::{
-        covenants::Covenant,
-        transaction_input::{SpentOutput, TransactionInput},
-        transaction_output::TransactionOutput,
         EncryptedData,
         MemoField,
         OutputFeatures,
@@ -54,8 +52,10 @@ use crate::{
         RangeProofType,
         TransactionError,
         TransactionInputVersion,
+        covenants::Covenant,
+        transaction_input::{SpentOutput, TransactionInput},
+        transaction_output::TransactionOutput,
     },
-    MicroMinotari,
 };
 
 /// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to

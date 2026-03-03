@@ -122,7 +122,7 @@ impl NoiseConfig {
 
 #[cfg(test)]
 mod test {
-    use futures::{future, FutureExt};
+    use futures::{FutureExt, future};
     use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 

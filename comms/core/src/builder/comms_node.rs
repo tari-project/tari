@@ -31,6 +31,8 @@ use tokio::{
 
 use super::{CommsBuilderError, CommsShutdown};
 use crate::{
+    CommsBuilder,
+    Substream,
     connection_manager::{
         ConnectionManager,
         ConnectionManagerEvent,
@@ -52,8 +54,6 @@ use crate::{
     },
     tor,
     transports::Transport,
-    CommsBuilder,
-    Substream,
 };
 
 const LOG_TARGET: &str = "comms::node";

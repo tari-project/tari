@@ -29,23 +29,23 @@ use tari_node_components::blocks::BlockValidationError;
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
+    CoinbaseBuilder,
     aggregated_body::AggregateBody,
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::{uT, T},
+    tari_amount::{T, uT},
     tari_proof_of_work::Difficulty,
     test_helpers::schema_to_transaction,
     transaction_components::{
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
         EncryptedData,
         MemoField,
         RangeProofType,
         TransactionError,
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     },
     txn_schema,
     validation::AggregatedBodyValidationError,
-    CoinbaseBuilder,
 };
 use tokio::time::Instant;
 
@@ -53,7 +53,7 @@ use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
     consensus::BaseNodeConsensusManager,
-    test_helpers::{blockchain::TestBlockchain, BlockSpec},
+    test_helpers::{BlockSpec, blockchain::TestBlockchain},
     validation::{BlockBodyValidator, ValidationError},
 };
 fn setup_with_rules(

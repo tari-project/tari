@@ -28,12 +28,12 @@ use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
-    peer_manager::{node_id::NodeIdError, PeerManagerError},
+    peer_manager::{PeerManagerError, node_id::NodeIdError},
 };
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
 use tari_transaction_components::{key_manager::error::KeyManagerError, transaction_components::TransactionError};
-use tari_utilities::{hex::HexError, ByteArrayError};
+use tari_utilities::{ByteArrayError, hex::HexError};
 use thiserror::Error;
 
 use crate::{

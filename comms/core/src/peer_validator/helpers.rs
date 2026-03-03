@@ -26,7 +26,7 @@ use log::debug;
 use crate::{
     multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, PeerIdentityClaim},
-    peer_validator::{error::PeerValidatorError, PeerValidatorConfig},
+    peer_validator::{PeerValidatorConfig, error::PeerValidatorError},
     types::CommsPublicKey,
 };
 

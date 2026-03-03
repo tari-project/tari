@@ -55,7 +55,7 @@ use std::{iter::FromIterator, net::SocketAddr};
 
 pub use common_config::CommonConfig;
 pub use config_list::ConfigList;
-pub use dns_name_server_list::{deserialize_dns_name_server_list, DnsNameServerList};
+pub use dns_name_server_list::{DnsNameServerList, deserialize_dns_name_server_list};
 use multiaddr::{Error, Multiaddr, Protocol};
 pub use multiaddr_list::MultiaddrList;
 pub use string_list::StringList;

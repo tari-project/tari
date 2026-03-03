@@ -26,7 +26,7 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms::{PeerManager, connectivity::ConnectivityRequester};
 use tari_comms_dht::event::DhtEventReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -41,7 +41,7 @@ use crate::{
         },
         sync::{BlockchainSyncConfig, SyncValidators},
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };

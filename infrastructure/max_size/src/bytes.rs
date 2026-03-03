@@ -33,9 +33,9 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_utilities::{
-    hex::{from_hex, to_hex, HexError},
     ByteArray,
     ByteArrayError,
+    hex::{HexError, from_hex, to_hex},
 };
 
 #[derive(

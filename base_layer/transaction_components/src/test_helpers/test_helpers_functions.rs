@@ -32,9 +32,11 @@ use tari_common_types::types::{
     UncompressedSignature,
 };
 use tari_crypto::keys::SecretKey;
-use tari_script::{inputs, script, ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript, inputs, script};
 
 use crate::{
+    MicroMinotari,
+    TransactionBuilder,
     consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
     fee::Fee,
@@ -42,7 +44,6 @@ use crate::{
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     transaction_builder::FinalizedTransaction,
     transaction_components::{
-        covenants::Covenant,
         CoinBaseExtra,
         KernelBuilder,
         KernelFeatures,
@@ -57,10 +58,9 @@ use crate::{
         TransactionOutputVersion,
         WalletOutput,
         WalletOutputBuilder,
+        covenants::Covenant,
     },
     weight::TransactionWeight,
-    MicroMinotari,
-    TransactionBuilder,
 };
 
 pub fn create_test_input(

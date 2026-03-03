@@ -22,19 +22,19 @@
 
 use std::{fmt::Display, time::Instant};
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use clap::{Parser, ValueEnum};
 use tari_core::chain_storage::{
-    async_db::AsyncBlockchainDb,
     BlockchainCheckStatus,
     ChainStorageError,
     CheckFailure,
     LMDBDatabase,
+    async_db::AsyncBlockchainDb,
 };
 use tokio::{
     task,
-    time::{sleep, Duration},
+    time::{Duration, sleep},
 };
 
 use super::{CommandContext, HandleCommand};
@@ -436,7 +436,7 @@ impl CommandContext {
                 );
                 // Do not block the async runtime
                 let input = task::spawn_blocking(|| {
-                    use std::io::{stdin, stdout, Write};
+                    use std::io::{Write, stdin, stdout};
                     let mut input = String::new();
                     print!("> ");
                     let _unused = stdout().flush();

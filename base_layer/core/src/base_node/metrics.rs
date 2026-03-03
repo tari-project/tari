@@ -351,7 +351,7 @@ pub fn approximate_u512_with_f64(value: &U512) -> Option<f64> {
     // Grafana-style reconstruction: (sig53 / 2^52) * 2^exp2
     // This is not exact (limited by f64), but should be within a tiny relative error.
     const TWO_P52: f64 = 4503599627370496.0; // 2^52
-                                             // Build 2^exp2 by setting the exponent (bias 1023), mantissa 0
+    // Build 2^exp2 by setting the exponent (bias 1023), mantissa 0
     let two_pow_exp2 = f64::from_bits(((exp2 + 1023) as u64) << 52);
     Some((sig53 as f64 / TWO_P52) * two_pow_exp2)
 }

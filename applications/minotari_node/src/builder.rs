@@ -28,30 +28,30 @@ use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
+use tari_comms::{CommsNode, peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{
-        state_machine_service::states::StatusInfo,
-        tari_pulse_service::TariPulseHandle,
         LocalNodeCommsInterface,
         StateMachineHandle,
+        state_machine_service::states::StatusInfo,
+        tari_pulse_service::TariPulseHandle,
     },
     chain_storage::{
-        create_lmdb_database_with_stats_channel,
         BlockchainDatabase,
         ChainStorageError,
         LMDBDatabase,
         Validators,
+        create_lmdb_database_with_stats_channel,
     },
     consensus::BaseNodeConsensusManager,
-    mempool::{service::LocalMempoolService, Mempool},
+    mempool::{Mempool, service::LocalMempoolService},
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
+        DifficultyCalculator,
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         transaction::TransactionFullValidator,
-        DifficultyCalculator,
     },
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
@@ -61,11 +61,11 @@ use tari_transaction_components::crypto_factories::CryptoFactories;
 use tokio::sync::watch;
 
 use crate::{
+    ApplicationConfig,
+    DatabaseType,
     bootstrap::BaseNodeBootstrapper,
     consensus_constants_tracker::ConsensusConstantsTracker,
     grpc::readiness_grpc_server::ReadinessStatusHandler,
-    ApplicationConfig,
-    DatabaseType,
 };
 
 const LOG_TARGET: &str = "c::bn::initialization";

@@ -26,9 +26,9 @@ use std::{
 };
 
 use log::*;
-use minotari_wallet::{output_manager_service::handle::OutputManagerHandle, WalletKeyManager};
+use minotari_wallet::{WalletKeyManager, output_manager_service::handle::OutputManagerHandle};
 use tokio::{
-    sync::{broadcast, RwLock},
+    sync::{RwLock, broadcast},
     time,
     time::MissedTickBehavior,
 };

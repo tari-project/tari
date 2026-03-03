@@ -41,9 +41,9 @@ use super::ffi::{
     WalletAddress,
 };
 use crate::{
+    TariWorld,
     ffi::{self},
     get_port,
-    TariWorld,
 };
 
 #[derive(Debug)]

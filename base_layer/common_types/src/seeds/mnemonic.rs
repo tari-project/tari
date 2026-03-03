@@ -25,9 +25,9 @@ use std::{cmp::Ordering, slice::Iter};
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 use tari_utilities::{
-    bit::{bytes_to_bits, checked_bits_to_uint},
     Hidden,
     SafePassword,
+    bit::{bytes_to_bits, checked_bits_to_uint},
 };
 
 use crate::seeds::{

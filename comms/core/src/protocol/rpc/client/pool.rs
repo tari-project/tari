@@ -29,16 +29,16 @@ use log::*;
 use tokio::sync::Mutex;
 
 use crate::{
+    PeerConnection,
     peer_manager::NodeId,
     protocol::rpc::{
-        error::HandshakeRejectReason,
         NamedProtocolService,
         RpcClient,
         RpcClientBuilder,
         RpcError,
         RpcHandshakeError,
+        error::HandshakeRejectReason,
     },
-    PeerConnection,
 };
 
 const LOG_TARGET: &str = "comms::protocol::rpc::client_pool";

@@ -22,8 +22,8 @@
 
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -31,6 +31,7 @@ use std::{
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
+    WalletSqlite,
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
@@ -38,7 +39,6 @@ use minotari_wallet::{
     },
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
-    WalletSqlite,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;

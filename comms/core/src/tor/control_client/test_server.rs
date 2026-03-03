@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use futures::{lock::Mutex, stream, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, lock::Mutex, stream};
 use tokio_util::codec::{Framed, LinesCodec};
 
 use crate::{memsocket::MemorySocket, multiaddr::Multiaddr, test_utils::transport::build_connected_sockets};

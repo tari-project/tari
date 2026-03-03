@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::StreamExt;
-use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
+use tari_comms::protocol::rpc::{RpcStatusCode, mock::RpcRequestMock};
 use tari_service_framework::reply_channel;
 use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
 use tokio::sync::broadcast;
@@ -32,7 +32,7 @@ use crate::{
     chain_storage::BlockchainDatabase,
     proto::base_node::{SyncBlocksRequest, SyncUtxosRequest},
     test_helpers::{
-        blockchain::{create_main_chain, create_new_blockchain, TempDatabase},
+        blockchain::{TempDatabase, create_main_chain, create_new_blockchain},
         create_peer_manager,
     },
 };

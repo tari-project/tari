@@ -23,11 +23,11 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{
-    aead::{Aead, Payload},
     XChaCha20Poly1305,
     XNonce,
+    aead::{Aead, Payload},
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_utilities::{ByteArray, Hidden};
 
 pub trait Encryptable<C> {
@@ -172,11 +172,13 @@ mod test {
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), &ciphertext_with_evil_tag).is_err());
 
         // Must fail if truncated too short (if shorter than a nonce and tag, decryption is not even attempted)
-        assert!(decrypt_bytes_integral_nonce(
-            &cipher,
-            b"correct_domain".to_vec(),
-            &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)]
-        )
-        .is_err());
+        assert!(
+            decrypt_bytes_integral_nonce(
+                &cipher,
+                b"correct_domain".to_vec(),
+                &ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)]
+            )
+            .is_err()
+        );
     }
 }

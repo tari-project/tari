@@ -32,14 +32,15 @@ use tokio::{
 };
 
 use crate::{
+    Minimized,
     backoff::ConstantBackoff,
     connection_manager::{
+        ConnectionManagerConfig,
+        ConnectionManagerError,
         dialer::{Dialer, DialerRequest},
         listener::PeerListener,
         manager::ConnectionManagerEvent,
         tests::create_test_peer,
-        ConnectionManagerConfig,
-        ConnectionManagerError,
     },
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
@@ -47,7 +48,6 @@ use crate::{
     protocol::ProtocolId,
     test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
-    Minimized,
 };
 #[tokio::test]
 async fn listen() -> Result<(), Box<dyn Error>> {

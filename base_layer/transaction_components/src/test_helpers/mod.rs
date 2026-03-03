@@ -22,6 +22,9 @@
 
 mod test_helpers_functions;
 pub use test_helpers_functions::{
+    TestParams,
+    TransactionSchema,
+    UtxoTestParams,
     create_coinbase_kernel,
     create_coinbase_wallet_output,
     create_consensus_constants,
@@ -37,7 +40,4 @@ pub use test_helpers_functions::{
     new_public_key,
     schema_to_transaction,
     spend_utxos,
-    TestParams,
-    TransactionSchema,
-    UtxoTestParams,
 };

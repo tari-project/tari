@@ -24,8 +24,8 @@ use std::{
     fmt,
     future::Future,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -39,27 +39,27 @@ use tokio::{
     time,
 };
 use tokio_stream::StreamExt;
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
 
 use super::{direction::ConnectionDirection, error::PeerConnectionError, manager::ConnectionManagerEvent};
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
-    pool::RpcClientPool,
-    pool::RpcPoolClient,
     NamedProtocolService,
+    RPC_MAX_FRAME_SIZE,
     RpcClient,
     RpcClientBuilder,
     RpcError,
-    RPC_MAX_FRAME_SIZE,
+    pool::RpcClientPool,
+    pool::RpcPoolClient,
 };
 use crate::{
+    Minimized,
     framing,
     framing::CanonicalFraming,
     multiplexing::{Control, IncomingSubstreams, Substream, Yamux, YamuxControlError},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
-    Minimized,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";

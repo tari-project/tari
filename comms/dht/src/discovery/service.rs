@@ -23,29 +23,29 @@
 use std::{collections::HashMap, convert::TryFrom, sync::Arc, time::Instant};
 
 use log::*;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_comms::{
     log_if_error,
     peer_manager::{NodeIdentity, Peer, PeerManager},
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{
     sync::{mpsc, oneshot},
     task,
 };
 
 use crate::{
+    DhtConfig,
+    DhtRequester,
     actor::OffenceSeverity,
-    discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
+    discovery::{DhtDiscoveryError, requester::DhtDiscoveryRequest},
     envelope::{DhtMessageType, NodeDestination},
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
     peer_validator::{DhtPeerValidatorError, PeerValidator},
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     rpc::UnvalidatedPeerInfo,
-    DhtConfig,
-    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";

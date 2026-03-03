@@ -40,8 +40,8 @@ use tari_common_types::{
 use tari_comms::multiaddr::Multiaddr;
 use tari_transaction_components::tari_amount::{self, MicroMinotari};
 use tari_utilities::{
-    hex::{Hex, HexError},
     SafePassword,
+    hex::{Hex, HexError},
 };
 use thiserror::Error;
 

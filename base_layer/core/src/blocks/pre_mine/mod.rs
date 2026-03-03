@@ -33,12 +33,11 @@ use tari_common_types::types::{
     UncompressedSignature,
 };
 use tari_crypto::keys::SecretKey as SkTrait;
-use tari_script::{script, ExecutionStack};
+use tari_script::{ExecutionStack, script};
 use tari_transaction_components::{
     key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
-        one_sided::public_key_to_output_encryption_key,
         CoinBaseExtra,
         KernelFeatures,
         MemoField,
@@ -51,6 +50,7 @@ use tari_transaction_components::{
         TransactionOutput,
         TransactionOutputVersion,
         WalletOutputBuilder,
+        one_sided::public_key_to_output_encryption_key,
     },
 };
 use tari_utilities::ByteArray;
@@ -907,6 +907,13 @@ mod test {
 
     use crate::{
         blocks::pre_mine::{
+            Apportionment,
+            BLOCKS_PER_DAY,
+            CustomRelease,
+            PreMineItem,
+            ProportionalRelease,
+            ReleaseCadence,
+            ReleaseStrategy,
             contributors_upfront_release,
             create_pre_mine_genesis_block_info,
             create_pre_mine_output_values,
@@ -917,13 +924,6 @@ mod test {
             get_tokenomics_pre_mine_unlock_schedule,
             pre_mine_spendable_at_height,
             verify_script_keys_for_index,
-            Apportionment,
-            CustomRelease,
-            PreMineItem,
-            ProportionalRelease,
-            ReleaseCadence,
-            ReleaseStrategy,
-            BLOCKS_PER_DAY,
         },
         consensus::BaseNodeConsensusManager,
     };
@@ -980,10 +980,10 @@ mod test {
         let (outputs, kernel, _, _) = genesis_block_test_info(&pre_mine_items).await;
         let base_dir = dirs_next::document_dir().unwrap();
         let file_path = base_dir.join("tari_pre_mine").join("create").join("utxos.json");
-        if let Some(path) = file_path.parent() {
-            if !path.exists() {
-                fs::create_dir_all(path).unwrap();
-            }
+        if let Some(path) = file_path.parent() &&
+            !path.exists()
+        {
+            fs::create_dir_all(path).unwrap();
         }
         let mut utxo_file = File::create(&file_path).expect("Could not create 'utxos.json'");
 
@@ -1007,10 +1007,10 @@ mod test {
         let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
         let base_dir = dirs_next::document_dir().unwrap();
         let file_path = base_dir.join("tari_pre_mine").join("create").join("pre_mine_items.csv");
-        if let Some(path) = file_path.parent() {
-            if !path.exists() {
-                fs::create_dir_all(path).unwrap();
-            }
+        if let Some(path) = file_path.parent() &&
+            !path.exists()
+        {
+            fs::create_dir_all(path).unwrap();
         }
         let mut file_stream = File::create(&file_path).expect("Could not create 'utxos.json'");
 
@@ -1402,14 +1402,16 @@ mod test {
                 };
                 assert_eq!(script_height, pre_mine_item.original_maturity + grace_period);
                 assert_eq!(output.features.maturity, pre_mine_item.maturity);
-                assert!(verify_script_keys_for_index(
-                    index,
-                    &script_threshold_keys,
-                    &script_backup_key,
-                    threshold_keys,
-                    backup_key
-                )
-                .is_ok());
+                assert!(
+                    verify_script_keys_for_index(
+                        index,
+                        &script_threshold_keys,
+                        &script_backup_key,
+                        threshold_keys,
+                        backup_key
+                    )
+                    .is_ok()
+                );
             }
         }
     }

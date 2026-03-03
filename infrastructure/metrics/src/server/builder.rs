@@ -25,7 +25,7 @@ use std::{
     time::Duration,
 };
 
-use futures::{future, FutureExt};
+use futures::{FutureExt, future};
 use reqwest::{IntoUrl, Url};
 
 use super::{pull, push};

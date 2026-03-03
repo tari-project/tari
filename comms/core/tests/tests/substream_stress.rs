@@ -22,14 +22,14 @@
 
 use std::time::Duration;
 
-use futures::{future, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, future};
 use tari_comms::{
-    framing,
-    protocol::{ProtocolEvent, ProtocolId, ProtocolNotificationRx},
-    transports::TcpTransport,
     BytesMut,
     CommsNode,
     Substream,
+    framing,
+    protocol::{ProtocolEvent, ProtocolId, ProtocolNotificationRx},
+    transports::TcpTransport,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::unpack_enum;

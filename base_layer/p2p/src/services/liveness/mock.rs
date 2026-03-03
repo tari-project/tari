@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
     RwLock,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use futures::StreamExt;
@@ -33,12 +33,12 @@ use tari_utilities::{acquire_read_lock, acquire_write_lock};
 use tokio::sync::{broadcast, broadcast::error::SendError};
 
 use crate::services::liveness::{
-    error::LivenessError,
-    handle::LivenessEventSender,
     LivenessEvent,
     LivenessHandle,
     LivenessRequest,
     LivenessResponse,
+    error::LivenessError,
+    handle::LivenessEventSender,
 };
 
 const LOG_TARGET: &str = "p2p::liveness_mock";

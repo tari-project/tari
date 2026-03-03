@@ -31,13 +31,13 @@ use tokio::{
 use tokio_stream::wrappers::BroadcastStream;
 
 use super::{
+    LOG_TARGET,
+    PrivateKey,
     commands,
     commands::{AddOnionFlag, AddOnionResponse, TorCommand},
     error::TorClientError,
     response::ResponseLine,
     types::{KeyBlob, KeyType, PortMapping},
-    PrivateKey,
-    LOG_TARGET,
 };
 use crate::{
     multiaddr::Multiaddr,

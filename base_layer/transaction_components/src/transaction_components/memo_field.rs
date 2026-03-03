@@ -32,18 +32,18 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::{
-        TariAddress,
         MAX_ENCRYPTED_DATA_SIZE,
         TARI_ADDRESS_INTERNAL_DUAL_SIZE,
         TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
+        TariAddress,
     },
     types::FixedHash,
 };
 use tari_utilities::hex::Hex;
 
 use crate::{
-    transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
     MicroMinotari,
+    transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
 };
 // We pad the bytes to min this size, so that we can use the same size for AddressAndData and TransactionInfo
 const PADDING_SIZE: usize = 130;
@@ -423,11 +423,7 @@ impl MemoField {
                     1 +
                     payment_id.len();
                 // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
-                if len < PADDING_SIZE {
-                    PADDING_SIZE
-                } else {
-                    len
-                }
+                if len < PADDING_SIZE { PADDING_SIZE } else { len }
             },
 
             InnerMemoField::Raw(bytes) => {
@@ -772,7 +768,7 @@ impl MemoField {
             PTag::Empty => {
                 return MemoField {
                     inner: InnerMemoField::Empty,
-                }
+                };
             },
             PTag::U256 => {
                 if bytes.len() != SIZE_U256 {
@@ -801,7 +797,7 @@ impl MemoField {
             PTag::Raw => {
                 return MemoField {
                     inner: InnerMemoField::Raw(raw_bytes),
-                }
+                };
             },
             _ => {},
         }
@@ -1367,11 +1363,11 @@ mod test {
 
     use super::*;
     use crate::{
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            EncryptedData,
-        },
         MicroMinotari,
+        transaction_components::{
+            EncryptedData,
+            memo_field::{MemoField, TxType},
+        },
     };
 
     fn create_random_fixed_hash() -> FixedHash {

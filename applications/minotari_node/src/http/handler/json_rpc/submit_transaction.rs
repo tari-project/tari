@@ -24,9 +24,9 @@ use std::sync::Arc;
 
 use log::{debug, error};
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
-    mempool::{service::MempoolHandle, TxStorageResponse},
+    mempool::{TxStorageResponse, service::MempoolHandle},
 };
 use tari_transaction_components::{
     rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse},

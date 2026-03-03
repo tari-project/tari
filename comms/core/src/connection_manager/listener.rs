@@ -25,39 +25,40 @@ use std::{
     future::Future,
     io::{Error, ErrorKind},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
 
-use futures::{future, FutureExt};
+use futures::{FutureExt, future};
 use log::*;
-use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
+use tari_shutdown::{ShutdownSignal, oneshot_trigger, oneshot_trigger::OneshotTrigger};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::mpsc,
     time,
 };
 use tokio_stream::StreamExt;
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
 
 use super::{
+    ConnectionManagerConfig,
+    ConnectionManagerEvent,
+    PeerConnectionInfo,
     common,
     direction::ConnectionDirection,
     error::ConnectionManagerError,
     peer_connection::{self, PeerConnection},
-    ConnectionManagerConfig,
-    ConnectionManagerEvent,
-    PeerConnectionInfo,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
 use crate::{
+    PeerManager,
     bounded_executor::BoundedExecutor,
     connection_manager::{
         self_liveness::SelfLivenessSession,
-        wire_mode::{WireMode, LIVENESS_WIRE_MODE},
+        wire_mode::{LIVENESS_WIRE_MODE, WireMode},
     },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
@@ -66,7 +67,6 @@ use crate::{
     protocol::ProtocolId,
     transports::Transport,
     utils::multiaddr::multiaddr_to_socketaddr,
-    PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";

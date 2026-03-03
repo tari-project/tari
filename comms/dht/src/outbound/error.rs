@@ -28,7 +28,7 @@ use tokio::sync::mpsc::error::SendError;
 
 use crate::{
     error::DhtEncryptError,
-    outbound::{message::SendFailure, DhtOutboundRequest},
+    outbound::{DhtOutboundRequest, message::SendFailure},
 };
 
 #[derive(Debug, Error)]

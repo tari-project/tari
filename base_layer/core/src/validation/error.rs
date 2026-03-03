@@ -23,11 +23,11 @@ use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_node_components::blocks::{BlockHeaderValidationError, BlockValidationError};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
-    tari_proof_of_work::{DifficultyError, PowError},
-    transaction_components::{covenants::CovenantError, OutputType, TransactionError},
-    validation::AggregatedBodyValidationError,
     BanPeriod,
     BanReason,
+    tari_proof_of_work::{DifficultyError, PowError},
+    transaction_components::{OutputType, TransactionError, covenants::CovenantError},
+    validation::AggregatedBodyValidationError,
 };
 use tari_utilities::ByteArrayError;
 use thiserror::Error;

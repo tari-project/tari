@@ -29,8 +29,10 @@ use std::{
 use digest::Digest;
 
 use crate::{
+    Hash,
     backend::ArrayLike,
     common::{
+        LeafIndex,
         bintree_height,
         checked_n_leaves,
         find_peaks,
@@ -39,11 +41,9 @@ use crate::{
         leaf_index,
         node_index,
         peak_map_height,
-        LeafIndex,
     },
     error::MerkleMountainRangeError,
     pruned_hashset::PrunedHashSet,
-    Hash,
 };
 
 /// An implementation of a Merkle Mountain Range (MMR). The MMR is append-only and immutable. Only the hashes are

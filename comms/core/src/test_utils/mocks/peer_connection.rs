@@ -23,14 +23,14 @@
 use std::{
     str::FromStr,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
 use tokio::{
     runtime::Handle,
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
 };
 use tokio_stream::StreamExt;
 

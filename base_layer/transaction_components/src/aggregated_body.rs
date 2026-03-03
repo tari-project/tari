@@ -33,6 +33,7 @@ use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::hex::Hex;
 
 use crate::{
+    MicroMinotari,
     crypto_factories::CryptoFactories,
     transaction_components::{
         KernelFeatures,
@@ -44,7 +45,6 @@ use crate::{
         TransactionOutput,
     },
     weight::TransactionWeight,
-    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -521,7 +521,7 @@ mod test {
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
-    use crate::transaction_components::{covenants::Covenant, EncryptedData, OutputFeatures, TransactionInputVersion};
+    use crate::transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion, covenants::Covenant};
 
     #[test]
     fn test_sorted() {

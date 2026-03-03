@@ -23,10 +23,10 @@ mod harness;
 use std::{iter, time::Duration};
 
 use harness::*;
-use rand::{rngs::OsRng, Rng, RngCore};
+use rand::{Rng, RngCore, rngs::OsRng};
 use tari_comms::{
-    peer_manager::{IdentitySignature, PeerFeatures},
     NodeIdentity,
+    peer_manager::{IdentitySignature, PeerFeatures},
 };
 use tari_comms_dht::{envelope::DhtMessageType, outbound::SendMessageParams};
 use tari_test_utils::async_assert_eventually;
@@ -103,10 +103,12 @@ async fn large_join_messages_with_many_addresses() {
         interval = Duration::from_secs(1)
     );
     // Node B did not propagate
-    assert!(!node_c_peer_manager
-        .exists(node_a.node_identity().public_key())
-        .await
-        .unwrap());
+    assert!(
+        !node_c_peer_manager
+            .exists(node_a.node_identity().public_key())
+            .await
+            .unwrap()
+    );
 
     node_a.shutdown().await;
     node_b.shutdown().await;
@@ -174,7 +176,7 @@ fn random_multiaddr_bytes() -> Vec<u8> {
 
     let mut bytes = Vec::with_capacity(7);
     bytes.push(4); // IP4 code
-    bytes.extend([rng.gen::<u8>(), rng.gen(), rng.gen(), rng.gen()]);
+    bytes.extend([rng.r#gen::<u8>(), rng.r#gen(), rng.r#gen(), rng.r#gen()]);
     bytes.push(6); // TCP code
     bytes.extend(&port.to_be_bytes());
 

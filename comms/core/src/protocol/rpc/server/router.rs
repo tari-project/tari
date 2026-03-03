@@ -23,35 +23,35 @@
 use std::sync::Arc;
 
 use futures::{
+    FutureExt,
     future::BoxFuture,
     task::{Context, Poll},
-    FutureExt,
 };
 use tokio::sync::mpsc;
-use tower::{make::MakeService, Service};
+use tower::{Service, make::MakeService};
 
 use super::RpcServerError;
 use crate::{
+    Bytes,
+    Substream,
     protocol::{
+        ProtocolExtension,
+        ProtocolExtensionContext,
+        ProtocolExtensionError,
+        ProtocolId,
+        ProtocolNotificationRx,
         rpc::{
+            RpcError,
+            RpcServer,
+            RpcStatus,
             body::Body,
             context::{RpcCommsBackend, RpcCommsProvider},
             either::Either,
             message::{Request, Response},
             not_found::ProtocolServiceNotFound,
             server::{NamedProtocolService, RpcServerHandle},
-            RpcError,
-            RpcServer,
-            RpcStatus,
         },
-        ProtocolExtension,
-        ProtocolExtensionContext,
-        ProtocolExtensionError,
-        ProtocolId,
-        ProtocolNotificationRx,
     },
-    Bytes,
-    Substream,
 };
 
 /// Allows service factories of different types to be composed into a single service that resolves a given `ProtocolId`
@@ -271,7 +271,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use futures::{future, StreamExt};
+    use futures::{StreamExt, future};
     use prost::Message;
     use tari_test_utils::unpack_enum;
     use tower::util::BoxService;

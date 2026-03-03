@@ -23,7 +23,7 @@
 use std::{mem::size_of, sync::Arc};
 
 use chacha20poly1305::Key;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
@@ -32,11 +32,11 @@ use tari_transaction_components::{crypto_factories::CryptoFactories, key_manager
 use zeroize::Zeroizing;
 
 use crate::legacy_key_manager::{
-    error::KeyManagerStorageError,
-    wallet_types::LegacyWalletType,
     KeyManagerState,
     LegacyTransactionKeyManagerWrapper,
     TransactionKeyManagerBackend,
+    error::KeyManagerStorageError,
+    wallet_types::LegacyWalletType,
 };
 pub type MemoryKeyManager = LegacyTransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
 

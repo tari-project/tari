@@ -33,14 +33,14 @@ use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
 use crate::chain_storage::{
+    ChainStorageError,
+    ValidatorNodeEntry,
     lmdb_db::{
         composite_key::CompositeKey,
         cursors::{FromKeyBytes, LmdbReadCursor},
         helpers,
         lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup, lmdb_len},
     },
-    ChainStorageError,
-    ValidatorNodeEntry,
 };
 
 const LOG_TARGET: &str = "c::cs::lmdb_db::validator_node_store";
@@ -1041,9 +1041,11 @@ mod tests {
             assert!(store.is_vn_active(None, &nodes[0].public_key, VnEpoch(1)).unwrap());
             assert!(!store.is_vn_active(None, &nodes2[0].public_key, VnEpoch(1)).unwrap());
             assert!(store.is_vn_active(None, &nodes2[0].public_key, VnEpoch(11)).unwrap());
-            assert!(store
-                .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(3))
-                .unwrap());
+            assert!(
+                store
+                    .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(3))
+                    .unwrap()
+            );
 
             // Exit some nodes
             store.exit(None, &nodes[0].public_key, VnEpoch(11)).unwrap();
@@ -1099,12 +1101,16 @@ mod tests {
             for (i, node) in exiting.iter().enumerate() {
                 assert_eq!(*node, nodes3[i]);
             }
-            assert!(store
-                .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(10))
-                .unwrap());
-            assert!(!store
-                .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(11))
-                .unwrap());
+            assert!(
+                store
+                    .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(10))
+                    .unwrap()
+            );
+            assert!(
+                !store
+                    .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(11))
+                    .unwrap()
+            );
         }
 
         #[test]
@@ -1136,14 +1142,18 @@ mod tests {
             assert_eq!(next_exit_epoch, VnEpoch(14));
 
             store.undo_exit(None, VnEpoch(11), &nodes4[0].public_key).unwrap();
-            assert!(store
-                .undo_exit(None, VnEpoch(11), &Default::default())
-                .unwrap_err()
-                .is_value_not_found());
-            assert!(store
-                .undo_exit(None, VnEpoch(110), &Default::default())
-                .unwrap_err()
-                .is_value_not_found());
+            assert!(
+                store
+                    .undo_exit(None, VnEpoch(11), &Default::default())
+                    .unwrap_err()
+                    .is_value_not_found()
+            );
+            assert!(
+                store
+                    .undo_exit(None, VnEpoch(110), &Default::default())
+                    .unwrap_err()
+                    .is_value_not_found()
+            );
 
             let next_exit_epoch = store.get_next_exit_epoch(None, VnEpoch(11), 2).unwrap();
             assert_eq!(next_exit_epoch, VnEpoch(13));

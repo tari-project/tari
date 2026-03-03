@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use blake2::Blake2b;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use digest::{consts::U32, Digest};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use digest::{Digest, consts::U32};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::{Hash, MerkleMountainRange};
 
