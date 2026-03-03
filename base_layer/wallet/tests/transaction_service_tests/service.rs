@@ -77,9 +77,11 @@ use tari_common_types::{
 };
 use tari_comms::{
     PeerConnection,
+    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{NamedProtocolService, mock::MockRpcServer},
     test_utils::node_identity::build_node_identity,
+    transports::MemoryTransport,
 };
 use tari_core::base_node::{
     proto::wallet_rpc::{TxLocation, TxQueryResponse},
@@ -90,7 +92,7 @@ use tari_p2p::Network;
 use tari_script::{ExecutionStack, push_pubkey_script};
 use tari_service_framework::{RegisterHandle, StackBuilder, reply_channel};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{comms_and_services::get_next_memory_address, random};
+use tari_test_utils::random;
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
@@ -133,6 +135,11 @@ use crate::support::{
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::make_input,
 };
+
+pub fn get_next_memory_address() -> Multiaddr {
+    let port = MemoryTransport::acquire_next_memsocket_port();
+    format!("/memory/{port}").parse().unwrap()
+}
 
 pub type MemoryDBKeyManager = LegacyTransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
 

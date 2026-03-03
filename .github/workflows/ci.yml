@@ -17,7 +17,7 @@ permissions: {}
 
 env:
   toolchain: stable
-  toolchain_msrv_reject_older: 1.80.0
+  toolchain_msrv_reject_older: 1.93.0
   nightly_toolchain: nightly-2025-06-24
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
@@ -343,7 +343,7 @@ jobs:
       - name: cargo test
         run: cargo +${{ env.toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci --no-fail-fast
       - name: upload artifact
-        uses: actions/upload-artifact@v6 # upload test results as artifact
+        uses: actions/upload-artifact@v7 # upload test results as artifact
         if: always()
         with:
           name: test-results-${{ matrix.tari_target_network.target }}.${{ matrix.tari_target_network.network }}
@@ -361,7 +361,7 @@ jobs:
         run: echo $PR_NUM > pr_num.txt
 
       - name: Upload the PR number
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pr_num
           path: ./pr_num.txt
@@ -372,7 +372,7 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Event File
           path: ${{ github.event_path }}

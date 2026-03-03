@@ -17,5 +17,4 @@ pub mod paths;
 pub mod random;
 #[macro_use]
 pub mod streams;
-pub mod comms_and_services;
 pub mod runtime;
