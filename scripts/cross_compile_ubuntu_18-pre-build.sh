@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Single script for Ubuntu 18.04 package setup, mostly used for cross-compiling
+# Single script for Ubuntu 18.04 to 22.04 package setup, mostly used for cross-compiling
 #
 
 set -e
@@ -13,6 +13,8 @@ if [ ! -z "${HTTP_PROXY_APT}" ] && [ -d "/etc/apt/apt.conf.d/" ]; then
 Acquire {
   HTTP::proxy "${HTTP_PROXY_APT}";
   #HTTPS::proxy "http://127.0.0.1:8080";
+  #HTTPS::Proxy "false";
+  #ForceIPv4 "true";
 }
 APT-EoF
 fi
@@ -108,8 +110,12 @@ apt-get install --no-install-recommends --assume-yes \
   zip
 
 echo "Installing rust ..."
-mkdir -p "$HOME/.cargo/bin/"
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+if [ ! -f "$HOME/.cargo/bin/cargo" ]; then
+  mkdir -p "$HOME/.cargo/bin/"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+else
+  echo "Rust is already installed at $HOME/.cargo/bin/cargo"
+fi
 export PATH="$HOME/.cargo/bin:$PATH"
 . "$HOME/.cargo/env"
 
@@ -127,8 +133,11 @@ if [ "${CROSS_DEB_ARCH}" != "${nativeArch}" ]; then
     use_ports_repo=true
   fi
 
-  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]] && [ "$use_ports_repo" = true ]; then
-    sed -i.save -e "s/^deb\ http/deb [arch="${nativeArch}"] http/g" /etc/apt/sources.list
+  # Ports Repo for arm64 and riscv64
+  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]] && [[ "${use_ports_repo}" == true ]]; then
+    echo "Force shipped sources to native platform - ${nativeArch}"
+    sed -i.save -e "s/^deb http/deb [arch=\"${nativeArch}\"] http/g" /etc/apt/sources.list
+
     cat << EoF > /etc/apt/sources.list.d/${ubuntu_tag}-${crossArch}.list
 deb [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
 # deb-src [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
@@ -147,7 +156,11 @@ deb [arch=${crossArch}] http://archive.canonical.com/ubuntu ${ubuntu_tag} partne
 EoF
   fi
 
-  if [ "${crossArch}" == "amd64" ]; then
+  # Archive Repo for x86_64
+  if [[ "${crossArch}" == "amd64" ]] && [[ "${use_ports_repo}" == true ]]; then
+    echo "Force shipped sources to native platform - ${nativeArch}"
+    sed -i.save -e "s/^deb http/deb [arch=\"${nativeArch}\"] http/g" /etc/apt/sources.list
+
     cat << EoF > /etc/apt/sources.list.d/${ubuntu_tag}-${crossArch}.list
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${ubuntu_tag} main restricted
 # deb-src http://archive.ubuntu.com/ubuntu/ ${ubuntu_tag} main restricted
@@ -181,8 +194,10 @@ EoF
   fi
 
   dpkg --print-architecture
+  dpkg --print-foreign-architectures
   dpkg --add-architecture ${CROSS_DEB_ARCH}
   dpkg --print-architecture
+  dpkg --print-foreign-architectures
   apt-get update
 
   # scripts/install_ubuntu_dependencies-cross_compile.sh x86-64
