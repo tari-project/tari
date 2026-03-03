@@ -1,5 +1,6 @@
 [package]
 name = "minotari_ledger_wallet_common"
+description = "Common utilities and types for the Minotari Ledger Wallet application"
 version.workspace = true
 edition.workspace = true
 #Note: `rust-version` is not specified here as this msut be kept in sync with the ledger-app-builder

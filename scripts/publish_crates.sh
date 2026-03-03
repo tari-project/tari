@@ -1,35 +1,47 @@
 #!/usr/bin/env bash
-# NB: The order these are listed in is IMPORTANT! Dependencies must go first
+set -e
 
-packages=${@:-'
-infrastructure/derive
-infrastructure/shutdown
-infrastructure/storage
-infrastructure/test_utils
-common
-comms
-comms/dht
-base_layer/service_framework
-base_layer/mmr
-base_layer/key_manager
-base_layer/p2p
-base_layer/core
-base_layer/minowallet
-base_layer/minowallet_ffi
-applications/minotari_node
-'}
-p_arr=($packages)
+# The order is important. Dependencies must be published before the crates that depend on them.
+PACKAGES=(
+    "tari_storage"
+    "tari_shutdown"
+    "tari_metrics"
+    "tari_max_size"
+    "tari_script"
+    "tari_hashing"
+    "tari_jellyfish"
+    "tari_comms_rpc_macros"
+    "tari_common_sqlite"
+    "tari_features"
+    "tari_test_utils"
+    "tari_common"
+    "tari_comms"
+    "tari_comms_dht"
+    "minotari_ledger_wallet_common"
+    "tari_common_types"
+    "tari_sidechain"
+    "minotari_ledger_wallet_comms"
+    "tari_service_framework"
+    "tari_transaction_components"
+    "tari_transaction_key_manager"
+    "tari_node_components"
+    "tari_p2p"
+    "tari_libtor"
+    "tari_mmr"
+    "tari_core"
+    "minotari_node_wallet_client"
+    "minotari_wallet"
+    "minotari_app_grpc"
+    "minotari_app_utilities"
+    "minotari_wallet_grpc_client"
+    "minotari_node_grpc_client"
+)
 
-function build_package {
-    list=($@)
-    for p in "${list[@]}"; do
-      echo "************************  Building $path/$p package ************************"
-      cargo publish --manifest-path=./${p}/Cargo.toml
-      sleep 30 # Wait for crates.io to register any dependent packages
-    done
-    echo "************************  $path packages built ************************"
-}
+for package in "${PACKAGES[@]}"; do
+    echo "Dry-run Publishing ${package}..."
+    cargo publish --package "${package}" --dry-run
+    echo "Publishing ${package}..."
+    cargo publish --package "${package}"
+done
 
-# You need a token with write access to publish these crates
-#cargo login
-build_package ${p_arr[@]}
+echo "All packages published successfully."
