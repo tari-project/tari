@@ -20,7 +20,7 @@ anyhow = { workspace = true }
 cargo_toml = { version = "0.20.4" }
 config = { version = "0.14.0", default-features = false, features = ["toml"] }
 dirs-next = "1.0.2"
-git2 = { version = "0.18", default-features = false, optional = true }
+git2 = { version = "0.20.4", default-features = false, optional = true }
 log = { workspace = true }
 log4rs = { workspace = true, default-features = false, features = [
     "config_parsing",
