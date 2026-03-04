@@ -1064,6 +1064,10 @@ where B: BlockchainBackend + 'static
                     #[allow(clippy::cast_possible_wrap)]
                     metrics::tip_height().set(fork_height as i64);
                     metrics::reorg(fork_height, added.len(), removed.len()).inc();
+                    #[allow(clippy::cast_possible_wrap)]
+                    metrics::reorg_blocks_added().set(added.len() as i64);
+                    #[allow(clippy::cast_possible_wrap)]
+                    metrics::reorg_blocks_removed().set(removed.len() as i64);
 
                     let utxo_set_size = self.blockchain_db.utxo_count().await?;
                     metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
