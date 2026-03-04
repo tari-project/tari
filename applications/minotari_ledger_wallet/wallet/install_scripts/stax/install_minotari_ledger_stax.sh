@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-echo "🚀 Installing Minotari Ledger Wallet (Nano S Plus)"
+echo "🚀 Installing Minotari Ledger Wallet (Stax)"
 
 # -------------------------
 # Prerequisites

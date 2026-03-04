@@ -1,6 +1,6 @@
 # Minotari Ledger Nano X Installer (macOS)
 
-This script installs the **Minotari Ledger Wallet app** (`minotari_ledger_wallet-nanox`) onto a **Ledger Nano S Plus** on macOS.
+This script installs the **Minotari Ledger Wallet app** (`minotari_ledger_wallet-nanox`) onto a **Ledger Nano X** on macOS.
 
 It is fully automated and handles:
 - System dependencies
@@ -14,7 +14,7 @@ It is fully automated and handles:
 ## Supported Platforms
 
 - **macOS** (Intel & Apple Silicon)
-- **Ledger Nano S Plus**
+- **Ledger Nano X**
 
 ---
 
@@ -44,7 +44,7 @@ If not installed, see https://brew.sh
 
 ### Ledger Device
 
-Ensure your **Ledger Nano S Plus** is:
+Ensure your **Ledger Nano X** is:
 - Connected via USB
 - Unlocked
 - Developer Mode enabled
