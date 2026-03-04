@@ -167,7 +167,7 @@ use crate::{
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
-            helpers::deserialize,
+            helpers::{deserialize, u512_serde},
             lmdb::{
                 fetch_db_entry_sizes,
                 lmdb_all,
@@ -4127,7 +4127,9 @@ pub enum BlockchainCheckRequest {
 pub enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
-    AccumulatedWork(U512),
+    /// `U512` is serialized explicitly as 64 little-endian bytes via `u512_serde` to avoid
+    /// depending on `primitive_types`'s serde implementation, which may change across versions.
+    AccumulatedWork(#[serde(with = "u512_serde")] U512),
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),

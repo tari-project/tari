@@ -99,10 +99,79 @@ mod smt_hasher;
 pub use smt_hasher::SmtHasher;
 use tari_transaction_components::{transaction_components::ValidatorNodeRegistration, MicroMinotari};
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+/// Tip data for an orphan chain, stored in LMDB.
+///
+/// # Serialization format
+///
+/// Fields are serialized as an ordered tuple using bincode. **The field order must not change** —
+/// reordering is a breaking schema change that requires a migration.
+///
+/// | # | Field                         | Bincode bytes                              |
+/// |---|-------------------------------|--------------------------------------------|
+/// | 0 | `hash`                        | 32 bytes (FixedHash / `[u8; 32]`)          |
+/// | 1 | `total_accumulated_difficulty`| 8-byte length prefix + 64 bytes (U512 LE) |
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
     pub hash: HashOutput,
     pub total_accumulated_difficulty: U512,
+}
+
+impl Serialize for ChainTipData {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeTuple;
+        // IMPORTANT: The serialization order of fields below is part of the LMDB schema.
+        // DO NOT reorder — it is a breaking schema change.
+        //
+        // `U512` is from an external crate (`primitive_types`). We explicitly serialize it as 64
+        // little-endian bytes to avoid depending on that crate's own serde implementation.
+        let mut tup = s.serialize_tuple(2)?;
+        tup.serialize_element(&self.hash)?;
+        {
+            let mut le_bytes = [0u8; 64];
+            self.total_accumulated_difficulty.to_little_endian(&mut le_bytes);
+            tup.serialize_element(le_bytes.as_slice())?;
+        }
+        tup.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ChainTipData {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{self, SeqAccess, Visitor};
+        use std::fmt;
+
+        struct ChainTipDataVisitor;
+
+        impl<'de> Visitor<'de> for ChainTipDataVisitor {
+            type Value = ChainTipData;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a tuple of 2 elements for ChainTipData")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let hash = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &"2 fields"))?;
+                let le_bytes: Vec<u8> = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &"2 fields"))?;
+                if le_bytes.len() != 64 {
+                    return Err(de::Error::custom(format!(
+                        "expected 64 bytes for U512, got {}",
+                        le_bytes.len()
+                    )));
+                }
+                let total_accumulated_difficulty = U512::from_little_endian(&le_bytes);
+                Ok(ChainTipData {
+                    hash,
+                    total_accumulated_difficulty,
+                })
+            }
+        }
+
+        d.deserialize_tuple(2, ChainTipDataVisitor)
+    }
 }
 
 #[derive(Debug, Clone)]
