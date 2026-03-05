@@ -31,7 +31,6 @@ use tari_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
     test_utils::{
-        count_string_occurrences,
         mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
         node_identity::ordered_node_identities_by_distance,
     },
