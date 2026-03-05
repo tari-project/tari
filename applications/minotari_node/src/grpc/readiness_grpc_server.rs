@@ -142,6 +142,7 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
             metadata: None,
             initial_sync_achieved: false,
             base_node_state: tari_rpc::BaseNodeState::StartUp.into(),
+            network_silence: false,
             failed_checkpoints: false,
             reward: 0,
             sha3x_estimated_hash_rate: 0,
