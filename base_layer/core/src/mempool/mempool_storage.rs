@@ -130,8 +130,6 @@ impl MempoolStorage {
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                // This can happen if we get a transaction after it has been mined, but before the block has been
-                // published. In this case, we do not want to store the transaction in the mempool.
                 info!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
@@ -274,7 +272,7 @@ impl MempoolStorage {
             let resp = self
                 .insert(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-            if resp != TxStorageResponse::UnconfirmedPool {
+            if resp == TxStorageResponse::NotStoredAlreadySpent {
                 num_invalid_txs += 1;
             }
         }
@@ -288,7 +286,7 @@ impl MempoolStorage {
             let resp = self
                 .insert(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-            if resp != TxStorageResponse::UnconfirmedPool {
+            if resp == TxStorageResponse::NotStoredAlreadySpent {
                 num_invalid_txs += 1;
             }
         }
