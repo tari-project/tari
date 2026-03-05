@@ -624,6 +624,8 @@ message GetNetworkStateResponse {
   bool initial_sync_achieved = 2;
   //current state of the base node
   BaseNodeState base_node_state = 3;
+  // true when node is in Listening state and network silence has been detected
+  bool network_silence = 13;
   // do we have failed checkpoints
   bool failed_checkpoints = 4;
   // The block reward of the next tip

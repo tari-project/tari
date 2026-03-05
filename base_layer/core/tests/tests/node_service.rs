@@ -143,25 +143,25 @@ async fn propagate_and_forward_many_valid_blocks() {
     wait_until_online(&[&alice_node, &bob_node, &carol_node, &dan_node]).await;
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
@@ -281,19 +281,19 @@ async fn propagate_and_forward_invalid_block_hash() {
     wait_until_online(&[&alice_node, &bob_node, &carol_node]).await;
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
@@ -435,25 +435,25 @@ async fn propagate_and_forward_invalid_block() {
 
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0, false)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });

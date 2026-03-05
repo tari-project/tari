@@ -191,21 +191,32 @@ pub struct ListeningInfo {
     pub initial_delay_connected_count: u64,
     pub initial_sync_peer_wait_count: u64,
     pub bootstrap_phase: Option<BootstrapPhaseInfo>,
+    pub network_silence: bool,
 }
 impl Display for ListeningInfo {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str("Node in listening state\n")
+        if self.network_silence {
+            fmt.write_str("Node in listening state (Network Silence)\n")
+        } else {
+            fmt.write_str("Node in listening state\n")
+        }
     }
 }
 
 impl ListeningInfo {
     /// Creates a new ListeningInfo
-    pub const fn new(is_synced: bool, initial_delay_connected_count: u64, initial_sync_peer_wait_count: u64) -> Self {
+    pub const fn new(
+        is_synced: bool,
+        initial_delay_connected_count: u64,
+        initial_sync_peer_wait_count: u64,
+        network_silence: bool,
+    ) -> Self {
         Self {
             synced: is_synced,
             initial_delay_connected_count,
             initial_sync_peer_wait_count,
             bootstrap_phase: None,
+            network_silence,
         }
     }
 
@@ -223,6 +234,10 @@ impl ListeningInfo {
 
     pub fn initial_sync_peer_wait_count(&self) -> u64 {
         self.initial_sync_peer_wait_count
+    }
+
+    pub fn is_network_silence(&self) -> bool {
+        self.network_silence
     }
 }
 
@@ -265,7 +280,11 @@ impl StateInfo {
                         bootstrap_info.current_round, bootstrap_info.total_rounds
                     )
                 } else if info.is_synced() {
-                    "Listening".to_string()
+                    if info.is_network_silence() {
+                        "Listening (Network Silence)".to_string()
+                    } else {
+                        "Listening".to_string()
+                    }
                 } else {
                     format!(
                         "Waiting for peer data: {}/{}",

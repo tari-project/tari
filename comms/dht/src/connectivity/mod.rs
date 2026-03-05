@@ -168,6 +168,12 @@ impl DhtConnectivity {
                     if let Err(err) = self.handle_connectivity_event(event).await {
                         error!(target: LOG_TARGET, "Error handling connectivity event: {err:?}");
                     }
+                    if self.connection_handles.is_empty() {
+                        debug!(target: LOG_TARGET, "No active peer connections detected. Triggering aggressive peer pool refresh.");
+                        if let Err(err) = self.refresh_peer_pools(true).await {
+                             error!(target: LOG_TARGET, "Error during aggressive peer pool refresh: {err:?}");
+                        }
+                    }
                },
 
                Ok(event) = self.dht_events.recv() => {

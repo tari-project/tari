@@ -567,7 +567,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
         let status_watch = self.state_machine_handle.get_status_info_watch();
-        let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
+        let (state, network_silence, initial_sync_achieved) = {
+            let status = status_watch.borrow();
+            let state: tari_rpc::BaseNodeState = (&status.state_info).into();
+            let network_silence = matches!(&status.state_info, StateInfo::Listening(info) if info.is_network_silence());
+            (state, network_silence, status.bootstrapped)
+        };
 
         let mut connectivity = self.comms.connectivity();
         let connected_peers = connectivity
@@ -603,8 +608,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
-            initial_sync_achieved: status_watch.borrow().bootstrapped,
+            initial_sync_achieved,
             base_node_state: state.into(),
+            network_silence,
             failed_checkpoints,
             reward,
             sha3x_estimated_hash_rate,
