@@ -70,3 +70,15 @@ pub fn reorg_pool_size() -> IntGauge {
 
     METER.clone()
 }
+
+pub fn reorg_invalid_transactions() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "base_node::mempool::reorg_invalid_transactions",
+            "Number of transactions invalidated in the mempool due to a chain reorg",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
