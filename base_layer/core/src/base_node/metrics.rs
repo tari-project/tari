@@ -186,6 +186,30 @@ pub fn reorg(fork_height: u64, num_added: usize, num_removed: usize) -> IntGauge
     ])
 }
 
+pub fn reorg_blocks_added() -> &'static IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "base_node::blockchain::reorg_blocks_added_total",
+            "Total number of blocks added due to chain reorgs",
+        )
+        .unwrap()
+    });
+
+    &METER
+}
+
+pub fn reorg_blocks_removed() -> &'static IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "base_node::blockchain::reorg_blocks_removed_total",
+            "Total number of blocks removed due to chain reorgs",
+        )
+        .unwrap()
+    });
+
+    &METER
+}
+
 pub fn compact_block_tx_misses(height: u64) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
