@@ -167,7 +167,7 @@ use crate::{
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
-            helpers::{deserialize, u512_serde},
+            helpers::deserialize,
             lmdb::{
                 fetch_db_entry_sizes,
                 lmdb_all,
@@ -192,15 +192,16 @@ use crate::{
                 lmdb_len,
                 lmdb_replace,
             },
-            row_data::block_header_accumulated_data::{
-                LmdbRowBlockHeaderAccumulatedDataV1,
-                LmdbRowBlockHeaderAccumulatedDataV2,
+            row_data::{
+                block_header_accumulated_data::{
+                    LmdbRowBlockHeaderAccumulatedDataV1,
+                    LmdbRowBlockHeaderAccumulatedDataV2,
+                },
+                transaction_input::{TransactionInputRowData, TransactionInputRowDataRef},
+                transaction_kernel::TransactionKernelRowData,
+                transaction_output::TransactionOutputRowData,
             },
             validator_node_store::ValidatorNodeStore,
-            TransactionInputRowData,
-            TransactionInputRowDataRef,
-            TransactionKernelRowData,
-            TransactionOutputRowData,
         },
         smt_hasher::SmtHasher,
         stats::DbTotalSizeStats,
@@ -4123,13 +4124,11 @@ pub enum BlockchainCheckRequest {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
-    /// `U512` is serialized explicitly as 64 little-endian bytes via `u512_serde` to avoid
-    /// depending on `primitive_types`'s serde implementation, which may change across versions.
-    AccumulatedWork(#[serde(with = "u512_serde")] U512),
+    AccumulatedWork(U512),
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),
@@ -4138,6 +4137,130 @@ pub enum MetadataValue {
     PayrefRebuildStatus(PayrefRebuildStatus),
     AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus),
     BlockchainCheckStatus(BlockchainCheckStatus),
+}
+
+/// Manual `Serialize` implementation for `MetadataValue`.
+///
+/// Bincode encodes enums by their variant index (discriminant) followed by the variant's payload.
+/// To prevent silent data corruption if variants are ever reordered, we explicitly assign and
+/// document each variant's index here.
+///
+/// | Index | Variant                      |
+/// |-------|------------------------------|
+/// | 0     | `ChainHeight`                |
+/// | 1     | `BestBlock`                  |
+/// | 2     | `AccumulatedWork`            |
+/// | 3     | `PruningHorizon`             |
+/// | 4     | `PrunedHeight`               |
+/// | 5     | `HorizonData`                |
+/// | 6     | `BestBlockTimestamp`         |
+/// | 7     | `MigrationVersion`           |
+/// | 8     | `PayrefRebuildStatus`        |
+/// | 9     | `AccumulatedDataRebuildStatus`|
+/// | 10    | `BlockchainCheckStatus`      |
+///
+/// **DO NOT reorder or insert variants without updating these indices AND adding a DB migration.**
+/// New variants must be appended at the end with the next sequential index.
+impl serde::Serialize for MetadataValue {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        // IMPORTANT: variant indices below are pinned. Changing them is a breaking schema change.
+        match self {
+            MetadataValue::ChainHeight(v) => s.serialize_newtype_variant("MetadataValue", 0, "ChainHeight", v),
+            MetadataValue::BestBlock(v) => s.serialize_newtype_variant("MetadataValue", 1, "BestBlock", v),
+            MetadataValue::AccumulatedWork(v) => {
+                // U512 is from an external crate — serialize as explicit 64 LE bytes.
+                use serde::ser::SerializeTupleVariant;
+                let mut tv = s.serialize_tuple_variant("MetadataValue", 2, "AccumulatedWork", 1)?;
+                let mut le_bytes = [0u8; 64];
+                v.to_little_endian(&mut le_bytes);
+                tv.serialize_field(le_bytes.as_slice())?;
+                tv.end()
+            },
+            MetadataValue::PruningHorizon(v) => {
+                s.serialize_newtype_variant("MetadataValue", 3, "PruningHorizon", v)
+            },
+            MetadataValue::PrunedHeight(v) => s.serialize_newtype_variant("MetadataValue", 4, "PrunedHeight", v),
+            MetadataValue::HorizonData(v) => s.serialize_newtype_variant("MetadataValue", 5, "HorizonData", v),
+            MetadataValue::BestBlockTimestamp(v) => {
+                s.serialize_newtype_variant("MetadataValue", 6, "BestBlockTimestamp", v)
+            },
+            MetadataValue::MigrationVersion(v) => {
+                s.serialize_newtype_variant("MetadataValue", 7, "MigrationVersion", v)
+            },
+            MetadataValue::PayrefRebuildStatus(v) => {
+                s.serialize_newtype_variant("MetadataValue", 8, "PayrefRebuildStatus", v)
+            },
+            MetadataValue::AccumulatedDataRebuildStatus(v) => {
+                s.serialize_newtype_variant("MetadataValue", 9, "AccumulatedDataRebuildStatus", v)
+            },
+            MetadataValue::BlockchainCheckStatus(v) => {
+                s.serialize_newtype_variant("MetadataValue", 10, "BlockchainCheckStatus", v)
+            },
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MetadataValue {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{self, EnumAccess, VariantAccess};
+
+        struct MetadataValueVisitor;
+
+        impl<'de> de::Visitor<'de> for MetadataValueVisitor {
+            type Value = MetadataValue;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a MetadataValue enum variant")
+            }
+
+            fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<MetadataValue, A::Error> {
+                let (idx, variant): (u32, _) = data.variant()?;
+                match idx {
+                    0 => Ok(MetadataValue::ChainHeight(variant.newtype_variant()?)),
+                    1 => Ok(MetadataValue::BestBlock(variant.newtype_variant()?)),
+                    2 => {
+                        // AccumulatedWork: tuple variant with one element (64 LE bytes for U512)
+                        let le_bytes: Vec<u8> = variant.tuple_variant(1, {
+                            struct U512BytesVisitor;
+                            impl<'de> de::Visitor<'de> for U512BytesVisitor {
+                                type Value = Vec<u8>;
+                                fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                                    write!(f, "a 64-byte sequence for U512")
+                                }
+                                fn visit_seq<S: de::SeqAccess<'de>>(
+                                    self,
+                                    mut seq: S,
+                                ) -> Result<Vec<u8>, S::Error> {
+                                    seq.next_element::<Vec<u8>>()?
+                                        .ok_or_else(|| de::Error::invalid_length(0, &"1 element"))
+                                }
+                            }
+                            U512BytesVisitor
+                        })?;
+                        if le_bytes.len() != 64 {
+                            return Err(de::Error::custom(format!(
+                                "expected 64 bytes for U512, got {}",
+                                le_bytes.len()
+                            )));
+                        }
+                        Ok(MetadataValue::AccumulatedWork(U512::from_little_endian(&le_bytes)))
+                    },
+                    3 => Ok(MetadataValue::PruningHorizon(variant.newtype_variant()?)),
+                    4 => Ok(MetadataValue::PrunedHeight(variant.newtype_variant()?)),
+                    5 => Ok(MetadataValue::HorizonData(variant.newtype_variant()?)),
+                    6 => Ok(MetadataValue::BestBlockTimestamp(variant.newtype_variant()?)),
+                    7 => Ok(MetadataValue::MigrationVersion(variant.newtype_variant()?)),
+                    8 => Ok(MetadataValue::PayrefRebuildStatus(variant.newtype_variant()?)),
+                    9 => Ok(MetadataValue::AccumulatedDataRebuildStatus(variant.newtype_variant()?)),
+                    10 => Ok(MetadataValue::BlockchainCheckStatus(variant.newtype_variant()?)),
+                    other => Err(de::Error::custom(format!("unknown MetadataValue variant index {other}"))),
+                }
+            }
+        }
+
+        // For bincode (non-human-readable), variant is encoded as u32 index + data
+        d.deserialize_enum("MetadataValue", &[], MetadataValueVisitor)
+    }
 }
 
 impl fmt::Display for MetadataValue {

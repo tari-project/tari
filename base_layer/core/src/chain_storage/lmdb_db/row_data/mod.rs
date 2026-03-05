@@ -21,3 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod block_header_accumulated_data;
+pub mod transaction_input;
+pub mod transaction_kernel;
+pub mod transaction_output;

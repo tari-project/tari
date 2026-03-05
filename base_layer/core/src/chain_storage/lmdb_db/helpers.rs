@@ -106,6 +106,9 @@ pub mod u512_serde {
     use serde::{de, Deserializer, Serializer};
 
     /// Serialize a `U512` as 64 little-endian bytes (with bincode length prefix).
+    // Allow dead_code: these fns are only used in tests via `#[serde(with = "u512_serde")]`.
+    // They remain available for any code that uses `#[serde(with = "u512_serde")]`.
+    #[allow(dead_code)]
     pub fn serialize<S: Serializer>(val: &U512, s: S) -> Result<S::Ok, S::Error> {
         let mut bytes = [0u8; 64];
         val.to_little_endian(&mut bytes);
@@ -115,6 +118,7 @@ pub mod u512_serde {
     }
 
     /// Deserialize a `U512` from 64 little-endian bytes.
+    #[allow(dead_code)]
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<U512, D::Error> {
         struct U512Visitor;
 

@@ -26,13 +26,20 @@ pub use lmdb_db::{
     create_readonly_lmdb_environment,
     create_recovery_lmdb_database,
     get_all_database_names,
+    AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    BlockchainCheckStatus,
+    CheckFailure,
     LMDBDatabase,
+    PayrefRebuildStatus,
+    BREATHING_TIME_MS_MAX,
+    BREATHING_TIME_MS_MIN,
 };
-use serde::{Deserialize, Serialize};
+pub use row_data::transaction_input::{TransactionInputRowData, TransactionInputRowDataRef};
+pub use row_data::transaction_kernel::TransactionKernelRowData;
+pub use row_data::transaction_output::TransactionOutputRowData;
 pub use stats_collector::DatabaseStats;
-use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
-use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 mod composite_key;
 pub(crate) mod cursors;
@@ -40,58 +47,10 @@ pub(crate) mod helpers;
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
-pub mod row_data;
-pub use lmdb_db::{
-    AccumulatedDataRebuildStatus,
-    BlockchainCheckRequest,
-    BlockchainCheckStatus,
-    CheckFailure,
-    PayrefRebuildStatus,
-    BREATHING_TIME_MS_MAX,
-    BREATHING_TIME_MS_MIN,
-};
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
+pub mod row_data;
 mod stats_collector;
 mod validator_node_store;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct TransactionOutputRowData {
-    pub output: TransactionOutput,
-    pub header_hash: HashOutput,
-    pub hash: HashOutput,
-    pub mined_height: u64,
-    pub mined_timestamp: u64,
-}
-
-/// Transaction input row data taking references and used for serialization.
-/// This struct must mirror the fields in `TransactionInputRowData`
-#[derive(Serialize, Debug)]
-pub(crate) struct TransactionInputRowDataRef<'a> {
-    pub input: &'a TransactionInput,
-    #[allow(clippy::ptr_arg)]
-    pub header_hash: &'a HashOutput,
-    pub spent_timestamp: u64,
-    pub spent_height: u64,
-    #[allow(clippy::ptr_arg)]
-    pub hash: &'a HashOutput,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct TransactionInputRowData {
-    pub input: TransactionInput,
-    pub header_hash: HashOutput,
-    pub spent_timestamp: u64,
-    pub spent_height: u64,
-    pub hash: HashOutput,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct TransactionKernelRowData {
-    pub kernel: TransactionKernel,
-    pub header_hash: HashOutput,
-    pub mmr_position: u64,
-    pub hash: HashOutput,
-}
 
 hash_domain!(CoreChainStorageHashDomain, "com.tari.base_layer.core.lmdb_db", 1);

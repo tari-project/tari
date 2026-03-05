@@ -19,10 +19,31 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use serde::{Deserialize, Serialize};
+
+use std::fmt;
+
+use serde::{
+    de::{self, SeqAccess, Visitor},
+    ser::SerializeTuple,
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
 use tari_common_types::types::CompressedCommitment;
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+/// Horizon data for pruned nodes, stored in the LMDB metadata database.
+///
+/// # Serialization format
+///
+/// Fields are serialized as an ordered tuple using bincode. **The field order must not change** —
+/// reordering is a breaking schema change that requires a migration.
+///
+/// | # | Field        | Type / Bincode bytes                        |
+/// |---|--------------|---------------------------------------------|
+/// | 0 | `kernel_sum` | `CompressedCommitment` (variable length)    |
+/// | 1 | `utxo_sum`   | `CompressedCommitment` (variable length)    |
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct HorizonData {
     kernel_sum: CompressedCommitment,
     utxo_sum: CompressedCommitment,
@@ -46,6 +67,43 @@ impl HorizonData {
     }
 }
 
+impl Serialize for HorizonData {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        // IMPORTANT: The serialization order of fields below is part of the LMDB schema.
+        // DO NOT reorder, rename, or remove serialize_element calls — it is a breaking schema change.
+        let mut tup = s.serialize_tuple(2)?;
+        tup.serialize_element(&self.kernel_sum)?;
+        tup.serialize_element(&self.utxo_sum)?;
+        tup.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for HorizonData {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct HorizonDataVisitor;
+
+        impl<'de> Visitor<'de> for HorizonDataVisitor {
+            type Value = HorizonData;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a tuple of 2 elements for HorizonData")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let kernel_sum = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &"2 fields"))?;
+                let utxo_sum = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &"2 fields"))?;
+                Ok(HorizonData { kernel_sum, utxo_sum })
+            }
+        }
+
+        d.deserialize_tuple(2, HorizonDataVisitor)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -56,5 +114,13 @@ mod test {
         obj.kernel_sum();
         obj.utxo_sum();
         drop(obj.clone());
+    }
+
+    #[test]
+    fn round_trips_via_bincode() {
+        let original = HorizonData::zero();
+        let bytes = bincode::serialize(&original).expect("serialize failed");
+        let decoded: HorizonData = bincode::deserialize(&bytes).expect("deserialize failed");
+        assert_eq!(original, decoded);
     }
 }
