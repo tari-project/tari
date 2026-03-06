@@ -554,6 +554,7 @@ mod test {
                 CliCommands::SignOneSidedWithdrawMultisigTransaction(_) => {},
                 CliCommands::PrepareWithdrawMultisigTransaction(_) => {},
                 CliCommands::RescanWallet(_) => {},
+                CliCommands::ExportAudit(_) => {},
             }
         }
         assert!(

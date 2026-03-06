@@ -48,7 +48,7 @@ use minotari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
-        storage::models::WalletTransaction,
+        storage::models::{CompletedTransaction, WalletTransaction},
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
@@ -2805,6 +2805,38 @@ pub async fn command_runner(
                         .map_err(|e| CommandError::General(format!("{e}")))?;
                 }
             },
+            ExportAudit(args) => {
+                match transaction_service
+                    .get_completed_transactions(None, None, None, 0)
+                    .await
+                {
+                    Ok(txs) => {
+                        let filtered: Vec<_> = txs
+                            .into_iter()
+                            .filter(|tx| {
+                                let ts = tx.mined_timestamp.unwrap_or(tx.timestamp);
+                                if let Some(start) = args.start_date {
+                                    if ts < start {
+                                        return false;
+                                    }
+                                }
+                                if let Some(end) = args.end_date {
+                                    if ts > end {
+                                        return false;
+                                    }
+                                }
+                                true
+                            })
+                            .collect();
+                        println!("Exporting {} transaction(s) to audit CSV...", filtered.len());
+                        match write_audit_to_csv_file(filtered, args.output_file, args.conversion_rate, &args.currency) {
+                            Ok(()) => println!("Audit export complete."),
+                            Err(e) => eprintln!("ExportAudit error! {e}"),
+                        }
+                    },
+                    Err(e) => eprintln!("ExportAudit error! {e}"),
+                }
+            },
         }
     }
 
@@ -3076,4 +3108,84 @@ fn load_tx_from_csv_file(file_path: PathBuf) -> Result<Vec<WalletTransaction>, C
         }
     }
     Ok(results)
+}
+
+fn write_audit_to_csv_file(
+    transactions: Vec<CompletedTransaction>,
+    file_path: PathBuf,
+    conversion_rate: Option<f64>,
+    currency: &str,
+) -> Result<(), CommandError> {
+    use tari_common_types::transaction::TransactionDirection;
+
+    let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    let mut csv_file = LineWriter::new(file);
+
+    // Write header
+    writeln!(
+        csv_file,
+        r#""ID","Transaction Hash","Status","Transaction Type","DateTime (UTC)","From Address","To Address","Amount","AmountTicker","Amount ({currency})","Txn Fee","FeeTicker","Fee ({currency})""#,
+        currency = currency,
+    )
+    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+
+    for tx in &transactions {
+        // Determine transaction type: Deposit = inbound/coinbase, Withdraw = outbound
+        let tx_type = if tx.direction == TransactionDirection::Inbound ||
+            tx.status.is_coinbase()
+        {
+            "Deposit"
+        } else {
+            "Withdraw"
+        };
+
+        // Human-readable status
+        let status = format!("{}", tx.status);
+
+        // Transaction hash: use the excess signature nonce as the hash (first kernel)
+        let tx_hash = tx
+            .transaction
+            .body
+            .kernels()
+            .first()
+            .map(|k| format!("0x{}", k.hash().to_hex()))
+            .unwrap_or_else(|| "N/A".to_string());
+
+        // DateTime: prefer mined timestamp, fall back to creation timestamp
+        let datetime = tx.mined_timestamp.unwrap_or(tx.timestamp);
+        let datetime_str = datetime.format("%-m/%-d/%y %-H:%M").to_string();
+
+        // Amount in base units (MicroMinotari) → display as Minotari
+        let amount_minotari = tx.amount.as_u64() as f64 / 1_000_000.0;
+        let fee_minotari = tx.fee.as_u64() as f64 / 1_000_000.0;
+
+        // Fiat conversion
+        let (amount_fiat, fee_fiat) = if let Some(rate) = conversion_rate {
+            (
+                format!("{}{:.2}", currency, amount_minotari * rate),
+                format!("{}{:.2}", currency, fee_minotari * rate),
+            )
+        } else {
+            ("N/A".to_string(), "N/A".to_string())
+        };
+
+        writeln!(
+            csv_file,
+            r#""{tx_id}","{tx_hash}","{status}","{tx_type}","{datetime}","{from_addr}","{to_addr}","{amount:.8}","XTM","{amount_fiat}","{fee:.8}","XTM","{fee_fiat}""#,
+            tx_id = tx.tx_id,
+            tx_hash = tx_hash,
+            status = status,
+            tx_type = tx_type,
+            datetime = datetime_str,
+            from_addr = tx.source_address,
+            to_addr = tx.destination_address,
+            amount = amount_minotari,
+            amount_fiat = amount_fiat,
+            fee = fee_minotari,
+            fee_fiat = fee_fiat,
+        )
+        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    }
+
+    Ok(())
 }
