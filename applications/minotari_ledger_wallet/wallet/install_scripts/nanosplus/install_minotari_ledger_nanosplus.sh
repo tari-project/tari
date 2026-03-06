@@ -1,4 +1,4 @@
-# Too run
+# To run
 # chmod +x install_minotari_ledger_nanosplus.sh
 # ./install_minotari_ledger_nanosplus.sh
 

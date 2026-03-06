@@ -1,4 +1,4 @@
-# Too run
+# To run
 # chmod +x install_minotari_ledger_flex.sh
 # ./install_minotari_ledger_flex.sh
 
