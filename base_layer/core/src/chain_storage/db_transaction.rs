@@ -27,7 +27,7 @@ use std::{
 };
 
 use primitive_types::U512;
-use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
+use tari_common_types::types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
 use tari_utilities::hex::Hex;
@@ -39,6 +39,12 @@ use crate::{
 #[derive(Debug)]
 pub struct DbTransaction {
     operations: Vec<WriteOperation>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HorizonStateTreeUpdate {
+    pub key: FixedHash,
+    pub value: Option<FixedHash>,
 }
 
 impl Display for DbTransaction {
@@ -141,6 +147,18 @@ impl DbTransaction {
             output_hash,
             commitment,
             output_type,
+        });
+        self
+    }
+
+    pub fn delete_validator_node(
+        &mut self,
+        sidechain_public_key: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteValidatorNode {
+            sidechain_public_key,
+            public_key,
         });
         self
     }
@@ -264,6 +282,33 @@ impl DbTransaction {
         self
     }
 
+    pub fn set_horizon_sync_output_checkpoint(&mut self, height: u64, hash: FixedHash) -> &mut Self {
+        self.operations.push(WriteOperation::SetHorizonSyncOutputCheckpoint {
+            checkpoint: Some((height, hash)),
+        });
+        self
+    }
+
+    pub fn clear_horizon_sync_output_checkpoint(&mut self) -> &mut Self {
+        self.operations
+            .push(WriteOperation::SetHorizonSyncOutputCheckpoint { checkpoint: None });
+        self
+    }
+
+    pub fn apply_horizon_state_tree_updates(
+        &mut self,
+        previous_version: u64,
+        version: u64,
+        updates: Vec<HorizonStateTreeUpdate>,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::ApplyHorizonStateTreeUpdates {
+            previous_version,
+            version,
+            updates,
+        });
+        self
+    }
+
     pub(crate) fn operations(&self) -> &[WriteOperation] {
         &self.operations
     }
@@ -355,12 +400,26 @@ pub enum WriteOperation {
     SetHorizonData {
         horizon_data: HorizonData,
     },
+    ApplyHorizonStateTreeUpdates {
+        previous_version: u64,
+        version: u64,
+        updates: Vec<HorizonStateTreeUpdate>,
+    },
     InsertReorg {
         reorg: Reorg,
     },
     ClearAllReorgs,
+    DeleteValidatorNode {
+        sidechain_public_key: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
+    },
+    /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
+    SetHorizonSyncOutputCheckpoint {
+        checkpoint: Option<(u64, FixedHash)>,
+    },
 }
 
+#[allow(clippy::too_many_lines)]
 impl fmt::Display for WriteOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::enum_glob_use)]
@@ -452,8 +511,30 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Insert bad block #{height} {hash} for {reason}")
             },
             SetHorizonData { .. } => write!(f, "Set horizon data"),
+            ApplyHorizonStateTreeUpdates { version, updates, .. } => {
+                write!(
+                    f,
+                    "Apply horizon state tree updates at version {version} ({} updates)",
+                    updates.len()
+                )
+            },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
+            DeleteValidatorNode { public_key, .. } => {
+                write!(f, "Delete validator node with public key: {public_key}")
+            },
+            SetHorizonSyncOutputCheckpoint {
+                checkpoint: Some((h, hash)),
+            } => {
+                write!(
+                    f,
+                    "Set horizon sync output checkpoint to height {h} ({})",
+                    hash.to_hex()
+                )
+            },
+            SetHorizonSyncOutputCheckpoint { checkpoint: None } => {
+                write!(f, "Clear horizon sync output checkpoint")
+            },
         }
     }
 }

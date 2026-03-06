@@ -64,6 +64,7 @@ use crate::{
         DbTotalSizeStats,
         DbTransaction,
         HorizonData,
+        HorizonStateTreeUpdate,
         MmrTree,
         TargetDifficulties,
         blockchain_database::MmrRoots,
@@ -159,6 +160,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
 
     make_async_fn!(fetch_horizon_data() -> HorizonData, "fetch_horizon_data");
+
+    make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<(u64, FixedHash)>, "fetch_horizon_sync_output_checkpoint");
+
+    make_async_fn!(verify_horizon_sync_output_root(version: u64, expected_root: HashOutput) -> (), "verify_horizon_sync_output_root");
 
     //---------------------------------- TXO --------------------------------------------//
 
@@ -372,6 +377,17 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
+    pub fn apply_horizon_state_tree_updates(
+        &mut self,
+        previous_version: u64,
+        version: u64,
+        updates: Vec<HorizonStateTreeUpdate>,
+    ) -> &mut Self {
+        self.transaction
+            .apply_horizon_state_tree_updates(previous_version, version, updates);
+        self
+    }
+
     pub fn insert_kernel_via_horizon_sync(
         &mut self,
         kernel: TransactionKernel,
@@ -402,6 +418,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     ) -> &mut Self {
         self.transaction
             .prune_output_from_all_dbs(output_hash, commitment, output_type);
+        self
+    }
+
+    pub fn delete_validator_node(
+        &mut self,
+        sidechain_public_key: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
+    ) -> &mut Self {
+        self.transaction.delete_validator_node(sidechain_public_key, public_key);
         self
     }
 
@@ -436,6 +461,16 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
 
     pub fn insert_bad_block(&mut self, hash: HashOutput, height: u64, reason: String) -> &mut Self {
         self.transaction.insert_bad_block(hash, height, reason);
+        self
+    }
+
+    pub fn set_horizon_sync_output_checkpoint(&mut self, height: u64, hash: FixedHash) -> &mut Self {
+        self.transaction.set_horizon_sync_output_checkpoint(height, hash);
+        self
+    }
+
+    pub fn clear_horizon_sync_output_checkpoint(&mut self) -> &mut Self {
+        self.transaction.clear_horizon_sync_output_checkpoint();
         self
     }
 

@@ -475,6 +475,21 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_horizon_data()
     }
 
+    fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<(u64, FixedHash)>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_horizon_sync_output_checkpoint()
+    }
+
+    fn verify_horizon_sync_output_root(
+        &self,
+        version: u64,
+        expected_root: HashOutput,
+    ) -> Result<(), ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .verify_horizon_sync_output_root(version, expected_root)
+    }
+
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         self.db.as_ref().unwrap().get_stats()
     }

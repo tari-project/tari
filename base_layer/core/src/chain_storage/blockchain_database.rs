@@ -2032,6 +2032,20 @@ where B: BlockchainBackend
         Ok(db.fetch_horizon_data()?.unwrap_or_default())
     }
 
+    pub fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<(u64, FixedHash)>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_horizon_sync_output_checkpoint()
+    }
+
+    pub fn verify_horizon_sync_output_root(
+        &self,
+        version: u64,
+        expected_root: HashOutput,
+    ) -> Result<(), ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.verify_horizon_sync_output_root(version, expected_root)
+    }
+
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let lock = self.db_read_access()?;
         lock.get_stats()
