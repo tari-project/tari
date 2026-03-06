@@ -244,14 +244,11 @@ impl ProactiveDialer {
 
             // Primary sort by health (descending)
             match health_b.partial_cmp(&health_a) {
-                Some(std::cmp::Ordering::Equal) => {
-                    // Secondary sort by distance (ascending)
-                    let dist_a = a.node_id.distance(self.node_identity.node_id());
-                    let dist_b = b.node_id.distance(self.node_identity.node_id());
-                    dist_a.cmp(&dist_b)
+                Some(order) if order != std::cmp::Ordering::Equal => order,
+                _ => {
+                    // Secondary sort by node_id for determinism
+                    a.node_id.cmp(&b.node_id)
                 },
-                Some(order) => order,
-                None => std::cmp::Ordering::Equal,
             }
         });
 

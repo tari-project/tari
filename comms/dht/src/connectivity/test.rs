@@ -32,7 +32,7 @@ use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     test_utils::{
         mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
-        node_identity::ordered_node_identities_by_distance,
+        node_identity::build_many_node_identities,
     },
 };
 use tari_shutdown::Shutdown;
@@ -137,7 +137,7 @@ async fn added_neighbours() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"` // Pipe to `> .\target\output.log 2>&1`
     let node_identity = make_node_identity();
     let mut node_identities =
-        ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
+        build_many_node_identities(6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
     let closer_peer = node_identities.remove(0);
     let mut peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
@@ -198,7 +198,7 @@ async fn added_neighbours() {
 async fn replace_peer_when_peer_goes_offline() {
     let node_identity = make_node_identity();
     let node_identities =
-        ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
+        build_many_node_identities(6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
     let peers = node_identities
         .iter()
@@ -263,7 +263,7 @@ async fn replace_peer_when_peer_goes_offline() {
 async fn insert_neighbour() {
     let node_identity = make_node_identity();
     let node_identities =
-        ordered_node_identities_by_distance(node_identity.node_id(), 10, PeerFeatures::COMMUNICATION_NODE);
+        build_many_node_identities(10, PeerFeatures::COMMUNICATION_NODE);
 
     let config = DhtConfig {
         num_neighbouring_nodes: 8,

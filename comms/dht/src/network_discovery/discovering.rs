@@ -27,7 +27,7 @@ use log::*;
 use tari_comms::{
     PeerConnection,
     connectivity::ConnectivityError,
-    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerId},
+    peer_manager::{NodeId, Peer, PeerId},
     protocol::rpc::{ClientStreaming, RpcStatus},
     types::CommsPublicKey,
 };
@@ -59,7 +59,6 @@ pub(super) struct Discovering {
     params: DiscoveryParams,
     context: NetworkDiscoveryContext,
     stats: DhtNetworkDiscoveryRoundInfo,
-    neighbourhood_threshold: NodeDistance,
 }
 
 impl Discovering {
@@ -68,7 +67,6 @@ impl Discovering {
             params,
             context,
             stats: Default::default(),
-            neighbourhood_threshold: NodeDistance::max_distance(),
         }
     }
 
@@ -77,30 +75,10 @@ impl Discovering {
             return Err(NetworkDiscoveryError::NoSyncPeers);
         }
 
-        // The neighbourhood threshold is used to determine how many new neighbours we're receiving from a peer or
-        // peers. When "bootstrapping" from a seed node, receiving many new neighbours is expected and acceptable.
-        // However during a normal non-bootstrap sync receiving all new neighbours is a bit "fishy" and should be
-        // treated as suspicious.
-        self.neighbourhood_threshold = self
-            .calc_region_threshold(self.config().num_neighbouring_nodes, PeerFeatures::COMMUNICATION_NODE)
-            .await?;
-
         // Set discovery phase and rounds information
         self.stats.phase = DiscoveryPhase::General;
 
         Ok(())
-    }
-
-    async fn calc_region_threshold(
-        &self,
-        num_neighbouring_nodes: usize,
-        peer_features: PeerFeatures,
-    ) -> Result<NodeDistance, NetworkDiscoveryError> {
-        Ok(self
-            .context
-            .peer_manager
-            .calc_region_threshold(num_neighbouring_nodes, peer_features)
-            .await?)
     }
 
     async fn find_by_public_key(&self, public_key: CommsPublicKey) -> Result<Option<Peer>, NetworkDiscoveryError> {
