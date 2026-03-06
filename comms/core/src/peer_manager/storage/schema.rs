@@ -16,7 +16,6 @@ table! {
         peer_id -> BigInt,
         public_key -> Text,
         node_id -> Text,
-        distance_to_self -> Text,
         flags -> Integer,
         banned_until -> Nullable<Timestamp>,
         banned_reason -> Text,
