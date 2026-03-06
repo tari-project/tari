@@ -149,11 +149,11 @@ where
                     return Ok(ConfigList::new());
                 }
                 // Handle JSON/TOML array format: ["a","b","c"] or [a, b, c]
-                let effective_v = if v.starts_with('[') && v.ends_with(']') {
-                    v[1..v.len() - 1].trim()
-                } else {
-                    v
-                };
+                let effective_v = v
+                    .strip_prefix('[')
+                    .and_then(|s| s.strip_suffix(']'))
+                    .map(str::trim)
+                    .unwrap_or(v);
                 if effective_v.is_empty() {
                     return Ok(ConfigList::new());
                 }
