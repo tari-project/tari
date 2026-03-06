@@ -54,7 +54,7 @@ use tari_comms::{
         ConnectivitySelection,
     },
     multiaddr,
-    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerManagerError},
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
@@ -406,7 +406,7 @@ impl DhtConnectivity {
         );
 
         new_neighbours.iter().cloned().for_each(|peer| {
-            self.insert_neighbour_ordered_by_distance(peer);
+            self.insert_neighbour(peer);
         });
         self.dial_multiple_peers(&new_neighbours).await?;
 
@@ -493,7 +493,7 @@ impl DhtConnectivity {
 
         );
         for peer in &random_peers {
-            self.insert_random_peer_ordered_by_distance(peer.clone());
+            self.insert_random_peer(peer.clone());
         }
         // Drop any connection handles that removed from the random pool
         difference.iter().for_each(|peer| {
@@ -535,53 +535,39 @@ impl DhtConnectivity {
             return Ok(());
         }
 
-        let current_dist = conn.peer_node_id().distance(self.node_identity.node_id());
-        let neighbour_distance = self.get_neighbour_max_distance();
-        if current_dist < neighbour_distance {
+        if self.neighbours.len() < self.config.num_neighbouring_nodes {
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' connected that is closer than any current neighbour. Adding to neighbours.",
+                "Peer '{}' connected. Adding to neighbour pool.",
                 conn.peer_node_id().short_str()
             );
-
-            let peer_to_insert = conn.peer_node_id().clone();
-            if let Some(node_id) = self.insert_neighbour_ordered_by_distance(peer_to_insert.clone()) {
-                // If we kicked a neighbour out of our neighbour pool, add it to the random pool if
-                // it is not full or if it is closer than the furthest random peer.
-                debug!(
-                    target: LOG_TARGET,
-                    "Moving peer '{peer_to_insert}' from neighbouring pool to random pool if not full or closer"
-                );
-                self.insert_random_peer_ordered_by_distance(node_id)
-            }
+            self.neighbours.push(conn.peer_node_id().clone());
             self.insert_connection_handle(conn);
         }
 
         Ok(())
     }
 
-    async fn pool_peers_with_active_connections_by_distance(&self) -> Result<Vec<Peer>, DhtConnectivityError> {
+    async fn pool_peers_with_active_connections(&self) -> Result<Vec<Peer>, DhtConnectivityError> {
         let peer_list = self
             .connection_handles
             .iter()
             .map(|conn| conn.peer_node_id())
             .cloned()
             .collect::<Vec<_>>();
-        let mut peers_by_distance = self.peer_manager.get_peers_by_node_ids(&peer_list).await?;
-        peers_by_distance.sort_by_key(|a| a.node_id.distance(self.node_identity.node_id()));
-
+        let peers = self.peer_manager.get_peers_by_node_ids(&peer_list).await?;
         debug!(
             target: LOG_TARGET,
             "minimize_connections: Filtered peers: {}, Handles: {}",
-            peers_by_distance.len(),
+            peers.len(),
             self.connection_handles.len(),
         );
-        Ok(peers_by_distance)
+        Ok(peers)
     }
 
     async fn minimize_connections(&mut self) -> Result<(), DhtConnectivityError> {
         // Retrieve all communication node peers with an active connection status
-        let mut peers_by_distance = self.pool_peers_with_active_connections_by_distance().await?;
+        let mut peers_by_distance = self.pool_peers_with_active_connections().await?;
         let peer_allow_list = self.peer_allow_list().await?;
         peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id));
 
@@ -590,7 +576,7 @@ impl DhtConnectivity {
         for peer in peers_by_distance.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,
-                "minimize_connections: Disconnecting '{}' because the node is not among the {} closest peers",
+                "minimize_connections: Disconnecting '{}' because the node is not among the {} managed peers",
                 peer.node_id,
                 threshold
             );
@@ -719,11 +705,7 @@ impl DhtConnectivity {
     async fn all_connected_comms_nodes(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let all_connections = self
             .connectivity
-            .select_connections(ConnectivitySelection::closest_to(
-                self.node_identity.node_id().clone(),
-                usize::MAX,
-                vec![],
-            ))
+            .select_connections(ConnectivitySelection::all_nodes(vec![]))
             .await?;
         let comms_nodes = all_connections
             .iter()
@@ -760,7 +742,7 @@ impl DhtConnectivity {
             );
             match self.fetch_random_peers(1, &exclude).await?.pop() {
                 Some(new_peer) => {
-                    self.insert_random_peer_ordered_by_distance(new_peer.clone());
+                    self.insert_random_peer(new_peer.clone());
                     self.dial_multiple_peers(&[new_peer]).await?;
                 },
                 None => {
@@ -787,7 +769,7 @@ impl DhtConnectivity {
             );
             match self.fetch_neighbouring_peers(1, &exclude, false).await?.pop() {
                 Some(new_peer) => {
-                    self.insert_neighbour_ordered_by_distance(new_peer.clone());
+                    self.insert_neighbour(new_peer.clone());
                     self.dial_multiple_peers(&[new_peer]).await?;
                 },
                 None => {
@@ -807,22 +789,8 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    fn insert_neighbour_ordered_by_distance(&mut self, node_id: NodeId) -> Option<NodeId> {
-        let dist = node_id.distance(self.node_identity.node_id());
-        let pos = self
-            .neighbours
-            .iter()
-            .position(|node_id| node_id.distance(self.node_identity.node_id()) > dist);
-
-        match pos {
-            Some(idx) => {
-                self.neighbours.insert(idx, node_id);
-            },
-            None => {
-                self.neighbours.push(node_id);
-            },
-        }
-
+    fn insert_neighbour(&mut self, node_id: NodeId) -> Option<NodeId> {
+        self.neighbours.push(node_id);
         if self.neighbours.len() > self.config.num_neighbouring_nodes {
             self.neighbours.pop()
         } else {
@@ -830,22 +798,8 @@ impl DhtConnectivity {
         }
     }
 
-    fn insert_random_peer_ordered_by_distance(&mut self, node_id: NodeId) {
-        let dist = node_id.distance(self.node_identity.node_id());
-        let pos = self
-            .random_pool
-            .iter()
-            .position(|node_id| node_id.distance(self.node_identity.node_id()) > dist);
-
-        match pos {
-            Some(idx) => {
-                self.random_pool.insert(idx, node_id);
-            },
-            None => {
-                self.random_pool.push(node_id);
-            },
-        }
-
+    fn insert_random_peer(&mut self, node_id: NodeId) {
+        self.random_pool.push(node_id);
         if self.random_pool.len() > self.config.num_random_nodes &&
             let Some(removed_peer) = self.random_pool.pop() &&
             self.config.minimize_connections
@@ -913,87 +867,22 @@ impl DhtConnectivity {
         self.neighbours.iter().chain(self.random_pool.iter()).cloned().collect()
     }
 
-    fn get_neighbour_max_distance(&self) -> NodeDistance {
-        assert!(
-            self.config.num_neighbouring_nodes > 0,
-            "DhtConfig::num_neighbouring_nodes must be greater than zero"
-        );
-
-        if self.neighbours.len() < self.config.num_neighbouring_nodes {
-            return NodeDistance::max_distance();
-        }
-
-        self.neighbours
-            .last()
-            .map(|node_id| node_id.distance(self.node_identity.node_id()))
-            .expect("already checked")
-    }
-
-    async fn max_neighbour_distance_all_conncetions(&mut self) -> Result<NodeDistance, DhtConnectivityError> {
-        let mut distance = self.get_neighbour_max_distance();
-        if self.config.minimize_connections {
-            let all_connected_comms_nodes = self.all_connected_comms_nodes().await?;
-            if let Some(node_id) = all_connected_comms_nodes.get(self.config.num_neighbouring_nodes - 1) {
-                let node_distance = self.node_identity.node_id().distance(node_id);
-                if node_distance < distance {
-                    distance = node_distance;
-                }
-            }
-        }
-        Ok(distance)
-    }
-
     async fn fetch_neighbouring_peers(
         &mut self,
         n: usize,
         excluded: &[NodeId],
-        try_revive_connections: bool,
+        _try_revive_connections: bool,
     ) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let peer_allow_list = self.peer_allow_list().await?;
-        let neighbour_distance = self.max_neighbour_distance_all_conncetions().await?;
-        let self_node_id = self.node_identity.node_id();
         let mut excluded = excluded.to_vec();
-
-        // Exclude allowlist and already-connected peers at DB level
         excluded.extend(peer_allow_list);
         excluded.extend(self.connected_pool_peers_iter().cloned());
 
-        // Set query options based on whether we're reviving
-        let (stale_peer_threshold, exclude_if_all_address_failed) = if try_revive_connections {
-            (Some(STALE_PEER_THRESHOLD_DURATION), false)
-        } else {
-            (Some(self.config.offline_peer_cooldown), true)
-        };
-
-        // Apply optional distance constraint only if minimize_connections is enabled
-        let exclusion_distance = if self.config.minimize_connections {
-            Some(neighbour_distance)
-        } else {
-            None
-        };
-
-        // Fetch n nearest neighbour Communication Nodes which are eligible for connection.
-        // Currently, that means:
-        // - the peer isn't banned;
-        // - it has the required feature;
-        // - it didn't recently fail to connect; and
-        // - it is not in the exclusion list in closest_request.
         let peers = self
             .peer_manager
-            .closest_n_active_peers(
-                self_node_id,
-                n,
-                &excluded,
-                Some(PeerFeatures::COMMUNICATION_NODE),
-                None,
-                stale_peer_threshold,
-                exclude_if_all_address_failed,
-                exclusion_distance,
-                true,
-            )
+            .discovery_syncing(n, &excluded, Some(PeerFeatures::COMMUNICATION_NODE), true)
             .await?;
 
-        // Return up to n node IDs
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 

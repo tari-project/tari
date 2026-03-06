@@ -29,7 +29,7 @@ use tari_comms::{
     NodeIdentity,
     PeerManager,
     connectivity::ConnectivityEvent,
-    peer_manager::{Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
+    peer_manager::{Peer, PeerFeatures},
     test_utils::{
         mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
         node_identity::ordered_node_identities_by_distance,
@@ -112,17 +112,7 @@ async fn initialize() {
         setup(config, make_node_identity(), peers).await;
     dht_connectivity.spawn();
     let neighbours = peer_manager
-        .closest_n_active_peers(
-            node_identity.node_id(),
-            4,
-            &[],
-            Some(PeerFeatures::COMMUNICATION_NODE),
-            None,
-            Some(STALE_PEER_THRESHOLD_DURATION),
-            true,
-            None,
-            false,
-        )
+        .discovery_syncing(4, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
         .await
         .unwrap()
         .into_iter()
@@ -289,33 +279,16 @@ async fn insert_neighbour() {
 
     // First 8 inserts should not remove a peer (because num_neighbouring_nodes == 8)
     for ni in shuffled.iter().take(8) {
-        assert!(
-            dht_connectivity
-                .insert_neighbour_ordered_by_distance(ni.node_id().clone())
-                .is_none()
-        );
+        assert!(dht_connectivity.insert_neighbour(ni.node_id().clone()).is_none());
     }
 
     // Next 2 inserts will always remove a node id
     for ni in shuffled.iter().skip(8) {
-        assert!(
-            dht_connectivity
-                .insert_neighbour_ordered_by_distance(ni.node_id().clone())
-                .is_some()
-        )
+        assert!(dht_connectivity.insert_neighbour(ni.node_id().clone()).is_some())
     }
 
-    // Check the first 7 node ids match our neighbours, the last element depends on distance and ordering of inserts
-    // (these are random). insert_neighbour only cares about inserting the element in the right order and preserving
-    // the length of the neighbour list. It doesnt care if it kicks out a closer peer (that is left for the
-    // calling code).
-    let ordered_node_ids = node_identities
-        .iter()
-        .take(7)
-        .map(|ni| ni.node_id())
-        .cloned()
-        .collect::<Vec<_>>();
-    assert_eq!(&dht_connectivity.neighbours[..7], ordered_node_ids.as_slice());
+    // Check that the neighbour list has exactly num_neighbouring_nodes entries
+    assert_eq!(dht_connectivity.neighbours.len(), 8);
 }
 
 mod metrics {
