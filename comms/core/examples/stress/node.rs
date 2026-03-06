@@ -31,33 +31,33 @@ use std::{
 use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
+    CommsBuilder,
+    CommsNode,
+    NodeIdentity,
+    Substream,
     backoff::ConstantBackoff,
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         Peer,
         PeerFeatures,
         PeerFlags,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     pipeline,
     pipeline::SinkService,
-    protocol::{messaging::MessagingProtocolExtension, ProtocolId, ProtocolNotification, Protocols},
+    protocol::{ProtocolId, ProtocolNotification, Protocols, messaging::MessagingProtocolExtension},
     tor,
     tor::TorIdentity,
-    transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
+    transports::{SocksConfig, TcpWithTorTransport, predicate::FalsePredicate},
     types::CommsPublicKey,
-    CommsBuilder,
-    CommsNode,
-    NodeIdentity,
-    Substream,
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, mpsc};
 
-use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
+use super::{STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR, error::Error};
 
 static MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"example/msg/1.0");
 

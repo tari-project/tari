@@ -25,28 +25,28 @@ use std::{sync::Arc, time::Duration};
 use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
+    CommsBuilder,
+    CommsNode,
     backoff::ConstantBackoff,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         NodeIdentity,
         Peer,
         PeerFeatures,
         PeerFlags,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     pipeline::{self, SinkService},
     protocol::{
-        messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
         ProtocolId,
+        messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
     },
     transports::MemoryTransport,
     types::{CommsDatabase, CommsPublicKey},
-    CommsBuilder,
-    CommsNode,
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtConfig};
+use tari_comms_dht::{Dht, DhtConfig, inbound::DecryptedDhtMessage};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tokio::{

@@ -27,6 +27,7 @@ use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
 use tari_common_types::types::BlockHash;
 use tari_integration_tests::{
+    TariWorld,
     base_node_process::spawn_base_node,
     miner::{
         mine_block,
@@ -36,7 +37,6 @@ use tari_integration_tests::{
         register_miner_process,
     },
     wallet_process::{create_wallet_client, spawn_wallet},
-    TariWorld,
 };
 use tari_node_components::blocks::Block;
 
@@ -405,7 +405,7 @@ async fn submit_block_after(world: &mut TariWorld, block_name: String, node: Str
 
 #[when(expr = "I spend outputs {word} via {word}")]
 async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) {
-    let num = rand::thread_rng().gen::<u8>();
+    let num = rand::thread_rng().r#gen::<u8>();
     let tx_name = format!("TX-{num}");
     let utxo_name = format!("UTXO-{num}");
 

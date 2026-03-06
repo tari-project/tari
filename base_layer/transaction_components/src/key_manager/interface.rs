@@ -36,6 +36,7 @@ use tari_common_types::{
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 
 use crate::{
+    MicroMinotari,
     key_manager::{
         error::KeyManagerError,
         key_id::{TariKeyAndId, TariKeyId},
@@ -49,7 +50,6 @@ use crate::{
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
-    MicroMinotari,
 };
 
 #[derive(Clone, Copy, PartialEq)]

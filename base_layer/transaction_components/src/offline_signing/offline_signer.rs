@@ -23,11 +23,13 @@ use tari_common::configuration::Network;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 
 use crate::{
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
     consensus::ConsensusConstants,
     key_manager::TransactionKeyManagerInterface,
     offline_signing::{
         models::{
-            get_latest_version,
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
             PaymentRecipient,
@@ -37,13 +39,11 @@ use crate::{
             SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
             SignedOneSidedWithdrawMultisigTransactionResult,
+            get_latest_version,
         },
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
     },
     transaction_components::{MemoField, OutputFeatures, WalletOutput},
-    MicroMinotari,
-    TransactionBuilder,
-    TransactionBuilderError,
 };
 
 pub fn prepare_one_sided_transaction_for_signing<TKeyManagerInterface: TransactionKeyManagerInterface>(

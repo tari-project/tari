@@ -25,10 +25,10 @@ use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use tari_comms::{
-    peer_manager::{NodeDistance, NodeId, PeerFeatures},
-    protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
-    test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
     PeerManager,
+    peer_manager::{NodeDistance, NodeId, PeerFeatures},
+    protocol::rpc::{RpcStatusCode, mock::RpcRequestMock},
+    test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
 };
 use tari_test_utils::collect_recv;
 use tari_utilities::ByteArray;

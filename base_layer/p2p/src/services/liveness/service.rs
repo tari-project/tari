@@ -26,14 +26,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
+use futures::{Stream, future::Either, pin_mut, stream::StreamExt};
 use log::*;
 use tari_comms::{
+    Minimized,
+    PeerManager,
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
     types::CommsPublicKey,
-    Minimized,
-    PeerManager,
 };
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_service_framework::reply_channel::RequestContext;
@@ -42,17 +42,17 @@ use tokio::{sync::RwLock, time, time::MissedTickBehavior};
 use tokio_stream::wrappers;
 
 use super::{
+    LOG_TARGET,
+    LivenessRequest,
+    LivenessResponse,
     config::LivenessConfig,
     error::LivenessError,
     message::{PingPong, PingPongMessage},
     state::LivenessState,
-    LivenessRequest,
-    LivenessResponse,
-    LOG_TARGET,
 };
 use crate::{
     domain_message::DomainMessage,
-    services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
+    services::liveness::{LivenessEvent, PingPongEvent, handle::LivenessEventSender},
     tari_message::TariMessageType,
 };
 
@@ -462,18 +462,18 @@ mod test {
         message::MessageTag,
         net_address::MultiaddressesWithStats,
         peer_manager::{
-            database::{PeerDatabaseSql, MIGRATIONS},
             Peer,
             PeerFeatures,
             PeerFlags,
+            database::{MIGRATIONS, PeerDatabaseSql},
         },
         test_utils::mocks::create_connectivity_mock,
         types::TransportProtocol,
     };
     use tari_comms_dht::{
+        DhtProtocolVersion,
         envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
-        DhtProtocolVersion,
     };
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;

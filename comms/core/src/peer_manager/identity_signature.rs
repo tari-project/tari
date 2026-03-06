@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_utilities::{ByteArray, ByteArrayError};
 
-use super::hashing::{comms_core_peer_manager_domain, CommsCorePeerManagerDomain, IDENTITY_SIGNATURE};
+use super::hashing::{CommsCorePeerManagerDomain, IDENTITY_SIGNATURE, comms_core_peer_manager_domain};
 use crate::{
     message::MessageExt,
     multiaddr::Multiaddr,

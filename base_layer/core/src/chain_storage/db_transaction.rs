@@ -34,7 +34,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::UpdateBlockAccumulatedData,
-    chain_storage::{error::ChainStorageError, HorizonData, Reorg},
+    chain_storage::{HorizonData, Reorg, error::ChainStorageError},
 };
 #[derive(Debug)]
 pub struct DbTransaction {

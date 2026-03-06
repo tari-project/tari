@@ -37,13 +37,13 @@ use crate::{
     chain_storage::{BlockchainBackend, InputMinedInfo, OutputMinedInfo},
     consensus::BaseNodeConsensusManager,
     validation::{
+        ValidationError,
         aggregate_body::{
             check_total_burned,
             validate_input_maturity,
             verify_no_duplicated_inputs_outputs,
             verify_timelocks,
         },
-        ValidationError,
     },
 };
 
@@ -295,25 +295,25 @@ fn check_outputs(constants: &ConsensusConstants, body: &AggregateBody, height: u
         // Ootle checks
         if let Some(sidechain_features) = output.features.sidechain_feature.as_ref() {
             let current_epoch = constants.block_height_to_epoch(height);
-            if let Some(vn_reg) = sidechain_features.validator_node_registration() {
-                if vn_reg.max_epoch() < current_epoch {
-                    return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
-                        public_key: vn_reg.public_key().to_string(),
-                        max_epoch: vn_reg.max_epoch(),
-                        current_epoch,
-                    });
-                };
+            if let Some(vn_reg) = sidechain_features.validator_node_registration() &&
+                vn_reg.max_epoch() < current_epoch
+            {
+                return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+                    public_key: vn_reg.public_key().to_string(),
+                    max_epoch: vn_reg.max_epoch(),
+                    current_epoch,
+                });
             }
 
-            if let Some(exit) = sidechain_features.validator_node_exit() {
-                if exit.max_epoch() < current_epoch {
-                    return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
-                        public_key: exit.public_key().to_string(),
-                        max_epoch: exit.max_epoch(),
-                        current_epoch,
-                    });
-                }
-            };
+            if let Some(exit) = sidechain_features.validator_node_exit() &&
+                exit.max_epoch() < current_epoch
+            {
+                return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+                    public_key: exit.public_key().to_string(),
+                    max_epoch: exit.max_epoch(),
+                    current_epoch,
+                });
+            }
 
             if let Some(eviction_proof) = sidechain_features.eviction_proof() {
                 let epoch = eviction_proof.epoch();

@@ -25,14 +25,14 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_comms::{
-    peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
-        PeerFeatures,
-    },
-    types::CommsDatabase,
     CommsBuilder,
     NodeIdentity,
     UnspawnedCommsNode,
+    peer_manager::{
+        PeerFeatures,
+        database::{MIGRATIONS, PeerDatabaseSql},
+    },
+    types::CommsDatabase,
 };
 use tari_shutdown::ShutdownSignal;
 

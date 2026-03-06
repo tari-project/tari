@@ -100,11 +100,7 @@ impl CommandContext {
                     s.push(format!("last seen: {duration}"));
                 }
 
-                if s.is_empty() {
-                    "--".to_string()
-                } else {
-                    s.join(", ")
-                }
+                if s.is_empty() { "--".to_string() } else { s.join(", ") }
             };
             let ua = peer.user_agent;
             table.add_row(row![
@@ -117,13 +113,7 @@ impl CommandContext {
                         "Base node"
                     }
                 },
-                {
-                    if ua.is_empty() {
-                        "<unknown>"
-                    } else {
-                        ua.as_ref()
-                    }
-                },
+                { if ua.is_empty() { "<unknown>" } else { ua.as_ref() } },
                 info_str,
             ]);
         }

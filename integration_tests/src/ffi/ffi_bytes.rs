@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, ptr::null_mut};
 
 use libc::c_void;
-use tari_utilities::{hex, ByteArray};
+use tari_utilities::{ByteArray, hex};
 
 use super::ffi_import;
 

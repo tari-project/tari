@@ -28,18 +28,18 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
+use tari_comms::{PeerConnection, connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient};
 use tari_node_components::blocks::{Block, ChainBlock};
-use tari_transaction_components::{aggregated_body::AggregateBody, BanPeriod};
+use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody};
 use tari_utilities::hex::Hex;
 
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
-        sync::{ban::PeerBanManager, hooks::Hooks, rpc, SyncPeer},
         BlockchainSyncConfig,
+        sync::{SyncPeer, ban::PeerBanManager, hooks::Hooks, rpc},
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
     validation::{BlockBodyValidator, ValidationError},
@@ -386,14 +386,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.hooks
                 .call_on_progress_block_hooks(block.clone(), tip_height, &sync_peer);
 
-            if let Some(avg_latency) = last_avg_latency {
-                if avg_latency > max_latency {
-                    return Err(BlockSyncError::MaxLatencyExceeded {
-                        peer: sync_peer.node_id().clone(),
-                        latency: avg_latency,
-                        max_latency,
-                    });
-                }
+            if let Some(avg_latency) = last_avg_latency &&
+                avg_latency > max_latency
+            {
+                return Err(BlockSyncError::MaxLatencyExceeded {
+                    peer: sync_peer.node_id().clone(),
+                    latency: avg_latency,
+                    max_latency,
+                });
             }
 
             current_block = Some(block);

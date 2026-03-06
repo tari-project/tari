@@ -22,9 +22,9 @@
 
 use std::{fmt, str::FromStr};
 
-use serde::{de, de::Visitor, Deserializer};
+use serde::{Deserializer, de, de::Visitor};
 
-use crate::{configuration::ConfigList, DnsNameServer};
+use crate::{DnsNameServer, configuration::ConfigList};
 
 pub type DnsNameServerList = ConfigList<DnsNameServer>;
 
@@ -80,8 +80,8 @@ mod tests {
     use serde::Deserialize;
 
     use crate::{
-        configuration::{dns_name_server_list::deserialize_dns_name_server_list, DnsNameServerList},
         DnsNameServer,
+        configuration::{DnsNameServerList, dns_name_server_list::deserialize_dns_name_server_list},
     };
 
     #[derive(Deserialize, Debug)]

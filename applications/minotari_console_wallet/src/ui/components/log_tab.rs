@@ -6,12 +6,12 @@ use std::fs;
 
 use regex::Regex;
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 use crate::ui::{components::Component, state::AppState};

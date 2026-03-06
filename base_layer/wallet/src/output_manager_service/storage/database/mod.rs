@@ -34,8 +34,8 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash, HashOutput},
 };
 use tari_transaction_components::{
-    transaction_components::{OutputType, TransactionOutput},
     MicroMinotari,
+    transaction_components::{OutputType, TransactionOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::hex::Hex;
@@ -45,9 +45,9 @@ use crate::output_manager_service::{
     input_selection::UtxoSelectionCriteria,
     service::Balance,
     storage::{
+        OutputStatus,
         models::{DbWalletOutput, KnownOneSidedPaymentScript},
         sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
-        OutputStatus,
     },
 };
 

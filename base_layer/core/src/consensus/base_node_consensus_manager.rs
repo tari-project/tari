@@ -25,21 +25,21 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_node_components::blocks::ChainBlock;
 use tari_transaction_components::{
+    MicroMinotari,
     consensus::{
-        emission::{Emission, EmissionSchedule},
         ConsensusConstants,
         ConsensusManager,
         ConsensusManagerBuilder,
         NetworkConsensus,
+        emission::{Emission, EmissionSchedule},
     },
     tari_proof_of_work::PowAlgorithm,
     transaction_components::TransactionKernel,
-    MicroMinotari,
 };
 
 use crate::{
     blocks::pre_mine::pre_mine_spendable_at_height,
-    consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
+    consensus::chain_strength_comparer::{ChainStrengthComparer, strongest_chain},
     proof_of_work::TargetDifficultyWindow,
 };
 

@@ -24,16 +24,18 @@ use std::{convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
+    OrNotFound,
     message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
-    OrNotFound,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tower::{Service, ServiceExt};
 
 use crate::{
+    DhtConfig,
+    DhtRequester,
     actor::OffenceSeverity,
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
@@ -45,8 +47,6 @@ use crate::{
         envelope::DhtMessageType,
     },
     rpc::UnvalidatedPeerInfo,
-    DhtConfig,
-    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";

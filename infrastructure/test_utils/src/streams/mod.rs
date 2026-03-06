@@ -22,7 +22,7 @@
 
 use std::{borrow::BorrowMut, collections::HashMap, hash::Hash, time::Duration};
 
-use futures::{stream, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use tokio::sync::{broadcast, mpsc};
 
 #[allow(dead_code)]

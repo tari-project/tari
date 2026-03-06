@@ -47,16 +47,16 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
+    MicroMinotari,
     consensus::DomainSeparatedConsensusHasher,
     transaction_components::{
         self,
-        covenants::Covenant,
         EncryptedData,
         OutputFeatures,
         TransactionError,
         TransactionOutput,
+        covenants::Covenant,
     },
-    MicroMinotari,
 };
 
 /// A transaction input.
@@ -418,7 +418,7 @@ impl TransactionInput {
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> FixedHash {
         match &self.spent_output {
-            SpentOutput::OutputHash(ref h) => *h,
+            SpentOutput::OutputHash(h) => *h,
             SpentOutput::OutputData {
                 version,
                 commitment,

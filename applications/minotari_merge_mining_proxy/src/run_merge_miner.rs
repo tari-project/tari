@@ -26,27 +26,27 @@ use hyper_util::rt::TokioIo;
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
+    BaseNodeGrpcClient,
+    ShaP2PoolGrpcClient,
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
     wallet_payment_address,
-    BaseNodeGrpcClient,
-    ShaP2PoolGrpcClient,
 };
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
-use tari_common::{load_configuration, DefaultConfigLoader, MAX_GRPC_MESSAGE_SIZE};
+use tari_common::{DefaultConfigLoader, MAX_GRPC_MESSAGE_SIZE, load_configuration};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::{net::TcpListener, time::Duration};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
+    Cli,
     block_template_data::BlockTemplateRepository,
     config::MergeMiningProxyConfig,
     error::MmProxyError,
     proxy::service::MergeMiningProxyService,
-    Cli,
 };
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
@@ -93,17 +93,17 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     } else {
         None
     };
-    if let Err(e) = verify_base_node_responses(&mut base_node_client).await {
-        if let MmProxyError::BaseNodeNotResponding(_) = e {
-            error!(target: LOG_TARGET, "{e}");
-            println!();
-            let msg = "Are the base node's gRPC mining methods allowed in its 'config.toml'? Please ensure these \
-                       methods are enabled in:\n  'grpc_server_allow_methods': \"get_new_block_template\", \
-                       \"get_tip_info\", \"get_new_block\", \"submit_block\"";
-            println!("{msg}");
-            println!();
-            return Err(e.into());
-        }
+    if let Err(e) = verify_base_node_responses(&mut base_node_client).await &&
+        let MmProxyError::BaseNodeNotResponding(_) = e
+    {
+        error!(target: LOG_TARGET, "{e}");
+        println!();
+        let msg = "Are the base node's gRPC mining methods allowed in its 'config.toml'? Please ensure these methods \
+                   are enabled in:\n  'grpc_server_allow_methods': \"get_new_block_template\", \"get_tip_info\", \
+                   \"get_new_block\", \"submit_block\"";
+        println!("{msg}");
+        println!();
+        return Err(e.into());
     }
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;

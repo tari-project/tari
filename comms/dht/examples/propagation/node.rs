@@ -29,19 +29,19 @@ use std::{
 use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
-    backoff::ConstantBackoff,
-    peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
-        PeerFeatures,
-    },
-    pipeline::{self, SinkService},
-    protocol::{messaging::MessagingProtocolExtension, NodeNetworkInfo, ProtocolId},
-    tor::{self, TorIdentity},
     CommsBuilder,
     CommsNode,
     NodeIdentity,
+    backoff::ConstantBackoff,
+    peer_manager::{
+        PeerFeatures,
+        database::{MIGRATIONS, PeerDatabaseSql},
+    },
+    pipeline::{self, SinkService},
+    protocol::{NodeNetworkInfo, ProtocolId, messaging::MessagingProtocolExtension},
+    tor::{self, TorIdentity},
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht};
+use tari_comms_dht::{Dht, inbound::DecryptedDhtMessage};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;

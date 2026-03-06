@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{stream::FuturesUnordered, Future, StreamExt};
+use futures::{Future, StreamExt, stream::FuturesUnordered};
 use tari_comms::{
     message::{MessageTag, MessagingReplyRx},
     protocol::messaging::SendFailReason,

@@ -31,14 +31,14 @@ use std::{
 
 use bitflags::bitflags;
 use serde::{
-    de::{Error as DeError, Visitor},
     Deserialize,
     Deserializer,
     Serialize,
     Serializer,
+    de::{Error as DeError, Visitor},
 };
 use tari_common::configuration::Network;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{Hex, from_hex};
 use thiserror::Error;
 
 use crate::{
@@ -204,13 +204,13 @@ impl TariAddress {
         if one.network() != two.network() {
             return Err(TariAddressError::CreationError("Networks do not match".to_string()));
         }
-        if let TariAddress::Dual(one) = one {
-            if let TariAddress::Dual(two) = two {
-                if one.public_view_key() != two.public_view_key() {
-                    return Err(TariAddressError::CreationError("View keys do not match".to_string()));
-                }
-            }
+        if let TariAddress::Dual(one) = one &&
+            let TariAddress::Dual(two) = two &&
+            one.public_view_key() != two.public_view_key()
+        {
+            return Err(TariAddressError::CreationError("View keys do not match".to_string()));
         }
+
         match (one, two) {
             (TariAddress::Dual(one), _) => TariAddress::new_dual_address(
                 one.public_view_key().clone(),
@@ -550,9 +550,9 @@ mod test {
             use std::fmt;
 
             use serde::{
-                de::{Error, Visitor},
                 Deserializer,
                 Serializer,
+                de::{Error, Visitor},
             };
 
             use crate::tari_address::TariAddress;

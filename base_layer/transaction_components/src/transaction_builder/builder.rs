@@ -19,10 +19,11 @@ use tari_common_types::{
         UncompressedSignature,
     },
 };
-use tari_script::{push_pubkey_script, script, ExecutionStack};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_script::{ExecutionStack, push_pubkey_script, script};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
+    MicroMinotari,
     consensus::ConsensusConstants,
     fee::Fee,
     helpers::borsh::SerializedSize,
@@ -32,11 +33,11 @@ use crate::{
         models::{FinalizedTransaction, OutputPair, RecipientDetails},
     },
     transaction_components::{
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
         CoreTransactionBuilder,
         KernelBuilder,
         KernelFeatures,
+        MAX_TRANSACTION_INPUTS,
+        MAX_TRANSACTION_OUTPUTS,
         OutputFeatures,
         TransactionKernel,
         TransactionKernelVersion,
@@ -44,11 +45,10 @@ use crate::{
         TransactionOutputVersion,
         WalletOutput,
         WalletOutputBuilder,
-        MAX_TRANSACTION_INPUTS,
-        MAX_TRANSACTION_OUTPUTS,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
     },
     tx_outputs_to_tx_id,
-    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_builder";
@@ -405,7 +405,7 @@ where KM: TransactionKeyManagerInterface
                 return Err(TransactionBuilderError::SpendingMoreThanAvailable {
                     available: total_being_spent,
                     sent: combined_sent,
-                })
+                });
             },
             Some(MicroMinotari(0)) => (fee_without_change, None),
             Some(remainder_without_change) => {
@@ -1046,8 +1046,8 @@ mod test {
     use crate::{
         key_manager::SecretTransactionKeyManagerInterface,
         transaction_components::{
-            one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
             EncryptedData,
+            one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
         },
     };
     fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
@@ -1056,24 +1056,24 @@ mod test {
     }
     use chacha20poly1305::aead::OsRng;
     use tari_crypto::keys::SecretKey;
-    use tari_script::{script, TariScript};
+    use tari_script::{TariScript, script};
 
     use super::*;
     use crate::{
         crypto_factories::CryptoFactories,
         key_manager::{
+            KeyManager,
             error::KeyManagerError,
             wallet_types::{SeedWordsWallet, ViewWallet, WalletType},
-            KeyManager,
         },
-        tari_amount::{uT, MicroMinotari},
+        tari_amount::{MicroMinotari, uT},
         test_helpers::{
+            TestParams,
+            UtxoTestParams,
             create_consensus_constants,
             create_consensus_manager,
             create_test_input,
             create_wallet_output_with_data,
-            TestParams,
-            UtxoTestParams,
         },
         transaction_builder::TransactionBuilder,
         transaction_components::{MemoField, OutputFeatures, WalletOutputBuilder},
@@ -1465,13 +1465,15 @@ mod test {
 
         let encryption_private_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
         let bob_tx_output = bob_output.to_transaction_output().unwrap();
-        assert!(key_manager
-            .is_this_output_ours(
-                bob_tx_output.commitment(),
-                bob_output.encrypted_data(),
-                Some(encryption_private_key)
-            )
-            .unwrap());
+        assert!(
+            key_manager
+                .is_this_output_ours(
+                    bob_tx_output.commitment(),
+                    bob_output.encrypted_data(),
+                    Some(encryption_private_key)
+                )
+                .unwrap()
+        );
 
         let finalized = builder.build().unwrap();
 

@@ -26,23 +26,23 @@ use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
-        base_node_client::BaseNodeClient,
-        sha_p2_pool_client::ShaP2PoolClient,
         Block,
         NewBlockTemplate,
         NewBlockTemplateRequest,
+        base_node_client::BaseNodeClient,
+        sha_p2_pool_client::ShaP2PoolClient,
     },
 };
 use tari_common::configuration::{
-    bootstrap::{grpc_default_port, ApplicationType},
     Network,
+    bootstrap::{ApplicationType, grpc_default_port},
 };
 use tari_common_types::tari_address::TariAddress;
 use thiserror::Error;
 use tonic::{
+    Code,
     codegen::InterceptedService,
     transport::{Channel, Uri},
-    Code,
 };
 
 /// Error parsing input
@@ -152,7 +152,7 @@ pub fn process_quit(command: &str) {
 
 /// Wait for a keypress before continuing
 pub fn wait_for_keypress() {
-    use std::io::{stdin, Read};
+    use std::io::{Read, stdin};
     let mut stdin = stdin();
     let buf: &mut [u8] = &mut [0; 2];
     let _unused = stdin.read(buf).expect("Error reading keypress");
@@ -170,27 +170,27 @@ pub async fn verify_base_node_grpc_mining_responses(
     pow_algo_request: NewBlockTemplateRequest,
 ) -> Result<(), String> {
     let get_new_block_template = node_conn.get_new_block_template(pow_algo_request).await;
-    if let Err(e) = get_new_block_template {
-        if e.code() == Code::PermissionDenied {
-            return Err("'get_new_block_template'".to_string());
-        }
-    };
+    if let Err(e) = get_new_block_template &&
+        e.code() == Code::PermissionDenied
+    {
+        return Err("'get_new_block_template'".to_string());
+    }
     let get_tip_info = node_conn.get_tip_info(minotari_app_grpc::tari_rpc::Empty {}).await;
-    if let Err(e) = get_tip_info {
-        if e.code() == Code::PermissionDenied {
-            return Err("'get_tip_info'".to_string());
-        }
+    if let Err(e) = get_tip_info &&
+        e.code() == Code::PermissionDenied
+    {
+        return Err("'get_tip_info'".to_string());
     }
     let block_result = node_conn.get_new_block(NewBlockTemplate::default()).await;
-    if let Err(e) = block_result {
-        if e.code() == Code::PermissionDenied {
-            return Err("'get_new_block'".to_string());
-        }
+    if let Err(e) = block_result &&
+        e.code() == Code::PermissionDenied
+    {
+        return Err("'get_new_block'".to_string());
     }
-    if let Err(e) = node_conn.submit_block(Block::default()).await {
-        if e.code() == Code::PermissionDenied {
-            return Err("'submit_block'".to_string());
-        }
+    if let Err(e) = node_conn.submit_block(Block::default()).await &&
+        e.code() == Code::PermissionDenied
+    {
+        return Err("'submit_block'".to_string());
     }
     Ok(())
 }

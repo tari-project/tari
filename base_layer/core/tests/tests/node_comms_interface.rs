@@ -43,11 +43,11 @@ use tari_core::{
 use tari_script::script;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::KeyManager,
     tari_proof_of_work::Difficulty,
     test_helpers::create_utxo,
     transaction_components::covenants::Covenant,
-    MicroMinotari,
 };
 use tokio::sync::{broadcast, mpsc};
 

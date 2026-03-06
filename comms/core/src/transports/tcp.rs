@@ -28,12 +28,12 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::{ready, FutureExt};
+use futures::{FutureExt, ready};
 use multiaddr::Multiaddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_stream::Stream;
 
-use super::{dns::DnsResolver, Transport};
+use super::{Transport, dns::DnsResolver};
 use crate::{
     transports::dns::{DnsResolverRef, SystemDnsResolver},
     types::TransportProtocol,

@@ -22,7 +22,7 @@
 
 use std::fmt;
 
-use futures::{future::Either, SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream, StreamExt, future::Either};
 use log::*;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -30,7 +30,7 @@ use tokio::{
 };
 use tokio_util::codec::{Framed, LinesCodec};
 
-use super::{event::TorControlEvent, parsers, response::ResponseLine, LOG_TARGET};
+use super::{LOG_TARGET, event::TorControlEvent, parsers, response::ResponseLine};
 
 pub fn spawn_monitor<TSocket>(
     mut cmd_rx: mpsc::Receiver<String>,

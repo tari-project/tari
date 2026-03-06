@@ -21,15 +21,15 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::CompressedSignature;
-use tari_service_framework::{reply_channel::TrySenderService, Service};
+use tari_service_framework::{Service, reply_channel::TrySenderService};
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 
 use crate::mempool::{
-    service::{MempoolRequest, MempoolResponse},
     MempoolServiceError,
     StateResponse,
     StatsResponse,
     TxStorageResponse,
+    service::{MempoolRequest, MempoolResponse},
 };
 
 #[derive(Clone)]

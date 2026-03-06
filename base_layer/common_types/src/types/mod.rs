@@ -28,14 +28,14 @@ use digest::consts::{U32, U64};
 use tari_crypto::{
     compressed_key::CompressedKey,
     ristretto::{
-        bulletproofs_plus::BulletproofsPlusService,
-        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, CompressedPedersenCommitment},
         CompressedRistrettoComAndPubSig,
         CompressedRistrettoSchnorr,
         RistrettoComAndPubSig,
         RistrettoPublicKey,
         RistrettoSchnorrWithDomain,
         RistrettoSecretKey,
+        bulletproofs_plus::BulletproofsPlusService,
+        pedersen::{CompressedPedersenCommitment, extended_commitment_factory::ExtendedPedersenCommitmentFactory},
     },
     signatures::SchnorrSignature,
 };
@@ -90,7 +90,7 @@ pub type CommsDHKE = DiffieHellmanSharedSecret<RistrettoPublicKey>;
 use tari_crypto::{
     dhke::DiffieHellmanSharedSecret,
     hashing::DomainSeparatedHasher,
-    ristretto::{pedersen::PedersenCommitment, RistrettoSchnorr},
+    ristretto::{RistrettoSchnorr, pedersen::PedersenCommitment},
 };
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;

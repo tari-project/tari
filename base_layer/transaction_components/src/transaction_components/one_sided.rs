@@ -27,7 +27,7 @@ use tari_crypto::{
     keys::SecretKey as SKtrait,
 };
 use tari_hashing::{WalletHasher, WalletOutputEncryptionKeysDomain, WalletOutputSpendingKeysDomain};
-use tari_utilities::{byte_array::ByteArrayError, ByteArray};
+use tari_utilities::{ByteArray, byte_array::ByteArrayError};
 
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputEncryptionKeysDomain>;
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputSpendingKeysDomain>;

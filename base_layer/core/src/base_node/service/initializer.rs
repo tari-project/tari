@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use futures::{future, Stream, StreamExt};
+use futures::{Stream, StreamExt, future};
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
@@ -34,23 +34,23 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    async_trait,
+    reply_channel,
 };
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     base_node::{
-        comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        service::service::{BaseNodeService, BaseNodeStreams},
         BaseNodeStateMachineConfig,
         StateMachineHandle,
+        comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
+        service::service::{BaseNodeService, BaseNodeStreams},
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
     mempool::Mempool,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -99,7 +99,7 @@ where T: BlockchainBackend
     /// Get a stream for inbound Base Node request messages
     fn inbound_request_stream(
         &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>> {
+    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
@@ -108,14 +108,14 @@ where T: BlockchainBackend
     /// Get a stream for inbound Base Node response messages
     fn inbound_response_stream(
         &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>> {
+    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceResponse>)
     }
 
     /// Create a stream of 'New Block` messages
-    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>> {
+    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
             .map(extract_block)
@@ -139,7 +139,7 @@ fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, Extrac
                 dht_header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
                 inner: Err(e.into()),
-            }
+            };
         },
     };
     let block = NewBlock::try_from(new_block).map_err(ExtractBlockError::MalformedMessage);

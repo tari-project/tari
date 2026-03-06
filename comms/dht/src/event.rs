@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast;
 
-use crate::network_discovery::{state_machine::BootstrapMethod, DhtNetworkDiscoveryRoundInfo};
+use crate::network_discovery::{DhtNetworkDiscoveryRoundInfo, state_machine::BootstrapMethod};
 
 pub type DhtEventSender = broadcast::Sender<Arc<DhtEvent>>;
 pub type DhtEventReceiver = broadcast::Receiver<Arc<DhtEvent>>;

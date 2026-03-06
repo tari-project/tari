@@ -25,7 +25,7 @@ use tari_features::resolver::build_features;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     build_features();
-    let gen = StaticApplicationInfo::initialize()?;
-    gen.write_consts_to_outdir("consts.rs")?;
+    let info = StaticApplicationInfo::initialize()?;
+    info.write_consts_to_outdir("consts.rs")?;
     Ok(())
 }

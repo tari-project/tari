@@ -33,7 +33,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use thiserror::Error;
 
 use crate::{
-    dammsum::{compute_checksum, validate_checksum, CHECKSUM_BYTES},
+    dammsum::{CHECKSUM_BYTES, compute_checksum, validate_checksum},
     types::{CompressedPublicKey, UncompressedPublicKey},
 };
 
@@ -198,8 +198,8 @@ mod test {
     use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
 
     use crate::{
-        dammsum::{compute_checksum, CHECKSUM_BYTES},
-        emoji::{emoji_set, EmojiId, EmojiIdError, DATA_BYTES},
+        dammsum::{CHECKSUM_BYTES, compute_checksum},
+        emoji::{DATA_BYTES, EmojiId, EmojiIdError, emoji_set},
         types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey},
     };
 

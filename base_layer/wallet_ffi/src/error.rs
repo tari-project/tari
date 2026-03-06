@@ -32,7 +32,7 @@ use tari_common_types::{
 use tari_comms::{multiaddr, peer_manager::PeerManagerError};
 use tari_crypto::{
     signatures::SchnorrSignatureError,
-    tari_utilities::{hex::HexError, ByteArrayError},
+    tari_utilities::{ByteArrayError, hex::HexError},
 };
 use thiserror::Error;
 

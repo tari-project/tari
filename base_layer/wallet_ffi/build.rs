@@ -12,8 +12,8 @@ fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     // generate version info
-    let gen = StaticApplicationInfo::initialize().unwrap();
-    gen.write_consts_to_outdir("consts.rs").unwrap();
+    let info = StaticApplicationInfo::initialize().unwrap();
+    info.write_consts_to_outdir("consts.rs").unwrap();
 
     let output_file = PathBuf::from(&crate_dir).join("wallet.h").display().to_string();
 

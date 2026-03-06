@@ -25,10 +25,10 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use tari_common_types::{
-    types::{CompressedCommitment, CompressedPublicKey, PrivateKey},
     WALLET_COMMS_AND_SPEND_KEY_BRANCH,
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey},
 };
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{Hex, from_hex};
 
 pub const MANAGED_KEY_BRANCH: &str = "managed";
 pub const DERIVED_KEY_BRANCH: &str = "derived";
@@ -39,11 +39,11 @@ pub const DH_ENCRYPTED_DATA_BRANCH: &str = "dh_encrypted_data";
 pub const ENCRYPTED_BRANCH: &str = "encrypted";
 use tari_transaction_components::{
     key_manager::{
-        error::KeyManagerError,
+        CODE_TEMPLATE_AUTHOR,
         KeyManager,
         TariKeyId,
         TransactionKeyManagerInterface,
-        CODE_TEMPLATE_AUTHOR,
+        error::KeyManagerError,
     },
     transaction_components::{EncryptedData, MemoField},
 };

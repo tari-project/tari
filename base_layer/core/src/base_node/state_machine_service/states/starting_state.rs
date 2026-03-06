@@ -30,8 +30,8 @@ use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
         state_machine_service::{
-            states::{listening::Listening, StateEvent},
             BaseNodeStateMachine,
+            states::{StateEvent, listening::Listening},
         },
     },
     chain_storage::BlockchainBackend,

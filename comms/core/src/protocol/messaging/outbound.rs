@@ -22,13 +22,13 @@
 
 use std::time::Instant;
 
-use futures::{future, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, future};
 use tokio::{pin, sync::mpsc};
-use tracing::{debug, error, span, trace, Instrument, Level};
+use tracing::{Instrument, Level, debug, error, span, trace};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
-use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason};
+use super::{MessagingEvent, MessagingProtocol, SendFailReason, error::MessagingProtocolError};
 use crate::{
     connection_manager::{NegotiatedSubstream, PeerConnection},
     connectivity::{ConnectivityError, ConnectivityRequester},

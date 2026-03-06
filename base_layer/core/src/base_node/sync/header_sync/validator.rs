@@ -29,19 +29,19 @@ use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
-    base_node::sync::{header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS, BlockHeaderSyncError},
+    base_node::sync::{BlockHeaderSyncError, header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS},
     blocks::BlockHeaderAccumulatedDataBuilder,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
+    chain_storage::{BlockchainBackend, ChainStorageError, TargetDifficulties, async_db::AsyncBlockchainDb},
     common::rolling_vec::RollingVec,
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
-        header::HeaderFullValidator,
-        tari_rx_vm_key_height,
         DifficultyCalculator,
         HeaderChainLinkedValidator,
-        ValidationError,
         TARI_RX_VM_KEY_BLOCK_SWAP,
+        ValidationError,
+        header::HeaderFullValidator,
+        tari_rx_vm_key_height,
     },
 };
 
@@ -130,14 +130,14 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
     pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
         let constants = self.consensus_rules.consensus_constants(header.height).clone();
-        if constants.effective_from_height() == header.height {
-            if let Some(&mut ref mut mut_state) = self.state.as_mut() {
-                // We need to update the target difficulties for the new algorithm
-                mut_state
-                    .target_difficulties
-                    .update_algos(&self.consensus_rules, header.height)
-                    .map_err(BlockHeaderSyncError::TargetDifficultiesError)?;
-            }
+        if constants.effective_from_height() == header.height &&
+            let Some(&mut ref mut mut_state) = self.state.as_mut()
+        {
+            // We need to update the target difficulties for the new algorithm
+            mut_state
+                .target_difficulties
+                .update_algos(&self.consensus_rules, header.height)
+                .map_err(BlockHeaderSyncError::TargetDifficultiesError)?;
         }
 
         let state = self.state();
@@ -184,7 +184,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
             // for now and ban the peer, but wont blacklist the block.
             Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
-                return Err(e.into())
+                return Err(e.into());
             },
             // We dont want to mark a block as bad for internal failures
             Err(
@@ -297,7 +297,7 @@ mod test {
     use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
-    use crate::test_helpers::blockchain::{create_new_blockchain, TempDatabase};
+    use crate::test_helpers::blockchain::{TempDatabase, create_new_blockchain};
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,
@@ -351,11 +351,13 @@ mod test {
             let state = validator.state();
             assert!(state.valid_headers.is_empty());
             assert_eq!(state.target_difficulties.get(PowAlgorithm::Sha3x).unwrap().len(), 2);
-            assert!(state
-                .target_difficulties
-                .get(PowAlgorithm::RandomXM)
-                .unwrap()
-                .is_empty());
+            assert!(
+                state
+                    .target_difficulties
+                    .get(PowAlgorithm::RandomXM)
+                    .unwrap()
+                    .is_empty()
+            );
             assert_eq!(state.timestamps.len(), 2);
             assert_eq!(state.current_height, 1);
         }

@@ -48,7 +48,7 @@ pub use merkle_tree::{create_merkle_proof, tree_hash};
 pub use merkle_tree_parameters::MerkleTreeParameters;
 // Re-exports
 pub use monero::{
-    consensus::{deserialize, serialize},
     Block as MoneroBlock,
     BlockHeader as MoneroBlockHeader,
+    consensus::{deserialize, serialize},
 };

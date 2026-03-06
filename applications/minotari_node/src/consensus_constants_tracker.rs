@@ -98,37 +98,37 @@ impl ConsensusConstantsTracker {
         current_constants: &[ConsensusConstants],
         current_height: u64,
     ) -> Result<(), String> {
-        if let Some(previous_constants) = self.load_previous() {
-            if current_constants != previous_constants {
-                info!(
-                    target: LOG_TARGET,
-                    "Consensus constants have changed since last startup"
-                );
+        if let Some(previous_constants) = self.load_previous() &&
+            current_constants != previous_constants
+        {
+            info!(
+                target: LOG_TARGET,
+                "Consensus constants have changed since last startup"
+            );
 
-                // Check if any new consensus constants are already active at current height
-                let current_active = current_constants
-                    .iter()
-                    .filter(|cc| cc.effective_from_height() <= current_height)
-                    .max_by_key(|cc| cc.effective_from_height());
+            // Check if any new consensus constants are already active at current height
+            let current_active = current_constants
+                .iter()
+                .filter(|cc| cc.effective_from_height() <= current_height)
+                .max_by_key(|cc| cc.effective_from_height());
 
-                let previous_active = previous_constants
-                    .iter()
-                    .filter(|cc| cc.effective_from_height() <= current_height)
-                    .max_by_key(|cc| cc.effective_from_height());
+            let previous_active = previous_constants
+                .iter()
+                .filter(|cc| cc.effective_from_height() <= current_height)
+                .max_by_key(|cc| cc.effective_from_height());
 
-                if let (Some(current), Some(previous)) = (current_active, previous_active) {
-                    if current != previous {
-                        return Err(format!(
-                            "CRITICAL: Consensus constants have changed and the new constants are already \
-                             active!\nCurrent height: {}\nActive consensus constants changed from effective height {} \
-                             to {}\nThis indicates a potential network fork or version mismatch.\nPlease verify you \
-                             are running the correct version of the node for this network.",
-                            current_height,
-                            previous.effective_from_height(),
-                            current.effective_from_height()
-                        ));
-                    }
-                }
+            if let (Some(current), Some(previous)) = (current_active, previous_active) &&
+                current != previous
+            {
+                return Err(format!(
+                    "CRITICAL: Consensus constants have changed and the new constants are already active!\nCurrent \
+                     height: {}\nActive consensus constants changed from effective height {} to {}\nThis indicates a \
+                     potential network fork or version mismatch.\nPlease verify you are running the correct version \
+                     of the node for this network.",
+                    current_height,
+                    previous.effective_from_height(),
+                    current.effective_from_height()
+                ));
             }
         }
 

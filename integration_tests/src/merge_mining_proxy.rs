@@ -23,9 +23,9 @@
 use std::{convert::TryInto, thread};
 
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_merge_mining_proxy::{run_merge_miner::start_merge_miner, Cli};
-use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
-use serde_json::{json, Value};
+use minotari_merge_mining_proxy::{Cli, run_merge_miner::start_merge_miner};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc};
+use serde_json::{Value, json};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
 use tempfile::tempdir;

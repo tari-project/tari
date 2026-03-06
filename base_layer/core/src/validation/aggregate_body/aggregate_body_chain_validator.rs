@@ -44,6 +44,7 @@ use crate::{
     chain_storage::BlockchainBackend,
     consensus::BaseNodeConsensusManager,
     validation::{
+        ValidationError,
         helpers::{
             check_eviction_proof,
             check_input_is_utxo,
@@ -51,7 +52,6 @@ use crate::{
             check_validator_node_exit,
             check_validator_node_registration,
         },
-        ValidationError,
     },
 };
 

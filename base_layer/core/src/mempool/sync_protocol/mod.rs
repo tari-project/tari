@@ -67,29 +67,29 @@ use std::{
     convert::TryFrom,
     iter,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
 
 use error::MempoolProtocolError;
-use futures::{stream, SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream, StreamExt, stream};
 pub use initializer::MempoolSyncInitializer;
 use log::*;
 use prost::Message;
 use tari_comms::{
+    Bytes,
+    PeerConnection,
     connectivity::{ConnectivityEvent, ConnectivityRequester, ConnectivitySelection},
     framing,
     framing::CanonicalFraming,
     message::MessageExt,
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx},
-    Bytes,
-    PeerConnection,
 };
 use tari_transaction_components::transaction_components::Transaction;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Semaphore,
@@ -102,7 +102,7 @@ use crate::mempool::metrics;
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     chain_storage::BlockAddResult,
-    mempool::{proto, Mempool, MempoolServiceConfig},
+    mempool::{Mempool, MempoolServiceConfig, proto},
     proto as shared_proto,
 };
 

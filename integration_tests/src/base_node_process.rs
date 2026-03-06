@@ -31,23 +31,23 @@ use std::{
 };
 
 use minotari_app_utilities::identity_management::save_as_json;
-use minotari_node::{run_base_node, BaseNodeConfig, GrpcMethod, MetricsConfig};
+use minotari_node::{BaseNodeConfig, GrpcMethod, MetricsConfig, run_base_node};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
 use tari_common::{
+    MAX_GRPC_MESSAGE_SIZE,
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
-    MAX_GRPC_MESSAGE_SIZE,
 };
 use tari_common_sqlite::connection::DbConnectionUrl;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{NodeIdentity, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::DhtConfig;
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use tari_p2p::{Network, PeerSeedsConfig, TransportType, auto_update::AutoUpdateConfig};
 use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{TariWorld, get_peer_addresses, get_port, wait_for_service};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
@@ -188,13 +188,9 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
         base_node_config.base_node.p2p.transport.tcp.listener_address =
             format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap();
-        base_node_config.base_node.p2p.public_addresses = MultiaddrList::from(vec![base_node_config
-            .base_node
-            .p2p
-            .transport
-            .tcp
-            .listener_address
-            .clone()]);
+        base_node_config.base_node.p2p.public_addresses = MultiaddrList::from(vec![
+            base_node_config.base_node.p2p.transport.tcp.listener_address.clone(),
+        ]);
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::file(format!("{port}-dht.sqlite"));

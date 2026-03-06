@@ -25,13 +25,13 @@ use std::io;
 use prost::DecodeError;
 use thiserror::Error;
 
-use super::{handshake::RpcHandshakeError, server::RpcServerError, RpcStatus};
+use super::{RpcStatus, handshake::RpcHandshakeError, server::RpcServerError};
 use crate::{
+    PeerConnectionError,
     connectivity::ConnectivityError,
     peer_manager::PeerManagerError,
     proto::rpc as rpc_proto,
     traits::OrOptional,
-    PeerConnectionError,
 };
 
 #[derive(Debug, Error)]
@@ -175,11 +175,7 @@ impl<T> OrOptional<T> for Result<T, RpcError> {
     fn or_optional(self) -> Result<Option<T>, Self::Error> {
         self.map(Some).or_else(|err| {
             if let RpcError::RequestFailed(ref status) = err {
-                if status.is_not_found() {
-                    Ok(None)
-                } else {
-                    Err(err)
-                }
+                if status.is_not_found() { Ok(None) } else { Err(err) }
             } else {
                 Err(err)
             }

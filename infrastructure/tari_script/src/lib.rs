@@ -24,14 +24,14 @@ mod stack;
 
 pub use error::ScriptError;
 pub use op_codes::{
-    slice_to_boxed_hash,
-    slice_to_boxed_message,
-    slice_to_hash,
     HashValue,
     Message,
     Opcode,
     OpcodeVersion,
     ScalarValue,
+    slice_to_boxed_hash,
+    slice_to_boxed_message,
+    slice_to_hash,
 };
 pub use script::{ScriptOpcodes, TariScript};
 pub use script_context::ScriptContext;

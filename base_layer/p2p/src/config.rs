@@ -28,16 +28,16 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
+    SubConfigPath,
     configuration::{
-        deserialize_dns_name_server_list,
-        serializers,
-        utils::serialize_string,
         DnsNameServerList,
         MultiaddrList,
         Network,
         StringList,
+        deserialize_dns_name_server_list,
+        serializers,
+        utils::serialize_string,
     },
-    SubConfigPath,
 };
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::multiaddr::Multiaddr;
@@ -300,9 +300,8 @@ mod test {
             #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![DnsNameServer::from_str(
-            "system"
-        )
-        .unwrap(),]);
+        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![
+            DnsNameServer::from_str("system").unwrap(),
+        ]);
     }
 }

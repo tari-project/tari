@@ -22,7 +22,7 @@
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{fold, fold::Fold, FnArg, GenericArgument, ItemTrait, Meta, NestedMeta, PathArguments, ReturnType, Type};
+use syn::{FnArg, GenericArgument, ItemTrait, Meta, NestedMeta, PathArguments, ReturnType, Type, fold, fold::Fold};
 
 use crate::{generator::RpcCodeGenerator, method_info::RpcMethodInfo, options::RpcTraitOptions};
 
@@ -115,7 +115,7 @@ impl TraitInfoCollector {
                                             name_value,
                                             "Invalid option `{}` in #[rpc(...)] attribute",
                                             s
-                                        ))
+                                        ));
                                     },
                                 }
                             },
@@ -123,14 +123,14 @@ impl TraitInfoCollector {
                                 return Err(syn_error!(
                                     m,
                                     "Invalid syntax given to #[rpc(...)] attribute. Expected a name/value pair.",
-                                ))
+                                ));
                             },
                         },
                         m => {
                             return Err(syn_error!(
                                 m,
                                 "Invalid syntax given to #[rpc(...)] attribute. Expected a name/value pair",
-                            ))
+                            ));
                         },
                     }
                 }
@@ -139,7 +139,7 @@ impl TraitInfoCollector {
                 return Err(syn_error!(
                     m,
                     "Invalid syntax given to #[rpc(...)] attribute. Expected a name/value pair",
-                ))
+                ));
             },
         }
 

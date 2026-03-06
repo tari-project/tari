@@ -26,7 +26,7 @@ use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     helpers::borsh::FromBytes,
-    transaction_components::{covenants::Covenant, EncryptedData, TransactionInput, TransactionInputVersion},
+    transaction_components::{EncryptedData, TransactionInput, TransactionInputVersion, covenants::Covenant},
 };
 use tari_utilities::ByteArray;
 

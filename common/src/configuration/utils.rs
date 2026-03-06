@@ -6,17 +6,17 @@ use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path:
 use config::Config;
 use log::{debug, info, trace};
 use serde::{
-    de::{self, MapAccess, Visitor},
     Deserialize,
     Deserializer,
     Serializer,
+    de::{self, MapAccess, Visitor},
 };
 
 use crate::{
-    configuration::{bootstrap::prompt, ConfigOverrideProvider, Network},
-    network_check::set_network_if_choice_valid,
     ConfigError,
     LOG_TARGET,
+    configuration::{ConfigOverrideProvider, Network, bootstrap::prompt},
+    network_check::set_network_if_choice_valid,
 };
 
 //-------------------------------------           Main API functions         --------------------------------------//

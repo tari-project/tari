@@ -49,15 +49,15 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
-        comms_response::ValidatorNodeChange,
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
         FetchMempoolTransactionsResponse,
         NodeCommsRequest,
         NodeCommsResponse,
         OutboundNodeCommsInterface,
+        comms_response::ValidatorNodeChange,
+        error::CommsInterfaceError,
+        local_interface::BlockEventSender,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
+    chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
     mempool::Mempool,
     proof_of_work::{
@@ -67,7 +67,7 @@ use crate::{
         sha3x_difficulty,
         tari_randomx_difficulty,
     },
-    validation::{helpers, tari_rx_vm_key_height, ValidationError},
+    validation::{ValidationError, helpers, tari_rx_vm_key_height},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -1051,7 +1051,7 @@ where B: BlockchainBackend + 'static
         }
 
         match block_add_result {
-            BlockAddResult::Ok(ref block) => {
+            BlockAddResult::Ok(block) => {
                 update_target_difficulty(block);
                 self.update_difficulty_indicators(block.height()).await?;
                 #[allow(clippy::cast_possible_wrap)]

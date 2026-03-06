@@ -130,7 +130,7 @@ impl<R: io::Read> CovenantReadExt for R {
 mod test {
     use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
-    use tari_utilities::hex::{to_hex, Hex};
+    use tari_utilities::hex::{Hex, to_hex};
 
     use super::*;
     use crate::{

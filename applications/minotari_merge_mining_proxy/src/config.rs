@@ -28,8 +28,8 @@ use std::{
 use minotari_wallet_grpc_client::GrpcAuthentication;
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{serializers, Network, StringList},
     SubConfigPath,
+    configuration::{Network, StringList, serializers},
 };
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;

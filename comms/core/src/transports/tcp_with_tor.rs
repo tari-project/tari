@@ -27,7 +27,7 @@ use tokio::net::TcpStream;
 
 use super::Transport;
 use crate::{
-    transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport},
+    transports::{SocksConfig, SocksTransport, TcpTransport, dns::TorDnsResolver, predicate::is_onion_address},
     types::TransportProtocol,
     utils::network::supports_ipv6,
 };

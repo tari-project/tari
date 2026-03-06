@@ -41,7 +41,7 @@ mod memory_net;
 use std::{iter::repeat_with, time::Duration};
 
 use futures::future;
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use tari_comms::peer_manager::PeerFeatures;
 use tokio::sync::mpsc;
 

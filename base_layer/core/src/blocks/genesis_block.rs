@@ -419,23 +419,23 @@ mod test {
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
         crypto_factories::CryptoFactories,
-        transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, TransactionOutput},
+        transaction_components::{KernelFeatures, TransactionOutput, transaction_output::batch_verify_range_proofs},
     };
     use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
+        KernelMmr,
+        MrHashError,
+        PrunedInputMmr,
+        PrunedOutputMmr,
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
         consensus::BaseNodeConsensusManager,
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
-        test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
+        test_helpers::blockchain::{TempDatabase, create_new_blockchain_with_network},
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr,
-        MrHashError,
-        PrunedInputMmr,
-        PrunedOutputMmr,
     };
     #[test]
     #[serial]
@@ -727,12 +727,14 @@ mod test {
     fn set_network_by_env_var(network: Network) {
         // Do not override the env_var if network is already set; another test may fail
         if std::env::var("TARI_NETWORK").is_err() {
-            std::env::set_var("TARI_NETWORK", network.as_key_str());
+            // SAFETY: This test helper is not run in parallel tests that depend on this env var.
+            unsafe { std::env::set_var("TARI_NETWORK", network.as_key_str()) };
         }
     }
 
     fn remove_network_env_var() {
-        std::env::remove_var("TARI_NETWORK");
+        // SAFETY: This test helper is not run in parallel tests that depend on this env var.
+        unsafe { std::env::remove_var("TARI_NETWORK") };
     }
 
     fn network_matches(network: Network) -> bool {

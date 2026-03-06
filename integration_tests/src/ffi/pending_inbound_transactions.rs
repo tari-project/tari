@@ -24,7 +24,7 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use super::{ffi_import, PendingInboundTransaction};
+use super::{PendingInboundTransaction, ffi_import};
 
 pub struct PendingInboundTransactions {
     ptr: *mut c_void,

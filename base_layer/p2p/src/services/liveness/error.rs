@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::{
+    PeerConnectionError,
     connectivity::ConnectivityError,
     message::MessageError,
     peer_manager::PeerManagerError,
-    PeerConnectionError,
 };
-use tari_comms_dht::{outbound::DhtOutboundError, DhtActorError};
+use tari_comms_dht::{DhtActorError, outbound::DhtOutboundError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use tokio::task::JoinError;

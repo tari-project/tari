@@ -29,8 +29,8 @@ use tari_common_types::{
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
-    transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
     MicroMinotari,
+    transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
 };
 use tari_utilities::ByteArray;
 

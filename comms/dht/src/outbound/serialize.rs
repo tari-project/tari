@@ -25,12 +25,12 @@ use std::task::Poll;
 use futures::task::Context;
 use log::*;
 use tari_comms::{
+    Bytes,
     message::{MessageExt, OutboundMessage},
     pipeline::PipelineError,
-    Bytes,
 };
 use tari_utilities::ByteArray;
-use tower::{layer::Layer, util::Oneshot, Service, ServiceExt};
+use tower::{Service, ServiceExt, layer::Layer, util::Oneshot};
 
 use crate::{
     outbound::message::DhtOutboundMessage,

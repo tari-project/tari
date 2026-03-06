@@ -22,13 +22,13 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_comms::{
-    peer_manager::{Peer, PeerFeatures},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
     NodeIdentity,
     PeerManager,
+    peer_manager::{Peer, PeerFeatures},
+    test_utils::{
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        node_identity::build_node_identity,
+    },
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
@@ -36,9 +36,9 @@ use tokio::sync::broadcast;
 
 use super::{DhtNetworkDiscovery, NetworkDiscoveryConfig};
 use crate::{
+    DhtConfig,
     event::DhtEvent,
     test_utils::{build_peer_manager, make_node_identity},
-    DhtConfig,
 };
 
 mod state_machine {
@@ -110,12 +110,12 @@ mod discovery_ready {
 
     use super::*;
     use crate::{
+        BootstrapMethod,
         network_discovery::{
+            DhtNetworkDiscoveryRoundInfo,
             ready::DiscoveryReady,
             state_machine::{NetworkDiscoveryContext, StateEvent},
-            DhtNetworkDiscoveryRoundInfo,
         },
-        BootstrapMethod,
     };
     fn setup(
         config: NetworkDiscoveryConfig,

@@ -7,10 +7,10 @@ use std::{
 };
 
 use axum::{
-    extract::DefaultBodyLimit,
-    routing::{get, post},
     Extension,
     Router,
+    extract::DefaultBodyLimit,
+    routing::{get, post},
 };
 use log::{error, info};
 use tari_core::{
@@ -26,6 +26,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
+    HttpCacheConfig,
     http::{
         handler,
         handler::{
@@ -35,7 +36,6 @@ use crate::{
             __path_sync_utxos_by_block,
         },
     },
-    HttpCacheConfig,
 };
 
 const LOG_TARGET: &str = "c::bn::rpc::http::server";

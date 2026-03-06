@@ -25,9 +25,9 @@ use std::process;
 use clap::Parser;
 use log::*;
 use minotari_app_utilities::consts;
-use minotari_console_wallet::{run_wallet_with_cli, ApplicationConfig, Cli};
+use minotari_console_wallet::{ApplicationConfig, Cli, run_wallet_with_cli};
 use tari_common::{
-    configuration::bootstrap::{grpc_default_port, ApplicationType},
+    configuration::bootstrap::{ApplicationType, grpc_default_port},
     exit_codes::ExitError,
     initialize_logging,
     load_configuration,

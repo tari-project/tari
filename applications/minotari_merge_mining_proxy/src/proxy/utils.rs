@@ -23,9 +23,9 @@
 #![allow(clippy::indexing_slicing)]
 use bytes::Bytes;
 use hyper::{
-    header::{HeaderName as HyperHeaderName, HeaderValue as HyperHeaderValue},
     Request,
     Response,
+    header::{HeaderName as HyperHeaderName, HeaderValue as HyperHeaderValue},
 };
 use minotari_app_grpc::tari_rpc;
 use serde_json as json;

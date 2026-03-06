@@ -22,15 +22,15 @@
 
 #![allow(clippy::indexing_slicing)]
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
-use crate::ui::{components::Component, state::AppState, MAX_WIDTH};
+use crate::ui::{MAX_WIDTH, components::Component, state::AppState};
 
 pub struct BaseNode {}
 

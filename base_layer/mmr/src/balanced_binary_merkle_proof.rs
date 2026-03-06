@@ -31,7 +31,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
+use crate::{BalancedBinaryMerkleTree, Hash, common::hash_together};
 
 fn cast_to_u32(value: usize) -> Result<u32, BalancedBinaryMerkleProofError> {
     u32::try_from(value).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)
@@ -311,9 +311,11 @@ mod test {
         let proof1 = BalancedBinaryMerkleProof::generate_proof(&bmt, 1).unwrap();
 
         let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof, proof1]).unwrap();
-        assert!(merged
-            .verify_consume(&root, vec![leaves[0].clone(), leaves[1].clone()])
-            .unwrap());
+        assert!(
+            merged
+                .verify_consume(&root, vec![leaves[0].clone(), leaves[1].clone()])
+                .unwrap()
+        );
     }
 
     #[test]
@@ -368,9 +370,11 @@ mod test {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
-        assert!(merged_proof
-            .verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>())
-            .unwrap());
+        assert!(
+            merged_proof
+                .verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>())
+                .unwrap()
+        );
     }
 
     #[test]

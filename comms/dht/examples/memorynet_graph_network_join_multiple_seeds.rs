@@ -62,7 +62,7 @@ use tari_comms::peer_manager::PeerFeatures;
 use tokio::sync::mpsc;
 
 use crate::{
-    graphing_utilities::utilities::{network_graph_snapshot, run_python_network_graph_render, PythonRenderType},
+    graphing_utilities::utilities::{PythonRenderType, network_graph_snapshot, run_python_network_graph_render},
     memory_net::utilities::{
         make_node,
         make_node_from_node_identities,

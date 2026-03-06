@@ -35,10 +35,14 @@ use tari_shutdown::ShutdownSignal;
 use tari_utilities::epoch_time::EpochTime;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
-use tower::{layer::Layer, Service, ServiceBuilder};
+use tower::{Service, ServiceBuilder, layer::Layer};
 
 use self::outbound::OutboundMessageRequester;
 use crate::{
+    DedupLayer,
+    DhtActorError,
+    DhtBuilder,
+    DhtConfig,
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
@@ -53,10 +57,6 @@ use crate::{
     outbound::DhtOutboundRequest,
     rpc,
     storage::MIGRATIONS,
-    DedupLayer,
-    DhtActorError,
-    DhtBuilder,
-    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht";
@@ -243,9 +243,10 @@ impl Dht {
             InboundMessage,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>>,
-        > + Clone,
-    >
+            Future = impl Future<Output = Result<(), PipelineError>> + use<S>,
+        > + Clone
+                  + use<S>,
+    > + use<S>
     where
         S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + Sync + 'static,
         S::Future: Send,
@@ -296,9 +297,10 @@ impl Dht {
             DhtOutboundRequest,
             Response = (),
             Error = PipelineError,
-            Future = impl Future<Output = Result<(), PipelineError>>,
-        > + Clone,
-    >
+            Future = impl Future<Output = Result<(), PipelineError>> + use<S>,
+        > + Clone
+                  + use<S>,
+    > + use<S>
     where
         S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
         S::Future: Send,
@@ -324,7 +326,9 @@ impl Dht {
 
     /// Produces a filter predicate which disallows store and forward messages if that feature is not
     /// supported by the node.
-    fn unsupported_saf_messages_filter(&self) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send {
+    fn unsupported_saf_messages_filter(
+        &self,
+    ) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send + 'static + use<> {
         move |msg: &DhtInboundMessage| match msg.dht_header.message_type {
             DhtMessageType::SafRequestMessages => {
                 warn!(
@@ -372,14 +376,14 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
 
 /// Check message expiry and immediately discard if expired
 fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
-    if let Some(expires) = msg.dht_header.expires {
-        if expires < EpochTime::now() {
-            debug!(
-                target: LOG_TARGET,
-                "[discard_expired_messages] Discarding expired message {msg}"
-            );
-            return false;
-        }
+    if let Some(expires) = msg.dht_header.expires &&
+        expires < EpochTime::now()
+    {
+        debug!(
+            target: LOG_TARGET,
+            "[discard_expired_messages] Discarding expired message {msg}"
+        );
+        return false;
     }
     true
 }

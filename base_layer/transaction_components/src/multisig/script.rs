@@ -25,7 +25,7 @@ use tari_script::{Opcode, TariScript};
 
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{one_sided::diffie_hellman_stealth_domain_hasher, TransactionError},
+    transaction_components::{TransactionError, one_sided::diffie_hellman_stealth_domain_hasher},
 };
 
 pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {

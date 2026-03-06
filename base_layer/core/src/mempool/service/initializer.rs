@@ -31,11 +31,11 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    async_trait,
+    reply_channel,
 };
 use tari_transaction_components::transaction_components::Transaction;
 use tokio::sync::mpsc;
@@ -45,11 +45,11 @@ use crate::{
     mempool::{
         mempool::Mempool,
         service::{
+            MempoolHandle,
             inbound_handlers::MempoolInboundHandlers,
             local_service::LocalMempoolService,
             outbound_interface::OutboundMempoolServiceInterface,
             service::{MempoolService, MempoolStreams},
-            MempoolHandle,
         },
     },
     proto,
@@ -73,7 +73,7 @@ impl MempoolServiceInitializer {
     }
 
     /// Create a stream of 'New Transaction` messages
-    fn inbound_transaction_stream(&self) -> impl Stream<Item = DomainMessage<Transaction>> {
+    fn inbound_transaction_stream(&self) -> impl Stream<Item = DomainMessage<Transaction>> + use<> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewTransaction, SUBSCRIPTION_LABEL)
             .filter_map(extract_transaction)

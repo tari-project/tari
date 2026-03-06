@@ -28,13 +28,13 @@ use std::{
 
 use log::*;
 use minotari_wallet::{
+    WalletSqlite,
     transaction_service::storage::models::{
         CompletedTransaction,
         InboundTransaction,
         OutboundTransaction,
         WalletTransaction,
     },
-    WalletSqlite,
 };
 use tari_common_types::transaction::TxId;
 use tari_utilities::hex::Hex;

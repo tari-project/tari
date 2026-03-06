@@ -26,8 +26,8 @@ use std::convert::TryInto;
 
 use bytes::{BufMut, BytesMut};
 use http_body::Body;
-use http_body_util::{combinators::BoxBody, BodyExt, Full};
-use hyper::{header, header::HeaderValue, http::response, Response, StatusCode, Version};
+use http_body_util::{BodyExt, Full, combinators::BoxBody};
+use hyper::{Response, StatusCode, Version, header, header::HeaderValue, http::response};
 use serde_json as json;
 
 use crate::{error::MmProxyError, proxy::service::ProxyBody};

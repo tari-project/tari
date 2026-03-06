@@ -25,7 +25,7 @@ use std::task::Poll;
 use futures::task::Context;
 use log::*;
 use tari_comms::message::InboundMessage;
-use tower::{layer::Layer, Service};
+use tower::{Service, layer::Layer};
 
 use crate::connectivity::MetricsCollectorHandle;
 

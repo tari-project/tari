@@ -25,7 +25,7 @@ mod error;
 pub use error::WalletConnectivityError;
 
 mod handle;
-pub use handle::{OnlineStatus, WalletConnectivityHandle, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS};
+pub use handle::{DEGRADED_LATENCY_THRESHOLD, OnlineStatus, UNKNOWN_LATENCY_MS, WalletConnectivityHandle};
 
 mod initializer;
 pub use initializer::WalletConnectivityInitializer;

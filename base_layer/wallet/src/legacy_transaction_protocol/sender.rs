@@ -32,7 +32,6 @@ use tari_script::TariScript;
 use tari_transaction_components::{
     tari_amount::*,
     transaction_components::{
-        covenants::Covenant,
         MemoField,
         OutputFeatures,
         Transaction,
@@ -40,6 +39,7 @@ use tari_transaction_components::{
         TransactionOutput,
         TransactionOutputVersion,
         WalletOutput,
+        covenants::Covenant,
     },
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
@@ -390,10 +390,10 @@ impl SenderTransactionProtocol {
 
     pub fn change_recipient_sender_offset_private_key(&mut self, key_id: LegacyTariKeyId) -> Result<(), TPE> {
         match &mut self.state {
-            SenderState::Initializing(ref mut info) |
-            SenderState::Finalizing(ref mut info) |
-            SenderState::SingleRoundMessageReady(ref mut info) |
-            SenderState::CollectingSingleSignature(ref mut info) => {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
                 if let Some(ref mut v) = info.recipient_data {
                     v.recipient_sender_offset_key_id = key_id;
                 }

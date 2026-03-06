@@ -25,7 +25,7 @@ use std::marker::PhantomData;
 use log::*;
 use tari_common_types::types::{CompressedCommitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_transaction_components::{crypto_factories::CryptoFactories, MicroMinotari};
+use tari_transaction_components::{MicroMinotari, crypto_factories::CryptoFactories};
 
 use crate::{
     chain_storage::BlockchainBackend,

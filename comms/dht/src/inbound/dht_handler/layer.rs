@@ -26,7 +26,7 @@ use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
 
 use super::middleware::DhtHandlerMiddleware;
-use crate::{discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester, DhtConfig, DhtRequester};
+use crate::{DhtConfig, DhtRequester, discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
 
 pub struct DhtHandlerLayer {
     config: Arc<DhtConfig>,

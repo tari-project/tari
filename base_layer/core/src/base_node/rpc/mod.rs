@@ -24,7 +24,7 @@ use url::Url;
 
 use crate::{
     base_node::StateMachineHandle,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     mempool::service::MempoolHandle,
     proto::{
         self,

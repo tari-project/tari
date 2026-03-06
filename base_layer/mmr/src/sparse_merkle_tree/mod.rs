@@ -83,6 +83,6 @@ mod proofs;
 mod tree;
 
 pub use error::SMTError;
-pub use node::{BranchNode, EmptyNode, LeafNode, Node, NodeHash, NodeKey, ValueHash, EMPTY_NODE_HASH};
+pub use node::{BranchNode, EMPTY_NODE_HASH, EmptyNode, LeafNode, Node, NodeHash, NodeKey, ValueHash};
 pub use proofs::{ExclusionProof, InclusionProof};
 pub use tree::{DeleteResult, SparseMerkleTree, UpdateResult};

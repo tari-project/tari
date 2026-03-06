@@ -24,7 +24,7 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use super::{ffi_import, CompletedTransaction};
+use super::{CompletedTransaction, ffi_import};
 
 pub struct CompletedTransactions {
     ptr: *mut c_void,

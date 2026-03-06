@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::{NaiveDateTime, Utc};
-use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, dsl, result::DatabaseErrorKind, sql_types};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::hex::{Hex, to_hex};
 
 use crate::schema::dedup_cache;
 

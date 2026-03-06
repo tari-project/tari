@@ -34,7 +34,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     consensus::network::NetworkConsensus,
-    tari_amount::{uT, MicroMinotari},
+    tari_amount::{MicroMinotari, uT},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         OutputFeaturesVersion,
@@ -1146,10 +1146,10 @@ mod test {
 
     use crate::{
         consensus::{
-            emission::{Emission, EmissionSchedule},
             ConsensusConstants,
+            emission::{Emission, EmissionSchedule},
         },
-        tari_amount::{uT, MicroMinotari},
+        tari_amount::{MicroMinotari, uT},
         transaction_components::{OutputType, RangeProofType},
     };
 

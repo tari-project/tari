@@ -24,9 +24,9 @@ use futures::future;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
-    context::{create_context_notifier_pair, ServiceHandles},
-    initializer::{InitializerFn, ServiceInitializationError, ServiceInitializer},
     ServiceInitializerContext,
+    context::{ServiceHandles, create_context_notifier_pair},
+    initializer::{InitializerFn, ServiceInitializationError, ServiceInitializer},
 };
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
@@ -92,8 +92,8 @@ impl StackBuilder {
 #[cfg(test)]
 mod test {
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     use async_trait::async_trait;

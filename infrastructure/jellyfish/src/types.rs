@@ -88,9 +88,9 @@ use digest::consts;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hash_domain;
-use tari_hashing::layer2::{tari_hasher32, TariDomainHasher};
+use tari_hashing::layer2::{TariDomainHasher, tari_hasher32};
 
-use crate::{bit_iter::BitIterator, error::JmtProofVerifyError, store::TreeStoreReader, TreeHash};
+use crate::{TreeHash, bit_iter::BitIterator, error::JmtProofVerifyError, store::TreeStoreReader};
 
 hash_domain!(JmtHashDomain, "com.tari.jmt", 0);
 

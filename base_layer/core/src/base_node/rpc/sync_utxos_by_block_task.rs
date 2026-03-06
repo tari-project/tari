@@ -10,7 +10,7 @@ use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };

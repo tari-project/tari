@@ -23,13 +23,13 @@
 use std::fmt;
 
 use serde::{
-    de::{Error, Visitor},
     Deserialize,
     Deserializer,
     Serialize,
     Serializer,
+    de::{Error, Visitor},
 };
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{Hex, from_hex};
 
 use crate::transaction_components::covenants::Covenant;
 

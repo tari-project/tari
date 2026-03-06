@@ -25,7 +25,7 @@ use std::{
     net::{SocketAddr, ToSocketAddrs},
 };
 
-use futures::{future, future::BoxFuture, FutureExt};
+use futures::{FutureExt, future, future::BoxFuture};
 use log::*;
 
 use super::{DnsResolver, DnsResolverError};

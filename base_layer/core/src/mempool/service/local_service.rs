@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::CompressedSignature;
-use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_service_framework::{Service, reply_channel::SenderService};
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::mempool::{
-    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
     StateResponse,
     StatsResponse,
     TxStorageResponse,
+    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
 };
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
@@ -102,13 +102,13 @@ impl LocalMempoolService {
 #[cfg(test)]
 mod test {
     use futures::StreamExt;
-    use tari_service_framework::reply_channel::{unbounded, Receiver};
+    use tari_service_framework::reply_channel::{Receiver, unbounded};
     use tokio::task;
 
     use crate::mempool::{
-        service::{local_service::LocalMempoolService, MempoolRequest, MempoolResponse},
         MempoolServiceError,
         StatsResponse,
+        service::{MempoolRequest, MempoolResponse, local_service::LocalMempoolService},
     };
 
     pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;

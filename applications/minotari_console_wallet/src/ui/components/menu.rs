@@ -4,12 +4,12 @@
 #![allow(clippy::indexing_slicing)]
 use tokio::runtime::Handle;
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Paragraph},
-    Frame,
 };
 
 use crate::ui::{components::Component, state::AppState};

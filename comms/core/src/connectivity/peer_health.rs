@@ -129,12 +129,12 @@ impl PeerHealthMetrics {
 
     /// Transition from open to half-open state for testing
     pub fn try_half_open(&mut self, retry_interval: Duration) -> bool {
-        if let CircuitBreakerState::Open { opened_at } = &self.circuit_breaker_state {
-            if opened_at.elapsed() >= retry_interval {
-                self.circuit_breaker_state = CircuitBreakerState::HalfOpen;
+        if let CircuitBreakerState::Open { opened_at } = &self.circuit_breaker_state &&
+            opened_at.elapsed() >= retry_interval
+        {
+            self.circuit_breaker_state = CircuitBreakerState::HalfOpen;
 
-                return true;
-            }
+            return true;
         }
         false
     }

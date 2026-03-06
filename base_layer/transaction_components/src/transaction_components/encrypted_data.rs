@@ -30,13 +30,13 @@ use std::{convert::TryFrom, mem::size_of};
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
-    aead::{AeadCore, AeadInPlace, Error, OsRng},
     KeyInit,
     Tag,
     XChaCha20Poly1305,
     XNonce,
+    aead::{AeadCore, AeadInPlace, Error, OsRng},
 };
-use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
+use digest::{FixedOutput, consts::U32, generic_array::GenericArray};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, PrivateKey};
@@ -44,16 +44,16 @@ use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::TransactionSecureNonceKdfDomain;
 use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
-    hex::{from_hex, to_hex, Hex, HexError},
-    safe_array::SafeArray,
     ByteArray,
     ByteArrayError,
+    hex::{Hex, HexError, from_hex, to_hex},
+    safe_array::SafeArray,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::{transaction_components::MemoField, MicroMinotari};
+use crate::{MicroMinotari, transaction_components::MemoField};
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();

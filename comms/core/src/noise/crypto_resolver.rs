@@ -22,7 +22,7 @@
 
 #![allow(clippy::indexing_slicing)]
 use blake2::Blake2b;
-use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
+use digest::{FixedOutput, consts::U32, generic_array::GenericArray};
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},

@@ -35,23 +35,23 @@ use tari_comms::{
 };
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     task,
 };
-use tracing::{instrument, span, Instrument, Level};
+use tracing::{Instrument, Level, instrument, span};
 
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
     base_node::{
+        LocalNodeCommsInterface,
         comms_interface::{BlockEvent, BlockEvent::BlockSyncRewind},
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
-            rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
+            rpc::{BaseNodeSyncService, sync_utxos_task::SyncUtxosTask},
         },
-        LocalNodeCommsInterface,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
+    chain_storage::{BlockAddResult, BlockchainBackend, async_db::AsyncBlockchainDb},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{

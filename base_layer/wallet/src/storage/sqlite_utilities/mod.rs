@@ -25,7 +25,7 @@ use std::{fs::File, ops::DerefMut, path::Path};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
 use log::*;
-use tari_common_sqlite::{sqlite_connection_pool::SqliteConnectionPool, PRAGMA_BUSY_TIMEOUT};
+use tari_common_sqlite::{PRAGMA_BUSY_TIMEOUT, sqlite_connection_pool::SqliteConnectionPool};
 use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
@@ -92,7 +92,7 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
         None => {
             return Err(WalletStorageError::FileError(
                 "Database path should be to a file".to_string(),
-            ))
+            ));
         },
         Some(filename) => match db_path.parent() {
             Some(p) => p.join(format!(

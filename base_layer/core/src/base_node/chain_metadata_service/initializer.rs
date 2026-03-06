@@ -23,7 +23,7 @@
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_p2p::services::liveness::LivenessHandle;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tokio::sync::broadcast;
 
 use super::service::ChainMetadataService;

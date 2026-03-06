@@ -42,7 +42,7 @@ impl AtomicRefCounter {
 
     /// Create a new AtomicRefCounterGuard. Each counting as reference until it is dropped.
     pub fn new_guard(&self) -> AtomicRefCounterGuard {
-        AtomicRefCounterGuard(Arc::clone(&self.0 .0))
+        AtomicRefCounterGuard(Arc::clone(&self.0.0))
     }
 
     /// Get the reference count

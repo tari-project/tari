@@ -38,9 +38,9 @@ use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
 use super::TransactionKernelVersion;
 use crate::{
+    MicroMinotari,
     consensus::DomainSeparatedConsensusHasher,
     transaction_components::{KernelFeatures, TransactionError},
-    MicroMinotari,
 };
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and

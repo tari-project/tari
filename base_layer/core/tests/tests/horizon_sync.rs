@@ -30,7 +30,7 @@ use tari_core::{
 
 use crate::helpers::{
     sync,
-    sync::{decide_horizon_sync, state_event, WhatToDelete},
+    sync::{WhatToDelete, decide_horizon_sync, state_event},
 };
 
 #[allow(clippy::too_many_lines)]
@@ -110,11 +110,13 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     let output_hash = initial_coinbase.output_hash();
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
     let commitment = initial_coinbase.commitment().clone();
-    assert!(alice_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-        .unwrap()
-        .is_some());
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+            .unwrap()
+            .is_some()
+    );
 
     let event = decide_horizon_sync(&mut alice_state_machine, header_sync.clone()).await;
     let mut horizon_sync = match event {
@@ -134,11 +136,13 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         alice_node.blockchain_db.fetch_last_header().unwrap().height - pruning_horizon
     );
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
-    assert!(alice_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment)
-        .unwrap()
-        .is_none());
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment)
+            .unwrap()
+            .is_none()
+    );
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 
@@ -210,11 +214,13 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         let output_hash = output.output_hash();
         assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
         let commitment = output.commitment().clone();
-        assert!(alice_node
-            .blockchain_db
-            .fetch_unspent_output_hash_by_commitment(commitment)
-            .unwrap()
-            .is_some());
+        assert!(
+            alice_node
+                .blockchain_db
+                .fetch_unspent_output_hash_by_commitment(commitment)
+                .unwrap()
+                .is_some()
+        );
     }
 
     let event = decide_horizon_sync(&mut alice_state_machine, header_sync).await;
@@ -238,11 +244,13 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         let output_hash = output.output_hash();
         assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
         let commitment = output.commitment().clone();
-        assert!(alice_node
-            .blockchain_db
-            .fetch_unspent_output_hash_by_commitment(commitment)
-            .unwrap()
-            .is_none());
+        assert!(
+            alice_node
+                .blockchain_db
+                .fetch_unspent_output_hash_by_commitment(commitment)
+                .unwrap()
+                .is_none()
+        );
     }
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
@@ -357,11 +365,13 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let output_hash = initial_coinbase.output_hash();
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
     let commitment = initial_coinbase.commitment().clone();
-    assert!(alice_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-        .unwrap()
-        .is_some());
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+            .unwrap()
+            .is_some()
+    );
 
     let header_sync_alice_from_bob = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync_alice_from_bob.clone()).await;
@@ -386,11 +396,13 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
         alice_header_height - pruning_horizon_alice
     );
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
-    assert!(alice_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment)
-        .unwrap()
-        .is_none());
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment)
+            .unwrap()
+            .is_none()
+    );
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 
@@ -727,11 +739,13 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     let output_hash = initial_coinbase.output_hash();
     assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
     let commitment = initial_coinbase.commitment().clone();
-    assert!(carol_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-        .unwrap()
-        .is_some());
+    assert!(
+        carol_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+            .unwrap()
+            .is_some()
+    );
 
     let mut header_sync_carol_from_bob = sync::initialize_sync_headers_with_ping_pong_data(&carol_node, &bob_node);
     let event = sync::sync_headers_execute(&mut carol_state_machine, &mut header_sync_carol_from_bob).await;
@@ -757,11 +771,13 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     );
 
     assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
-    assert!(carol_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-        .unwrap()
-        .is_none());
+    assert!(
+        carol_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+            .unwrap()
+            .is_none()
+    );
 
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, bob_node.node_identity.node_id(), 1).await);
@@ -788,11 +804,13 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     println!("\n3. Alice attempts initial horizon sync from Carol prune node (to height 24)\n");
 
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
-    assert!(alice_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-        .unwrap()
-        .is_some());
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+            .unwrap()
+            .is_some()
+    );
 
     let mut header_sync_alice_from_carol = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &carol_node);
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync_alice_from_carol).await;
@@ -818,11 +836,13 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     );
 
     assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
-    assert!(alice_node
-        .blockchain_db
-        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-        .unwrap()
-        .is_none());
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+            .unwrap()
+            .is_none()
+    );
 
     // Carol will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);

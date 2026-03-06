@@ -24,11 +24,11 @@ use std::{io::stdin, str::FromStr, sync::Arc};
 
 use anyhow::anyhow;
 use tari_comms::{
+    NodeIdentity,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures},
     types::CommsPublicKey,
-    NodeIdentity,
 };
 use tari_utilities::hex::Hex;
 

@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use tari_common_types::{
@@ -34,17 +34,17 @@ use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_co
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
-    traits::CandidateBlockValidator,
     BlockBodyValidator,
     HeaderChainLinkedValidator,
     InternalConsistencyValidator,
     TransactionValidator,
+    traits::CandidateBlockValidator,
 };
 use crate::{
     chain_storage::BlockchainBackend,
-    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
+    proof_of_work::{AchievedTargetDifficulty, randomx_factory::RandomXFactory},
     test_helpers::create_consensus_rules,
-    validation::{error::ValidationError, DifficultyCalculator, FinalHorizonStateValidation},
+    validation::{DifficultyCalculator, FinalHorizonStateValidation, error::ValidationError},
 };
 
 #[derive(Clone)]

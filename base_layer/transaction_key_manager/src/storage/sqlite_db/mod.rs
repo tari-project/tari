@@ -26,7 +26,7 @@ use std::{
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
@@ -38,7 +38,7 @@ use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;
 
 use crate::{
-    legacy_key_manager::{error::KeyManagerStorageError, KeyManagerState, TransactionKeyManagerBackend},
+    legacy_key_manager::{KeyManagerState, TransactionKeyManagerBackend, error::KeyManagerStorageError},
     storage::{
         database::ImportedKey,
         sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
@@ -316,7 +316,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
+    use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
     use tempfile::tempdir;
 
     use super::*;

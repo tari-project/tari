@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use tui::{
+    Frame,
     backend::Backend,
     layout::Rect,
     style::{Color, Style},
     text::{Span, Spans},
-    Frame,
 };
 
 use crate::ui::state::AppState;

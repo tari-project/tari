@@ -34,7 +34,7 @@ use tari_comms_rpc_macros::tari_rpc;
 
 use crate::{
     base_node::LocalNodeCommsInterface,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     proto,
     proto::base_node::{
         FindChainSplitRequest,

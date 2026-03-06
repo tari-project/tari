@@ -24,28 +24,28 @@ use std::{mem::size_of, str::FromStr};
 
 use blake2::Blake2b;
 use chacha20::{
-    cipher::{NewCipher, StreamCipher},
     ChaCha20,
     Key,
     Nonce,
+    cipher::{NewCipher, StreamCipher},
 };
 use crc32fast::Hasher as CrcHasher;
 use digest::consts::U32;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::KeyManagerDomain;
-use tari_utilities::{hidden::Hidden, hidden_type, safe_array::SafeArray, SafePassword};
+use tari_utilities::{SafePassword, hidden::Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::seeds::{
-    error::CipherError,
-    mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
-    seed_words::SeedWords,
     HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE,
     HASHER_LABEL_CIPHER_SEED_MAC,
     HASHER_LABEL_CIPHER_SEED_PBKDF_SALT,
+    error::CipherError,
+    mnemonic::{Mnemonic, MnemonicLanguage, from_bytes, to_bytes, to_bytes_with_language},
+    seed_words::SeedWords,
 };
 
 // The version should be incremented for any breaking change to the format
@@ -458,16 +458,16 @@ mod test {
     use super::{BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, SECONDS_PER_DAY};
     use crate::seeds::{
         cipher_seed::{
-            CipherSeed,
             CIPHER_SEED_BIRTHDAY_BYTES,
             CIPHER_SEED_CHECKSUM_BYTES,
             CIPHER_SEED_ENTROPY_BYTES,
             CIPHER_SEED_MAC_BYTES,
             CIPHER_SEED_VERSION,
+            CipherSeed,
         },
         error::CipherError,
         mnemonic::{Mnemonic, MnemonicLanguage},
-        seed_words::{get_birthday_from_unix_epoch_in_seconds, SeedWords},
+        seed_words::{SeedWords, get_birthday_from_unix_epoch_in_seconds},
     };
 
     #[test]

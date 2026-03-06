@@ -210,18 +210,19 @@ async fn ping_peer_liveness(
         for _ in 0..5 {
             match liveness_events.recv().await {
                 Ok(event) => {
-                    if let LivenessEvent::ReceivedPong(pong) = &*event {
-                        if pong.node_id == node_id && pong.nonce == nonce {
-                            println!(
-                                "🏓️ Pong: peer ({}, {}) responded with nonce {}, round-trip-time is {:.2?}!",
-                                pong.node_id,
-                                public_key,
-                                pong.nonce,
-                                pong.latency.unwrap_or_default()
-                            );
-                            let _ = tx.send(PingResult::Success);
-                            return;
-                        }
+                    if let LivenessEvent::ReceivedPong(pong) = &*event &&
+                        pong.node_id == node_id &&
+                        pong.nonce == nonce
+                    {
+                        println!(
+                            "🏓️ Pong: peer ({}, {}) responded with nonce {}, round-trip-time is {:.2?}!",
+                            pong.node_id,
+                            public_key,
+                            pong.nonce,
+                            pong.latency.unwrap_or_default()
+                        );
+                        let _ = tx.send(PingResult::Success);
+                        return;
                     }
                 },
                 Err(e) => {

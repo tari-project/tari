@@ -24,7 +24,7 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use super::{ffi_import, FeePerGramStat};
+use super::{FeePerGramStat, ffi_import};
 
 pub struct FeePerGramStats {
     ptr: *mut c_void,

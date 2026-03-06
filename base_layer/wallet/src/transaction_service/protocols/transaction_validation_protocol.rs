@@ -30,9 +30,10 @@ use tari_common_types::{
 };
 use tari_transaction_components::rpc::models::TxLocation;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
+    OperationId,
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
@@ -45,7 +46,6 @@ use crate::{
             sqlite_db::UnconfirmedTransactionInfo,
         },
     },
-    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";

@@ -22,7 +22,7 @@
 
 use std::{fs, path::PathBuf, str::FromStr};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -32,15 +32,15 @@ use tari_common_types::{
 use tari_transaction_components::{
     consensus::ConsensusManager,
     key_manager::{
-        wallet_types::{SeedWordsWallet, SpendWallet, WalletType},
         KeyManager,
+        wallet_types::{SeedWordsWallet, SpendWallet, WalletType},
     },
     offline_signing::{
         models::{PrepareOneSidedTransactionForSigningResult, TransactionResult},
         sign_locked_transaction,
     },
 };
-use tari_utilities::{hex::Hex, SafePassword};
+use tari_utilities::{SafePassword, hex::Hex};
 
 use crate::{error::OfflineSignerError, keystore};
 

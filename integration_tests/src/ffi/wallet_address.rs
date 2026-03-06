@@ -24,7 +24,7 @@ use std::{ffi::CString, ptr::null_mut};
 
 use libc::c_void;
 
-use super::{ffi_bytes::FFIBytes, ffi_import, FFIString};
+use super::{FFIString, ffi_bytes::FFIBytes, ffi_import};
 
 pub struct WalletAddress {
     ptr: *mut c_void,

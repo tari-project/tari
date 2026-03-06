@@ -28,16 +28,16 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    payment_reference::{generate_payment_reference, PaymentReference},
+    payment_reference::{PaymentReference, generate_payment_reference},
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionConversionError, TransactionDirection, TxId},
     types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
+    MicroMinotari,
     consensus::ConsensusConstants,
     fee::Fee,
     transaction_components::{MemoField, Transaction},
-    MicroMinotari,
 };
 
 use crate::{
@@ -781,16 +781,16 @@ mod test {
     };
     use tari_script::TariScript;
     use tari_transaction_components::{
+        MicroMinotari,
         consensus::ConsensusManager,
         transaction_components::{
-            covenants::Covenant,
             EncryptedData,
             MemoField,
             OutputFeatures,
             Transaction,
             TransactionOutput,
+            covenants::Covenant,
         },
-        MicroMinotari,
     };
 
     use super::*;

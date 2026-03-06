@@ -7,13 +7,13 @@ use std::{
     fmt::{Debug, Formatter},
 };
 
-use digest::{consts::U32, Digest};
+use digest::{Digest, consts::U32};
 use serde::{Deserialize, Serialize};
 
 use crate::sparse_merkle_tree::{
-    bit_utils::{bit_to_dir, count_common_prefix, get_bit, height_key, TraverseDirection},
     Node::*,
     SMTError,
+    bit_utils::{TraverseDirection, bit_to_dir, count_common_prefix, get_bit, height_key},
 };
 
 pub const KEY_LENGTH: usize = 32;

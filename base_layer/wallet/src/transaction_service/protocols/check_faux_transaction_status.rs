@@ -29,6 +29,7 @@ use tari_common_types::types::FixedHash;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 
 use crate::{
+    OperationId,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
@@ -38,7 +39,6 @@ use crate::{
             models::CompletedTransaction,
         },
     },
-    OperationId,
 };
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 

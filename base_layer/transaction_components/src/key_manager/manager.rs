@@ -24,11 +24,12 @@ use std::{ops::Shl, str::FromStr};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
-use digest::{consts::U64, KeyInit};
+use digest::{KeyInit, consts::U64};
 use log::trace;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
+    ScriptSignatureKey,
     ledger_get_dh_shared_secret,
     ledger_get_one_sided_metadata_signature,
     ledger_get_public_key,
@@ -36,9 +37,8 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_script_offset,
     ledger_get_script_schnorr_signature,
     ledger_get_script_signature,
-    ScriptSignatureKey,
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     tari_address::TariAddress,
@@ -65,26 +65,22 @@ use tari_crypto::{
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::{hex::Hex, ByteArray, Hidden};
+use tari_utilities::{ByteArray, Hidden, hex::Hex};
 use zeroize::Zeroize;
 
 use crate::{
+    MicroMinotari,
     crypto_factories::CryptoFactories,
     key_manager::{
+        ConfidentialOutputHasher,
+        SecretTransactionKeyManagerInterface,
+        TxoStage,
         error::KeyManagerError,
         interface::TransactionKeyManagerInterface,
         key_id::{TariKeyAndId, TariKeyId},
         wallet_types::WalletType,
-        ConfidentialOutputHasher,
-        SecretTransactionKeyManagerInterface,
-        TxoStage,
     },
     transaction_components::{
-        one_sided::{
-            diffie_hellman_stealth_domain_hasher,
-            public_key_to_output_encryption_key,
-            public_key_to_output_spending_key,
-        },
         EncryptedData,
         KernelFeatures,
         MemoField,
@@ -96,8 +92,12 @@ use crate::{
         TransactionKernelVersion,
         TransactionOutput,
         TransactionOutputVersion,
+        one_sided::{
+            diffie_hellman_stealth_domain_hasher,
+            public_key_to_output_encryption_key,
+            public_key_to_output_spending_key,
+        },
     },
-    MicroMinotari,
 };
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
@@ -516,18 +516,18 @@ impl TransactionKeyManagerInterface for KeyManager {
         encryption_key: Option<TariKeyId>,
         ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
-        if let Some(branch) = ledger_key {
-            if self.wallet_type.is_ledger() {
-                let random_index = OsRng.next_u64();
-                let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
-                return Ok(TariKeyAndId {
-                    key_id: TariKeyId::LedgerKey {
-                        branch,
-                        index: random_index,
-                    },
-                    pub_key: public_key,
-                });
-            }
+        if let Some(branch) = ledger_key &&
+            self.wallet_type.is_ledger()
+        {
+            let random_index = OsRng.next_u64();
+            let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
+            return Ok(TariKeyAndId {
+                key_id: TariKeyId::LedgerKey {
+                    branch,
+                    index: random_index,
+                },
+                pub_key: public_key,
+            });
         }
 
         let random_private_key = PrivateKey::random(&mut OsRng);
@@ -1147,10 +1147,10 @@ impl TransactionKeyManagerInterface for KeyManager {
         private_key_id: &TariKeyId,
         challenge: &[u8],
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError> {
-        if self.wallet_type.is_ledger() {
-            if let TariKeyId::LedgerKey { branch, index } = private_key_id {
-                return self.ledger_get_script_schnorr_signature_wrapper(*index, *branch, challenge);
-            }
+        if self.wallet_type.is_ledger() &&
+            let TariKeyId::LedgerKey { branch, index } = private_key_id
+        {
+            return self.ledger_get_script_schnorr_signature_wrapper(*index, *branch, challenge);
         }
 
         let private_key = self.get_private_key(private_key_id)?;

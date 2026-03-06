@@ -26,11 +26,11 @@
 
 use std::{future::Future, time::Duration};
 
-use futures::{future, StreamExt};
+use futures::{StreamExt, future};
 use tari_comms::{
+    CommsNode,
     protocol::rpc::{RpcClient, RpcServer},
     transports::TcpTransport,
-    CommsNode,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task, time::Instant};

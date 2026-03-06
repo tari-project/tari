@@ -7,27 +7,27 @@ use std::{env, fs};
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_transaction_components::{
-    transaction_components::memo_field::{MemoField, TxType},
     MicroMinotari,
+    transaction_components::memo_field::{MemoField, TxType},
 };
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
-    components::{balance::Balance, Component, KeyHandled},
+    MAX_WIDTH,
+    components::{Component, KeyHandled, balance::Balance},
     state::{AppState, UiTransactionBurnStatus},
     ui_burnt_proof::UiBurnProof,
-    widgets::{draw_dialog, MultiColumnList, WindowedListState},
-    MAX_WIDTH,
+    widgets::{MultiColumnList, WindowedListState, draw_dialog},
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::burn_tab ";
@@ -279,7 +279,7 @@ impl BurnTab {
             column2_items.push(ListItem::new(Span::raw(item.burned_at.to_string())));
         }
 
-        let column_list = MultiColumnList::new()
+        MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
@@ -288,9 +288,7 @@ impl BurnTab {
             .add_column(None, Some(1), Vec::new())
             .add_column(Some("Confirmed?"), Some(12), column1_items)
             .add_column(None, Some(1), Vec::new())
-            .add_column(Some("Burned At"), Some(11), column2_items);
-
-        column_list
+            .add_column(Some("Burned At"), Some(11), column2_items)
     }
 
     #[allow(clippy::too_many_lines)]

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use blake2::Blake2b;
-use digest::{consts::U32, FixedOutput};
+use digest::{FixedOutput, consts::U32};
 use jmt::SimpleHasher;
 use tari_crypto::{
     hash_domain,

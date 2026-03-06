@@ -25,7 +25,7 @@ pub mod oneshot_trigger;
 use std::{
     future::Future,
     pin::Pin,
-    sync::{atomic, atomic::AtomicBool, Arc},
+    sync::{Arc, atomic, atomic::AtomicBool},
     task::{Context, Poll},
 };
 

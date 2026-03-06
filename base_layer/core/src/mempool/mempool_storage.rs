@@ -35,13 +35,13 @@ use tari_utilities::hex::Hex;
 use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
-        error::MempoolError,
-        reorg_pool::ReorgPool,
-        unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
         MempoolConfig,
         StateResponse,
         StatsResponse,
         TxStorageResponse,
+        error::MempoolError,
+        reorg_pool::ReorgPool,
+        unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
     },
     validation::{TransactionValidator, ValidationError},
 };

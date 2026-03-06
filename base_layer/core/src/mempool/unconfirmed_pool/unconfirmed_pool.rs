@@ -30,18 +30,18 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
+    MicroMinotari,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
-    MicroMinotari,
 };
 use tokio::time::Instant;
 
 use crate::mempool::{
+    MempoolError,
     priority::{FeePriority, PrioritizedTransaction},
     shrink_hashmap::shrink_hashmap,
     unconfirmed_pool::UnconfirmedPoolError,
-    MempoolError,
 };
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -860,6 +860,7 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
     use tari_transaction_components::{
+        MicroMinotari,
         aggregated_body::AggregateBody,
         fee::Fee,
         key_manager::KeyManager,
@@ -867,7 +868,6 @@ mod test {
         transaction_builder::TransactionBuilder,
         tx,
         weight::TransactionWeight,
-        MicroMinotari,
     };
 
     use super::*;

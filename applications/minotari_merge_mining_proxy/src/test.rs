@@ -26,7 +26,7 @@ mod add_aux_data {
 
     use crate::{
         common::json_rpc,
-        proxy::utils::{add_aux_data, MMPROXY_AUX_KEY_NAME},
+        proxy::utils::{MMPROXY_AUX_KEY_NAME, add_aux_data},
     };
 
     #[test]
@@ -60,7 +60,7 @@ mod append_aux_chain_data {
 
     use crate::{
         common::json_rpc,
-        proxy::utils::{append_aux_chain_data, MMPROXY_AUX_KEY_NAME},
+        proxy::utils::{MMPROXY_AUX_KEY_NAME, append_aux_chain_data},
     };
 
     #[test]

@@ -30,7 +30,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     time,
 };
-use tracing::{debug, error, span, warn, Instrument, Level};
+use tracing::{Instrument, Level, debug, error, span, warn};
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 

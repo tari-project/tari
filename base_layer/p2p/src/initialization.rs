@@ -31,50 +31,50 @@ use std::{
 use futures::future;
 use log::*;
 use tari_common::{
+    DnsNameServer,
     configuration::{DnsNameServerList, Network},
     exit_codes::{ExitCode, ExitError},
-    DnsNameServer,
 };
 use tari_common_sqlite::{
     connection::{DbConnection, DbConnectionUrl},
     error::StorageError,
 };
 use tari_comms::{
-    backoff::ConstantBackoff,
-    multiaddr::multiaddr,
-    peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
-        NodeIdentity,
-        Peer,
-        PeerFeatures,
-        PeerFlags,
-        PeerManagerError,
-    },
-    pipeline,
-    protocol::{
-        messaging::{MessagingEventSender, MessagingProtocolExtension},
-        rpc::RpcServer,
-        NodeNetworkInfo,
-        ProtocolId,
-    },
-    tor::{self, HiddenServiceControllerError, TorIdentity},
-    transports::{
-        predicate::FalsePredicate,
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksConfig,
-        SocksTransport,
-        TcpWithTorTransport,
-    },
-    utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
     PeerManager,
     UnspawnedCommsNode,
+    backoff::ConstantBackoff,
+    multiaddr::multiaddr,
+    peer_manager::{
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
+        database::{MIGRATIONS, PeerDatabaseSql},
+    },
+    pipeline,
+    protocol::{
+        NodeNetworkInfo,
+        ProtocolId,
+        messaging::{MessagingEventSender, MessagingProtocolExtension},
+        rpc::RpcServer,
+    },
+    tor::{self, HiddenServiceControllerError, TorIdentity},
+    transports::{
+        HiddenServiceTransport,
+        MemoryTransport,
+        SocksConfig,
+        SocksTransport,
+        TcpWithTorTransport,
+        predicate::FalsePredicate,
+    },
+    utils::cidr::parse_cidrs,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
@@ -85,14 +85,14 @@ use tokio::{
 use tower::ServiceBuilder;
 
 use crate::{
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
+    TransportConfig,
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     config::{P2pConfig, PeerSeedsConfig},
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
-    TransportConfig,
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";

@@ -23,12 +23,12 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use lmdb_zero::traits::AsLmdbBytes;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     key_val_store::{
-        key_val_store::{IterationResult, KeyValueStore},
         KeyValStoreError,
+        key_val_store::{IterationResult, KeyValueStore},
     },
     lmdb_store::LMDBDatabase,
 };

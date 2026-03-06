@@ -40,12 +40,12 @@ use crate::{
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
+        AchievedTargetDifficulty,
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         tari_randomx_difficulty,
-        AchievedTargetDifficulty,
     },
     validation::ValidationError,
 };

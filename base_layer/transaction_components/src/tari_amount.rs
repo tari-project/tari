@@ -82,7 +82,7 @@ impl From<DecimalConvertError> for MicroMinotariError {
 }
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2021
-/// use tari_transaction_components::tari_amount::{uT, MicroMinotari, T};
+/// use tari_transaction_components::tari_amount::{MicroMinotari, T, uT};
 /// assert_eq!(MicroMinotari::from(42), 42 * uT);
 /// assert_eq!(1 * T, 1_000_000.into());
 /// assert_eq!(3_000_000 * uT, 3 * T);

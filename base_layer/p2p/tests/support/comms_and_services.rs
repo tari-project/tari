@@ -23,10 +23,10 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_comms::{
+    CommsNode,
     peer_manager::NodeIdentity,
     protocol::messaging::MessagingEventSender,
     transports::MemoryTransport,
-    CommsNode,
 };
 use tari_comms_dht::Dht;
 use tari_p2p::{comms_connector::InboundDomainConnector, initialization::initialize_local_test_comms};

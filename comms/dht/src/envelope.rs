@@ -29,12 +29,12 @@ use std::{
 use bitflags::bitflags;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
-use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
+use tari_comms::{NodeIdentity, message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
+use tari_utilities::{ByteArray, ByteArrayError, epoch_time::EpochTime};
 use thiserror::Error;
 
 // Re-export applicable protos
-pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
+pub use crate::proto::envelope::{DhtEnvelope, DhtHeader, DhtMessageType, dht_header::Destination};
 use crate::version::DhtProtocolVersion;
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
@@ -371,7 +371,7 @@ mod tests {
 
     mod node_destination {
         use rand::rngs::OsRng;
-        use tari_utilities::hex::{to_hex, Hex};
+        use tari_utilities::hex::{Hex, to_hex};
 
         use super::*;
 

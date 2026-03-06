@@ -37,8 +37,8 @@ use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
+            BaseNodeStateMachine,
             states::{
-                events_and_states,
                 BlockSync,
                 DecideNextSync,
                 HeaderSyncState,
@@ -47,8 +47,8 @@ use crate::{
                 StateInfo,
                 SyncStatus,
                 Waiting,
+                events_and_states,
             },
-            BaseNodeStateMachine,
         },
     },
     chain_storage::BlockchainBackend,

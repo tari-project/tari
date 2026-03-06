@@ -32,6 +32,7 @@ use tari_common_types::types::{BulletRangeProof, CompressedCommitment, Compresse
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     aggregated_body::AggregateBody,
     transaction_components::{
         CoinBaseExtra,
@@ -50,7 +51,6 @@ use tari_transaction_components::{
         TransactionOutput,
         TransactionOutputVersion,
     },
-    MicroMinotari,
 };
 use tari_utilities::convert::try_convert_all;
 

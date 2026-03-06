@@ -23,11 +23,11 @@
 use std::{fmt, fmt::Display, sync::Arc};
 
 use tari_comms::{
+    Bytes,
+    BytesMut,
     message::{MessageTag, MessagingReplyTx},
     peer_manager::NodeId,
     types::CommsPublicKey,
-    Bytes,
-    BytesMut,
 };
 use tari_utilities::hex::Hex;
 use thiserror::Error;
@@ -76,7 +76,7 @@ impl Display for OutboundEncryption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             OutboundEncryption::ClearText => write!(f, "ClearText"),
-            OutboundEncryption::EncryptFor(ref key) => write!(f, "EncryptFor:{}", key.to_hex()),
+            OutboundEncryption::EncryptFor(key) => write!(f, "EncryptFor:{}", key.to_hex()),
         }
     }
 }

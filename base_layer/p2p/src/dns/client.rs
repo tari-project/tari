@@ -27,9 +27,9 @@ use hickory_proto::{
     serialize::binary::{BinEncodable, BinEncoder},
 };
 use hickory_resolver::{
+    TokioResolver,
     config::{NameServerConfig, ProtocolConfig, ResolverConfig, ResolverOpts},
     name_server::TokioConnectionProvider,
-    TokioResolver,
 };
 use log::*;
 use tari_common::DnsNameServer;

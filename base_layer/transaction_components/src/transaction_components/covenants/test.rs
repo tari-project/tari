@@ -26,7 +26,6 @@ use crate::{
     key_manager::TransactionKeyManagerInterface,
     test_helpers::{TestParams, UtxoTestParams},
     transaction_components::{
-        covenants::{context::CovenantContext, Covenant},
         BuildInfo,
         CodeTemplateRegistration,
         SideChainFeature,
@@ -34,6 +33,7 @@ use crate::{
         TemplateType,
         TransactionInput,
         TransactionOutput,
+        covenants::{Covenant, context::CovenantContext},
     },
 };
 

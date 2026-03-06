@@ -45,49 +45,49 @@ mod test {
         transaction::TxId,
     };
     use tari_script::{
-        push_pubkey_script,
         CompressedCheckSigSchnorrSignature,
         ExecutionStack,
         Opcode,
         StackItem,
         TariScript,
+        push_pubkey_script,
     };
 
     use crate::{
+        MicroMinotari,
+        TransactionBuilder,
         crypto_factories::CryptoFactories,
         fee::Fee,
         helpers::borsh::SerializedSize,
         key_manager::{
-            error::KeyManagerError,
-            wallet_types::{ViewWallet, WalletType},
             KeyManager,
             SerializedKeyString,
             TariKeyId,
             TransactionKeyManagerInterface,
+            error::KeyManagerError,
+            wallet_types::{ViewWallet, WalletType},
         },
         multisig::script::derive_multisig_ephemeral_pubkeys,
         offline_signing::{
+            PaymentRecipient,
             offline_signer::sign_locked_transaction,
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
             prepare_withdraw_multisig_transaction,
             sign_locked_deposit_multisig_transaction,
             sign_locked_withdraw_multisig_transaction,
-            PaymentRecipient,
         },
         test_helpers::{create_consensus_manager, create_test_input},
         transaction_components::{
-            covenants::Covenant,
-            memo_field::TxType,
-            one_sided::public_key_to_output_encryption_key,
             EncryptedData,
             MemoField,
             OutputFeatures,
             WalletOutputBuilder,
+            covenants::Covenant,
+            memo_field::TxType,
+            one_sided::public_key_to_output_encryption_key,
         },
         validation::transaction::TransactionInternalConsistencyValidator,
-        MicroMinotari,
-        TransactionBuilder,
     };
 
     fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
@@ -853,13 +853,17 @@ mod test {
         let change_output = &signed.signed_transaction.transaction.body.outputs()[change_index].clone();
 
         // let see if alice's view wallet can claim the change:
-        assert!(alice_view_key_manager
-            .is_this_output_ours(&change_output.commitment, &change_output.encrypted_data, None,)
-            .unwrap());
+        assert!(
+            alice_view_key_manager
+                .is_this_output_ours(&change_output.commitment, &change_output.encrypted_data, None,)
+                .unwrap()
+        );
         // lets test the hot wallet
-        assert!(alice_key_manager
-            .is_this_output_ours(&change_output.commitment, &change_output.encrypted_data, None,)
-            .unwrap());
+        assert!(
+            alice_key_manager
+                .is_this_output_ours(&change_output.commitment, &change_output.encrypted_data, None,)
+                .unwrap()
+        );
 
         // lets see if bob's wallet can claim the sent:
         let sent_output = &signed.signed_transaction.transaction.body.outputs()[sent_index].clone();
@@ -965,12 +969,14 @@ mod test {
         assert_eq!(init.info.inputs.len(), 3);
         assert_eq!(init.info.outputs.len(), 0);
 
-        assert!(sign_locked_transaction(
-            &alice_view_key_manager,
-            rules.consensus_constants(0).clone(),
-            Network::LocalNet,
-            init
-        )
-        .is_err());
+        assert!(
+            sign_locked_transaction(
+                &alice_view_key_manager,
+                rules.consensus_constants(0).clone(),
+                Network::LocalNet,
+                init
+            )
+            .is_err()
+        );
     }
 }

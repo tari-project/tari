@@ -22,7 +22,7 @@
 
 use std::{fs, io, net::SocketAddr, sync::Arc, time::Duration};
 
-use futures::{future, future::Either, pin_mut, StreamExt};
+use futures::{StreamExt, future, future::Either, pin_mut};
 use log::*;
 use tari_shutdown::OptionalShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -33,11 +33,6 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     tor::{
-        control_client::{
-            commands::{AddOnionFlag, AddOnionResponse},
-            TorControlEvent,
-        },
-        hidden_service::TorProxyOpts,
         Authentication,
         HiddenService,
         HsFlags,
@@ -45,6 +40,11 @@ use crate::{
         TorClientError,
         TorControlPortClient,
         TorIdentity,
+        control_client::{
+            TorControlEvent,
+            commands::{AddOnionFlag, AddOnionResponse},
+        },
+        hidden_service::TorProxyOpts,
     },
     transports::{SocksConfig, SocksTransport},
     utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr},

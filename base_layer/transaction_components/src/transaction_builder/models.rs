@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
 
 use crate::{
+    MicroMinotari,
     key_manager::TariKeyId,
     transaction_components::{MemoField, Transaction, WalletOutput},
-    MicroMinotari,
 };
 
 #[derive(Clone, Debug, PartialEq)]

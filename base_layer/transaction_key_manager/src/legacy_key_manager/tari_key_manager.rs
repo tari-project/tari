@@ -23,7 +23,7 @@
 use std::marker::PhantomData;
 
 use derivative::Derivative;
-use digest::{consts::U64, typenum::IsEqual, Digest};
+use digest::{Digest, consts::U64, typenum::IsEqual};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
@@ -162,10 +162,10 @@ mod test {
 
     use super::*;
     use crate::legacy_key_manager::{
-        create_new_random_key_manager,
         LegacySerializedKeyString,
         LegacyTariKeyId,
         LegacyTransactionKeyManagerInterface,
+        create_new_random_key_manager,
     };
 
     #[test]

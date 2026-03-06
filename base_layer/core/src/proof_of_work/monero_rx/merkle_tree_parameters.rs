@@ -133,6 +133,7 @@ mod test {
     use monero::VarInt;
 
     use crate::proof_of_work::monero_rx::{
+        MerkleTreeParameters,
         merkle_tree_parameters::{
             encode_aux_chain_count,
             encode_aux_nonce,
@@ -141,7 +142,6 @@ mod test {
             get_aux_nonce,
             get_decode_bits,
         },
-        MerkleTreeParameters,
     };
 
     #[test]
@@ -397,7 +397,7 @@ mod test {
     }
 
     mod quicktest {
-        use quickcheck::{quickcheck, Arbitrary, Gen};
+        use quickcheck::{Arbitrary, Gen, quickcheck};
 
         use crate::proof_of_work::monero_rx::MerkleTreeParameters;
 

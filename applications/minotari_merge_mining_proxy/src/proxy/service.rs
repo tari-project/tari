@@ -24,12 +24,12 @@ use std::{
     convert::Infallible,
     future::Future,
     pin::Pin,
-    sync::{atomic::AtomicBool, Arc, RwLock},
+    sync::{Arc, RwLock, atomic::AtomicBool},
 };
 
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
-use hyper::{body::Incoming, service::Service, Request, Response, StatusCode};
+use hyper::{Request, Response, StatusCode, body::Incoming, service::Service};
 use jsonrpc::error::StandardError;
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use serde_json::json;

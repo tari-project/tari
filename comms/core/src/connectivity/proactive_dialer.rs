@@ -215,16 +215,16 @@ impl ProactiveDialer {
         for peer in candidates {
             // The SQL query already filtered for communication nodes, non-banned, non-deleted
             // Just need to check circuit breaker state
-            if let Some(stats) = connection_stats.get(&peer.node_id) {
-                if !stats.should_allow_connection(self.config.circuit_breaker_retry_interval) {
-                    trace!(
-                        target: LOG_TARGET,
-                        "({}) Skipping peer {} due to circuit breaker",
-                        task_id,
-                        peer.node_id.short_str()
-                    );
-                    continue;
-                }
+            if let Some(stats) = connection_stats.get(&peer.node_id) &&
+                !stats.should_allow_connection(self.config.circuit_breaker_retry_interval)
+            {
+                trace!(
+                    target: LOG_TARGET,
+                    "({}) Skipping peer {} due to circuit breaker",
+                    task_id,
+                    peer.node_id.short_str()
+                );
+                continue;
             }
 
             final_candidates.push(peer);

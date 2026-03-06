@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::mempool::{proto::mempool::StateResponse as ProtoStateResponse, StateResponse};
+use crate::mempool::{StateResponse, proto::mempool::StateResponse as ProtoStateResponse};
 
 //--------------------------------- StateResponse -------------------------------------------//
 

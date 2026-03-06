@@ -24,30 +24,30 @@
 use std::convert::TryFrom;
 
 use minotari_wallet::output_manager_service::{
+    RangeLimit,
+    UtxoSelectionCriteria,
     error::OutputManagerStorageError,
     service::Balance,
     storage::{
+        OutputSource,
+        OutputStatus,
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbWalletOutput,
         sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
-        OutputSource,
-        OutputStatus,
     },
-    RangeLimit,
-    UtxoSelectionCriteria,
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_types::{
     transaction::TxId,
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{transaction_components::OutputFeatures, MicroMinotari};
+use tari_transaction_components::{MicroMinotari, transaction_components::OutputFeatures};
 use tari_transaction_key_manager::legacy_key_manager::{
-    create_new_random_key_manager,
     LegacyTransactionKeyManagerInterface,
+    create_new_random_key_manager,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
@@ -333,10 +333,12 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(unspent_outputs.len(), 6);
 
     let last_mined_output = db.get_last_mined_output(&key_manager).unwrap().unwrap();
-    assert!(pending_txs[1]
-        .outputs_to_be_received
-        .iter()
-        .any(|o| o.commitment == last_mined_output.commitment));
+    assert!(
+        pending_txs[1]
+            .outputs_to_be_received
+            .iter()
+            .any(|o| o.commitment == last_mined_output.commitment)
+    );
 
     let last_spent_output = db.get_last_spent_output(&key_manager).unwrap().unwrap();
     assert_eq!(
@@ -717,9 +719,10 @@ pub async fn test_raw_custom_queries_regression() {
         confirmed: true,
         mined_timestamp: 0,
     });
-    assert!(db
-        .set_received_outputs_mined_height_and_statuses(updates_info_with_unknown)
-        .is_err());
+    assert!(
+        db.set_received_outputs_mined_height_and_statuses(updates_info_with_unknown)
+            .is_err()
+    );
 
     db.set_received_outputs_mined_height_and_statuses(updates_info).unwrap();
 

@@ -32,35 +32,35 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use tari_comms::{
+    Bytes,
+    BytesMut,
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
     types::{CommsDHKE, CommsPublicKey},
-    Bytes,
-    BytesMut,
 };
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 use tokio::sync::oneshot;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{Service, ServiceExt, layer::Layer};
 
 use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
+    DhtConfig,
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
     crypt,
     dedup,
     discovery::DhtDiscoveryRequester,
-    envelope::{datetime_to_epochtime, DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination, datetime_to_epochtime},
     message_signature::MessageSignature,
     outbound::{
+        SendMessageResponse,
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
         message_send_state::MessageSendState,
-        SendMessageResponse,
     },
     proto::envelope::DhtMessageType,
     version::DhtProtocolVersion,
-    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
@@ -648,9 +648,11 @@ mod test {
 
         assert_eq!(spy.call_count(), 2);
         let requests = spy.take_requests();
-        assert!(requests
-            .iter()
-            .any(|msg| msg.destination_node_id == example_peer.node_id));
+        assert!(
+            requests
+                .iter()
+                .any(|msg| msg.destination_node_id == example_peer.node_id)
+        );
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 

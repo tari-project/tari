@@ -177,26 +177,36 @@ async fn test_dht_wallet_discover_propagation() {
     let client_D_peer_manager = client_D.comms.peer_manager();
 
     // Check that all the nodes know about each other in the chain and the discovery worked
-    assert!(node_A_peer_manager
-        .exists(client_D.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_B_peer_manager
-        .exists(node_A.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_C_peer_manager
-        .exists(node_B.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(client_D_peer_manager
-        .exists(node_C.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(client_D_peer_manager
-        .exists(node_A.node_identity().public_key())
-        .await
-        .unwrap());
+    assert!(
+        node_A_peer_manager
+            .exists(client_D.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        node_B_peer_manager
+            .exists(node_A.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        node_C_peer_manager
+            .exists(node_B.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        client_D_peer_manager
+            .exists(node_C.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        client_D_peer_manager
+            .exists(node_A.node_identity().public_key())
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -274,26 +284,36 @@ async fn test_dht_node_discover_propagation() {
     let node_D_peer_manager = node_D.comms.peer_manager();
 
     // Check that all the nodes know about each other in the chain and the discovery worked
-    assert!(node_A_peer_manager
-        .exists(node_D.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_B_peer_manager
-        .exists(node_A.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_C_peer_manager
-        .exists(node_B.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_D_peer_manager
-        .exists(node_C.node_identity().public_key())
-        .await
-        .unwrap());
-    assert!(node_D_peer_manager
-        .exists(node_A.node_identity().public_key())
-        .await
-        .unwrap());
+    assert!(
+        node_A_peer_manager
+            .exists(node_D.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        node_B_peer_manager
+            .exists(node_A.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        node_C_peer_manager
+            .exists(node_B.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        node_D_peer_manager
+            .exists(node_C.node_identity().public_key())
+            .await
+            .unwrap()
+    );
+    assert!(
+        node_D_peer_manager
+            .exists(node_A.node_identity().public_key())
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -822,10 +842,9 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         .outbound_requester()
         .send_message_no_header(
             SendMessageParams::new()
-                .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
-                    .source_peer
-                    .node_id
-                    .clone()])
+                .propagate(node_B.node_identity().public_key().clone().into(), vec![
+                    msg.source_peer.node_id.clone(),
+                ])
                 .with_dht_header(msg.dht_header)
                 .finish(),
             envelope,
@@ -932,10 +951,9 @@ async fn test_dht_header_not_malleable() {
         .outbound_requester()
         .send_message_no_header(
             SendMessageParams::new()
-                .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
-                    .source_peer
-                    .node_id
-                    .clone()])
+                .propagate(node_B.node_identity().public_key().clone().into(), vec![
+                    msg.source_peer.node_id.clone(),
+                ])
                 .with_dht_header(msg.dht_header)
                 .finish(),
             envelope,

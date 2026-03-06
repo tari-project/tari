@@ -28,23 +28,23 @@ use std::{
 };
 
 use bytes::{Buf, Bytes, BytesMut};
-use futures::{stream, SinkExt, StreamExt};
-use rand::{rngs::OsRng, RngCore};
+use futures::{SinkExt, StreamExt, stream};
+use rand::{RngCore, rngs::OsRng};
 use tari_comms::{
+    CommsNode,
+    PeerConnection,
+    Substream,
     framing,
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeId, Peer},
     protocol::{ProtocolEvent, ProtocolNotification},
     utils,
-    CommsNode,
-    PeerConnection,
-    Substream,
 };
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc, oneshot, RwLock},
+    sync::{RwLock, mpsc, oneshot},
     task,
     task::JoinHandle,
     time,

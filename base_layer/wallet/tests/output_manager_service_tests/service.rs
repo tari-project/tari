@@ -28,30 +28,30 @@ use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
+        UtxoSelectionCriteria,
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
         handle::OutputManagerHandle,
         service::OutputManagerService,
         storage::{
+            OutputStatus,
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::SpendingPriority,
             sqlite_db::OutputManagerSqliteDatabase,
-            OutputStatus,
         },
-        UtxoSelectionCriteria,
     },
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
     utxo_scanner_service::{handle::UtxoScannerHandle, service::ScannedBlock},
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput},
 };
-use tari_script::{inputs, script, TariScript};
+use tari_script::{TariScript, inputs, script};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
@@ -59,15 +59,15 @@ use tari_transaction_components::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::{uT, MicroMinotari, T},
-    test_helpers::{create_wallet_output_with_data, TestParams},
-    transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},
+    tari_amount::{MicroMinotari, T, uT},
+    test_helpers::{TestParams, create_wallet_output_with_data},
+    transaction_components::{MemoField, OutputFeatures, TransactionOutput, WalletOutput, covenants::Covenant},
     weight::TransactionWeight,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
-    create_new_random_key_manager,
     LegacyTransactionKeyManagerInterface,
     MemoryKeyManager,
+    create_new_random_key_manager,
 };
 use tokio::{
     sync::{broadcast, broadcast::channel},

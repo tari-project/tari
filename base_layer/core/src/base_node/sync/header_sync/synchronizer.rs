@@ -29,26 +29,26 @@ use log::*;
 use primitive_types::U512;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
+    PeerConnection,
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
     protocol::rpc::{RpcClient, RpcError},
-    PeerConnection,
 };
 use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
 use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 
-pub(crate) use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
+pub(crate) use super::{BlockHeaderSyncError, validator::BlockHeaderSyncValidator};
 use crate::{
     base_node::sync::{
+        BlockchainSyncConfig,
+        SyncPeer,
         ban::PeerBanManager,
         header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
         hooks::Hooks,
         rpc,
-        BlockchainSyncConfig,
-        SyncPeer,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
+    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
     common::rolling_avg::RollingAverageTime,
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -680,18 +680,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "{header}"
             );
-            if let Some(prev_header_height) = prev_height {
-                if header.height != prev_header_height.saturating_add(1) {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Received header #{} `{}` does not follow previous header",
-                        header.height,
-                        header.hash().to_hex()
-                    );
-                    return Err(BlockHeaderSyncError::ReceivedInvalidHeader(
-                        "Header does not follow previous header".to_string(),
-                    ));
-                }
+            if let Some(prev_header_height) = prev_height &&
+                header.height != prev_header_height.saturating_add(1)
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "Received header #{} `{}` does not follow previous header",
+                    header.height,
+                    header.hash().to_hex()
+                );
+                return Err(BlockHeaderSyncError::ReceivedInvalidHeader(
+                    "Header does not follow previous header".to_string(),
+                ));
             }
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             if let Some(h) = existing_header {
@@ -732,14 +732,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
 
             let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);
-            if let Some(avg_latency) = last_avg_latency {
-                if avg_latency > max_latency {
-                    return Err(BlockHeaderSyncError::MaxLatencyExceeded {
-                        peer: sync_peer.node_id().clone(),
-                        latency: avg_latency,
-                        max_latency,
-                    });
-                }
+            if let Some(avg_latency) = last_avg_latency &&
+                avg_latency > max_latency
+            {
+                return Err(BlockHeaderSyncError::MaxLatencyExceeded {
+                    peer: sync_peer.node_id().clone(),
+                    latency: avg_latency,
+                    max_latency,
+                });
             }
 
             last_sync_timer = Instant::now();

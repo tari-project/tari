@@ -28,13 +28,13 @@ use std::{
 };
 
 use chrono::Utc;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::automation::{
-    commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
-    error::CommandError,
     PreMineSpendStep1SessionInfo,
     SessionId,
+    commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
+    error::CommandError,
 };
 
 #[derive(Debug)]
@@ -78,10 +78,10 @@ pub(crate) fn write_json_object_to_file_as_line<T: Serialize>(
     reset_file: bool,
     outputs: T,
 ) -> Result<(), CommandError> {
-    if let Some(file_path) = file.parent() {
-        if !file_path.exists() {
-            fs::create_dir_all(file_path).map_err(|e| CommandError::JsonFile(format!("{} ({})", e, file.display())))?;
-        }
+    if let Some(file_path) = file.parent() &&
+        !file_path.exists()
+    {
+        fs::create_dir_all(file_path).map_err(|e| CommandError::JsonFile(format!("{} ({})", e, file.display())))?;
     }
     if reset_file && file.exists() {
         fs::remove_file(file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
@@ -104,10 +104,10 @@ fn append_json_line_to_file<P: AsRef<Path>, T: Serialize>(file: P, output: T) ->
 
 /// Write outputs to a JSON file
 pub(crate) fn write_to_json_file<T: Serialize>(file: &Path, reset_file: bool, data: T) -> Result<(), CommandError> {
-    if let Some(file_path) = file.parent() {
-        if !file_path.exists() {
-            fs::create_dir_all(file_path).map_err(|e| CommandError::JsonFile(format!("{} ({})", e, file.display())))?;
-        }
+    if let Some(file_path) = file.parent() &&
+        !file_path.exists()
+    {
+        fs::create_dir_all(file_path).map_err(|e| CommandError::JsonFile(format!("{} ({})", e, file.display())))?;
     }
     if reset_file && file.exists() {
         fs::remove_file(file).map_err(|e| CommandError::JsonFile(e.to_string()))?;

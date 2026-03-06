@@ -3,11 +3,10 @@
 
 use std::{fmt::Debug, mem};
 
-use digest::{consts::U32, Digest};
+use digest::{Digest, consts::U32};
 use serde::{Deserialize, Serialize};
 
 use crate::sparse_merkle_tree::{
-    bit_utils::{traverse_direction, TraverseDirection},
     EmptyNode,
     ExclusionProof,
     LeafNode,
@@ -17,6 +16,7 @@ use crate::sparse_merkle_tree::{
     NodeKey,
     SMTError,
     ValueHash,
+    bit_utils::{TraverseDirection, traverse_direction},
 };
 
 #[derive(Debug, PartialEq)]
@@ -428,15 +428,15 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use digest::{consts::U32, generic_array::GenericArray, Digest};
+    use digest::{Digest, consts::U32, generic_array::GenericArray};
 
     use crate::sparse_merkle_tree::{
-        tree::{DeleteResult, SparseMerkleTree},
+        EMPTY_NODE_HASH,
         NodeKey,
         SMTError,
         UpdateResult,
         ValueHash,
-        EMPTY_NODE_HASH,
+        tree::{DeleteResult, SparseMerkleTree},
     };
 
     fn short_key(v: u8) -> NodeKey {

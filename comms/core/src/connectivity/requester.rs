@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future, stream::FuturesUnordered, Stream};
+use futures::{Stream, future, stream::FuturesUnordered};
 use log::*;
 use tokio::{
     sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
@@ -33,17 +33,17 @@ use tokio::{
 };
 
 use super::{
+    ConnectivitySelection,
     connection_pool::PeerConnectionState,
     error::ConnectivityError,
     manager::ConnectivityStatus,
-    ConnectivitySelection,
 };
 use crate::{
-    connection_manager::ConnectionManagerError,
-    peer_manager::{NodeId, Peer},
     Minimized,
     NodeIdentity,
     PeerConnection,
+    connection_manager::ConnectionManagerError,
+    peer_manager::{NodeId, Peer},
 };
 
 const LOG_TARGET: &str = "comms::connectivity::requester";

@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use tari_common_types::types::{CompressedPublicKey, PrivateKey};
 
-use crate::legacy_key_manager::{error::KeyManagerStorageError, KeyManagerState, TransactionKeyManagerBackend};
+use crate::legacy_key_manager::{KeyManagerState, TransactionKeyManagerBackend, error::KeyManagerStorageError};
 
 /// Holds the state of the KeyManager for the branch
 #[derive(Clone, Debug, PartialEq)]

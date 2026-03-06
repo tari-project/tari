@@ -30,24 +30,25 @@ use tari_common_types::{
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
+    MicroMinotari,
+    TransactionBuilder,
     transaction_components::{
-        covenants::Covenant,
         MemoField,
         OutputFeatures,
         Transaction,
         TransactionOutput,
         WalletOutput,
         WalletOutputBuilder,
+        covenants::Covenant,
     },
-    MicroMinotari,
-    TransactionBuilder,
 };
-use tari_transaction_key_manager::legacy_key_manager::{wallet_types::FeeType, LegacyTransactionKeyManagerInterface};
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTransactionKeyManagerInterface, wallet_types::FeeType};
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::output_manager_service::{
+    UtxoSelectionCriteria,
     error::OutputManagerError,
     service::{Balance, OutputInfoByTxId, UseOutput},
     storage::{
@@ -55,7 +56,6 @@ use crate::output_manager_service::{
         models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
         sqlite_db::CoinBucket,
     },
-    UtxoSelectionCriteria,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::handle";

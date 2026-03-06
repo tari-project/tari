@@ -38,11 +38,11 @@ use std::marker::PhantomData;
 use futures::future;
 use log::*;
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+    async_trait,
+    reply_channel,
 };
 use tari_transaction_components::{
     consensus::NetworkConsensus,

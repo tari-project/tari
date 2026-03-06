@@ -33,11 +33,11 @@ use std::{
     time::Duration,
 };
 
-use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
+use minotari_app_grpc::tari_rpc::{NewBlockTemplateRequest, PowAlgo, pow_algo::PowAlgos};
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{utils::deserialize_string_or_struct, Network},
     SubConfigPath,
+    configuration::{Network, utils::deserialize_string_or_struct},
 };
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_transaction_components::{tari_proof_of_work::PowAlgorithm, transaction_components::RangeProofType};

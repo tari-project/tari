@@ -9,10 +9,10 @@ use std::{
 };
 
 use serde::{
-    de::{self, SeqAccess, Visitor},
     Deserialize,
     Deserializer,
     Serialize,
+    de::{self, SeqAccess, Visitor},
 };
 
 // Define a new type ConfigList<T>

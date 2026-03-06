@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_service_framework::reply_channel::TransportChannelError;
-use tari_transaction_components::{transaction_components::TransactionError, BanPeriod, BanReason};
+use tari_transaction_components::{BanPeriod, BanReason, transaction_components::TransactionError};
 use thiserror::Error;
 use tokio::task::JoinError;
 

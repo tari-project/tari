@@ -31,37 +31,37 @@ use std::{
 
 use futures::future;
 use once_cell::sync::Lazy;
-use rand::{distributions, rngs::OsRng, Rng};
+use rand::{Rng, distributions, rngs::OsRng};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
+    CommsBuilder,
+    CommsNode,
+    PeerConnection,
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         NodeIdentity,
         Peer,
         PeerFeatures,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     pipeline::{self, SinkService},
     protocol::{
+        ProtocolId,
         messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        ProtocolId,
     },
     transports::MemoryTransport,
     types::CommsDatabase,
-    CommsBuilder,
-    CommsNode,
-    PeerConnection,
 };
 use tari_comms_dht::{
+    Dht,
+    DhtConfig,
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
-    Dht,
-    DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
@@ -73,7 +73,7 @@ use tokio::{
 };
 use tower::ServiceBuilder;
 
-use crate::memory_net::{create_test_peer, DrainBurst};
+use crate::memory_net::{DrainBurst, create_test_peer};
 
 pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/1.0");
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;

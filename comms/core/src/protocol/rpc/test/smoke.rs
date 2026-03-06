@@ -29,19 +29,28 @@ use tari_test_utils::unpack_enum;
 use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc, RwLock},
+    sync::{RwLock, mpsc},
     task,
     time,
 };
 use tokio_stream::Stream;
 
 use crate::{
+    NodeIdentity,
+    Substream,
     framing,
     multiplexing::{Control, Yamux},
     peer_manager::NodeId,
     protocol::{
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
         rpc,
         rpc::{
+            RpcError,
+            RpcServer,
+            RpcServerBuilder,
+            RpcStatusCode,
             context::RpcCommsBackend,
             error::HandshakeRejectReason,
             handshake::RpcHandshakeError,
@@ -58,18 +67,9 @@ use crate::{
                 },
                 mock::create_mocked_rpc_context,
             },
-            RpcError,
-            RpcServer,
-            RpcServerBuilder,
-            RpcStatusCode,
         },
-        ProtocolEvent,
-        ProtocolId,
-        ProtocolNotification,
     },
     test_utils::{node_identity::build_node_identity, transport::build_multiplexed_connections},
-    NodeIdentity,
-    Substream,
 };
 
 pub(super) async fn setup_service_with_builder<T: GreetingRpc>(

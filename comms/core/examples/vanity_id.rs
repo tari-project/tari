@@ -25,7 +25,7 @@ use std::{
     error::Error,
     fmt::Write as FmtWrite,
     fs,
-    io::{stdout, Write},
+    io::{Write, stdout},
     time::Instant,
 };
 
@@ -33,11 +33,11 @@ use anyhow::anyhow;
 use multiaddr::Multiaddr;
 use rand::rngs::OsRng;
 use tari_comms::{
+    NodeIdentity,
     peer_manager::{NodeId, PeerFeatures},
     types::CommsPublicKey,
-    NodeIdentity,
 };
-use tari_crypto::tari_utilities::{message_format::MessageFormat, ByteArray};
+use tari_crypto::tari_utilities::{ByteArray, message_format::MessageFormat};
 use tokio::{sync::mpsc, task, task::JoinHandle};
 
 #[tokio::main]

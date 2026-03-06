@@ -24,7 +24,7 @@ use std::{convert::TryFrom, marker::PhantomData};
 
 use digest::Digest;
 
-use crate::{error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, ArrayLike, Hash, MerkleMountainRange};
+use crate::{ArrayLike, Hash, MerkleMountainRange, error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet};
 
 pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 

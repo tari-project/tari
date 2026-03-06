@@ -25,11 +25,11 @@ use tari_comms_dht::outbound::DhtOutboundError;
 use tari_node_components::blocks::{BlockError, BlockHeaderValidationError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
+    BanPeriod,
+    BanReason,
     consensus::ConsensusManagerError,
     tari_proof_of_work::DifficultyError,
     transaction_components::TransactionError,
-    BanPeriod,
-    BanReason,
 };
 use thiserror::Error;
 

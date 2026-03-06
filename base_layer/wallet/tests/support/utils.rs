@@ -21,12 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{CryptoRng, Rng};
-use tari_script::{script, TariScript};
+use tari_script::{TariScript, script};
 use tari_transaction_components::{
-    key_manager::{KeyManager, TransactionKeyManagerInterface},
-    test_helpers::{create_wallet_output_with_data, TestParams},
-    transaction_components::{OutputFeatures, WalletOutput},
     MicroMinotari,
+    key_manager::{KeyManager, TransactionKeyManagerInterface},
+    test_helpers::{TestParams, create_wallet_output_with_data},
+    transaction_components::{OutputFeatures, WalletOutput},
 };
 
 pub fn make_input<R: Rng + CryptoRng>(

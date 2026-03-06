@@ -31,13 +31,13 @@
 use std::sync::Arc;
 
 use tari_common_types::seeds::cipher_seed::CipherSeed;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tari_transaction_components::crypto_factories::CryptoFactories;
 
 use crate::legacy_key_manager::{
+    LegacyTransactionKeyManagerWrapper,
     interface::TransactionKeyManagerBackend,
     wallet_types::LegacyWalletType,
-    LegacyTransactionKeyManagerWrapper,
 };
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.

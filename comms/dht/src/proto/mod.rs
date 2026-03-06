@@ -27,14 +27,14 @@ use std::{
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_comms::{
+    NodeIdentity,
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
     types::{CommsPublicKey, CommsSecretKey, CompressedSignature},
-    NodeIdentity,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{proto::dht::JoinMessage, rpc::UnvalidatedPeerInfo};
 

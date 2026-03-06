@@ -49,9 +49,9 @@ pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig
 pub mod sync;
 
 pub use sync::{
-    rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService},
     BlockchainSyncConfig,
     SyncValidators,
+    rpc::{BaseNodeSyncService, create_base_node_sync_rpc_service},
 };
 
 pub mod proto;

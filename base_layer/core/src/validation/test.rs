@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use std::{cmp, sync::Arc};
 
-use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
+use jmt::{JellyfishMerkleTree, KeyHash, mock::MockTreeStore};
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
@@ -33,15 +33,15 @@ use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     key_manager::{KeyManager, TxoStage},
-    tari_amount::{uT, MicroMinotari},
+    tari_amount::{MicroMinotari, uT},
     test_helpers::{create_random_signature_from_secret_key, create_utxo},
     transaction_components::{
-        covenants::Covenant,
         KernelBuilder,
         KernelFeatures,
         OutputFeatures,
         RangeProofType,
         TransactionKernel,
+        covenants::Covenant,
     },
     tx,
 };
@@ -64,7 +64,7 @@ mod header_validators {
         block_specs,
         consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
         test_helpers::blockchain::{create_main_chain, create_new_blockchain},
-        validation::{header::HeaderFullValidator, HeaderChainLinkedValidator},
+        validation::{HeaderChainLinkedValidator, header::HeaderFullValidator},
     };
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -247,7 +247,7 @@ async fn chain_balance_validation() {
     }
     let root = smt.put_value_set(batch, 0).unwrap();
 
-    gen_block.header.output_mr = root.0 .0.into();
+    gen_block.header.output_mr = root.0.0.into();
     let mut accum = genesis.accumulated_data().clone();
     accum.hash = gen_block.header.hash();
 
@@ -471,7 +471,7 @@ async fn chain_balance_validation_burned() {
     }
     let root = smt.put_value_set(batch, 0).unwrap();
 
-    gen_block.header.output_mr = root.0 .0.into();
+    gen_block.header.output_mr = root.0.0.into();
     let mut accum = genesis.accumulated_data().clone();
     accum.hash = gen_block.header.hash();
     let genesis = ChainBlock::try_construct(Arc::new(gen_block), accum).unwrap();
@@ -602,7 +602,7 @@ mod transaction_validator {
 
     use tari_transaction_components::{
         transaction_components::{CoinBaseExtra, OutputType, TransactionError},
-        validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
+        validation::{AggregatedBodyValidationError, transaction::TransactionInternalConsistencyValidator},
     };
 
     use super::*;

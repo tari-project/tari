@@ -32,12 +32,12 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     proof_of_work::monero_rx::MoneroPowData,
     validation::{
-        aggregate_body::AggregateBodyChainLinkedValidator,
-        block_body::block_body_partial_validator::BlockBodyPartialValidator,
-        helpers::check_mmr_roots,
         BlockBodyValidator,
         CandidateBlockValidator,
         ValidationError,
+        aggregate_body::AggregateBodyChainLinkedValidator,
+        block_body::block_body_partial_validator::BlockBodyPartialValidator,
+        helpers::check_mmr_roots,
     },
 };
 

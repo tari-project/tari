@@ -216,7 +216,7 @@ impl From<prost::DecodeError> for IdentityProtocolError {
 
 #[cfg(test)]
 mod test {
-    use futures::{future, StreamExt};
+    use futures::{StreamExt, future};
 
     use crate::{
         peer_manager::PeerFeatures,

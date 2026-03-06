@@ -30,35 +30,35 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
+use tari_comms::{PeerConnection, connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient};
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_node_components::blocks::{BlockHeader, ChainHeader};
 use tari_transaction_components::{
-    transaction_components::{transaction_output::batch_verify_range_proofs, TransactionKernel, TransactionOutput},
-    validation::{aggregate_body::validate_individual_output, helpers::validate_output_version},
     BanPeriod,
+    transaction_components::{TransactionKernel, TransactionOutput, transaction_output::batch_verify_range_proofs},
+    validation::{aggregate_body::validate_individual_output, helpers::validate_output_version},
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::task;
 
 use super::error::HorizonSyncError;
 use crate::{
+    PrunedKernelMmr,
     base_node::sync::{
+        BlockchainSyncConfig,
+        SyncPeer,
         ban::PeerBanManager,
         hooks::Hooks,
         horizon_state_sync::{HorizonSyncInfo, HorizonSyncStatus},
         rpc,
         rpc::BaseNodeSyncRpcClient,
-        BlockchainSyncConfig,
-        SyncPeer,
     },
     blocks::UpdateBlockAccumulatedData,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
+    chain_storage::{BlockchainBackend, ChainStorageError, MmrTree, async_db::AsyncBlockchainDb},
     common::rolling_avg::RollingAverageTime,
     consensus::BaseNodeConsensusManager,
-    proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
+    proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse, sync_utxos_response::Txo},
     validation::FinalHorizonStateValidation,
-    PrunedKernelMmr,
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
@@ -342,14 +342,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         current_header.hash(), e
                         );
                     }
-                    if count % 100 == 0 || count == outputs.len() {
-                        if let Err(e) = txn.commit().await {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Clean up failed sync - commit prune outputs for header '{}': {}",
-                                current_header.hash(), e
-                            );
-                        }
+                    if (count % 100 == 0 || count == outputs.len()) &&
+                        let Err(e) = txn.commit().await
+                    {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Clean up failed sync - commit prune outputs for header '{}': {}",
+                            current_header.hash(), e
+                        );
                     }
                 }
             }
@@ -552,14 +552,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     fn check_latency(&self, peer: &NodeId, avg_latency: &RollingAverageTime) -> Result<(), HorizonSyncError> {
-        if let Some(avg_latency) = avg_latency.calculate_average_with_min_samples(5) {
-            if avg_latency > self.max_latency {
-                return Err(HorizonSyncError::MaxLatencyExceeded {
-                    peer: peer.clone(),
-                    latency: avg_latency,
-                    max_latency: self.max_latency,
-                });
-            }
+        if let Some(avg_latency) = avg_latency.calculate_average_with_min_samples(5) &&
+            avg_latency > self.max_latency
+        {
+            return Err(HorizonSyncError::MaxLatencyExceeded {
+                peer: peer.clone(),
+                latency: avg_latency,
+                max_latency: self.max_latency,
+            });
         }
 
         Ok(())
@@ -727,7 +727,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         None => {
                             return Err(HorizonSyncError::IncorrectResponse(
                                 "Peer sent unknown commitment hash".into(),
-                            ))
+                            ));
                         },
                     }
                 },

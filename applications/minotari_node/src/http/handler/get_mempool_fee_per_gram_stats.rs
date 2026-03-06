@@ -4,22 +4,22 @@
 use std::sync::Arc;
 
 use axum::{
+    Extension,
+    Json,
     extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Extension,
-    Json,
 };
 use log::debug;
 use serde::{Deserialize, Serialize};
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
 use tonic::service::AxumBody;
 use utoipa::ToSchema;
 
-use crate::http::handler::{error_handler_with_message, ErrorResponse};
+use crate::http::handler::{ErrorResponse, error_handler_with_message};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_mempool_fee_per_gram_stats";
 

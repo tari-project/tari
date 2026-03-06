@@ -25,8 +25,8 @@ use log::*;
 use crate::{
     base_node::{
         state_machine_service::{
-            states::{HeaderSyncState, StateEvent},
             BaseNodeStateMachine,
+            states::{HeaderSyncState, StateEvent},
         },
         sync::SyncPeer,
     },

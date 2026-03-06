@@ -23,23 +23,23 @@
 use std::{
     convert::TryFrom,
     mem::size_of,
-    str::{from_utf8, FromStr},
+    str::{FromStr, from_utf8},
     sync::{Arc, RwLock},
 };
 
 use argon2::password_hash::{
-    rand_core::{OsRng, RngCore},
     SaltString,
+    rand_core::{OsRng, RngCore},
 };
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::{prelude::*, result::Error};
-use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
+use digest::{FixedOutput, consts::U32, generic_array::GenericArray};
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     seeds::cipher_seed::CipherSeed,
     types::CompressedCommitment,
 };
@@ -49,12 +49,12 @@ use tari_comms::{
 };
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_utilities::{
-    hex::{from_hex, Hex},
-    hidden_type,
-    safe_array::SafeArray,
     ByteArray,
     Hidden,
     SafePassword,
+    hex::{Hex, from_hex},
+    hidden_type,
+    safe_array::SafeArray,
 };
 use tokio::time::Instant;
 use zeroize::Zeroize;
@@ -596,7 +596,7 @@ impl WalletBackend for WalletSqliteDatabase {
             _ => {
                 return Err(WalletStorageError::UnexpectedResult(
                     "Unable to get valid key-related data from database".into(),
-                ))
+                ));
             },
         };
 
@@ -924,15 +924,15 @@ mod test {
     use chrono::Utc;
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_common_types::{
-        encryption::{decrypt_bytes_integral_nonce, Encryptable},
+        encryption::{Encryptable, decrypt_bytes_integral_nonce},
         seeds::cipher_seed::CipherSeed,
         types::FixedHash,
     };
     use tari_test_utils::random::string;
     use tari_utilities::{
-        hex::{from_hex, Hex},
         ByteArray,
         SafePassword,
+        hex::{Hex, from_hex},
     };
     use tempfile::tempdir;
 
@@ -963,12 +963,13 @@ mod test {
         assert!(WalletSqliteDatabase::new(connection.clone(), "evil passphrase".to_string().into()).is_err());
 
         // Try to change the passphrase, but fail
-        assert!(db
-            .change_passphrase(
+        assert!(
+            db.change_passphrase(
                 &"evil passphrase".to_string().into(),
                 &"new passphrase".to_string().into()
             )
-            .is_err());
+            .is_err()
+        );
 
         // The existing passphrase still works
         assert!(WalletSqliteDatabase::new(connection.clone(), "passphrase".to_string().into()).is_ok());
@@ -977,9 +978,10 @@ mod test {
         assert!(WalletSqliteDatabase::new(connection.clone(), "new passphrase".to_string().into()).is_err());
 
         // Successfully change the passphrase
-        assert!(db
-            .change_passphrase(&"passphrase".to_string().into(), &"new passphrase".to_string().into())
-            .is_ok());
+        assert!(
+            db.change_passphrase(&"passphrase".to_string().into(), &"new passphrase".to_string().into())
+                .is_ok()
+        );
 
         // The existing passphrase no longer works
         assert!(WalletSqliteDatabase::new(connection.clone(), "passphrase".to_string().into()).is_err());

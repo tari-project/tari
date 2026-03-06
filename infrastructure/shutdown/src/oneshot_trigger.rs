@@ -28,9 +28,9 @@ use std::{
 };
 
 use futures::{
+    FutureExt,
     channel::{oneshot, oneshot::Receiver},
     future::{FusedFuture, Shared},
-    FutureExt,
 };
 
 pub fn channel<T: Clone>() -> OneshotTrigger<T> {

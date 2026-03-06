@@ -25,17 +25,17 @@ use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 
 use crate::{
-    peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
+    CommsBuilder,
+    peer_manager::database::{MIGRATIONS, PeerDatabaseSql},
     protocol::rpc::{
-        test::mock::{MockRpcClient, MockRpcService},
         RpcError,
         RpcServer,
         RpcStatus,
         RpcStatusCode,
+        test::mock::{MockRpcClient, MockRpcService},
     },
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
-    CommsBuilder,
 };
 
 #[tokio::test]

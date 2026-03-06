@@ -25,33 +25,33 @@ use std::{
     fmt::{Display, Write},
     future::Future,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Instant,
 };
 
 use futures::{future, future::Either};
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, NodeIdentity, PeerManager};
+use tari_comms::{NodeIdentity, PeerManager, connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
-    sync::{broadcast, RwLock},
+    sync::{RwLock, broadcast},
     task,
 };
 
 use crate::{
+    DhtConfig,
     event::DhtEvent,
     network_discovery::{
+        NetworkDiscoveryError,
         discovering::Discovering,
         initializing::Initializing,
         on_connect::OnConnect,
         ready::DiscoveryReady,
         seed_strap::SeedStrap,
         waiting::Waiting,
-        NetworkDiscoveryError,
     },
-    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";

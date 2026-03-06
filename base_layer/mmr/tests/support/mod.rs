@@ -22,7 +22,7 @@
 //
 
 use blake2::Blake2b;
-use digest::{consts::U32, Digest};
+use digest::{Digest, consts::U32};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::{Hash, HashSlice, MerkleMountainRange};
 

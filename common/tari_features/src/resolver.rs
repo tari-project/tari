@@ -22,7 +22,7 @@
 
 use std::fmt::Display;
 
-use crate::{Feature, FEATURE_LIST};
+use crate::{FEATURE_LIST, Feature};
 
 pub enum Target {
     TestNet,

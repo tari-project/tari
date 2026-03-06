@@ -22,7 +22,7 @@
 
 use std::{pin::Pin, task::Poll};
 
-use futures::{ready, task::Context, Future, FutureExt};
+use futures::{Future, FutureExt, ready, task::Context};
 use tower_service::Service;
 
 impl<T: ?Sized, TRequest> ServiceExt<TRequest> for T where T: Service<TRequest> {}
@@ -89,8 +89,8 @@ where
 #[cfg(test)]
 mod test {
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     };
 
     use futures::future;

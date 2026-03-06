@@ -33,7 +33,6 @@ use minotari_app_grpc::{
     tari_rpc,
     tari_rpc::{
         self as grpc,
-        pow_algo::PowAlgos,
         GetBlocksRequest,
         GetNewBlockTemplateWithCoinbasesRequest,
         GetNewBlockWithCoinbasesRequest,
@@ -41,16 +40,17 @@ use minotari_app_grpc::{
         NewBlockCoinbase,
         NewBlockTemplateRequest,
         PowAlgo,
+        pow_algo::PowAlgos,
     },
 };
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::Empty;
 use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
+    TariWorld,
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
     miner::mine_block_before_submit,
-    TariWorld,
 };
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
@@ -1151,10 +1151,10 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
         let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
 
         while let Some(resp) = peers_stream.next().await {
-            if let Ok(resp) = resp {
-                if let Some(_peer) = resp.peer {
-                    last_num_of_peers += 1
-                }
+            if let Ok(resp) = resp &&
+                let Some(_peer) = resp.peer
+            {
+                last_num_of_peers += 1
             }
         }
 

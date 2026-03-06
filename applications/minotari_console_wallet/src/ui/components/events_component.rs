@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use tui::{
+    Frame,
     backend::Backend,
     layout::{Constraint, Rect},
     widgets::{Block, Borders, Row, Table, TableState},
-    Frame,
 };
 
 use crate::ui::{
-    components::{styles, Component},
+    components::{Component, styles},
     state::AppState,
 };
 

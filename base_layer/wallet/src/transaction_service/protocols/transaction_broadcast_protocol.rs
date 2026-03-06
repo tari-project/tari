@@ -36,7 +36,7 @@ use tari_transaction_components::{
     transaction_components::Transaction,
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::watch, time::sleep};
 
 use crate::{

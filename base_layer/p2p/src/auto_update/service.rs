@@ -22,10 +22,10 @@
 
 use std::env::consts;
 
-use futures::{future::Either, stream, StreamExt};
+use futures::{StreamExt, future::Either, stream};
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     time,
@@ -124,14 +124,13 @@ impl SoftwareUpdaterService {
             };
 
             // Only notify of new or newer updates
-            if let Some(update) = maybe_update {
-                if last_version
+            if let Some(update) = maybe_update &&
+                last_version
                     .as_ref()
                     .map(|up| up.version() < update.version())
                     .unwrap_or(true)
-                {
-                    let _result = notifier.send(Some(update.clone()));
-                }
+            {
+                let _result = notifier.send(Some(update.clone()));
             }
         }
     }

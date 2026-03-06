@@ -4,12 +4,12 @@
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     burn_proof::{BurnClaimProof, EncodedMerkleProof},
-    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::FixedHash,
 };
 use tari_transaction_components::{
-    transaction_components::{EncryptedData, TransactionKernel},
     MicroMinotari,
+    transaction_components::{EncryptedData, TransactionKernel},
 };
 use tari_utilities::Hidden;
 

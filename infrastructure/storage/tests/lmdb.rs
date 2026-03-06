@@ -33,8 +33,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_storage::{
-    lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore},
     IterationResult,
+    lmdb_store::{LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore, db},
 };
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

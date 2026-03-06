@@ -59,10 +59,6 @@ impl ResponseLine {
     }
 
     pub fn err(&self) -> Option<&str> {
-        if self.is_err() {
-            Some(&self.value)
-        } else {
-            None
-        }
+        if self.is_err() { Some(&self.value) } else { None }
     }
 }

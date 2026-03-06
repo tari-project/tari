@@ -26,11 +26,11 @@ use log::*;
 use prost::Message;
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{connectivity::ConnectivityRequester, message::MessageExt, BAN_DURATION_LONG};
+use tari_comms::{BAN_DURATION_LONG, connectivity::ConnectivityRequester, message::MessageExt};
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
 use tokio::sync::broadcast;
 
-use super::{error::ChainMetadataSyncError, LOG_TARGET};
+use super::{LOG_TARGET, error::ChainMetadataSyncError};
 use crate::{
     base_node::{
         chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
@@ -221,9 +221,9 @@ mod test {
     use primitive_types::U512;
     use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
     use tari_p2p::services::liveness::{
-        mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
         Metadata,
+        mock::{LivenessMockState, create_p2p_liveness_mock},
     };
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;

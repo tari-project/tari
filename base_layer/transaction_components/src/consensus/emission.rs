@@ -309,7 +309,7 @@ impl Iterator for EmissionRate<'_> {
             return Some((self.block_num, self.reward, self.supply));
         }
         self.next_reward(); // Has side effect
-                            // Once we've reached max supply, the iterator is done
+        // Once we've reached max supply, the iterator is done
         self.supply = self.supply.checked_add(self.reward)?;
         Some((self.block_num, self.reward, self.supply))
     }

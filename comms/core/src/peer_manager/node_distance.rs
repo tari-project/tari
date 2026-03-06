@@ -27,7 +27,7 @@ use std::{
     str::FromStr,
 };
 
-use super::{node_id::NodeIdError, NodeId};
+use super::{NodeId, node_id::NodeIdError};
 
 /// The distance metric used by the [PeerManager](super::PeerManager).
 pub type NodeDistance = XorDistance;

@@ -32,8 +32,8 @@ use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
 use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
 
 use crate::memory_net::{
-    utilities::{get_short_name, NodeEventRx, TestNode},
     DrainBurst,
+    utilities::{NodeEventRx, TestNode, get_short_name},
 };
 
 const TEMP_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet_temp";
@@ -244,11 +244,7 @@ pub async fn create_message_propagation_graphs(
                 .node_references()
                 .find_map(
                     |(index, weight)| {
-                        if weight == &message_tree[n] {
-                            Some(index)
-                        } else {
-                            None
-                        }
+                        if weight == &message_tree[n] { Some(index) } else { None }
                     },
                 )
                 .expect("Should be able to find node2");

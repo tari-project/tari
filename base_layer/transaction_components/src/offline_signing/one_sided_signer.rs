@@ -21,15 +21,18 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
     types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
-use tari_script::{push_pubkey_script, ExecutionStack, Opcode, TariScript};
+use tari_script::{ExecutionStack, Opcode, TariScript, push_pubkey_script};
 
 use crate::{
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
     consensus::ConsensusConstants,
     key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
     multisig::script::derive_multisig_ephemeral_pubkeys,
@@ -41,9 +44,6 @@ use crate::{
     },
     transaction_builder::FinalizedTransaction,
     transaction_components::{TransactionError, TransactionOutput, WalletOutput, WalletOutputBuilder},
-    MicroMinotari,
-    TransactionBuilder,
-    TransactionBuilderError,
 };
 
 /// This is the message containing the public data that the Receiver will send back to the Sender

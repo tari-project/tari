@@ -32,7 +32,7 @@ use tari_node_components::blocks::Block;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::mempool::{shrink_hashmap::shrink_hashmap, MempoolError};
+use crate::mempool::{MempoolError, shrink_hashmap::shrink_hashmap};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
@@ -334,7 +334,7 @@ impl ReorgPool {
 mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
-    use tari_transaction_components::{key_manager::KeyManager, tx, MicroMinotari};
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
 
     use super::*;
     use crate::{consensus::BaseNodeConsensusManagerBuilder, test_helpers::create_orphan_block};

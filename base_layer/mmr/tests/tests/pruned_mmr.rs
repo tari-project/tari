@@ -23,13 +23,13 @@
 use std::convert::TryFrom;
 
 use rand::{
-    distributions::{Distribution, Uniform},
     Rng,
+    distributions::{Distribution, Uniform},
 };
 use tari_mmr::{
+    Hash,
     common::LeafIndex,
     functions::{calculate_mmr_root, prune_mmr},
-    Hash,
 };
 
 use crate::support::{create_mmr, int_to_hash};

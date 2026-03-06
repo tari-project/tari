@@ -22,19 +22,19 @@
 
 use std::{convert::TryFrom, mem::size_of};
 
-use chacha20poly1305::{aead::AeadInPlace, ChaCha20Poly1305, KeyInit, Nonce, Tag};
-use digest::{generic_array::GenericArray, Digest, FixedOutput};
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce, Tag, aead::AeadInPlace};
+use digest::{Digest, FixedOutput, generic_array::GenericArray};
 use prost::bytes::BytesMut;
 use tari_comms::{
+    BufMut,
     message::MessageExt,
     types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
-    BufMut,
 };
 use tari_crypto::{
     keys::SecretKey,
-    tari_utilities::{epoch_time::EpochTime, ByteArray},
+    tari_utilities::{ByteArray, epoch_time::EpochTime},
 };
-use tari_utilities::{hidden_type, safe_array::SafeArray, ByteArrayError, Hidden};
+use tari_utilities::{ByteArrayError, Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::Zeroize;
 
 use crate::{
@@ -428,24 +428,30 @@ mod test {
     fn unpadding_failure_modes() {
         // The padded message is empty
         let mut message = BytesMut::new();
-        assert!(get_original_message_from_padded_text(&mut message)
-            .unwrap_err()
-            .to_string()
-            .contains("Padded message is not long enough for length extraction"));
+        assert!(
+            get_original_message_from_padded_text(&mut message)
+                .unwrap_err()
+                .to_string()
+                .contains("Padded message is not long enough for length extraction")
+        );
 
         // We cannot extract the message length
         let mut message = BytesMut::from([0u8; size_of::<u32>() - 1].as_slice());
-        assert!(get_original_message_from_padded_text(&mut message)
-            .unwrap_err()
-            .to_string()
-            .contains("Padded message is not long enough for length extraction"));
+        assert!(
+            get_original_message_from_padded_text(&mut message)
+                .unwrap_err()
+                .to_string()
+                .contains("Padded message is not long enough for length extraction")
+        );
 
         // The padded message is not a multiple of the base length
         let mut message = BytesMut::from([0u8; 2 * MESSAGE_BASE_LENGTH + 1].as_slice());
-        assert!(get_original_message_from_padded_text(&mut message)
-            .unwrap_err()
-            .to_string()
-            .contains("Padded message must be a multiple of the base length"));
+        assert!(
+            get_original_message_from_padded_text(&mut message)
+                .unwrap_err()
+                .to_string()
+                .contains("Padded message must be a multiple of the base length")
+        );
     }
 
     #[test]
@@ -510,9 +516,11 @@ mod test {
         pad_message[3] = 255;
 
         let mut pad_message = BytesMut::from(pad_message.as_slice());
-        assert!(get_original_message_from_padded_text(&mut pad_message)
-            .unwrap_err()
-            .to_string()
-            .contains("Claimed unpadded message length is too large"));
+        assert!(
+            get_original_message_from_padded_text(&mut pad_message)
+                .unwrap_err()
+                .to_string()
+                .contains("Claimed unpadded message length is too large")
+        );
     }
 }

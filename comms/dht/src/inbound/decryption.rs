@@ -26,23 +26,23 @@ use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
 use tari_comms::{
+    BytesMut,
     connectivity::ConnectivityRequester,
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
     types::CommsDHKE,
-    BytesMut,
 };
 use tari_crypto::compressed_key::CompressedKey;
 use tari_utilities::ByteArray;
 use thiserror::Error;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
+    DhtConfig,
     crypt,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
     message_signature::{MessageSignature, ProtoMessageSignature},
-    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::middleware::decryption";

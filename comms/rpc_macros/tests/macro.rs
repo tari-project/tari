@@ -36,7 +36,7 @@ use tari_comms::{
 use tari_comms_rpc_macros::tari_rpc;
 use tari_test_utils::unpack_enum;
 use tokio::{
-    sync::{mpsc, RwLock},
+    sync::{RwLock, mpsc},
     task,
 };
 use tower_service::Service;

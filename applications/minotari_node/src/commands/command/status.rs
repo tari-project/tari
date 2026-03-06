@@ -22,7 +22,7 @@
 
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clap::Parser;

@@ -23,9 +23,9 @@
 use std::{
     future::Future,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
         Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -33,7 +33,7 @@ use futures::future;
 use tower::Service;
 
 pub fn service_spy<TReq>() -> ServiceSpy<TReq>
-where TReq: 'static {
+where TReq: Send + 'static {
     ServiceSpy::new()
 }
 
@@ -44,7 +44,7 @@ pub struct ServiceSpy<TReq> {
 }
 
 impl<TReq> ServiceSpy<TReq>
-where TReq: 'static
+where TReq: Send + 'static
 {
     pub fn new() -> Self {
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -60,9 +60,16 @@ where TReq: 'static
         self.requests.lock().unwrap().clear();
     }
 
-    pub fn to_service<TErr>(
+    pub fn to_service<TErr: Send>(
         &self,
-    ) -> impl Service<TReq, Response = (), Error = TErr, Future = impl Future<Output = Result<(), TErr>>> + Clone {
+    ) -> impl Service<
+        TReq,
+        Response = (),
+        Error = TErr,
+        Future = impl Future<Output = Result<(), TErr>> + Send + use<TErr, TReq>,
+    > + Clone
+    + Send
+    + use<TErr, TReq> {
         let req_inner = Arc::clone(&self.requests);
         let call_count = Arc::clone(&self.call_count);
         tower::service_fn(move |req: TReq| {

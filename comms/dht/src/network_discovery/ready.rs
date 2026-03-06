@@ -24,10 +24,10 @@ use log::*;
 use tari_comms::peer_manager::{Peer, PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION};
 
 use super::{
-    state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
     NetworkDiscoveryError,
+    state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
 };
-use crate::{network_discovery::DhtNetworkDiscoveryRoundInfo, DhtConfig};
+use crate::{DhtConfig, network_discovery::DhtNetworkDiscoveryRoundInfo};
 
 const LOG_TARGET: &str = "comms::dht::network_discovery::ready";
 

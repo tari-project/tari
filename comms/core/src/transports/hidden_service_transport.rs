@@ -23,12 +23,12 @@
 use std::{io, sync::Arc};
 
 use log::*;
-use multiaddr::{multiaddr, Multiaddr, Protocol};
+use multiaddr::{Multiaddr, Protocol, multiaddr};
 use tokio::sync::RwLock;
 
 use crate::{
     tor::{HiddenServiceController, TorIdentity},
-    transports::{tcp::TcpInbound, SocksTransport, Transport},
+    transports::{SocksTransport, Transport, tcp::TcpInbound},
     types::TransportProtocol,
     utils::network::supports_ipv6,
 };

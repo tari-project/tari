@@ -89,13 +89,13 @@ impl TreeWriter for LmdbTreeWriter<'_> {
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
-            lmdb_key.extend_from_slice(&value_key.1 .0);
+            lmdb_key.extend_from_slice(&value_key.1.0);
             let val_bytes = bincode::serialize(value)?;
             lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, "jmt_value_table")?;
 
             // see if there are any values already.
             let existing_values: Vec<(Vec<u8>, Option<Vec<u8>>)> =
-                lmdb_fetch_matching_after(self.txn, &self.unique_key_db, &value_key.1 .0)?;
+                lmdb_fetch_matching_after(self.txn, &self.unique_key_db, &value_key.1.0)?;
             let mut existing_history = vec![];
             for (key, x) in existing_values {
                 let version = u64::from_be_bytes(key.get(32..).ok_or(anyhow::anyhow!("invalid bytes"))?.try_into()?);
@@ -111,7 +111,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                         trace!(target: LOG_TARGET, "Found no existing JMT unique key for version {}, creating it as None", value_key.0);
                     }
                     let mut lmdb_key: Vec<u8> = vec![];
-                    lmdb_key.extend_from_slice(value_key.1 .0.as_slice());
+                    lmdb_key.extend_from_slice(value_key.1.0.as_slice());
                     lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
                     lmdb_insert(self.txn, &self.unique_key_db, &lmdb_key, value, "jmt_unique_key_table")?;
                 },
@@ -121,7 +121,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 },
                 (Some(_v), None) => {
                     let mut lmdb_key: Vec<u8> = vec![];
-                    lmdb_key.extend_from_slice(value_key.1 .0.as_slice());
+                    lmdb_key.extend_from_slice(value_key.1.0.as_slice());
                     lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
                     lmdb_insert(self.txn, &self.unique_key_db, &lmdb_key, value, "jmt_unique_key_table")?;
                 },

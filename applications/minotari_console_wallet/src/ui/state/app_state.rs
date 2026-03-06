@@ -32,18 +32,18 @@ use std::{
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use minotari_wallet::{
+    WalletConfig,
+    WalletSqlite,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
+    output_manager_service::{UtxoSelectionCriteria, handle::OutputManagerEventReceiver, service::Balance},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig,
-    WalletSqlite,
 };
-use qrcode::{render::unicode, QrCode};
+use qrcode::{QrCode, render::unicode};
 use tari_common::configuration::Network;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
@@ -53,17 +53,17 @@ use tari_common_types::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
-    tari_amount::{uT, MicroMinotari},
+    tari_amount::{MicroMinotari, uT},
     transaction_components::{
-        memo_field::{MemoField, TxType},
         OutputFeatures,
         TransactionError,
+        memo_field::{MemoField, TxType},
     },
     weight::TransactionWeight,
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::hex::Hex;
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 
 use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
@@ -732,10 +732,10 @@ impl AppStateInner {
     }
 
     pub fn has_time_locked_balance(&self) -> bool {
-        if let Some(time_locked_balance) = self.data.balance.time_locked_balance {
-            if time_locked_balance > MicroMinotari::from(0) {
-                return true;
-            }
+        if let Some(time_locked_balance) = self.data.balance.time_locked_balance &&
+            time_locked_balance > MicroMinotari::from(0)
+        {
+            return true;
         }
         false
     }

@@ -25,8 +25,8 @@ use std::{convert::TryInto, sync::Arc, task::Poll, time::Duration};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{message::InboundMessage, pipeline::PipelineError, PeerManager};
-use tower::{layer::Layer, Service, ServiceExt};
+use tari_comms::{PeerManager, message::InboundMessage, pipeline::PipelineError};
+use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
 

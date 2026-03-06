@@ -27,13 +27,14 @@ use futures_util::stream::FuturesUnordered;
 use log::*;
 use rand::prelude::SliceRandom;
 use tari_comms::{
-    peer_manager::{NodeId, Peer},
     Minimized,
     PeerConnection,
+    peer_manager::{NodeId, Peer},
 };
 use tari_utilities::hex::Hex;
 
 use crate::{
+    DhtConfig,
     network_discovery::{
         error::NetworkDiscoveryError,
         state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
@@ -41,7 +42,6 @@ use crate::{
     peer_validator::PeerValidator,
     proto::rpc::{GetPeersRequest, PeerInfo},
     rpc::{DhtClient, UnvalidatedPeerInfo},
-    DhtConfig,
 };
 
 // Use a reasonable value based on the existing configuration

@@ -4,7 +4,7 @@
 use std::cmp;
 
 use log::trace;
-use serde_valid::{validation, Validate};
+use serde_valid::{Validate, validation};
 use tari_common_types::{
     types,
     types::{FixedHash, FixedHashSizeError},
@@ -28,13 +28,13 @@ use tari_transaction_components::{
     },
     transaction_components::TransactionOutput,
 };
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError, hex::Hex};
 use thiserror::Error;
 
 use crate::{
-    base_node::{rpc::BaseNodeWalletQueryService, state_machine_service::states::StateInfo, StateMachineHandle},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
-    mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
+    base_node::{StateMachineHandle, rpc::BaseNodeWalletQueryService, state_machine_service::states::StateInfo},
+    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    mempool::{MempoolServiceError, TxStorageResponse, service::MempoolHandle},
 };
 
 const LOG_TARGET: &str = "c::bn::rpc::query_service";

@@ -24,21 +24,21 @@ use std::convert::TryInto;
 
 use futures::StreamExt;
 use log::*;
-use tari_comms::{connectivity::ConnectivityEvent, peer_manager::NodeId, PeerConnection};
+use tari_comms::{PeerConnection, connectivity::ConnectivityEvent, peer_manager::NodeId};
 use tokio::sync::broadcast;
 
 use crate::{
+    DhtConfig,
     event::DhtEvent,
     network_discovery::{
-        state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
+        state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
     },
     peer_validator::PeerValidator,
     proto::rpc::GetPeersRequest,
     rpc,
     rpc::UnvalidatedPeerInfo,
-    DhtConfig,
 };
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 const NUM_FETCH_PEERS: u32 = 100;

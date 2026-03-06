@@ -8,10 +8,10 @@ use tari_utilities::ByteArray;
 
 use super::error::SidechainProofValidationError;
 use crate::{
+    CheckVnFunc,
     command::{Command, ToCommand},
     commit_proof::CommandCommitProof,
     shard_group::ShardGroup,
-    CheckVnFunc,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]

@@ -50,8 +50,8 @@ mod test {
         covenant,
         key_manager::KeyManager,
         transaction_components::{
-            covenants::{filters::test::setup_filter_test, test::create_input},
             OutputType,
+            covenants::{filters::test::setup_filter_test, test::create_input},
         },
     };
 

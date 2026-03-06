@@ -26,6 +26,8 @@ use std::{fmt, io, sync::Arc};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
 use tari_comms::{
+    Bytes,
+    BytesMut,
     connectivity::ConnectivityEvent,
     framing,
     memsocket::MemorySocket,
@@ -33,11 +35,9 @@ use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationTx},
     test_utils::{
-        mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
+        mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_peer_connection_mock_pair},
         node_identity::build_node_identity,
     },
-    Bytes,
-    BytesMut,
 };
 use tari_transaction_components::{
     key_manager::KeyManager,
@@ -54,9 +54,9 @@ use tokio::{
 use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
-        proto,
-        sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
+        proto,
+        sync_protocol::{MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL, MempoolPeerProtocol, MempoolSyncProtocol},
     },
     validation::mocks::MockValidator,
 };

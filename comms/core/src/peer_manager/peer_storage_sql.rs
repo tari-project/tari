@@ -28,14 +28,14 @@ use multiaddr::Multiaddr;
 use crate::{
     net_address::PeerAddressSource,
     peer_manager::{
-        database::{PeerDatabaseSql, ThisPeerIdentity},
-        peer::Peer,
-        peer_id::PeerId,
         NodeDistance,
         NodeId,
         PeerFeatures,
         PeerFlags,
         PeerManagerError,
+        database::{PeerDatabaseSql, ThisPeerIdentity},
+        peer::Peer,
+        peer_id::PeerId,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
@@ -659,12 +659,14 @@ mod test {
                 .public_key,
             peer2.public_key
         );
-        assert!(peer_storage
-            .find_by_public_key(&peer3.public_key)
-            .unwrap()
-            .unwrap()
-            .deleted_at
-            .is_some());
+        assert!(
+            peer_storage
+                .find_by_public_key(&peer3.public_key)
+                .unwrap()
+                .unwrap()
+                .deleted_at
+                .is_some()
+        );
 
         assert_eq!(
             peer_storage
@@ -682,12 +684,14 @@ mod test {
                 .node_id,
             peer2.node_id
         );
-        assert!(peer_storage
-            .get_peer_by_node_id(&peer3.node_id)
-            .unwrap()
-            .unwrap()
-            .deleted_at
-            .is_some());
+        assert!(
+            peer_storage
+                .get_peer_by_node_id(&peer3.node_id)
+                .unwrap()
+                .unwrap()
+                .deleted_at
+                .is_some()
+        );
     }
 
     fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {
@@ -869,19 +873,25 @@ mod test {
         let nodes_all_addresses = peer_storage
             .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
             .unwrap();
-        assert!(nodes_all_addresses
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
-        assert!(nodes_all_addresses
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+        assert!(
+            nodes_all_addresses
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) })
+        );
+        assert!(
+            nodes_all_addresses
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) })
+        );
 
         // Assert that peers have external addresses only
         let nodes_external_addresses_only = peer_storage
             .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
             .unwrap();
-        assert!(nodes_external_addresses_only
-            .iter()
-            .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) }));
+        assert!(
+            nodes_external_addresses_only
+                .iter()
+                .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) })
+        );
     }
 }

@@ -76,9 +76,9 @@ impl CovenantFilter {
     }
 
     fn as_byte_code(&self) -> u8 {
-        use byte_codes::*;
         #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
+        use byte_codes::*;
 
         match self {
             Identity(_) => FILTER_IDENTITY,

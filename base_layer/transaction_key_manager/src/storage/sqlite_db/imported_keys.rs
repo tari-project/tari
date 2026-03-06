@@ -26,7 +26,7 @@ use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hidden};
+use tari_utilities::{ByteArray, Hidden, hex::Hex};
 use zeroize::Zeroize;
 
 use crate::{
@@ -34,7 +34,7 @@ use crate::{
     schema::imported_keys::{private_key, public_key, table, timestamp},
     storage::{
         database::ImportedKey,
-        sqlite_db::{imported_keys, Encryptable},
+        sqlite_db::{Encryptable, imported_keys},
     },
 };
 

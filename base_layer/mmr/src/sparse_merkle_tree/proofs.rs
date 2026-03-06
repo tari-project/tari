@@ -3,10 +3,9 @@
 
 use std::marker::PhantomData;
 
-use digest::{consts::U32, Digest};
+use digest::{Digest, consts::U32};
 
 use crate::sparse_merkle_tree::{
-    bit_utils::{height_key, TraverseDirection},
     BranchNode,
     EmptyNode,
     LeafNode,
@@ -15,6 +14,7 @@ use crate::sparse_merkle_tree::{
     SMTError,
     SparseMerkleTree,
     ValueHash,
+    bit_utils::{TraverseDirection, height_key},
 };
 
 /// An inclusion proof for a key-value pair in a sparse Merkle& tree.
@@ -197,11 +197,12 @@ impl<H: Digest<OutputSize = U32>> ExclusionProof<H> {
     pub fn from_tree(tree: &SparseMerkleTree<H>, key: &NodeKey) -> Result<Self, SMTError> {
         let proof = tree.build_proof_candidate(key)?;
         // If the keys match, then we cannot provide an exclusion proof, since the key *is* in the tree
-        if let Some(leaf) = &proof.leaf {
-            if leaf.key() == key {
-                return Err(SMTError::NonViableProof);
-            }
+        if let Some(leaf) = &proof.leaf &&
+            leaf.key() == key
+        {
+            return Err(SMTError::NonViableProof);
         }
+
         Ok(proof)
     }
 

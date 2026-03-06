@@ -5,11 +5,11 @@ use std::{fmt, net::Ipv4Addr, ops::Deref, slice, str::FromStr};
 
 use multiaddr::{Multiaddr, Protocol};
 use serde::{
-    de,
-    de::{Error, SeqAccess, Visitor},
     Deserialize,
     Deserializer,
     Serialize,
+    de,
+    de::{Error, SeqAccess, Visitor},
 };
 
 /// A MultiaddrRange for testing purposes that matches any IPv4 address and any port
@@ -402,7 +402,7 @@ mod test {
 
     use crate::{
         multiaddr::Multiaddr,
-        net_address::{multiaddr_range::IP4_TCP_TEST_ADDR_RANGE, MultiaddrRange, MultiaddrRangeList},
+        net_address::{MultiaddrRange, MultiaddrRangeList, multiaddr_range::IP4_TCP_TEST_ADDR_RANGE},
     };
 
     #[derive(Deserialize)]

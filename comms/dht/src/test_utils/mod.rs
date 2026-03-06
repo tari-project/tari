@@ -40,10 +40,10 @@ macro_rules! unwrap_oms_send_msg {
 }
 
 mod dht_actor_mock;
-pub use dht_actor_mock::{create_dht_actor_mock, DhtMockState};
+pub use dht_actor_mock::{DhtMockState, create_dht_actor_mock};
 
 mod dht_discovery_mock;
-pub use dht_discovery_mock::{create_dht_discovery_mock, DhtDiscoveryMockState};
+pub use dht_discovery_mock::{DhtDiscoveryMockState, create_dht_discovery_mock};
 
 #[cfg(test)]
 mod makers;

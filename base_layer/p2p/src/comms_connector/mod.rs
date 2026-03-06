@@ -27,4 +27,4 @@ mod peer_message;
 pub use peer_message::PeerMessage;
 
 mod pubsub;
-pub use pubsub::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory, TopicSubscriptionFactory};
+pub use pubsub::{PubsubDomainConnector, SubscriptionFactory, TopicSubscriptionFactory, pubsub_connector};

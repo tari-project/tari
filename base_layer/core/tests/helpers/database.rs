@@ -25,11 +25,11 @@ use std::convert::TryInto;
 use tari_core::consensus::BaseNodeConsensusManager;
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
+    MicroMinotari,
     consensus::emission::Emission,
     key_manager::KeyManager,
     tari_proof_of_work::Difficulty,
     transaction_components::Transaction,
-    MicroMinotari,
 };
 
 use crate::helpers::block_builders::create_coinbase;

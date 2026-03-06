@@ -41,14 +41,14 @@ use reqwest::IntoUrl;
 pub use semver::Version;
 use serde::{Deserialize, Serialize};
 use tari_common::{
+    DnsNameServer,
+    SubConfigPath,
     configuration::{
+        StringList,
         bootstrap::ApplicationType,
         serializers::optional_seconds,
         utils::{deserialize_string_or_struct, serialize_string},
-        StringList,
     },
-    DnsNameServer,
-    SubConfigPath,
 };
 use tari_utilities::hex::Hex;
 

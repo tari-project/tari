@@ -23,11 +23,11 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use futures::{
+    FutureExt,
     future,
     future::{BoxFuture, Either, FusedFuture},
     pin_mut,
     stream::FuturesUnordered,
-    FutureExt,
 };
 use log::*;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -39,13 +39,13 @@ use tokio::{
     time,
 };
 use tokio_stream::StreamExt;
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
 
 use super::{
+    PeerConnectionInfo,
     direction::ConnectionDirection,
     error::ConnectionManagerError,
     peer_connection::PeerConnection,
-    PeerConnectionInfo,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
@@ -659,7 +659,7 @@ where
                         return Err(ConnectionManagerError::TransportError {
                             address: moved_address.to_string(),
                             details: err.to_string(),
-                        })
+                        });
                     },
                     Err(_) => {
                         trace!(

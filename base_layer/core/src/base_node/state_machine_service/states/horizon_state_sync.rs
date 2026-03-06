@@ -29,9 +29,9 @@ use tari_transaction_components::crypto_factories::CryptoFactories;
 use super::{StateEvent, StateInfo};
 use crate::{
     base_node::{
+        BaseNodeStateMachine,
         state_machine_service::states::StatusInfo,
         sync::{HorizonStateSynchronization, SyncPeer},
-        BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
 };

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use diesel::{result::Error as DieselError, QueryResult};
+use diesel::{QueryResult, result::Error as DieselError};
 
 pub trait ExpectedRowsExtension {
     fn num_rows_affected_or_not_found(self, num_rows: usize) -> Result<usize, DieselError>;

@@ -33,8 +33,8 @@ use std::{
 
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput};
 use tari_comms::{
-    protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus, Streaming},
     PeerConnection,
+    protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus, Streaming},
 };
 use tari_core::{
     base_node::{
@@ -870,7 +870,7 @@ mod test {
     use tari_common_types::types::PrivateKey;
     use tari_comms::{
         peer_manager::PeerFeatures,
-        protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+        protocol::rpc::{NamedProtocolService, mock::MockRpcServer},
         test_utils::node_identity::build_node_identity,
     };
     use tari_core::{
@@ -910,10 +910,12 @@ mod test {
             .await
             .unwrap();
 
-        assert!(service_state
-            .wait_pop_submit_transaction_calls(1, Duration::from_millis(300))
-            .await
-            .is_err());
+        assert!(
+            service_state
+                .wait_pop_submit_transaction_calls(1, Duration::from_millis(300))
+                .await
+                .is_err()
+        );
 
         service_state.set_submit_transaction_response(TxSubmissionResponse {
             accepted: false,

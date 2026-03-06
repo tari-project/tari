@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, future};
 use log::*;
 use multiaddr::Multiaddr;
 use tari_shutdown::ShutdownSignal;

@@ -33,9 +33,9 @@ use crate::{
     base_node::comms_interface::{BlockEvent, BlockEvent::AddBlockErrored},
     chain_storage::BlockAddResult,
     mempool::{
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
         TxStorageResponse,
+        service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
     },
 };
 

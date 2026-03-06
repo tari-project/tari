@@ -25,9 +25,9 @@ use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 use crate::{
+    Substream,
     peer_manager::NodeId,
     protocol::{ProtocolError, ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolId},
-    Substream,
 };
 
 /// Protocol notification sender

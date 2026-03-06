@@ -25,7 +25,7 @@
 
 use std::{
     cmp,
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     num::NonZeroU16,
     pin::Pin,
     sync::Mutex,

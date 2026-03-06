@@ -36,8 +36,8 @@ use minotari_console_wallet::{
 };
 use tari_common_types::{seeds::seed_words::SeedWords, tari_address::TariAddress};
 use tari_integration_tests::{
-    wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
+    wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
 use tari_transaction_components::MicroMinotari;
 use tari_utilities::hex::Hex;

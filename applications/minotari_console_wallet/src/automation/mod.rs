@@ -34,9 +34,9 @@ use tari_common_types::{
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
 use tari_transaction_components::{
+    MicroMinotari,
     key_manager::TariKeyId,
     transaction_components::{EncryptedData, OutputFeatures},
-    MicroMinotari,
 };
 
 // Step 1 outputs for all with `PreMineSpendSessionInfo`

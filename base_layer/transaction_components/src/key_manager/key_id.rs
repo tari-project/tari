@@ -33,7 +33,7 @@ use std::{fmt, str::FromStr};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::CompressedPublicKey;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{Hex, from_hex};
 
 /// String prefix used when serializing and parsing a `TariKeyId::ViewKey`.
 ///

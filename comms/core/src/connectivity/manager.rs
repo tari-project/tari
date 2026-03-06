@@ -35,9 +35,10 @@ use tokio::{
     time,
     time::MissedTickBehavior,
 };
-use tracing::{span, Instrument, Level};
+use tracing::{Instrument, Level, span};
 
 use super::{
+    ConnectivityEventTx,
     config::ConnectivityConfig,
     connection_pool::{ConnectionPool, ConnectionStatus},
     connection_stats::PeerConnectionStats,
@@ -45,9 +46,13 @@ use super::{
     proactive_dialer::ProactiveDialer,
     requester::{ConnectivityEvent, ConnectivityRequest},
     selection::ConnectivitySelection,
-    ConnectivityEventTx,
 };
 use crate::{
+    Minimized,
+    NodeIdentity,
+    PeerConnection,
+    PeerConnectionError,
+    PeerManager,
     connection_manager::{
         ConnectionDirection,
         ConnectionManagerError,
@@ -56,11 +61,6 @@ use crate::{
     },
     peer_manager::NodeId,
     utils::datetime::format_duration,
-    Minimized,
-    NodeIdentity,
-    PeerConnection,
-    PeerConnectionError,
-    PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
@@ -666,10 +666,11 @@ impl ConnectivityManagerActor {
         // Identify seeds that are too old
         let mut seeds_to_disconnect = Vec::new();
         for seed_node_id in &self.seeds {
-            if let Some(conn) = self.pool.get_connection(seed_node_id) {
-                if conn.is_connected() && conn.age() > self.config.max_seed_peer_age {
-                    seeds_to_disconnect.push(conn.clone());
-                }
+            if let Some(conn) = self.pool.get_connection(seed_node_id) &&
+                conn.is_connected() &&
+                conn.age() > self.config.max_seed_peer_age
+            {
+                seeds_to_disconnect.push(conn.clone());
             }
         }
 
@@ -824,26 +825,26 @@ impl ConnectivityManagerActor {
                 num_failed
             );
 
-            if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
-                if !peer.is_banned() &&
+            if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? &&
+                !peer.is_banned() &&
+                peer
+                    .last_seen_since()
+                    // Haven't seen them in expire_peer_last_seen_duration
+                    .map(|t| t > self.config.expire_peer_last_seen_duration)
+                    // Or don't delete if never seen
+                    .unwrap_or(false)
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` was marked as offline after {} attempts (last seen: {}). Removing peer from peer \
+                     list",
+                    node_id,
+                    num_failed,
                     peer.last_seen_since()
-                        // Haven't seen them in expire_peer_last_seen_duration
-                        .map(|t| t > self.config.expire_peer_last_seen_duration)
-                        // Or don't delete if never seen
-                        .unwrap_or(false)
-                {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Peer `{}` was marked as offline after {} attempts (last seen: {}). Removing peer from peer \
-                         list",
-                        node_id,
-                        num_failed,
-                        peer.last_seen_since()
-                            .map(|d| format!("{}s ago", d.as_secs()))
-                            .unwrap_or_else(|| "Never".to_string()),
-                    );
-                    self.peer_manager.soft_delete_peer(node_id).await?;
-                }
+                        .map(|d| format!("{}s ago", d.as_secs()))
+                        .unwrap_or_else(|| "Never".to_string()),
+                );
+                self.peer_manager.soft_delete_peer(node_id).await?;
             }
         }
 
@@ -882,15 +883,15 @@ impl ConnectivityManagerActor {
                 }
             },
             PeerDisconnected(id, node_id, _minimized) => {
-                if let Some(conn) = self.pool.get_connection(node_id) {
-                    if conn.id() != *id {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Ignoring peer disconnected event for stale peer connection (id: {id}) for peer '{node_id}'"
+                if let Some(conn) = self.pool.get_connection(node_id) &&
+                    conn.id() != *id
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ignoring peer disconnected event for stale peer connection (id: {id}) for peer '{node_id}'"
 
-                        );
-                        return Ok(());
-                    }
+                    );
+                    return Ok(());
                 }
             },
             PeerViolation { peer_node_id, details } => {
@@ -934,15 +935,16 @@ impl ConnectivityManagerActor {
                 (node_id, ConnectionStatus::Failed, None)
             },
             PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
-                if let Some(conn) = self.pool.get_connection(node_id) {
-                    if conn.is_connected() && conn.direction().is_inbound() {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Ignoring DialCancelled({node_id}) event because an inbound connection already exists"
-                        );
+                if let Some(conn) = self.pool.get_connection(node_id) &&
+                    conn.is_connected() &&
+                    conn.direction().is_inbound()
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ignoring DialCancelled({node_id}) event because an inbound connection already exists"
+                    );
 
-                        return Ok(());
-                    }
+                    return Ok(());
                 }
                 debug!(
                     target: LOG_TARGET,

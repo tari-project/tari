@@ -20,7 +20,7 @@ use std::{fmt, ops::Deref};
 use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
-use tari_utilities::{hex::Hex, ByteArrayError};
+use tari_utilities::{ByteArrayError, hex::Hex};
 
 use super::ScriptError;
 

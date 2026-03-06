@@ -27,7 +27,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use futures::{future, future::Either, Future, FutureExt};
+use futures::{Future, FutureExt, future, future::Either};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 

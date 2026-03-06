@@ -31,7 +31,7 @@ use std::{
 /// id and an address used to establish peer connections. The files generated from this example are used to
 /// populate the peer manager in other examples.
 use clap::{App, Arg};
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},

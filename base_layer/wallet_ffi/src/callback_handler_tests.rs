@@ -31,7 +31,7 @@ mod test {
         utxo_scanner_service::handle::UtxoScannerEvent,
     };
     use once_cell::sync::Lazy;
-    use rand::{rngs::OsRng, RngCore};
+    use rand::{RngCore, rngs::OsRng};
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
@@ -42,10 +42,10 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_transaction_components::{
-        tari_amount::{uT, MicroMinotari},
+        tari_amount::{MicroMinotari, uT},
         transaction_components::{
-            memo_field::{MemoField, TxType},
             Transaction,
+            memo_field::{MemoField, TxType},
         },
     };
     use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
@@ -121,35 +121,35 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_tx_callback_called = true;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn received_tx_reply_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_tx_reply_callback_called = true;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn received_tx_finalized_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_finalized_tx_callback_called = true;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn broadcast_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.broadcast_tx_callback_called = true;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn mined_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.mined_tx_callback_called = true;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn mined_unconfirmed_callback(
@@ -160,14 +160,14 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = confirmations;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn faux_confirmed_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.faux_tx_confirmed_callback_called = true;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn faux_unconfirmed_callback(
@@ -178,7 +178,7 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.faux_tx_unconfirmed_callback_called = confirmations;
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn transaction_send_result_callback(
@@ -187,28 +187,32 @@ mod test {
         status: *mut TransactionSendStatus,
     ) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        if (*status).direct_send_result {
-            lock.direct_send_callback_called += 1;
-        };
-        if (*status).store_and_forward_send_result {
-            lock.store_and_forward_send_callback_called += 1;
-        };
-        if (*status).queued_for_retry {
-            lock.transaction_queued_for_retry_callback_called += 1;
-        };
+        unsafe {
+            if (*status).direct_send_result {
+                lock.direct_send_callback_called += 1;
+            };
+            if (*status).store_and_forward_send_result {
+                lock.store_and_forward_send_callback_called += 1;
+            };
+            if (*status).queued_for_retry {
+                lock.transaction_queued_for_retry_callback_called += 1;
+            };
+        }
         drop(lock);
     }
 
     unsafe extern "C" fn tx_cancellation_callback(_context: *mut c_void, tx: *mut CompletedTransaction, _reason: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        match (*tx).tx_id.as_u64() {
-            3 => lock.tx_cancellation_callback_called_inbound = true,
-            4 => lock.tx_cancellation_callback_called_completed = true,
-            5 => lock.tx_cancellation_callback_called_outbound = true,
-            _ => (),
+        unsafe {
+            match (*tx).tx_id.as_u64() {
+                3 => lock.tx_cancellation_callback_called_inbound = true,
+                4 => lock.tx_cancellation_callback_called_completed = true,
+                5 => lock.tx_cancellation_callback_called_outbound = true,
+                _ => (),
+            }
         }
         drop(lock);
-        drop(Box::from_raw(tx))
+        unsafe { drop(Box::from_raw(tx)) }
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_context: *mut c_void, _tx_id: u64, result: u64) {
@@ -227,7 +231,7 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_balance_updated += 1;
         drop(lock);
-        drop(Box::from_raw(balance));
+        unsafe { drop(Box::from_raw(balance)) };
     }
 
     // casting is okay in tests
@@ -258,7 +262,7 @@ mod test {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.base_node_state_changed_callback_invoked = true;
         drop(lock);
-        drop(Box::from_raw(state))
+        unsafe { drop(Box::from_raw(state)) }
     }
 
     #[test]

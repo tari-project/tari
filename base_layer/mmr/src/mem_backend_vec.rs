@@ -86,10 +86,10 @@ impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
 
     fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
         for index in 0..self.len()? {
-            if let Some(stored_item) = self.get(index) {
-                if stored_item == *item {
-                    return Ok(Some(index));
-                }
+            if let Some(stored_item) = self.get(index) &&
+                stored_item == *item
+            {
+                return Ok(Some(index));
             }
         }
         Ok(None)

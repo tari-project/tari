@@ -49,21 +49,23 @@ pub struct TariBaseNodeState {
 ///
 /// # Safety
 /// None
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
     ptr: *mut TariBaseNodeState,
     error_out: *mut c_int,
 ) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if ptr.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
+    unsafe {
+        let mut error = 0;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
 
-    (*ptr).best_block_height
+        if ptr.is_null() {
+            error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 0;
+        }
+
+        (*ptr).best_block_height
+    }
 }
 
 /// Extracts the connection latency to the base node.
@@ -78,18 +80,20 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
 ///
 /// # Safety
 /// None
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState, error_out: *mut c_int) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if ptr.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
+    unsafe {
+        let mut error = 0;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
 
-    (*ptr).latency
+        if ptr.is_null() {
+            error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 0;
+        }
+
+        (*ptr).latency
+    }
 }
 
 #[cfg(test)]

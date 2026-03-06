@@ -22,7 +22,7 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use crate::{utxo_selection::UtxoValue, MicroMinotari};
+use crate::{MicroMinotari, utxo_selection::UtxoValue};
 
 pub struct BranchAndBoundUtxoSelector<T> {
     available_utxos: Arc<Vec<T>>,
@@ -483,8 +483,8 @@ mod tests {
         assert_eq!(result.current_value, 101.into());
         assert_eq!(result.selected_utxos.len(), 2);
         assert_eq!(result.waste, 11.into()); // 2 inputs * 5 + 1 excess
-                                             // final_fee = output_fee(0) + 2 inputs * fee_per_input(5) + dust_waste(1) = 11
-                                             // No change_fee since change is not economical
+        // final_fee = output_fee(0) + 2 inputs * fee_per_input(5) + dust_waste(1) = 11
+        // No change_fee since change is not economical
         assert_eq!(result.final_fee, MicroMinotari::from(11));
     }
 
@@ -685,7 +685,7 @@ mod tests {
         assert_eq!(result.selected_utxos.len(), 1);
         assert_eq!(result.current_value, 108.into());
         assert_eq!(result.waste, 8.into()); // 5 fee + 3 excess
-                                            // final_fee = output_fee(0) + 1 input * fee_per_input(5) + dust_waste(3) = 8
+        // final_fee = output_fee(0) + 1 input * fee_per_input(5) + dust_waste(3) = 8
         assert_eq!(result.final_fee, MicroMinotari::from(8));
     }
 
@@ -1222,8 +1222,8 @@ mod tests {
         assert_eq!(state.waste, MicroMinotari::from(5));
         // Verify target_amount was increased by fee_per_input
         assert_eq!(state.final_target, MicroMinotari::from(85)); // 80 + 5
-                                                                 // Verify final_fee includes the fee_per_input for the pre-selected UTXO
-                                                                 // final_fee = output_fee(0) + 1 input * fee_per_input(5) = 5
+        // Verify final_fee includes the fee_per_input for the pre-selected UTXO
+        // final_fee = output_fee(0) + 1 input * fee_per_input(5) = 5
         assert_eq!(state.final_fee, MicroMinotari::from(5));
     }
 

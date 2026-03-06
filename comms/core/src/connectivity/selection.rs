@@ -25,7 +25,7 @@ use std::{collections::HashMap, fmt, fmt::Display, time::Duration};
 use rand::{rngs::OsRng, seq::SliceRandom};
 
 use super::{connection_pool::ConnectionPool, connection_stats::PeerConnectionStats};
-use crate::{connectivity::connection_pool::ConnectionStatus, peer_manager::NodeId, PeerConnection};
+use crate::{PeerConnection, connectivity::connection_pool::ConnectionStatus, peer_manager::NodeId};
 
 /// Selection query for PeerConnections.
 ///

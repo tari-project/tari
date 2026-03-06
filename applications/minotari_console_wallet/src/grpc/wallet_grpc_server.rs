@@ -31,15 +31,13 @@ use std::{
 
 use anyhow::anyhow;
 use futures::{
+    SinkExt,
     channel::mpsc::{self, Sender},
     future,
-    SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
     self,
-    payment_recipient::PaymentType,
-    wallet_server,
     BroadcastSignedOneSidedTransactionRequest,
     BroadcastSignedOneSidedTransactionResponse,
     CheckConnectivityResponse,
@@ -133,25 +131,27 @@ use minotari_app_grpc::tari_rpc::{
     UserPayForFeeResponse,
     ValidateRequest,
     ValidateResponse,
+    payment_recipient::PaymentType,
+    wallet_server,
 };
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
+    WalletKeyManager,
+    WalletSqlite,
+    connectivity_service::{OnlineStatus, UNKNOWN_LATENCY_MS, WalletConnectivityInterface},
     error::WalletStorageError,
     legacy_transaction_protocol::recipient::RecipientState,
     output_manager_service::{
-        error::OutputManagerError,
-        handle::OutputManagerHandle,
         RangeLimit,
         UtxoSelectionCriteria,
+        error::OutputManagerError,
+        handle::OutputManagerHandle,
     },
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
         storage::models::{self, CompletedTransaction, WalletTransaction},
     },
-    WalletKeyManager,
-    WalletSqlite,
 };
 use rand::rngs::OsRng;
 use tari_common_types::{
@@ -172,29 +172,29 @@ use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_hashing::WalletMessageSigningDomain;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_transaction_components::{
+    MicroMinotari,
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
     offline_signing::models::SignedOneSidedTransactionResult,
     transaction_components::{
-        memo_field::{MemoField, TxType},
         OutputFeatures,
         TransactionOutput,
         UnblindedOutput,
         WalletOutput,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
 };
-use tari_transaction_key_manager::legacy_key_manager::{wallet_types::FeeType, LegacyTransactionKeyManagerInterface};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTransactionKeyManagerInterface, wallet_types::FeeType};
+use tari_utilities::{ByteArray, hex::Hex, message_format::MessageFormat};
 use tokio::{
-    sync::{broadcast, Mutex},
+    sync::{Mutex, broadcast},
     task,
     time::{sleep, timeout},
 };
 use tonic::{Request, Response, Status};
 
 use crate::{
-    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
+    grpc::{TransactionWrapper, convert_to_transaction_event, wallet_debouncer::WalletDebouncer},
     notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
 };
 
@@ -379,13 +379,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
         let mut resp = tari_rpc::SoftwareUpdate::default();
 
-        if let Some(ref updater) = self.wallet.get_software_updater() {
-            if let Some(ref update) = *updater.latest_update() {
-                resp.has_update = true;
-                resp.version = update.version().to_string();
-                resp.sha = update.to_hash_hex();
-                resp.download_url = update.download_url().to_string();
-            }
+        if let Some(ref updater) = self.wallet.get_software_updater() &&
+            let Some(ref update) = *updater.latest_update()
+        {
+            resp.has_update = true;
+            resp.version = update.version().to_string();
+            resp.sha = update.to_hash_hex();
+            resp.download_url = update.download_url().to_string();
         }
 
         Ok(Response::new(resp))
@@ -1274,7 +1274,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 _ => {
                     return Err(Status::invalid_argument(
                         "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
-                    ))
+                    ));
                 },
             };
             MemoField::new_open(bytes, TxType::PaymentToSelf).map_err(|e| {
@@ -1316,11 +1316,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     if let TransactionServiceError::OutputManagerError(OutputManagerError::RangeLimitError {
                         range_exhausted,
                         ..
-                    }) = err
+                    }) = err &&
+                        range_exhausted &&
+                        !results.is_empty()
                     {
-                        if range_exhausted && !results.is_empty() {
-                            break Ok(());
-                        }
+                        break Ok(());
                     }
                     break Err(err);
                 },
@@ -1370,7 +1370,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     break Err(TransactionServiceError::Other(format!(
                         "Transaction {tx_id} not found within timeout of {:.2?}",
                         Duration::from_millis(self.wallet.config.grpc_broadcast_confirmation)
-                    )))
+                    )));
                 },
             };
 
@@ -2334,13 +2334,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                         is_success: true,
                         failure_message: "".to_string(),
-                    }))
+                    }));
                 },
                 Err(e) => {
                     return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                         is_success: false,
                         failure_message: e.to_string(),
-                    }))
+                    }));
                 },
             }
         } else if txn.status().is_completed() {
@@ -2359,13 +2359,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                         is_success: true,
                         failure_message: "".to_string(),
-                    }))
+                    }));
                 },
                 Err(e) => {
                     return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                         is_success: false,
                         failure_message: e.to_string(),
-                    }))
+                    }));
                 },
             }
         } else {

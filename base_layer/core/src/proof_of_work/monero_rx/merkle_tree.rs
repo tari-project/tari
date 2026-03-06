@@ -29,8 +29,8 @@ use std::{io, io::Write};
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::{VarIntReader, VarIntWriter};
 use monero::{
-    consensus::{Decodable, Encodable},
     Hash,
+    consensus::{Decodable, Encodable},
 };
 
 use crate::proof_of_work::monero_rx::error::MergeMineError;
@@ -356,18 +356,18 @@ mod test {
 
     use monero::{
         blockdata::block::BlockHeader,
-        consensus::encode::{serialize, VarInt},
+        consensus::encode::{VarInt, serialize},
     };
     use tari_test_utils::unpack_enum;
-    use tari_utilities::hex::{from_hex, Hex};
+    use tari_utilities::hex::{Hex, from_hex};
 
     use super::*;
     use crate::proof_of_work::randomx_factory::RandomXFactory;
     mod quicktest {
         use monero::Hash;
-        use quickcheck::{quickcheck, Arbitrary, Gen};
+        use quickcheck::{Arbitrary, Gen, quickcheck};
 
-        use crate::proof_of_work::monero_rx::merkle_tree::{MerkleProof, MAX_MERKLE_TREE_PROOF_SIZE};
+        use crate::proof_of_work::monero_rx::merkle_tree::{MAX_MERKLE_TREE_PROOF_SIZE, MerkleProof};
 
         #[derive(Clone, Debug)]
         struct QuickHash {

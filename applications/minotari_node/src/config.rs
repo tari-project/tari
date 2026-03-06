@@ -29,18 +29,18 @@ use std::{
 use config::Config;
 use serde::{Deserialize, Serialize};
 use tari_common::{
+    ConfigurationError,
+    DefaultConfigLoader,
+    SubConfigPath,
     configuration::{
-        bootstrap::wallet_http_service_default_port,
-        serializers,
-        serializers::optional_seconds,
         CommonConfig,
         ConfigList,
         Network,
         StringList,
+        bootstrap::wallet_http_service_default_port,
+        serializers,
+        serializers::optional_seconds,
     },
-    ConfigurationError,
-    DefaultConfigLoader,
-    SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
@@ -49,13 +49,13 @@ use tari_core::{
     chain_storage::BlockchainDatabaseConfig,
     mempool::MempoolConfig,
 };
-use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
+use tari_p2p::{P2pConfig, PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 use url::Url;
 
 #[cfg(feature = "metrics")]
 use crate::metrics::MetricsConfig;
-use crate::{grpc_method::GrpcMethod, HttpCacheConfig};
+use crate::{HttpCacheConfig, grpc_method::GrpcMethod};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {

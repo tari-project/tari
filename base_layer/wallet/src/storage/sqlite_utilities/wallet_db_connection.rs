@@ -23,8 +23,8 @@
 use std::{fs::File, sync::Arc};
 
 use diesel::{
-    r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
+    r2d2::{ConnectionManager, PooledConnection},
 };
 use tari_common_sqlite::{
     error::SqliteStorageError,

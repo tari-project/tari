@@ -35,14 +35,14 @@ use tari_common_types::types::{
 };
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
+    base_node::state_machine_service::states::{StateInfo, StatusInfo, events_and_states::ListeningInfo},
     chain_storage::BlockchainDatabaseConfig,
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proto,
     validation::transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
 };
-use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType, P2pConfig};
+use tari_p2p::{P2pConfig, services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tari_transaction_components::{
@@ -50,15 +50,15 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::Fee,
     key_manager::{KeyManager, TransactionKeyManagerInterface, TxoStage},
-    tari_amount::{uT, MicroMinotari, T},
+    tari_amount::{MicroMinotari, T, uT},
     tari_proof_of_work::Difficulty,
     test_helpers::{
-        create_wallet_output_with_data,
-        schema_to_transaction,
-        spend_utxos,
         TestParams,
         TransactionSchema,
         UtxoTestParams,
+        create_wallet_output_with_data,
+        schema_to_transaction,
+        spend_utxos,
     },
     transaction_components::{
         KernelBuilder,
@@ -72,7 +72,7 @@ use tari_transaction_components::{
     },
     tx,
     txn_schema,
-    validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
+    validation::{AggregatedBodyValidationError, transaction::TransactionInternalConsistencyValidator},
 };
 use tempfile::tempdir;
 

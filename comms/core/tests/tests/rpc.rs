@@ -25,10 +25,10 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use tari_comms::{
-    protocol::rpc::{RpcServer, RpcServerHandle},
-    transports::TcpTransport,
     CommsNode,
     Minimized,
+    protocol::rpc::{RpcServer, RpcServerHandle},
+    transports::TcpTransport,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::async_assert_eventually;
@@ -126,13 +126,15 @@ async fn rpc_server_can_request_drop_sessions() {
         .unwrap();
     assert_eq!(num_sessions, 3);
     for client in &mut clients {
-        assert!(client
-            .say_hello(SayHelloRequest {
-                name: "Bob".to_string(),
-                language: 0
-            })
-            .await
-            .is_ok());
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_ok()
+        );
     }
 
     // The RPC server closes all RPC connections
@@ -149,13 +151,15 @@ async fn rpc_server_can_request_drop_sessions() {
         .unwrap();
     assert_eq!(num_sessions, 0);
     for client in &mut clients {
-        assert!(client
-            .say_hello(SayHelloRequest {
-                name: "Bob".to_string(),
-                language: 0
-            })
-            .await
-            .is_err());
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -194,21 +198,25 @@ async fn rpc_server_can_prioritize_new_connections() {
         .await
         .unwrap();
     assert_eq!(num_sessions, 2);
-    assert!(clients[0]
-        .say_hello(SayHelloRequest {
-            name: "Bob".to_string(),
-            language: 0
-        })
-        .await
-        .is_err());
-    for client in clients.iter_mut().skip(1) {
-        assert!(client
+    assert!(
+        clients[0]
             .say_hello(SayHelloRequest {
                 name: "Bob".to_string(),
                 language: 0
             })
             .await
-            .is_ok());
+            .is_err()
+    );
+    for client in clients.iter_mut().skip(1) {
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_ok()
+        );
     }
 }
 
@@ -251,13 +259,15 @@ async fn rpc_server_can_prioritize_old_connections() {
         match client_result {
             Ok(ref mut client) => {
                 assert!(i < 2);
-                assert!(client
-                    .say_hello(SayHelloRequest {
-                        name: "Bob".to_string(),
-                        language: 0
-                    })
-                    .await
-                    .is_ok());
+                assert!(
+                    client
+                        .say_hello(SayHelloRequest {
+                            name: "Bob".to_string(),
+                            language: 0
+                        })
+                        .await
+                        .is_ok()
+                );
             },
             Err(e) => {
                 assert_eq!(i, 2);
@@ -308,13 +318,15 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
         .unwrap();
     assert_eq!(num_sessions, 3);
     for client in &mut clients {
-        assert!(client
-            .say_hello(SayHelloRequest {
-                name: "Bob".to_string(),
-                language: 0
-            })
-            .await
-            .is_ok());
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_ok()
+        );
     }
 
     // RPC connections are closed when the peer is disconnected
@@ -331,13 +343,15 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
         interval = Duration::from_millis(1000)
     );
     for client in &mut clients {
-        assert!(client
-            .say_hello(SayHelloRequest {
-                name: "Bob".to_string(),
-                language: 0
-            })
-            .await
-            .is_err());
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -377,13 +391,15 @@ async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
         .unwrap();
     assert_eq!(num_sessions, 3);
     for client in &mut clients {
-        assert!(client
-            .say_hello(SayHelloRequest {
-                name: "Bob".to_string(),
-                language: 0
-            })
-            .await
-            .is_ok());
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_ok()
+        );
     }
 
     // RPC connections are closed when the first peer connection clone is dropped
@@ -408,13 +424,15 @@ async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
         interval = Duration::from_millis(1000)
     );
     for client in &mut clients {
-        assert!(client
-            .say_hello(SayHelloRequest {
-                name: "Bob".to_string(),
-                language: 0
-            })
-            .await
-            .is_err());
+        assert!(
+            client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -456,13 +474,15 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
             .unwrap();
         assert_eq!(num_sessions, 3);
         for client in &mut clients {
-            assert!(client
-                .say_hello(SayHelloRequest {
-                    name: "Bob".to_string(),
-                    language: 0
-                })
-                .await
-                .is_ok());
+            assert!(
+                client
+                    .say_hello(SayHelloRequest {
+                        name: "Bob".to_string(),
+                        language: 0
+                    })
+                    .await
+                    .is_ok()
+            );
         }
         assert!(conn1_2.handle_count() > 1);
     }

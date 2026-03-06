@@ -3,7 +3,7 @@
 
 #![allow(clippy::indexing_slicing)]
 use blake2::Blake2b;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use digest::consts::U32;
 use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 

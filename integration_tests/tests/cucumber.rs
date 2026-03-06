@@ -28,10 +28,10 @@ use std::{
 };
 
 use cucumber::{
-    event::ScenarioFinished,
-    writer::{self, Verbosity},
     World as _,
     WriterExt,
+    event::ScenarioFinished,
+    writer::{self, Verbosity},
 };
 use log::*;
 use tari_common::initialize_logging;

@@ -27,7 +27,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::transaction_components::{covenants::error::CovenantError, TransactionOutput};
+use crate::transaction_components::{TransactionOutput, covenants::error::CovenantError};
 
 #[derive(Debug, Clone)]
 /// Structure wrapping a set of `TransactionOutput` references.

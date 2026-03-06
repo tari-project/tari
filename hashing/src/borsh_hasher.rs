@@ -25,7 +25,7 @@
 
 use core::marker::PhantomData;
 
-use borsh::{io, io::Write, BorshSerialize};
+use borsh::{BorshSerialize, io, io::Write};
 use digest::{Digest, Output};
 use tari_crypto::hashing::DomainSeparation;
 

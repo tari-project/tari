@@ -27,11 +27,11 @@ use std::{
     string::FromUtf8Error,
 };
 
-use argon2::{password_hash::Encoding, Argon2, PasswordHash, PasswordVerifier};
+use argon2::{Argon2, PasswordHash, PasswordVerifier, password_hash::Encoding};
 use rand::RngCore;
 use subtle::{Choice, ConstantTimeEq};
 use tari_utilities::{ByteArray, SafePassword};
-use tonic::metadata::{errors::InvalidMetadataValue, Ascii, MetadataValue};
+use tonic::metadata::{Ascii, MetadataValue, errors::InvalidMetadataValue};
 use zeroize::{Zeroize, Zeroizing};
 
 const MAX_USERNAME_LEN: usize = 256;
@@ -100,7 +100,7 @@ impl BasicAuthCredentials {
         }
 
         // Decode the credentials using base64
-        use base64::{prelude::BASE64_STANDARD, Engine};
+        use base64::{Engine, prelude::BASE64_STANDARD};
         let decoded = BASE64_STANDARD.decode(encoded_credentials)?;
         let as_utf8 = Zeroizing::new(String::from_utf8(decoded)?);
 
@@ -167,7 +167,7 @@ impl BasicAuthCredentials {
 
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
-        use base64::{prelude::BASE64_STANDARD, Engine};
+        use base64::{Engine, prelude::BASE64_STANDARD};
         let password_str = String::from_utf8_lossy(password);
         let token_str = Zeroizing::new(format!("{username}:{password_str}"));
         let mut token = BASE64_STANDARD.encode(token_str.deref());

@@ -22,7 +22,7 @@
 
 use chrono::offset::Local;
 use log::*;
-use minotari_wallet::{utxo_scanner_service::handle::UtxoScannerEvent, WalletSqlite};
+use minotari_wallet::{WalletSqlite, utxo_scanner_service::handle::UtxoScannerEvent};
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic, seed_words::SeedWords};

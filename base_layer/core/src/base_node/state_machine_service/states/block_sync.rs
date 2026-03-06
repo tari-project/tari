@@ -28,10 +28,10 @@ use log::*;
 use crate::base_node::metrics;
 use crate::{
     base_node::{
+        BaseNodeStateMachine,
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, HorizonStateSync, StateEvent, StateInfo, StatusInfo},
         sync::{BlockSynchronizer, SyncPeer},
-        BaseNodeStateMachine,
     },
     chain_storage::{BlockAddResult, BlockchainBackend},
 };

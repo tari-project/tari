@@ -25,16 +25,16 @@ use std::task::Poll;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::bytes::BufMut;
-use tari_comms::{peer_manager::Peer, pipeline::PipelineError, BytesMut};
+use tari_comms::{BytesMut, peer_manager::Peer, pipeline::PipelineError};
 use tari_utilities::epoch_time::EpochTime;
-use tower::{layer::Layer, Service, ServiceExt};
+use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
+    DhtRequester,
     actor::OffenceSeverity,
     envelope::NodeDestination,
-    inbound::{error::DhtInboundError, DecryptedDhtMessage},
+    inbound::{DecryptedDhtMessage, error::DhtInboundError},
     outbound::{OutboundMessageRequester, SendMessageParams},
-    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::forward";
@@ -209,17 +209,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        if let Some(expires) = &dht_header.expires {
-            if *expires < EpochTime::now() {
-                debug!(
-                    target: LOG_TARGET,
-                    "Received message {} from peer '{}' that is expired. Discarding message (Trace: {})",
-                    message.tag,
-                    source_peer.node_id.short_str(),
-                    message.dht_header.message_tag
-                );
-                return Ok(());
-            }
+        if let Some(expires) = &dht_header.expires &&
+            *expires < EpochTime::now()
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Received message {} from peer '{}' that is expired. Discarding message (Trace: {})",
+                message.tag,
+                source_peer.node_id.short_str(),
+                message.dht_header.message_tag
+            );
+            return Ok(());
         }
 
         if *is_already_forwarded {

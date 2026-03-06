@@ -22,9 +22,9 @@
 
 use std::path::PathBuf;
 
-use minotari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
+use minotari_wallet::storage::sqlite_utilities::{WalletDbConnection, run_migration_and_create_sqlite_connection};
 use tari_test_utils::random;
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 pub fn get_path(name: Option<&str>) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

@@ -27,7 +27,7 @@ use std::sync::Arc;
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_sqlite::connection::DbConnection;
 use tari_common_types::{
@@ -35,33 +35,33 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use tari_comms::{
+    PeerManager,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         Peer,
         PeerFeatures,
         PeerFlags,
+        database::{MIGRATIONS, PeerDatabaseSql},
     },
     types::{CommsPublicKey, TransportProtocol},
-    PeerManager,
 };
 use tari_crypto::keys::SecretKey;
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader};
 use tari_transaction_components::{
+    MicroMinotari,
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     tari_proof_of_work::Difficulty,
     transaction_components::{
-        memo_field::{MemoField, TxType},
         CoinBaseExtra,
         RangeProofType,
         Transaction,
         WalletOutput,
+        memo_field::{MemoField, TxType},
     },
-    MicroMinotari,
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -69,7 +69,7 @@ use crate::{
     blocks::BlockHeaderAccumulatedDataBuilder,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseNodeConsensusManager,
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
+    proof_of_work::{AchievedTargetDifficulty, sha3x_difficulty},
 };
 
 #[macro_use]
@@ -204,7 +204,7 @@ pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {
     // When starting from the same nonce, in tests it becomes common to mine the same block more than once without the
     // hash changing. This introduces the required entropy
-    block.header.nonce = rand::thread_rng().gen();
+    block.header.nonce = rand::thread_rng().r#gen();
     for _i in 0..20000 {
         if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);

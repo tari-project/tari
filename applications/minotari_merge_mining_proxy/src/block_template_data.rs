@@ -29,7 +29,7 @@ use chrono::Duration;
 use chrono::{DateTime, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
-use tari_core::{proof_of_work::monero_rx::FixedByteArray, AuxChainHashes};
+use tari_core::{AuxChainHashes, proof_of_work::monero_rx::FixedByteArray};
 use tokio::sync::RwLock;
 use tracing::trace;
 

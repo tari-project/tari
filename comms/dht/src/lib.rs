@@ -93,8 +93,8 @@ pub use error::DhtEncryptError;
 
 mod network_discovery;
 pub use network_discovery::{
-    state_machine::{BootstrapMethod, DiscoveryPhase},
     NetworkDiscoveryConfig,
+    state_machine::{BootstrapMethod, DiscoveryPhase},
 };
 
 mod storage;

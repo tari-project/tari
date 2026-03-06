@@ -28,13 +28,13 @@ use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
-    backend::ArrayLike,
-    common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index, LeafIndex},
-    error::MerkleMountainRangeError,
-    serde_support,
     Hash,
     HashSlice,
     MerkleMountainRange,
+    backend::ArrayLike,
+    common::{LeafIndex, family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index},
+    error::MerkleMountainRangeError,
+    serde_support,
 };
 
 /// Merkle proof errors.

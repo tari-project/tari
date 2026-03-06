@@ -25,7 +25,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
 use crate::{
-    outbound::{message::SendFailure, DhtOutboundError},
+    outbound::{DhtOutboundError, message::SendFailure},
     peer_validator::DhtPeerValidatorError,
 };
 

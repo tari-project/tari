@@ -32,10 +32,10 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     tor::{
-        hidden_service::{controller::HiddenServiceController, TorProxyOpts},
         Authentication,
         PortMapping,
         TorIdentity,
+        hidden_service::{TorProxyOpts, controller::HiddenServiceController},
     },
 };
 

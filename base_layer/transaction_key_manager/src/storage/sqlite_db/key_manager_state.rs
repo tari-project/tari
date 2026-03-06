@@ -30,7 +30,7 @@ use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_
 use tari_utilities::{ByteArray, Hidden};
 
 use crate::{
-    legacy_key_manager::{error::KeyManagerStorageError, KeyManagerState},
+    legacy_key_manager::{KeyManagerState, error::KeyManagerStorageError},
     schema::key_manager_states,
     storage::sqlite_db::Encryptable,
 };

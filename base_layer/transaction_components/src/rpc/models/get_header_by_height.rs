@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::epoch_time::EpochTime;
 use utoipa::{
-    openapi::{schema::SchemaType, Object, Schema, Type},
     ToSchema,
+    openapi::{Object, Schema, Type, schema::SchemaType},
 };
 
 use crate::tari_proof_of_work::ProofOfWork;

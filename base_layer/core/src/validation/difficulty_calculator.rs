@@ -23,10 +23,10 @@
 use tari_node_components::blocks::BlockHeader;
 
 use crate::{
-    chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
+    chain_storage::{BlockchainBackend, fetch_target_difficulty_for_next_block},
     consensus::BaseNodeConsensusManager,
-    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
-    validation::{helpers::check_target_difficulty, ValidationError},
+    proof_of_work::{AchievedTargetDifficulty, randomx_factory::RandomXFactory},
+    validation::{ValidationError, helpers::check_target_difficulty},
 };
 
 pub const TARI_RX_VM_KEY_BLOCK_SWAP: u64 = 2048;

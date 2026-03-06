@@ -31,12 +31,12 @@ use tokio::task;
 use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
-        error::MempoolError,
-        mempool_storage::MempoolStorage,
         MempoolConfig,
         StateResponse,
         StatsResponse,
         TxStorageResponse,
+        error::MempoolError,
+        mempool_storage::MempoolStorage,
     },
     validation::TransactionValidator,
 };

@@ -30,19 +30,19 @@ use std::{
 };
 
 use propagation::node;
-use rand::{rngs::OsRng, Rng};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, CommsNode, NodeIdentity};
+use rand::{Rng, rngs::OsRng};
+use tari_comms::{CommsNode, NodeIdentity, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::{
+    Dht,
     domain_message::OutboundDomainMessage,
     inbound::DecryptedDhtMessage,
     outbound::{MessageSendStates, OutboundEncryption},
-    Dht,
 };
 use tari_shutdown::Shutdown;
 use tempfile::tempdir;
 use tokio::{sync::mpsc, task};
 
-use crate::propagation::prompt::{parse_from_short_str, user_prompt, SendMethod};
+use crate::propagation::prompt::{SendMethod, parse_from_short_str, user_prompt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

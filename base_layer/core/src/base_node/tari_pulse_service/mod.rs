@@ -28,21 +28,21 @@ use futures::future;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, types::CommsPublicKey, Minimized};
-use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
+use tari_comms::{Minimized, connectivity::ConnectivityRequester, peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms_dht::{Dht, DhtDiscoveryRequester, envelope::NodeDestination};
 use tari_p2p::{
+    Network,
     dns::DnsClient,
     services::liveness::{LivenessEvent, LivenessHandle},
-    Network,
 };
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{broadcast, broadcast::error::RecvError, watch, Mutex, RwLock},
+    sync::{Mutex, RwLock, broadcast, broadcast::error::RecvError, watch},
     task,
     task::JoinHandle,
-    time::{self, timeout, Instant as TokioInstant, MissedTickBehavior},
+    time::{self, Instant as TokioInstant, MissedTickBehavior, timeout},
 };
 
 use super::LocalNodeCommsInterface;
@@ -520,10 +520,11 @@ fn spawn_ping(
         loop {
             match tokio::time::timeout(Duration::from_secs(30), liveness_events.recv()).await {
                 Ok(Ok(event)) => {
-                    if let LivenessEvent::ReceivedPong(pong) = &*event {
-                        if pong.node_id == peer_node_id && pong.nonce == nonce {
-                            return Some(start.elapsed());
-                        }
+                    if let LivenessEvent::ReceivedPong(pong) = &*event &&
+                        pong.node_id == peer_node_id &&
+                        pong.nonce == nonce
+                    {
+                        return Some(start.elapsed());
                     }
                     // Give up after ~60s total waiting
                     if start.elapsed() >= Duration::from_secs(60) {

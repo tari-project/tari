@@ -31,18 +31,24 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use tokio::{
-    sync::{mpsc, Mutex, RwLock},
+    sync::{Mutex, RwLock, mpsc},
     task,
 };
-use tower::{make::MakeService, Service};
+use tower::{Service, make::MakeService};
 
 use crate::{
+    NodeIdentity,
+    PeerConnection,
+    PeerManager,
+    Substream,
     connectivity::ConnectivitySelection,
     peer_manager::{NodeId, Peer},
     protocol::{
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+        ProtocolNotificationTx,
         rpc::{
-            context::{RequestContext, RpcCommsBackend, RpcCommsProvider},
-            server::{handle::RpcServerRequest, PeerRpcServer, RpcServerError},
             Body,
             NamedProtocolService,
             Request,
@@ -51,18 +57,12 @@ use crate::{
             RpcServer,
             RpcStatus,
             Streaming,
+            context::{RequestContext, RpcCommsBackend, RpcCommsProvider},
+            server::{PeerRpcServer, RpcServerError, handle::RpcServerRequest},
         },
-        ProtocolEvent,
-        ProtocolId,
-        ProtocolNotification,
-        ProtocolNotificationTx,
     },
-    test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
+    test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_peer_connection_mock_pair},
     utils,
-    NodeIdentity,
-    PeerConnection,
-    PeerManager,
-    Substream,
 };
 
 pub struct RpcRequestMock {

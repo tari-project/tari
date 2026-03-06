@@ -28,7 +28,7 @@ use std::{
 };
 
 use chrono::Utc;
-use crossbeam::channel::{bounded, Select, Sender, TrySendError};
+use crossbeam::channel::{Select, Sender, TrySendError, bounded};
 use futures::Stream;
 use log::*;
 use minotari_app_grpc::tari_rpc::BlockHeader;

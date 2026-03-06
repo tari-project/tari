@@ -29,7 +29,7 @@ use super::{DnsResolver, DnsResolverError};
 use crate::{
     multiaddr::Multiaddr,
     socks::Socks5Client,
-    transports::{dns::common, SocksConfig, SocksTransport, TcpTransport, Transport},
+    transports::{SocksConfig, SocksTransport, TcpTransport, Transport, dns::common},
 };
 
 const LOG_TARGET: &str = "comms::dns::tor_resolver";

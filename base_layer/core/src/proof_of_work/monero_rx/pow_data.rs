@@ -36,8 +36,8 @@ use monero::{
 };
 use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{
-    hex::{to_hex, Hex},
     ByteArray,
+    hex::{Hex, to_hex},
 };
 use tiny_keccak::{Hasher, Keccak};
 
@@ -201,7 +201,7 @@ impl Display for MoneroPowData {
 mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
     use chacha20poly1305::aead::OsRng;
-    use monero::{blockdata::transaction::RawExtraField, consensus::Encodable, BlockHeader, Hash, VarInt};
+    use monero::{BlockHeader, Hash, VarInt, blockdata::transaction::RawExtraField, consensus::Encodable};
     use tari_common::configuration::Network;
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
@@ -210,7 +210,7 @@ mod test {
     use tiny_keccak::{Hasher, Keccak};
 
     use super::MoneroPowData;
-    use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
+    use crate::proof_of_work::monero_rx::{FixedByteArray, merkle_tree::MerkleProof};
 
     #[test]
     fn test_borsh_de_serialization() {

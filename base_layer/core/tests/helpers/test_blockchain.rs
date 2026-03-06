@@ -24,7 +24,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use log::*;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{

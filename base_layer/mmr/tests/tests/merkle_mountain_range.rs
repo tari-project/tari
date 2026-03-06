@@ -24,7 +24,7 @@
 
 use tari_mmr::common::LeafIndex;
 
-use crate::support::{combine_hashes, create_mmr, int_to_hash, MmrTestHasherBlake256, TestMmr};
+use crate::support::{MmrTestHasherBlake256, TestMmr, combine_hashes, create_mmr, int_to_hash};
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]

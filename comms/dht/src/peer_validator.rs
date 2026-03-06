@@ -25,11 +25,11 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFlags},
     peer_validator,
-    peer_validator::{find_most_recent_claim, PeerValidatorError},
+    peer_validator::{PeerValidatorError, find_most_recent_claim},
 };
 use tari_utilities::hex::Hex;
 
-use crate::{rpc::UnvalidatedPeerInfo, DhtConfig};
+use crate::{DhtConfig, rpc::UnvalidatedPeerInfo};
 
 const LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 
@@ -76,17 +76,17 @@ impl<'a> PeerValidator<'a> {
             });
         }
 
-        if let Some(existing) = &existing_peer {
-            if existing.public_key != new_peer.public_key {
-                return Err(DhtPeerValidatorError::NewAndExistingMismatch {
-                    existing: format!("BUG: '{}' / '{}'", existing.node_id, existing.public_key),
-                    new: format!(
-                        "BUG: '{}' / '{}'",
-                        NodeId::from_public_key(&new_peer.public_key),
-                        new_peer.public_key
-                    ),
-                });
-            }
+        if let Some(existing) = &existing_peer &&
+            existing.public_key != new_peer.public_key
+        {
+            return Err(DhtPeerValidatorError::NewAndExistingMismatch {
+                existing: format!("BUG: '{}' / '{}'", existing.node_id, existing.public_key),
+                new: format!(
+                    "BUG: '{}' / '{}'",
+                    NodeId::from_public_key(&new_peer.public_key),
+                    new_peer.public_key
+                ),
+            });
         }
 
         let most_recent_claim = find_most_recent_claim(&new_peer.claims).expect("new_peer.claims is not empty");

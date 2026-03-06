@@ -33,10 +33,10 @@ use crate::{
     protocol::{
         rpc,
         rpc::{
+            RpcStatusCode,
             body::{Body, IntoBody},
             context::RequestContext,
             error::HandshakeRejectReason,
-            RpcStatusCode,
         },
     },
 };

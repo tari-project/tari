@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub use lmdb_db::{
+    LMDBDatabase,
     create_lmdb_database,
     create_lmdb_database_with_stats_channel,
     create_readonly_lmdb_environment,
     create_recovery_lmdb_database,
     get_all_database_names,
-    LMDBDatabase,
 };
 use serde::{Deserialize, Serialize};
 pub use stats_collector::DatabaseStats;
@@ -43,12 +43,12 @@ mod lmdb_db;
 pub mod row_data;
 pub use lmdb_db::{
     AccumulatedDataRebuildStatus,
+    BREATHING_TIME_MS_MAX,
+    BREATHING_TIME_MS_MIN,
     BlockchainCheckRequest,
     BlockchainCheckStatus,
     CheckFailure,
     PayrefRebuildStatus,
-    BREATHING_TIME_MS_MAX,
-    BREATHING_TIME_MS_MIN,
 };
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;

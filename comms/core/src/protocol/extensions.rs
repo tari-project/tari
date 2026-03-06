@@ -25,10 +25,10 @@ use std::sync::Arc;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
-    connectivity::ConnectivityRequester,
-    protocol::{ProtocolId, ProtocolNotificationTx, Protocols},
     PeerManager,
     Substream,
+    connectivity::ConnectivityRequester,
+    protocol::{ProtocolId, ProtocolNotificationTx, Protocols},
 };
 
 /// Error type for ProtocolExtension

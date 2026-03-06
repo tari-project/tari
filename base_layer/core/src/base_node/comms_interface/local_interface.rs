@@ -28,7 +28,7 @@ use tari_common_types::{
     types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
-use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_service_framework::{Service, reply_channel::SenderService};
 use tari_transaction_components::{
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{TransactionKernel, TransactionOutput},
@@ -37,12 +37,12 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node::comms_interface::{
-        comms_request::GetNewBlockTemplateRequest,
-        comms_response::ValidatorNodeChange,
-        error::CommsInterfaceError,
         BlockEvent,
         NodeCommsRequest,
         NodeCommsResponse,
+        comms_request::GetNewBlockTemplateRequest,
+        comms_response::ValidatorNodeChange,
+        error::CommsInterfaceError,
     },
     chain_storage::{
         InputMinedInfo,

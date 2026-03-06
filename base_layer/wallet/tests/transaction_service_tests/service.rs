@@ -28,9 +28,11 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Days, Utc};
 use digest::consts::U32;
 use minotari_wallet::{
-    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
     output_manager_service::{
+        OutputManagerServiceInitializer,
+        UtxoSelectionCriteria,
         config::OutputManagerServiceConfig,
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
@@ -39,16 +41,15 @@ use minotari_wallet::{
             models::KnownOneSidedPaymentScript,
             sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
         },
-        OutputManagerServiceInitializer,
-        UtxoSelectionCriteria,
     },
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
+        sqlite_utilities::{WalletDbConnection, run_migration_and_create_sqlite_connection},
     },
     test_utils::{make_wallet_database_memory_connection, random_string},
     transaction_service::{
+        TransactionServiceInitializer,
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
@@ -57,7 +58,6 @@ use minotari_wallet::{
             models::{CompletedTransaction, WalletTransaction},
             sqlite_db::TransactionServiceSqliteDatabase,
         },
-        TransactionServiceInitializer,
     },
     util::watch::Watch,
     utxo_scanner_service::{
@@ -66,7 +66,7 @@ use minotari_wallet::{
         service::ScannedBlock,
     },
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -76,12 +76,12 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::{
+    PeerConnection,
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    protocol::rpc::{NamedProtocolService, mock::MockRpcServer},
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
-    PeerConnection,
 };
 use tari_core::base_node::{
     proto::wallet_rpc::{TxLocation, TxQueryResponse},
@@ -89,8 +89,8 @@ use tari_core::base_node::{
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
 use tari_p2p::Network;
-use tari_script::{push_pubkey_script, ExecutionStack};
-use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
+use tari_script::{ExecutionStack, push_pubkey_script};
+use tari_service_framework::{RegisterHandle, StackBuilder, reply_channel};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_transaction_components::{
@@ -101,27 +101,27 @@ use tari_transaction_components::{
     tari_amount::*,
     transaction_builder::TransactionBuilder,
     transaction_components::{
-        memo_field::{MemoField, TxType},
-        one_sided::public_key_to_output_encryption_key,
         EncryptedData,
         KernelBuilder,
         OutputFeatures,
         RangeProofType,
         Transaction,
+        memo_field::{MemoField, TxType},
+        one_sided::public_key_to_output_encryption_key,
     },
 };
 use tari_transaction_key_manager::{
     legacy_key_manager::{
-        create_new_random_key_manager,
-        wallet_types::{LegacyWalletType, ProvidedKeysWallet},
         LegacyTransactionKeyManagerInitializer,
         LegacyTransactionKeyManagerInterface,
         LegacyTransactionKeyManagerWrapper,
         MemoryKeyManager,
+        create_new_random_key_manager,
+        wallet_types::{LegacyWalletType, ProvidedKeysWallet},
     },
     storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
 };
-use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
+use tari_utilities::{ByteArray, SafePassword, epoch_time::EpochTime};
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, broadcast::channel},
@@ -713,11 +713,11 @@ async fn send_one_sided_transaction_to_other() {
     loop {
         tokio::select! {
             event = alice_event_stream.recv() => {
-                if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap() {
-                    if id == &tx_id {
-                        found = true;
-                        break;
-                    }
+                if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap()
+                    && id == &tx_id
+                {
+                    found = true;
+                    break;
                 }
             },
             () = &mut delay => {
@@ -1115,10 +1115,10 @@ async fn test_htlc_send_and_claim() {
     loop {
         tokio::select! {
             event = alice_event_stream.recv() => {
-                if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap() {
-                    if id == &tx_id {
-                        break;
-                    }
+                if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap()
+                    && id == &tx_id
+                {
+                    break;
                 }
             },
             () = &mut delay => {
@@ -1802,11 +1802,13 @@ async fn broadcast_all_completed_transactions_on_startup() {
         .restart_broadcast_protocols()
         .await
         .unwrap();
-    assert!(alice_ts_interface
-        .transaction_service_handle
-        .restart_broadcast_protocols()
-        .await
-        .is_ok());
+    assert!(
+        alice_ts_interface
+            .transaction_service_handle
+            .restart_broadcast_protocols()
+            .await
+            .is_ok()
+    );
 
     let delay = sleep(Duration::from_secs(60));
     tokio::pin!(delay);

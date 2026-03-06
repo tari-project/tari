@@ -32,8 +32,8 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{MemoField, OutputFeatures},
     MicroMinotari,
+    transaction_components::{MemoField, OutputFeatures},
 };
 use tari_utilities::ByteArray;
 use tokio::sync::{broadcast, watch};
@@ -75,11 +75,11 @@ pub async fn send_one_sided_to_stealth_address_transaction(
             loop {
                 match event_stream.recv().await {
                     Ok(event) => {
-                        if let TransactionEvent::TransactionCompletedImmediately(tx_id) = &*event {
-                            if our_tx_id == *tx_id {
-                                let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
-                                return;
-                            }
+                        if let TransactionEvent::TransactionCompletedImmediately(tx_id) = &*event &&
+                            our_tx_id == *tx_id
+                        {
+                            let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
+                            return;
                         }
                     },
                     Err(e @ broadcast::error::RecvError::Lagged(_)) => {
@@ -157,35 +157,35 @@ pub async fn send_burn_transaction_task(
                 if burn_tx_id != *completed_tx_id {
                     continue;
                 }
-                if let Some(original_proof) = original_proof {
-                    if let Some(filepath) = burn_proof_filepath {
-                        let wrapped_proof = BurntProofBase64 {
-                            claim_public_key: original_proof.claim_public_key.to_vec(),
-                            commitment: original_proof.commitment.to_vec(),
-                            ownership_proof: SignatureBase64 {
-                                public_nonce: original_proof.ownership_proof.get_compressed_public_nonce().to_vec(),
-                                signature: original_proof.ownership_proof.get_signature().to_vec(),
-                            },
-                        };
+                if let Some(original_proof) = original_proof &&
+                    let Some(filepath) = burn_proof_filepath
+                {
+                    let wrapped_proof = BurntProofBase64 {
+                        claim_public_key: original_proof.claim_public_key.to_vec(),
+                        commitment: original_proof.commitment.to_vec(),
+                        ownership_proof: SignatureBase64 {
+                            public_nonce: original_proof.ownership_proof.get_compressed_public_nonce().to_vec(),
+                            signature: original_proof.ownership_proof.get_signature().to_vec(),
+                        },
+                    };
 
-                        let serialized_proof = match serde_json::to_string_pretty(&wrapped_proof) {
-                            Ok(proof) => proof,
-                            Err(e) => {
-                                error!(target: LOG_TARGET, "failed to serialize burn proof: {e:?}");
-                                result_tx
-                                    .send(UiTransactionBurnStatus::Error(format!("failure to create proof {e:?}")))
-                                    .unwrap();
-                                return;
-                            },
-                        };
-
-                        if let Err(e) = std::fs::write(filepath, serialized_proof.as_bytes()) {
-                            error!(target: LOG_TARGET, "failed to write burn proof: {e:?}");
+                    let serialized_proof = match serde_json::to_string_pretty(&wrapped_proof) {
+                        Ok(proof) => proof,
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "failed to serialize burn proof: {e:?}");
                             result_tx
-                                .send(UiTransactionBurnStatus::Error(format!("failure to write proof {e:?}")))
+                                .send(UiTransactionBurnStatus::Error(format!("failure to create proof {e:?}")))
                                 .unwrap();
                             return;
-                        }
+                        },
+                    };
+
+                    if let Err(e) = std::fs::write(filepath, serialized_proof.as_bytes()) {
+                        error!(target: LOG_TARGET, "failed to write burn proof: {e:?}");
+                        result_tx
+                            .send(UiTransactionBurnStatus::Error(format!("failure to write proof {e:?}")))
+                            .unwrap();
+                        return;
                     }
                 }
 

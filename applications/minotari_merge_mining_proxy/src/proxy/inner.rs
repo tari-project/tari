@@ -24,17 +24,17 @@
 use std::{
     convert::TryInto,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
         RwLock,
+        atomic::{AtomicBool, Ordering},
     },
     time::Instant,
 };
 
-use blake2::{digest::Update, Blake2s256, Digest};
+use blake2::{Blake2s256, Digest, digest::Update};
 use borsh::BorshSerialize;
 use bytes::Bytes;
-use hyper::{header::HeaderValue as HyperHeaderValue, Request, Response, StatusCode, Uri};
+use hyper::{Request, Response, StatusCode, Uri, header::HeaderValue as HyperHeaderValue};
 use log::error;
 use minotari_app_grpc::tari_rpc::{self, GetTipInfoRequest, SubmitBlockRequest};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
@@ -181,7 +181,7 @@ impl InnerService {
                         "`params` field is empty or an invalid type for submit block request. Expected an array.",
                         None,
                     ),
-                )
+                );
             },
         };
 
@@ -489,7 +489,7 @@ impl InnerService {
                 return proxy::json_response(
                     StatusCode::OK,
                     &json_rpc::error_response(request["id"].as_i64(), CoreRpcErrorCode::WrongParam.into(), err, None),
-                )
+                );
             },
         };
 
@@ -581,19 +581,18 @@ impl InnerService {
         // Current
         let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
         let current = lock.clone();
-        if let Some(host) = host_with_error {
-            if let Some(server) = current.clone() {
-                // If the error was reported on a previously assigned server, we do not clear the lock. This happens on
-                // requests that timed out after a new server has been assigned.
-                if !server.contains(host) {
-                    trace!(
-                        target: LOG_TARGET, "A new monerod server has already been assigned. Current: '{}', host with \
-                        error: '{}'",
-                        server, host
-                    );
-                    return;
-                }
-            }
+        if let Some(host) = host_with_error
+            && let Some(server) = current.clone()
+            // If the error was reported on a previously assigned server, we do not clear the lock. This happens on
+            // requests that timed out after a new server has been assigned.
+            && !server.contains(host)
+        {
+            trace!(
+                target: LOG_TARGET, "A new monerod server has already been assigned. Current: '{}', host with \
+                error: '{}'",
+                server, host
+            );
+            return;
         }
         *lock = None;
         // Last assigned

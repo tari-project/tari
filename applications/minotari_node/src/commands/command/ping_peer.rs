@@ -56,16 +56,17 @@ impl CommandContext {
                     loop {
                         match liveness_events.recv().await {
                             Ok(event) => {
-                                if let LivenessEvent::ReceivedPong(pong) = &*event {
-                                    if pong.node_id == dest_node_id && pong.nonce == nonce {
-                                        println!(
-                                            "🏓️ Pong: peer {} responded with nonce {}, round-trip-time is {:.2?}!",
-                                            pong.node_id,
-                                            pong.nonce,
-                                            pong.latency.unwrap_or_default()
-                                        );
-                                        break;
-                                    }
+                                if let LivenessEvent::ReceivedPong(pong) = &*event &&
+                                    pong.node_id == dest_node_id &&
+                                    pong.nonce == nonce
+                                {
+                                    println!(
+                                        "🏓️ Pong: peer {} responded with nonce {}, round-trip-time is {:.2?}!",
+                                        pong.node_id,
+                                        pong.nonce,
+                                        pong.latency.unwrap_or_default()
+                                    );
+                                    break;
                                 }
                             },
                             Err(RecvError::Closed) => {

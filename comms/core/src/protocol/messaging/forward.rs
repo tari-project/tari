@@ -25,13 +25,13 @@
 use std::pin::Pin;
 
 use futures::{
+    Sink,
+    Stream,
+    TryStream,
     future::{FusedFuture, Future},
     ready,
     stream::{Fuse, StreamExt},
     task::{Context, Poll},
-    Sink,
-    Stream,
-    TryStream,
 };
 use pin_project::pin_project;
 

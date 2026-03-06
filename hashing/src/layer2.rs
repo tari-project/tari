@@ -1,14 +1,14 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use blake2::{digest::consts::U32, Blake2b};
+use blake2::{Blake2b, digest::consts::U32};
 use digest::consts::U64;
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, DomainSeparation},
 };
 
-use crate::{domains::ValidatorNodeMerkleHashDomain, DomainSeparatedBorshHasher, ValidatorNodeHashDomain};
+use crate::{DomainSeparatedBorshHasher, ValidatorNodeHashDomain, domains::ValidatorNodeMerkleHashDomain};
 
 hash_domain!(TariDanConsensusHashDomain, "com.tari.consensus", 0);
 

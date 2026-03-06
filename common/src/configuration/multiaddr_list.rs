@@ -52,10 +52,9 @@ mod tests {
     fn from_vec_string_list() {
         let vec_multiaddr = vec![Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap()];
         let multiaddr_lst = MultiaddrList::from(vec_multiaddr);
-        assert_eq!(multiaddr_lst.into_vec(), vec![Multiaddr::from_str(
-            "/ip4/127.0.0.1/tcp/1234"
-        )
-        .unwrap()]);
+        assert_eq!(multiaddr_lst.into_vec(), vec![
+            Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap()
+        ]);
     }
 
     #[test]

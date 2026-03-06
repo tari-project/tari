@@ -28,10 +28,10 @@ use crate::{
     chain_storage::BlockchainBackend,
     consensus::BaseNodeConsensusManager,
     validation::{
-        block_body::BlockBodyFullValidator,
         BlockBodyValidator,
         ChainBalanceValidator,
         FinalHorizonStateValidation,
+        block_body::BlockBodyFullValidator,
     },
 };
 
