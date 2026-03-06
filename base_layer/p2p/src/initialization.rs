@@ -292,7 +292,7 @@ fn initialize_hidden_service(
         .with_control_server_auth(config.to_control_auth()?)
         .with_socks_address_override(config.socks_address_override)
         .with_control_server_address(config.control_address)
-        .with_bypass_proxy_addresses(config.proxy_bypass_addresses.into());
+        .with_bypass_proxy_addresses(config.proxy_bypass_addresses.into_vec().into());
 
     if config.proxy_bypass_for_outbound_tcp {
         builder = builder.bypass_tor_for_tcp_addresses();

@@ -103,6 +103,8 @@ pub async fn run_base_node(
         watch: None,
         profile_with_tokio_console: false,
         mining_enabled: false,
+        grpc_enabled: false,
+        grpc_address: None,
         second_layer_grpc_enabled: false,
         disable_splash_screen: true,
         libtor_data_dir: None,

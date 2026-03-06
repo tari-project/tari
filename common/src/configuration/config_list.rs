@@ -144,12 +144,22 @@ where
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where E: de::Error {
-                if v.trim().is_empty() {
+                let v = v.trim();
+                if v.is_empty() {
                     return Ok(ConfigList::new());
                 }
-                let strings = v
+                // Handle JSON/TOML array format: ["a","b","c"] or [a, b, c]
+                let effective_v = if v.starts_with('[') && v.ends_with(']') {
+                    v[1..v.len() - 1].trim()
+                } else {
+                    v
+                };
+                if effective_v.is_empty() {
+                    return Ok(ConfigList::new());
+                }
+                let strings = effective_v
                     .split(',')
-                    .map(|s| s.trim())
+                    .map(|s| s.trim().trim_matches('"').trim_matches('\''))
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<_>>();
                 let parsed: Result<Vec<_>, _> = strings
@@ -170,7 +180,7 @@ where
         }
 
         if deserializer.is_human_readable() {
-            deserializer.deserialize_seq(ConfigListVisitor(std::marker::PhantomData))
+            deserializer.deserialize_any(ConfigListVisitor(std::marker::PhantomData))
         } else {
             deserializer.deserialize_newtype_struct("ConfigList", ConfigListVisitor(std::marker::PhantomData))
         }
@@ -245,12 +255,35 @@ mod test_config_list_general {
         let test = config.try_deserialize::<Test>().unwrap();
         assert_eq!(test.something.0, vec!["a", "b", "c"]);
     }
+
+    #[test]
+    fn it_deserializes_from_json_array_string() {
+        let config = Config::builder()
+            .set_override("something", r#"["a","b","c"]"#)
+            .unwrap()
+            .build()
+            .unwrap();
+        let test = config.try_deserialize::<Test>().unwrap();
+        assert_eq!(test.something.0, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn it_deserializes_empty_json_array_string() {
+        let config = Config::builder()
+            .set_override("something", "[]")
+            .unwrap()
+            .build()
+            .unwrap();
+        let test = config.try_deserialize::<Test>().unwrap();
+        assert!(test.something.0.is_empty());
+    }
 }
 
 #[cfg(test)]
 mod test_config_list_for_toml {
     use std::str::FromStr;
 
+    use config::Config;
     use serde::Deserialize;
 
     use crate::configuration::{ConfigList, Multiaddr};
@@ -304,5 +337,39 @@ mod test_config_list_for_toml {
         assert_eq!(item_vec_string, Vec::<String>::new());
         let item_vec_multiaddr = config.multiaddr_list.into_vec();
         assert_eq!(item_vec_multiaddr, Vec::<Multiaddr>::new());
+    }
+
+    #[test]
+    fn it_deserializes_multiaddr_list_from_env_style_json_array() {
+        let config = Config::builder()
+            .set_override(
+                "multiaddr_list",
+                r#"["/ip4/127.0.150.1/tcp/18500","/ip4/127.0.0.1/tcp/5678"]"#,
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let config = config.try_deserialize::<Test>().unwrap();
+        assert_eq!(config.multiaddr_list.into_vec(), vec![
+            Multiaddr::from_str("/ip4/127.0.150.1/tcp/18500").unwrap(),
+            Multiaddr::from_str("/ip4/127.0.0.1/tcp/5678").unwrap(),
+        ]);
+    }
+
+    #[test]
+    fn it_deserializes_multiaddr_list_from_comma_delimited_env_var() {
+        let config = Config::builder()
+            .set_override(
+                "multiaddr_list",
+                "/ip4/127.0.150.1/tcp/18500, /ip4/127.0.0.1/tcp/5678",
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let config = config.try_deserialize::<Test>().unwrap();
+        assert_eq!(config.multiaddr_list.into_vec(), vec![
+            Multiaddr::from_str("/ip4/127.0.150.1/tcp/18500").unwrap(),
+            Multiaddr::from_str("/ip4/127.0.0.1/tcp/5678").unwrap(),
+        ]);
     }
 }

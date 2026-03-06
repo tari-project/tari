@@ -4,7 +4,7 @@
 use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path::Path, str::FromStr};
 
 use config::Config;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use serde::{
     Deserialize,
     Deserializer,
@@ -62,6 +62,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     overrides: &TOverride,
     cli_network: Option<Network>,
 ) -> Result<Config, ConfigError> {
+    check_for_incorrect_env_vars();
     let filename = config_path
         .as_ref()
         .to_str()
@@ -119,6 +120,38 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
     Ok(cfg)
+}
+
+/// Checks for environment variables that look like they are intended to configure Tari applications but use an
+/// incorrect prefix or format. Warns users about common mistakes and suggests the correct format.
+fn check_for_incorrect_env_vars() {
+    // These are patterns that users often try but that won't be picked up by the config loader.
+    // The correct prefix for config-level env vars is `TARI_` with `__` as the nested separator.
+    let incorrect_patterns: &[(&str, &str)] = &[
+        ("MINOTARI_NODE__", "TARI_BASE_NODE__"),
+        ("MINOTARI_BASE_NODE__", "TARI_BASE_NODE__"),
+        ("MINOTARI_WALLET__", "TARI_WALLET__"),
+        ("MINOTARI_MINER__", "TARI_MINER__"),
+        ("MINOTARI_MERGE_MINING_PROXY__", "TARI_MERGE_MINING_PROXY__"),
+    ];
+
+    for (var_name, var_value) in std::env::vars() {
+        for (incorrect_prefix, correct_prefix) in incorrect_patterns {
+            if var_name.starts_with(incorrect_prefix) {
+                let suffix = &var_name[incorrect_prefix.len()..];
+                warn!(
+                    target: LOG_TARGET,
+                    "⚠️  Environment variable '{}={}' uses an unrecognised prefix and will be ignored. Did you mean \
+                     '{}{}'? Configuration environment variables must use the 'TARI_' prefix with '__' as the nested \
+                     key separator.",
+                    var_name,
+                    var_value,
+                    correct_prefix,
+                    suffix
+                );
+            }
+        }
+    }
 }
 
 /// Returns a new configuration file template in parts from the embedded presets. If non_interactive is false, the user

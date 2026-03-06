@@ -51,6 +51,12 @@ pub struct Cli {
     /// Enable mining
     #[clap(long, env = "MINOTARI_NODE_ENABLE_MINING", alias = "enable-mining")]
     pub mining_enabled: bool,
+    /// Enable the gRPC server
+    #[clap(long, env = "MINOTARI_NODE_ENABLE_GRPC", alias = "enable-grpc")]
+    pub grpc_enabled: bool,
+    /// GRPC address of base node
+    #[clap(long, env = "MINOTARI_NODE_GRPC_ADDRESS")]
+    pub grpc_address: Option<String>,
     /// Enable the second layer gRPC server
     #[clap(long, env = "MINOTARI_NODE_SECOND_LAYER_GRPC_ENABLED", alias = "enable-second-layer")]
     pub second_layer_grpc_enabled: bool,
@@ -80,6 +86,12 @@ impl ConfigOverrideProvider for Cli {
         // Logical overrides based on command-line flags
         if self.mining_enabled {
             replace_or_add_override(&mut overrides, "base_node.mining_enabled", "true");
+        }
+        if let Some(ref addr) = self.grpc_address {
+            replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
+            replace_or_add_override(&mut overrides, "base_node.grpc_address", addr);
+        } else if self.grpc_enabled {
+            replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
         }
         if self.second_layer_grpc_enabled {
             replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
