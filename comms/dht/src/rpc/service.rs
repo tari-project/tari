@@ -25,15 +25,14 @@ use std::{cmp, convert::TryInto, sync::Arc};
 use log::*;
 use tari_comms::{
     PeerManager,
-    peer_manager::{NodeId, Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
+    peer_manager::{Peer, PeerFeatures},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
     utils,
 };
-use tari_utilities::ByteArray;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
+    proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc::{DhtRpcService, UnvalidatedPeerInfo},
 };
 
@@ -90,98 +89,6 @@ impl DhtRpcServiceImpl {
 
 #[tari_comms::async_trait]
 impl DhtRpcService for DhtRpcServiceImpl {
-    async fn get_closer_peers(
-        &self,
-        request: Request<GetCloserPeersRequest>,
-    ) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
-        let message = request.message();
-        if message.n == 0 {
-            return Err(RpcStatus::bad_request("Requesting zero peers is invalid"));
-        }
-
-        if message.n as usize > MAX_NUM_PEERS {
-            return Err(RpcStatus::bad_request(&format!(
-                "Requested too many peers ({}). Cannot request more than `{}` peers",
-                message.n, MAX_NUM_PEERS
-            )));
-        }
-
-        let max_claims = message.max_claims.try_into().map_err(|_|
-            // This can't happen on a >= 32-bit arch
-            RpcStatus::bad_request("max_claims is too large"))?;
-
-        if max_claims == 0 {
-            return Err(RpcStatus::bad_request("max_claims must be greater than zero"));
-        }
-
-        let max_addresses_per_claim = message.max_addresses_per_claim.try_into().map_err(|_|
-            // This can't happen on a >= 32-bit arch
-            RpcStatus::bad_request("max_addresses_per_claim is too large"))?;
-
-        if max_addresses_per_claim == 0 {
-            return Err(RpcStatus::bad_request(
-                "max_addresses_per_claim must be greater than zero",
-            ));
-        }
-
-        let node_id = if message.closer_to.is_empty() {
-            request.context().peer_node_id().clone()
-        } else {
-            NodeId::from_canonical_bytes(&message.closer_to)
-                .map_err(|_| RpcStatus::bad_request("`closer_to` did not contain a valid NodeId"))?
-        };
-
-        if message.excluded.len() > MAX_EXCLUDED_PEERS {
-            return Err(RpcStatus::bad_request(&format!(
-                "Sending more than {MAX_EXCLUDED_PEERS} to the exclude list is not supported"
-            )));
-        }
-
-        let mut excluded = message
-            .excluded
-            .iter()
-            .filter_map(|node_id| NodeId::from_canonical_bytes(node_id).ok())
-            .collect::<Vec<_>>();
-
-        if excluded.len() != message.excluded.len() {
-            return Err(RpcStatus::bad_request("Invalid NodeId in excluded list"));
-        }
-
-        // Don't return the requesting peer back to itself
-        excluded.push(request.context().peer_node_id().clone());
-
-        let mut features = Some(PeerFeatures::COMMUNICATION_NODE);
-        if message.include_clients {
-            features = None;
-        }
-
-        let peers = self
-            .peer_manager
-            .closest_n_active_peers(
-                &node_id,
-                message.n as usize,
-                &excluded,
-                features,
-                None,
-                Some(STALE_PEER_THRESHOLD_DURATION),
-                true,
-                None,
-                true,
-            )
-            .await
-            .map_err(RpcError::from)?;
-
-        debug!(
-            target: LOG_TARGET,
-            "[get_closest_peers] Returning {}/{} peer(s) to peer `{}`",
-            peers.len(),
-            message.n,
-            node_id.short_str()
-        );
-
-        Ok(self.stream_peers(peers, max_claims, max_addresses_per_claim))
-    }
-
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         let message = request.message();
         let excluded_peers = vec![request.context().peer_node_id().clone()];

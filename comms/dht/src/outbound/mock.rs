@@ -224,19 +224,6 @@ impl OutboundServiceMock {
                                 },
                             };
                         },
-                        BroadcastStrategy::ClosestNodes(_) => {
-                            if behaviour.broadcast == ResponseType::Queued {
-                                let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
-                                let _ignore = reply_tx.send(response);
-                                inner_reply_tx.reply_success();
-                            } else {
-                                reply_tx
-                                    .send(SendMessageResponse::Failed(SendFailure::General(
-                                        "Mock broadcast behaviour was not set to Queued".to_string(),
-                                    )))
-                                    .expect("Reply channel cancelled");
-                            }
-                        },
                         _ => {
                             let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
                             let _ignore = reply_tx.send(response);

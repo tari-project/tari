@@ -25,7 +25,7 @@ use std::{fmt, fmt::Display};
 use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 
 use crate::{
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
+    broadcast_strategy::BroadcastStrategy,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::OutboundEncryption,
     proto::envelope::DhtMessageType,
@@ -119,43 +119,6 @@ impl SendMessageParams {
     /// Set broadcast_strategy to DirectNodeId
     pub fn direct_node_id(&mut self, node_id: NodeId) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::DirectNodeId(Box::new(node_id));
-        self
-    }
-
-    /// Use the `Closest` broadcast strategy.
-    ///
-    /// # Parameters
-    /// `node_id` - Select the closest known peers to this `NodeId`
-    /// `excluded_peers` - vector of `NodeId`s to exclude from broadcast.
-    pub fn closest(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-            excluded_peers,
-            node_id,
-            connected_only: false,
-        }));
-        self
-    }
-
-    /// Set broadcast_strategy to ClosestNodes.`excluded_peers` are excluded. Only peers that are currently connected
-    /// will be included.
-    pub fn closest_connected(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-            excluded_peers,
-            node_id,
-            connected_only: true,
-        }));
-        self
-    }
-
-    /// Set broadcast_strategy to DirectOrClosestNodes.`excluded_peers` are excluded. Only peers that are currently
-    /// connected will be included.
-    pub fn direct_or_closest_connected(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
-        self.params_mut().broadcast_strategy =
-            BroadcastStrategy::DirectOrClosestNodes(Box::new(BroadcastClosestRequest {
-                excluded_peers,
-                node_id,
-                connected_only: true,
-            }));
         self
     }
 
