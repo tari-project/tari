@@ -106,7 +106,7 @@ impl DhtBuilder {
         self
     }
 
-    /// The number of neighbouring peers that the DHT should try maintain connections to.
+    /// The number of peers in the primary managed peer pool.
     pub fn with_num_neighbouring_nodes(&mut self, n: usize) -> &mut Self {
         self.config.num_neighbouring_nodes = n;
         self

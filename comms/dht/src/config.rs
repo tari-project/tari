@@ -36,13 +36,14 @@ pub struct DhtConfig {
     pub protocol_version: DhtProtocolVersion,
     /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
     pub database_url: DbConnectionUrl,
-    /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
+    /// The number of peers to connect to as part of the managed peer pool.
     /// Default: 8
     pub num_neighbouring_nodes: usize,
-    /// Number of random peers to include
+    /// Additional number of random peers to include in the managed peer pool.
+    /// The total managed pool size is `num_neighbouring_nodes + num_random_nodes`.
     /// Default: 4
     pub num_random_nodes: usize,
-    /// Connections above the configured number of neighbouring and random nodes will be removed
+    /// Connections above the configured number of pool peers will be removed
     /// (default: false)
     pub minimize_connections: bool,
     /// Send to this many peers when using the broadcast strategy
@@ -197,7 +198,7 @@ impl Default for DhtConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DhtConnectivityConfig {
-    /// The interval to update the neighbouring and random pools, if necessary.
+    /// The interval to update the peer pool, if necessary.
     /// Default: 2 minutes
     #[serde(with = "serializers::seconds")]
     pub update_interval: Duration,
