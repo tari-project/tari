@@ -32,6 +32,8 @@ use tari_transaction_components::{
 };
 use tari_utilities::hex::Hex;
 
+#[cfg(feature = "metrics")]
+use crate::mempool::metrics;
 use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
@@ -128,8 +130,6 @@ impl MempoolStorage {
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                // This can happen if we get a transaction after it has been mined, but before the block has been
-                // published. In this case, we do not want to store the transaction in the mempool.
                 info!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
@@ -260,19 +260,47 @@ impl MempoolStorage {
     ) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
 
+        let mut num_invalid_txs: i64 = 0;
+
         // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
         // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
         // after a reorg.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
+        let num_removed_txs = removed_txs.len();
         // Try to add in all the transactions again.
-        self.insert_txs(removed_txs)
-            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
-        let removed_txs = self
+        for tx in removed_txs {
+            let resp = self
+                .insert(tx)
+                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+            if resp == TxStorageResponse::NotStoredAlreadySpent {
+                num_invalid_txs += 1;
+            }
+        }
+
+        // Remove re-orged transactions from reorg pool and re-submit them to the unconfirmed mempool
+        let reorg_txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
-        self.insert_txs(removed_txs)
-            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+        let num_reorg_txs = reorg_txs.len();
+        for tx in reorg_txs {
+            let resp = self
+                .insert(tx)
+                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+            if resp == TxStorageResponse::NotStoredAlreadySpent {
+                num_invalid_txs += 1;
+            }
+        }
+
+        if num_invalid_txs > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "Mempool reorg: {num_invalid_txs} transaction(s) invalidated \
+                 (from {num_removed_txs} unconfirmed and {num_reorg_txs} reorg pool transactions)"
+            );
+        }
+        #[cfg(feature = "metrics")]
+        metrics::reorg_invalid_transactions().set(num_invalid_txs);
+
         if let Some((height, hash)) = new_blocks
             .last()
             .or_else(|| removed_blocks.first())
