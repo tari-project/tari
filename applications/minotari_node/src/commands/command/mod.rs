@@ -47,6 +47,7 @@ mod list_reorgs;
 mod list_validator_nodes;
 mod period_stats;
 mod ping_peer;
+mod print_env;
 mod quit;
 mod reset_offline_peers;
 mod rewind_blockchain;
@@ -152,6 +153,7 @@ pub enum Command {
     Quit(quit::Args),
     Exit(quit::Args),
     Watch(watch_command::Args),
+    PrintEnv(print_env::Args),
 }
 
 impl Command {
@@ -248,6 +250,7 @@ impl CommandContext {
                 Command::Watch(_) |
                 Command::ListValidatorNodes(_) |
                 Command::CreateTlsCerts(_) |
+                Command::PrintEnv(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
                 // This test can potentially take a longer time and should be allowed to run longer
@@ -320,6 +323,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Watch(args) => self.handle_command(args).await,
             Command::ListValidatorNodes(args) => self.handle_command(args).await,
             Command::CreateTlsCerts(args) => self.handle_command(args).await,
+            Command::PrintEnv(args) => self.handle_command(args).await,
         }
     }
 }

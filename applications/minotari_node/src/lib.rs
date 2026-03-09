@@ -107,6 +107,7 @@ pub async fn run_base_node(
         grpc_address: None,
         second_layer_grpc_enabled: false,
         disable_splash_screen: true,
+        print_env: false,
         libtor_data_dir: None,
     };
 

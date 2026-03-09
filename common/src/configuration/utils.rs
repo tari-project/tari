@@ -154,6 +154,33 @@ fn check_for_incorrect_env_vars() {
     }
 }
 
+/// Prints all TARI_* and MINOTARI_* environment variables to stdout, masking sensitive values.
+/// This is useful for debugging configuration issues.
+pub fn print_env_vars() {
+    // Names containing these substrings will have their values masked
+    const SENSITIVE_KEYWORDS: &[&str] = &["PASSWORD", "SECRET", "KEY", "SEED"];
+
+    let mut env_vars: Vec<(String, String)> = std::env::vars()
+        .filter(|(k, _)| k.starts_with("TARI_") || k.starts_with("MINOTARI_"))
+        .map(|(k, v)| {
+            let upper = k.to_uppercase();
+            let masked = SENSITIVE_KEYWORDS.iter().any(|kw| upper.contains(kw));
+            let display_value = if masked { "***".to_string() } else { v };
+            (k, display_value)
+        })
+        .collect();
+    env_vars.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    if env_vars.is_empty() {
+        println!("No TARI_* or MINOTARI_* environment variables are set.");
+    } else {
+        println!("Tari-related environment variables:");
+        for (key, value) in &env_vars {
+            println!("  {key}={value}");
+        }
+    }
+}
+
 /// Returns a new configuration file template in parts from the embedded presets. If non_interactive is false, the user
 /// is prompted to select if they would like to select a base node configuration that enables mining or not.
 /// Also includes the common configuration defined in `config/presets/common.toml`.

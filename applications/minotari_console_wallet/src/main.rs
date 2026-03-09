@@ -31,6 +31,7 @@ use tari_common::{
     exit_codes::ExitError,
     initialize_logging,
     load_configuration,
+    print_env_vars,
 };
 use tari_shutdown::Shutdown;
 #[cfg(feature = "dhat-heap")]
@@ -87,6 +88,13 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
+
+    // Handle --print-env before doing anything else so it works even without a valid config
+    if cli.print_env {
+        print_env_vars();
+        return Ok(());
+    }
+
     let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("wallet"),

@@ -63,6 +63,10 @@ pub struct Cli {
     /// Disable the splash screen
     #[clap(long)]
     pub disable_splash_screen: bool,
+    /// Print all TARI_* and MINOTARI_* environment variables and exit.
+    /// Useful for verifying which environment variables are set before starting the node.
+    #[clap(long)]
+    pub print_env: bool,
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
