@@ -189,7 +189,7 @@ jobs:
 
       - name: Docker image build and push
         id: docker_build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./buildtools/docker_rig/${{ matrix.builds.dockerfile }}
