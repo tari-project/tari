@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.2](https://github.com/tari-project/tari/compare/v5.3.0-pre.1...v5.3.0-pre.2) (2026-03-10)
+
+
+### Features
+
+* add metric to track mempool double spends ([#7699](https://github.com/tari-project/tari/issues/7699)) ([ba3b103](https://github.com/tari-project/tari/commit/ba3b1037379683e8956e43af6b9070904fb60c27))
+* add new reorg metrics ([#7697](https://github.com/tari-project/tari/issues/7697)) ([bfb007b](https://github.com/tari-project/tari/commit/bfb007bc9d0d9e00e18952ebd8a563a02f06d6d1))
+* install scripts for ledger ([#7694](https://github.com/tari-project/tari/issues/7694)) ([9235d76](https://github.com/tari-project/tari/commit/9235d76099dbe816216876b3d7622a5ffbdc6e76))
+* network silence mode ([#7696](https://github.com/tari-project/tari/issues/7696)) ([8354e8a](https://github.com/tari-project/tari/commit/8354e8acb53724588c71dfc6e440830c05829b40))
+
+
+### Bug Fixes
+
+* seed peer connections kept open ([#7687](https://github.com/tari-project/tari/issues/7687)) ([01b107f](https://github.com/tari-project/tari/commit/01b107fe75fa1f47ac6b92bb1e6a12811df4c2da))
+* update git2 to 0.20.4 rustsec-2026-0008 ([#7680](https://github.com/tari-project/tari/issues/7680)) ([719fd63](https://github.com/tari-project/tari/commit/719fd6329afc7870f7636490983c94bc3934bba8))
+* wrong XMR blocks ([#7688](https://github.com/tari-project/tari/issues/7688)) ([0d5a8f2](https://github.com/tari-project/tari/commit/0d5a8f25a2b793124d51c8b33c191178ea32d9a6))
+
 ## [5.3.0-pre.1](https://github.com/tari-project/tari/compare/v5.3.0-pre.0...v5.3.0-pre.1) (2026-02-10)
 
 
