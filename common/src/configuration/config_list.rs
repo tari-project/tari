@@ -359,10 +359,7 @@ mod test_config_list_for_toml {
     #[test]
     fn it_deserializes_multiaddr_list_from_comma_delimited_env_var() {
         let config = Config::builder()
-            .set_override(
-                "multiaddr_list",
-                "/ip4/127.0.150.1/tcp/18500, /ip4/127.0.0.1/tcp/5678",
-            )
+            .set_override("multiaddr_list", "/ip4/127.0.150.1/tcp/18500, /ip4/127.0.0.1/tcp/5678")
             .unwrap()
             .build()
             .unwrap();

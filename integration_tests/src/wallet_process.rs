@@ -218,7 +218,6 @@ pub fn get_default_cli() -> Cli {
         libtor_data_dir: None,
         skip_recovery: false,
         print_env: false,
-
     }
 }
 
