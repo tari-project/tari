@@ -137,8 +137,7 @@ fn check_for_incorrect_env_vars() {
 
     for (var_name, var_value) in std::env::vars() {
         for (incorrect_prefix, correct_prefix) in incorrect_patterns {
-            if var_name.starts_with(incorrect_prefix) {
-                let suffix = &var_name[incorrect_prefix.len()..];
+            if let Some(suffix) = var_name.strip_prefix(incorrect_prefix) {
                 warn!(
                     target: LOG_TARGET,
                     "⚠️  Environment variable '{}={}' uses an unrecognised prefix and will be ignored. Did you mean \

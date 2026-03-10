@@ -233,7 +233,7 @@ impl CliLoop {
             match self.context.handle_command_str(&line).await {
                 Err(err) => {
                     // Check if the entered command is unrecognized (does not match any known command).
-                    let cmd_name = line.trim().split_whitespace().next().unwrap_or("");
+                    let cmd_name = line.split_whitespace().next().unwrap_or("");
                     if !cmd_name.is_empty() && !self.commands.iter().any(|c| c.as_str() == cmd_name) {
                         println!(
                             "Unknown command '{}'. Use Tab for auto-completion or type 'help' to list all commands.",

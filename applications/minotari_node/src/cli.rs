@@ -96,6 +96,8 @@ impl ConfigOverrideProvider for Cli {
             replace_or_add_override(&mut overrides, "base_node.grpc_address", addr);
         } else if self.grpc_enabled {
             replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
+        } else {
+            // clippy
         }
         if self.second_layer_grpc_enabled {
             replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
