@@ -6,6 +6,7 @@ rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
+description = "A Rust wrapper around the Tor library (libtor) for use in Tari applications."
 
 [dependencies]
 tari_common = { workspace = true }
