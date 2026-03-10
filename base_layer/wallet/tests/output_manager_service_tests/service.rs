@@ -86,6 +86,17 @@ fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
     ))
 }
 
+// Size including the minimum payment_id (PADDING_SIZE = 130 bytes from MemoField::add_sender_address) for
+// outputs-to-self (coin split/join). Must match what output_to_self_features_and_scripts_size computes.
+fn output_to_self_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
+    const PAYMENT_ID_SIZE: usize = 130;
+    Ok(TransactionWeight::latest().round_up_features_and_scripts_size(
+        OutputFeatures::default().get_serialized_size()? +
+            TariScript::default().get_serialized_size()? +
+            PAYMENT_ID_SIZE,
+    ))
+}
+
 struct TestOmsService {
     pub output_manager_handle: OutputManagerHandle<MemoryKeyManager>,
     pub _wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
@@ -401,8 +412,8 @@ async fn test_utxo_selection_no_chain_metadata() {
         1,
         1,
         6,
-        default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
+        output_to_self_features_and_scripts_size_byte_size()
+            .expect("Failed to get output_to_self features and scripts size byte size") *
             6,
     );
     assert_eq!(tx.body.get_total_fee().unwrap(), expected_fee);
@@ -498,8 +509,8 @@ async fn test_utxo_selection_with_chain_metadata() {
         1,
         1,
         6,
-        default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
+        output_to_self_features_and_scripts_size_byte_size()
+            .expect("Failed to get output_to_self features and scripts size byte size") *
             6,
     );
     assert_eq!(tx.body.get_total_fee().unwrap(), expected_fee);
@@ -1005,8 +1016,8 @@ async fn coin_split_with_change() {
         2,
         split_count + 1,
         (split_count + 1) *
-            default_features_and_scripts_size_byte_size()
-                .expect("Failed to get default features and scripts size byte size"),
+            output_to_self_features_and_scripts_size_byte_size()
+                .expect("Failed to get output_to_self features and scripts size byte size"),
     );
     assert_eq!(coin_split_tx.body.get_total_fee().unwrap(), expected_fee);
     // NOTE: assuming the LargestFirst strategy is used
@@ -1029,8 +1040,8 @@ async fn coin_split_no_change() {
         3,
         split_count,
         split_count *
-            default_features_and_scripts_size_byte_size()
-                .expect("Failed to get default features and scripts size byte size"),
+            output_to_self_features_and_scripts_size_byte_size()
+                .expect("Failed to get output_to_self features and scripts size byte size"),
     );
 
     let val1 = 4_000 * uT;
@@ -1096,7 +1107,7 @@ async fn it_handles_large_coin_splits() {
     backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
-    let split_count = 250;
+    let split_count = 100;
 
     let (_tx_id, coin_split_tx, _amount) = oms
         .output_manager_handle

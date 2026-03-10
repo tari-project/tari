@@ -4132,6 +4132,9 @@ where
             "Replace-by-fee: Creating replacement for transaction {tx_id} with total fee {fee} (weight: {weight_in_grams} grams, fee_per_gram: {fee_per_gram})"
         );
 
+        // Cancel the original transaction to free its inputs in the output manager before creating the replacement
+        self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled).await;
+
         let new_tx_id = self
             .send_one_sided_transaction(
                 destination,

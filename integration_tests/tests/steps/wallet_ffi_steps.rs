@@ -20,15 +20,35 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, time::Duration};
+use std::{convert::TryFrom, ptr::null, time::Duration};
 
-use cucumber::{then, when};
+use cucumber::{given, then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
-use tari_integration_tests::{FfiConnectivityStatus, TariWorld, wallet_ffi::get_mnemonic_word_list_for_language};
+use tari_integration_tests::{
+    FfiConnectivityStatus,
+    TariWorld,
+    wallet_ffi::{create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
+};
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 
-use crate::steps::cucumber_steps_log;
+use crate::steps::{cucumber_steps_log, get_saved_seed_words};
+
+#[when(expr = "I have a ffi wallet {word} connected to base node {word}")]
+#[then(expr = "I have a ffi wallet {word} connected to base node {word}")]
+#[given(expr = "I have a ffi wallet {word} connected to base node {word}")]
+async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
+    let http_port = world.base_nodes.get(&base_node).unwrap().http_port;
+    let address = format!("http://127.0.0.1:{http_port}");
+    spawn_wallet_ffi(world, wallet.clone(), null(), address);
+}
+
+#[given(expr = "I have a ffi wallet {word} connected to seed node {word}")]
+async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
+    let http_port = world.base_nodes.get(&seed_node).unwrap().http_port;
+    let address = format!("http://127.0.0.1:{http_port}");
+    spawn_wallet_ffi(world, wallet.clone(), null(), address);
+}
 
 #[then(expr = "I want to get public key of ffi wallet {word}")]
 async fn ffi_get_public_key(world: &mut TariWorld, wallet: String) {
@@ -52,6 +72,13 @@ async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
     cucumber_steps_log(format!("Adding wallet {wallet}"));
     world.wallet_addresses.insert(wallet, address);
     ffi_wallet.destroy();
+}
+
+#[then(expr = "I restart ffi wallet {word}")]
+#[when(expr = "I restart ffi wallet {word}")]
+async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String) {
+    let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
+    ffi_wallet.restart();
 }
 
 #[then(expr = "I retrieve the mnemonic word list for {word}")]
@@ -118,7 +145,7 @@ async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: Str
     let mut ffi_wallet_balance = GetBalanceResponse::default();
 
     for i in 0..num_retries {
-        ffi_wallet.start_transaction_validation();
+        ffi_wallet.start_txo_validation();
         let ffi_balance = ffi_wallet.get_balance();
         ffi_wallet_balance = GetBalanceResponse {
             available_balance: ffi_balance.get_available(),
@@ -159,7 +186,7 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
         TxType::PaymentToOther,
     )
     .unwrap();
-    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, false);
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
 
@@ -167,13 +194,13 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 #[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions")]
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
+    let dest_pub_key = world.get_wallet_one_sided_address(&dest).await.unwrap();
     let payment_id = MemoField::new_open_from_string(
         &format!("Send from ffi {wallet} to ${dest} at fee ${fee}"),
         TxType::PaymentToOther,
     )
     .unwrap();
-    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, true);
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
 
@@ -220,22 +247,27 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
     let completed_transactions = ffi_wallet.get_completed_transactions();
     for i in 0..completed_transactions.get_length() {
         let completed_transaction = completed_transactions.get_at(i);
-        let kernel = completed_transaction.get_transaction_kernel();
-        cucumber_steps_log(format!("Wallet {wallet}, Transaction kernel info :"));
-        assert!(!kernel.get_excess_hex().is_empty());
-        cucumber_steps_log(format!("Wallet {wallet}, Excess {}", kernel.get_excess_hex()));
-        assert!(!kernel.get_excess_public_nonce_hex().is_empty());
-        cucumber_steps_log(format!(
-            "Wallet {}, Nonce {}",
-            wallet,
-            kernel.get_excess_public_nonce_hex()
-        ));
-        assert!(!kernel.get_excess_signature_hex().is_empty());
-        cucumber_steps_log(format!(
-            "Wallet {}, Signature {}",
-            wallet,
-            kernel.get_excess_signature_hex()
-        ));
+        let is_outbound = completed_transaction.is_outbound();
+        // Received one-sided transactions are stored without kernel data (only the scanned output is stored),
+        // so kernel checks only apply to outbound transactions.
+        if is_outbound {
+            let kernel = completed_transaction.get_transaction_kernel();
+            cucumber_steps_log(format!("Wallet {wallet}, Transaction kernel info :"));
+            assert!(!kernel.get_excess_hex().is_empty());
+            cucumber_steps_log(format!("Wallet {wallet}, Excess {}", kernel.get_excess_hex()));
+            assert!(!kernel.get_excess_public_nonce_hex().is_empty());
+            cucumber_steps_log(format!(
+                "Wallet {}, Nonce {}",
+                wallet,
+                kernel.get_excess_public_nonce_hex()
+            ));
+            assert!(!kernel.get_excess_signature_hex().is_empty());
+            cucumber_steps_log(format!(
+                "Wallet {}, Signature {}",
+                wallet,
+                kernel.get_excess_signature_hex()
+            ));
+        }
         let address = completed_transaction.get_destination_tari_address();
         assert!(TariAddress::from_hex(&address.address().get_as_hex()).is_ok());
         let address = completed_transaction.get_source_tari_address();
@@ -326,17 +358,43 @@ async fn ffi_wait_for_transaction_broadcast(world: &mut TariWorld, wallet: Strin
 #[then(expr = "I start TXO validation on ffi wallet {word}")]
 async fn ffi_start_txo_validation(world: &mut TariWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    // Reset flags before triggering validation so we don't pick up a stale result
+    ffi_wallet.get_counters().reset_txo_validation();
     ffi_wallet.start_txo_validation();
-    let num_retries = 120;
-    let mut validation_complete = false;
+    let num_retries = 240;
+    let mut validation_success = false;
     for _ in 0..num_retries {
-        validation_complete = ffi_wallet.get_counters().get_txo_validation_complete();
-        if validation_complete {
-            break;
+        if ffi_wallet.get_counters().get_txo_validation_complete() {
+            if ffi_wallet.get_counters().get_txo_validation_result() == 0 {
+                // result=0 means success; validation ran to completion
+                validation_success = true;
+                break;
+            }
+            // result=1 means AlreadyBusy (another validation is running), result>=2 means failure.
+            // Reset and wait for the in-flight validation to complete and fire its own callback.
+            ffi_wallet.get_counters().reset_txo_validation();
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    assert!(validation_complete);
+    assert!(validation_success, "TXO validation did not complete successfully");
+}
+
+#[when(expr = "I wait for ffi wallet {word} to have scanned to height {int}")]
+async fn wait_for_ffi_wallet_scanned_height(world: &mut TariWorld, wallet: String, height: u64) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let num_retries = 240;
+    for _ in 0..num_retries {
+        if ffi_wallet.get_counters().get_scanned_height() >= height {
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    panic!(
+        "FFI wallet {} did not scan to height {} (scanned to {})",
+        wallet,
+        height,
+        ffi_wallet.get_counters().get_scanned_height()
+    );
 }
 
 #[then(expr = "I start TX validation on ffi wallet {word}")]
@@ -433,6 +491,22 @@ async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, coun
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     assert!(found_cnt >= count);
+}
+
+#[then(expr = "I recover wallet {word} into ffi wallet {word} from seed words on node {word}")]
+async fn recover_wallet_into_ffi_wallet(
+    world: &mut TariWorld,
+    source_wallet: String,
+    ffi_wallet: String,
+    node: String,
+) {
+    let saved_words = get_saved_seed_words(world, &source_wallet);
+    let words_ref: Vec<&str> = saved_words.iter().map(String::as_str).collect();
+    let seed_words = create_seed_words(words_ref);
+    let seed_words_ptr = seed_words.get_ptr() as *const std::ffi::c_void;
+    let http_port = world.base_nodes.get(&node).unwrap().http_port;
+    let address = format!("http://127.0.0.1:{http_port}");
+    spawn_wallet_ffi(world, ffi_wallet, seed_words_ptr, address);
 }
 
 #[then(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]

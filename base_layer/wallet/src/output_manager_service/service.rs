@@ -2105,6 +2105,33 @@ where
             ))
     }
 
+    /// Returns the rounded-up features-and-scripts size for a self-spend output that will include a payment_id in its
+    /// encrypted data. This accounts for the payment_id size as stored by `output_to_self`, so the fee estimate
+    /// matches what the transaction builder will compute when the output is finalized.
+    fn output_to_self_features_and_scripts_size(&self, payment_id: &MemoField) -> Result<usize, OutputManagerError> {
+        let address_and_data = payment_id
+            .clone()
+            .add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                false,
+                MicroMinotari::zero(),
+                Some(TxType::PaymentToSelf),
+            )
+            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let base_size = TariScript::default()
+            .get_serialized_size()
+            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+            OutputFeatures::default()
+                .get_serialized_size()
+                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+            address_and_data.get_size();
+        Ok(self
+            .resources
+            .consensus_constants
+            .transaction_weight_params()
+            .round_up_features_and_scripts_size(base_size))
+    }
+
     pub async fn preview_coin_join_with_commitments(
         &self,
         commitments: Vec<CompressedCommitment>,
@@ -2121,14 +2148,16 @@ where
             .iter()
             .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value());
 
-        let fee = self.get_fee_calc().calculate(
-            fee_per_gram,
-            1,
-            src_outputs.len(),
-            1,
-            self.default_features_and_scripts_size()
-                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-        );
+        let payment_id = MemoField::new_open_from_string(
+            &format!("Coin join {} outputs", src_outputs.len()),
+            TxType::CoinJoin,
+        )
+        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&payment_id)?;
+
+        let fee = self
+            .get_fee_calc()
+            .calculate(fee_per_gram, 1, src_outputs.len(), 1, output_features_and_scripts_size);
 
         Ok((vec![accumulated_amount.saturating_sub(fee)], fee))
     }
@@ -2156,14 +2185,19 @@ where
             &self.resources.key_manager,
         )?;
 
+        let output_payment_id = MemoField::new_open_from_string(
+            &format!("{number_of_splits} even coin splits"),
+            TxType::CoinSplit,
+        )
+        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&output_payment_id)?;
+
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
             1,
             src_outputs.len(),
             number_of_splits,
-            self.default_features_and_scripts_size()
-                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
-                number_of_splits,
+            output_features_and_scripts_size * number_of_splits,
         );
 
         let accumulated_amount = src_outputs
@@ -2251,7 +2285,12 @@ where
             ));
         }
 
-        let default_features_and_scripts_size = self.default_features_and_scripts_size();
+        let output_payment_id = MemoField::new_open_from_string(
+            &format!("{number_of_splits} even coin splits"),
+            TxType::CoinSplit,
+        )
+        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&output_payment_id)?;
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
 
         // accumulated value amount from given source outputs
@@ -2264,8 +2303,7 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            default_features_and_scripts_size.map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
-                number_of_splits,
+            output_features_and_scripts_size * number_of_splits,
         );
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
@@ -2318,8 +2356,7 @@ where
                 OutputFeatures::default(),
                 amount_per_split,
                 Covenant::default(),
-                MemoField::new_open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit)
-                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+                output_payment_id.clone(),
                 fee,
                 MicroMinotari::zero(),
             )?;
@@ -2379,9 +2416,6 @@ where
             ));
         }
 
-        let default_features_and_scripts_size = self
-            .default_features_and_scripts_size()
-            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
         let total_split_amount = MicroMinotari::from(amount_per_split.as_u64() * number_of_splits as u64);
 
@@ -2394,12 +2428,19 @@ where
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
+        let payment_id = MemoField::new_open_from_string(
+            &format!("Coin split, {accumulated_amount} into {number_of_splits} outputs"),
+            TxType::CoinSplit,
+        )
+        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&payment_id)?;
+
         let fee_without_change = self.get_fee_calc().calculate(
             fee_per_gram,
             1,
             src_outputs.len(),
             number_of_splits,
-            default_features_and_scripts_size * number_of_splits,
+            output_features_and_scripts_size * number_of_splits,
         );
 
         // checking whether a total output value is enough
@@ -2421,7 +2462,7 @@ where
                 1,
                 src_outputs.len(),
                 number_of_splits + 1,
-                default_features_and_scripts_size * (number_of_splits + 1),
+                output_features_and_scripts_size * (number_of_splits + 1),
             ),
         };
 
@@ -2624,9 +2665,7 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
-        let default_features_and_scripts_size = self
-            .default_features_and_scripts_size()
-            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+        let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&payment_id)?;
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
@@ -2641,7 +2680,7 @@ where
 
         let fee =
             self.get_fee_calc()
-                .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_features_and_scripts_size);
+                .calculate(fee_per_gram, 1, src_outputs.len(), 1, output_features_and_scripts_size);
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
 

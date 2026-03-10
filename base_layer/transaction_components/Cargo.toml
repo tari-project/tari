@@ -43,7 +43,6 @@ num-traits = "0.2.15"
 num-derive = "0.4.2"
 
 primitive-types = { version = "0.12", features = ["serde"] }
-tokio = { workspace = true, features = ["sync"] }
 log = { workspace = true }
 rand = { workspace = true }
 serde_repr = "0.1.8"

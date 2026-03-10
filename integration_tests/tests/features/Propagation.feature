@@ -13,12 +13,11 @@ Feature: Block Propagation
 
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
-      | 1        | 1           | 5         |
+      | 1        | 10          | 5         |
 
     @long-running
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
-      | 1        | 10          | 5         |
       | 4        | 10          | 5         |
       | 8        | 40          | 10        |
 
@@ -88,7 +87,7 @@ Feature: Block Propagation
     Then node MINER is at height 7
     Then all nodes are at height 7
 
-  @critical @pruned @broken @broken_prune
+  @critical
   Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes
@@ -98,6 +97,7 @@ Feature: Block Propagation
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     When I mine 1 blocks on SENDER
+    Then all nodes are at height 4
     Then TX1 is in the MINED of all nodes
     When I mine 17 blocks on SENDER
     Then all nodes are on the same chain at height 21

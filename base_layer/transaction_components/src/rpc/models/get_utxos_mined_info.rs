@@ -12,6 +12,13 @@ use utoipa::ToSchema;
 #[derive(Serialize, Deserialize, Validate)]
 pub struct GetUtxosMinedInfoRequest {
     pub hashes: Vec<Vec<u8>>,
+    /// Version of the request. Version 2 also checks the mempool for unmined outputs.
+    #[serde(default = "default_version")]
+    pub version: u32,
+}
+
+fn default_version() -> u32 {
+    1
 }
 
 impl Display for GetUtxosMinedInfoRequest {
@@ -32,6 +39,10 @@ pub struct GetUtxosMinedInfoResponse {
     pub utxos: Vec<MinedUtxoInfo>,
     pub best_block_hash: Vec<u8>,
     pub best_block_height: u64,
+    /// UTXOs whose parent transaction is in the mempool but not yet mined.
+    /// Only populated by v2 of the endpoint.
+    #[serde(default)]
+    pub mempool_utxos: Vec<Vec<u8>>,
 }
 
 impl Display for GetUtxosMinedInfoResponse {

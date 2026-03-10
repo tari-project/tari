@@ -226,6 +226,28 @@ impl TariWorld {
         Ok(tari_address.to_base58())
     }
 
+    pub async fn get_wallet_one_sided_address<S: AsRef<str>>(&self, name: &S) -> anyhow::Result<String> {
+        let address_bytes = match self.get_wallet_client(name).await {
+            Ok(wallet) => {
+                let mut wallet = wallet;
+
+                wallet
+                    .get_address(minotari_wallet_grpc_client::grpc::Empty {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+                    .one_sided_address
+            },
+            Err(_) => {
+                let ffi_wallet = self.get_ffi_wallet(name).unwrap();
+
+                ffi_wallet.get_one_sided_address().address().get_vec()
+            },
+        };
+        let tari_address = TariAddress::from_bytes(&address_bytes)?;
+        Ok(tari_address.to_base58())
+    }
+
     #[allow(dead_code)]
     pub async fn get_wallet_client<S: AsRef<str>>(
         &self,

@@ -196,7 +196,7 @@ mod test {
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
-            MicroMinotari(2960)
+            MicroMinotari(3120)
         );
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 2);
@@ -332,7 +332,7 @@ mod test {
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
-            MicroMinotari(4100)
+            MicroMinotari(4280)
         );
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 3);
@@ -430,7 +430,7 @@ mod test {
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
-            MicroMinotari(115500)
+            MicroMinotari(115660)
         );
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 1);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 101);
@@ -552,7 +552,7 @@ mod test {
         assert!(signed.signed_transaction.change_output.is_some());
         assert_eq!(
             signed.signed_transaction.transaction.body.kernels()[0].fee,
-            MicroMinotari(3120)
+            MicroMinotari(3280)
         );
         assert_eq!(signed.signed_transaction.transaction.body.inputs().len(), 3);
         assert_eq!(signed.signed_transaction.transaction.body.outputs().len(), 2);

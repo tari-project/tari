@@ -519,6 +519,20 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    pub fn fetch_kernel_signature_for_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>, OutputManagerStorageError> {
+        self.db.fetch_kernel_signature_for_tx(tx_id)
+    }
+
+    pub fn set_outputs_to_encumbered_to_be_received(
+        &self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db.set_outputs_to_encumbered_to_be_received(commitments)
+    }
+
     pub fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         db.set_outputs_to_be_revalidated()?;

@@ -93,17 +93,29 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     } else {
         None
     };
-    if let Err(e) = verify_base_node_responses(&mut base_node_client).await &&
-        let MmProxyError::BaseNodeNotResponding(_) = e
+    match tokio::time::timeout(
+        Duration::from_secs(30),
+        verify_base_node_responses(&mut base_node_client),
+    )
+    .await
     {
-        error!(target: LOG_TARGET, "{e}");
-        println!();
-        let msg = "Are the base node's gRPC mining methods allowed in its 'config.toml'? Please ensure these methods \
-                   are enabled in:\n  'grpc_server_allow_methods': \"get_new_block_template\", \"get_tip_info\", \
-                   \"get_new_block\", \"submit_block\"";
-        println!("{msg}");
-        println!();
-        return Err(e.into());
+        Ok(Err(e)) if matches!(e, MmProxyError::BaseNodeNotResponding(_)) => {
+            error!(target: LOG_TARGET, "{e}");
+            println!();
+            let msg = "Are the base node's gRPC mining methods allowed in its 'config.toml'? Please ensure these \
+                       methods are enabled in:\n  'grpc_server_allow_methods': \"get_new_block_template\", \
+                       \"get_tip_info\", \"get_new_block\", \"submit_block\"";
+            println!("{msg}");
+            println!();
+            return Err(e.into());
+        },
+        Err(_timeout) => {
+            warn!(
+                target: LOG_TARGET,
+                "Base node verification timed out; proceeding without full verification"
+            );
+        },
+        _ => {},
     }
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
@@ -209,32 +221,47 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
     };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
-    let mut endpoint = Endpoint::new(base_node_addr)?;
 
-    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
-            .await
-            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
-        let ca = Certificate::from_pem(pem);
+    const MAX_RETRIES: u32 = 10;
+    const RETRY_DELAY: Duration = Duration::from_millis(500);
 
-        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-        endpoint = endpoint
-            .tls_config(tls)
-            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+    for attempt in 1..=MAX_RETRIES {
+        let mut endpoint = Endpoint::new(base_node_addr.clone())?;
+
+        if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
+            let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
+                .await
+                .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+            let ca = Certificate::from_pem(pem);
+
+            let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+            endpoint = endpoint
+                .tls_config(tls)
+                .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+        }
+
+        match endpoint.connect().await {
+            Ok(channel) => {
+                let node_conn = BaseNodeClient::with_interceptor(
+                    channel,
+                    ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
+                )
+                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+                return Ok(node_conn);
+            },
+            Err(e) if attempt < MAX_RETRIES => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to connect to base node (attempt {attempt}/{MAX_RETRIES}): {e}. Retrying..."
+                );
+                tokio::time::sleep(RETRY_DELAY).await;
+            },
+            Err(e) => return Err(MmProxyError::TlsConnectionError(e.to_string())),
+        }
     }
 
-    let channel = endpoint
-        .connect()
-        .await
-        .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
-    let node_conn = BaseNodeClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    )
-    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-    Ok(node_conn)
+    unreachable!()
 }
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {

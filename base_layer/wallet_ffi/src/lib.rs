@@ -9286,7 +9286,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
     wallet: *mut TariWallet,
     count: c_uint,
     error_out: *mut c_int,
-) -> *mut TariFeePerGramStat {
+) -> *mut TariFeePerGramStats {
     unsafe {
         if error_out.is_null() {
             return ptr::null_mut();
@@ -9304,7 +9304,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
                 .transaction_service
                 .get_fee_per_gram_stats_per_block(u64::from(count)),
         ) {
-            Ok(estimates) => Box::into_raw(Box::new(estimates)),
+            Ok(estimates) => Box::into_raw(Box::new(TariFeePerGramStats { stats: vec![estimates] })),
             Err(e) => {
                 error!(target: LOG_TARGET, "Error getting the fee estimates: {e:?}");
                 *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;

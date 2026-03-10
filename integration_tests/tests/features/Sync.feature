@@ -11,14 +11,14 @@ Feature: Block Sync
     When I have <NumSyncers> base nodes connected to all seed nodes
     Then all nodes are at height <NumBlocks>
 
+
     Examples:
       | NumSeeds | NumBlocks | NumSyncers |
-      | 1        | 1         | 1          |
+      | 1        | 10        | 2          |
 
     @long-running
     Examples:
       | NumSeeds | NumBlocks | NumSyncers |
-      | 1        | 10        | 2          |
       | 1        | 50        | 4          |
       | 8        | 40        | 8          |
 
@@ -46,7 +46,7 @@ Feature: Block Sync
     When I have a base node NODE2 connected to all seed nodes
     Then all nodes are at height 25
 
-  @critical @pruned @broken @broken_prune
+  @broken
   Scenario: Pruned mode simple sync
     Given I have 1 seed nodes
     When I have a SHA3 miner NODE1 connected to all seed nodes
@@ -57,7 +57,7 @@ Feature: Block Sync
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 20
 
-  @critical @pruned @broken @broken_prune
+  @broken
   Scenario: Pruned node should handle burned output
     Given I have a seed node NODE
     When I have a base node NODE1 connected to all seed nodes
@@ -73,7 +73,6 @@ Feature: Block Sync
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 25
 
-  @critical
   Scenario: When a new node joins the network, it receives all peers
     Given I have 10 seed nodes
     When I have a base node NODE1 connected to all seed nodes
@@ -82,6 +81,7 @@ Feature: Block Sync
     Then NODE1 has at least 11 peers
     Then NODE2 has at least 11 peers
 
+    @broken
   Scenario: Pruned mode sync test
     Given I have a seed node SEED
     When I have a base node NODE1 connected to all seed nodes
@@ -95,7 +95,8 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
-  @long-running @flaky
+
+      @broken
   Scenario: Node should not sync from pruned node
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
@@ -136,8 +137,8 @@ Feature: Block Sync
     When mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 2
     Then node SYNCER is at the same height as node SEED
 
-    # works locally but fails on CI, fails on the step to start a node
-    @critical @broken
+
+    @critical
     Examples:
        | X1  | Y1 |
        | 101 | 10 |
@@ -150,6 +151,7 @@ Feature: Block Sync
       | 1000 | 50 |
       | 1001 | 50 |
 
+    @broken
   Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5

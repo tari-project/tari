@@ -152,6 +152,31 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
 
         let mut connectivity_events = self.connectivity.get_event_subscription();
+
+        // Trigger initial mempool sync with already-connected peers. When the mempool sync
+        // protocol starts, the node has already completed chain sync, so PeerConnected and
+        // BlockSyncComplete events have already been emitted and cannot be received by this
+        // protocol's event loop. Proactively request existing connections here.
+        if !self.is_synched() {
+            match self
+                .connectivity
+                .select_connections(ConnectivitySelection::random_nodes(
+                    self.config.initial_sync_num_peers,
+                    vec![],
+                ))
+                .await
+            {
+                Ok(connections) => {
+                    for connection in connections {
+                        self.spawn_initiator_protocol(connection).await;
+                    }
+                },
+                Err(e) => {
+                    debug!(target: LOG_TARGET, "Mempool startup sync: could not get peers: {e}");
+                },
+            }
+        }
+
         loop {
             tokio::select! {
                 Ok(block_event) = self.block_event_stream.recv() => {

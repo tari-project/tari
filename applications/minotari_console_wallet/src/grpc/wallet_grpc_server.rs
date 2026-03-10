@@ -1101,8 +1101,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ));
             }
             let payment_id = if !raw_payment_id.is_empty() {
-                MemoField::new_open(raw_payment_id.to_vec(), TxType::PaymentToOther)
-                    .map_err(|e| Status::internal(e.to_string()))?
+                MemoField::from_bytes(&raw_payment_id)
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),

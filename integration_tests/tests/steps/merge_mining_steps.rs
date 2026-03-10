@@ -128,7 +128,7 @@ async fn merge_mining_submission_is_valid(world: &mut TariWorld, how: String) {
         assert!(status.is_some(), "Result has no status {result}");
     } else {
         assert!(
-            world.last_merge_miner_response.get("status").is_some(),
+            result.get("status").is_some(),
             "Response has no `status` {}",
             world.last_merge_miner_response
         );

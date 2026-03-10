@@ -33,7 +33,7 @@ use tokio::runtime;
 use tonic::transport::Channel;
 
 use super::get_port;
-use crate::TariWorld;
+use crate::{TariWorld, wait_for_service};
 
 #[derive(Clone, Debug)]
 pub struct MergeMiningProxyProcess {
@@ -92,6 +92,7 @@ impl MergeMiningProxyProcess {
             .into_inner()
             .interactive_address;
         let wallet_payment_address = TariAddress::from_bytes(wallet_address).unwrap();
+        let proxy_port = self.port;
         thread::spawn(move || {
             let cli = Cli {
                 common: CommonCliArgs {
@@ -104,7 +105,7 @@ impl MergeMiningProxyProcess {
                         ("merge_mining_proxy.listener_address".to_string(), proxy_full_address),
                         (
                             "merge_mining_proxy.base_node_grpc_address".to_string(),
-                            format!("/ip4/127.0.0.1/tcp/{base_node_grpc_port}"),
+                            format!("http://127.0.0.1:{base_node_grpc_port}"),
                         ),
                         (
                             "merge_mining_proxy.monerod_url".to_string(),
@@ -136,6 +137,10 @@ impl MergeMiningProxyProcess {
                             "merge_mining_proxy.use_dynamic_fail_data".to_string(),
                             "false".to_string(),
                         ),
+                        (
+                            "merge_mining_proxy.monerod_connection_timeout".to_string(),
+                            "10".to_string(),
+                        ),
                     ],
                 },
                 non_interactive_mode: false,
@@ -146,6 +151,7 @@ impl MergeMiningProxyProcess {
                 panic!("Error running merge mining proxy");
             }
         });
+        wait_for_service(proxy_port).await;
     }
 
     async fn get_response(&self, path: &str) -> Value {
@@ -208,11 +214,22 @@ impl MergeMiningProxyProcess {
     }
 
     pub async fn mine(&mut self) -> Value {
-        let template = self.get_block_template().await;
-        let template = template.get("result").unwrap();
+        const MAX_RETRIES: u32 = 5;
+        let mut template_result = None;
+        for attempt in 1..=MAX_RETRIES {
+            let template = self.get_block_template().await;
+            if let Some(result) = template.get("result") {
+                template_result = Some(result.clone());
+                break;
+            }
+            if attempt < MAX_RETRIES {
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            }
+        }
+        let template_result = template_result.expect("Failed to get block template after retries");
         // XMRig always calls this, so duplicated here
         self.get_height().await;
-        let block = template.get("blocktemplate_blob").unwrap();
+        let block = template_result.get("blocktemplate_blob").unwrap();
         self.submit_block(block).await
     }
 }

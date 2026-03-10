@@ -35,16 +35,17 @@ use crate::{
     proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc::{DhtRpcService, UnvalidatedPeerInfo},
 };
-
+use crate::DhtConfig;
 const LOG_TARGET: &str = "comms::dht::rpc";
 
 pub struct DhtRpcServiceImpl {
     peer_manager: Arc<PeerManager>,
+    config: Arc<DhtConfig>,
 }
 
 impl DhtRpcServiceImpl {
-    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
-        Self { peer_manager }
+    pub fn new(peer_manager: Arc<PeerManager>, config: Arc<DhtConfig>) -> Self {
+        Self { peer_manager, config }
     }
 
     pub fn stream_peers(
@@ -110,9 +111,10 @@ impl DhtRpcService for DhtRpcServiceImpl {
             ));
         }
 
+        let external_addresses_only = !self.config.peer_validator_config.allow_test_addresses;
         let peers = self
             .peer_manager
-            .discovery_syncing(message.n as usize, &excluded_peers, features, true)
+            .discovery_syncing(message.n as usize, &excluded_peers, features, external_addresses_only)
             .await
             .map_err(RpcError::from)?;
 

@@ -4,6 +4,7 @@
 @block-explorer
 Feature: Block Explorer GRPC
 
+  @critical
   Scenario: As a user I want to get the network difficulties
     Given I have a seed node NODE
     When I have wallet WALLET connected to all seed nodes

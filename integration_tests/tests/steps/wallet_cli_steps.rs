@@ -24,7 +24,7 @@
 use std::{convert::TryFrom, path::PathBuf, str::FromStr, time::Duration};
 
 use cucumber::{then, when};
-use minotari_app_grpc::tari_rpc::Empty;
+use minotari_app_grpc::tari_rpc::{Empty, PaymentRecipient, TransferRequest};
 use minotari_app_utilities::utilities::UniPublicKey;
 use minotari_console_wallet::{
     CliCommands,
@@ -39,7 +39,10 @@ use tari_integration_tests::{
     TariWorld,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
-use tari_transaction_components::MicroMinotari;
+use tari_transaction_components::{
+    MicroMinotari,
+    transaction_components::memo_field::{MemoField, TxType},
+};
 use tari_utilities::hex::Hex;
 
 use crate::steps::get_saved_seed_words;
@@ -316,4 +319,129 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
 
     let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet_name, Some(node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "I change base node of {word} to {word} via command line")]
+async fn change_base_node_via_cli(world: &mut TariWorld, wallet: String, base_node: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let seed_nodes = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
+}
+
+#[then(expr = "I set custom base node of {word} to {word} via command line")]
+async fn set_custom_base_node_via_cli(world: &mut TariWorld, wallet: String, base_node: String) {
+    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+    wallet_ps.kill();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let seed_nodes = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
+}
+
+#[when(expr = "I clear custom base node of wallet {word} via command line")]
+async fn clear_custom_base_node_via_cli(world: &mut TariWorld, wallet: String) {
+    let (base_node_name, peer_seeds) = {
+        let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
+        wallet_ps.kill();
+        (wallet_ps.base_node_name.clone(), wallet_ps.peer_seeds.clone())
+    };
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    spawn_wallet(world, wallet, base_node_name, peer_seeds, None, None).await;
+}
+
+#[when(expr = "I send {int} uT from {word} to {word} via command line")]
+async fn send_via_cli(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
+    let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let receiver_address = world.get_wallet_address(&receiver).await.unwrap();
+
+    let payment_recipient = PaymentRecipient {
+        address: receiver_address,
+        amount,
+        fee_per_gram: 20,
+        payment_type: 2, // one-sided stealth transaction
+        raw_payment_id: MemoField::new_open_from_string(
+            &format!("CLI send {} uT from {} to {}", amount, sender, receiver),
+            TxType::PaymentToOther,
+        )
+        .unwrap()
+        .to_bytes(),
+        user_payment_id: None,
+    };
+    let transfer_req = TransferRequest {
+        recipients: vec![payment_recipient],
+        single_tx: false,
+    };
+    let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = tx_res.results;
+    assert!(
+        !tx_res.is_empty(),
+        "Send from {} to {} returned no results",
+        sender,
+        receiver
+    );
+    let tx_res = tx_res.first().unwrap();
+    assert!(
+        tx_res.is_success,
+        "Send {} uT from {} to {} failed: {}",
+        amount, sender, receiver, tx_res.failure_message
+    );
+}
+
+#[when(expr = "I recover wallet {word} into wallet {word} connected to all seed nodes")]
+async fn recover_wallet_into_wallet_connected_to_all_seed_nodes(
+    world: &mut TariWorld,
+    source_wallet_name: String,
+    target_wallet_name: String,
+) {
+    if let Some(wallet_ps) = world.wallets.get_mut(&target_wallet_name) {
+        wallet_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    let mut cli = get_default_cli();
+    cli.recovery = true;
+    let saved_seed_words = get_saved_seed_words(world, &source_wallet_name);
+    let mut seed_words = SeedWords::new(vec![]);
+    for word in &saved_seed_words {
+        seed_words.push(word.to_string());
+    }
+    cli.seed_words = Some(seed_words);
+
+    let nodes = world.all_seed_nodes().to_vec();
+    let node = nodes.first().unwrap().clone();
+    spawn_wallet(world, target_wallet_name, Some(node), nodes, None, Some(cli)).await;
+}
+
+#[when(expr = "I recover all wallets connected to all seed nodes")]
+async fn recover_all_wallets_connected_to_all_seed_nodes(world: &mut TariWorld) {
+    let wallet_names: Vec<String> = world.wallets.keys().cloned().collect();
+    let nodes = world.all_seed_nodes().to_vec();
+    let node = nodes.first().unwrap().clone();
+
+    for wallet_name in wallet_names {
+        if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
+            wallet_ps.kill();
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Delete the wallet data directory so recovery can start fresh (boot() rejects recovery if db exists)
+        if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
+            let wallet_data_dir = wallet_ps.temp_dir_path.join("data").join("wallet");
+            if wallet_data_dir.exists() {
+                std::fs::remove_dir_all(&wallet_data_dir).unwrap();
+            }
+        }
+
+        let mut cli = get_default_cli();
+        cli.recovery = true;
+        let saved_seed_words = get_saved_seed_words(world, &wallet_name);
+        let mut seed_words = SeedWords::new(vec![]);
+        for word in &saved_seed_words {
+            seed_words.push(word.to_string());
+        }
+        cli.seed_words = Some(seed_words);
+
+        spawn_wallet(world, wallet_name, Some(node.clone()), nodes.clone(), None, Some(cli)).await;
+    }
 }

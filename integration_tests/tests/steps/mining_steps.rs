@@ -56,6 +56,7 @@ pub async fn create_miner(
 
 #[when(expr = "mining node {word} mines {int} blocks")]
 #[given(expr = "mining node {word} mines {int} blocks")]
+#[then(expr = "mining node {word} mines {int} blocks")]
 async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
     world
         .get_miner(miner_name)
@@ -85,6 +86,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
     .await;
 }
 
+#[given(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 #[then(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 async fn mining_node_mines_blocks_with_difficulty(
@@ -253,7 +255,9 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     println!("Wallet {wallet} has all transactions Mined_or_OneSidedConfirmed, while mining on node {node}");
 }
 
+#[given(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
 #[when(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
+#[then(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
 async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_miner: String) {
     spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone()).await;
 
@@ -329,11 +333,12 @@ async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: St
     );
 }
 
+#[given(expr = "I have SHA3X individual mining nodes connected to each wallet and base node {word}")]
 #[when(expr = "I have SHA3X individual mining nodes connected to each wallet and base node {word}")]
 async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWorld, base_node: String) {
-    let wallets = world.wallets.clone();
+    let wallet_names: Vec<String> = world.wallets.keys().cloned().collect();
 
-    for (ind, wallet_name) in wallets.keys().enumerate() {
+    for (ind, wallet_name) in wallet_names.iter().enumerate() {
         let miner = format!("Miner_{ind}");
         register_miner_process(
             world,

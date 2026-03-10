@@ -21,6 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
+#![allow(clippy::cast_possible_truncation)]
 use std::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -73,6 +74,7 @@ async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name
     spawn_base_node(world, false, name, world.all_seed_nodes().to_vec()).await;
 }
 
+#[given(expr = "I start base node {word}")]
 #[when(expr = "I start base node {word}")]
 async fn start_base_node_step(world: &mut TariWorld, name: String) {
     let mut is_seed_node = false;
@@ -84,6 +86,7 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
     spawn_base_node(world, is_seed_node, name, seed_nodes).await;
 }
 
+#[given(expr = "I have {int} base nodes connected to all seed nodes")]
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
 async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes: u64) {
     for i in 0..nodes {
@@ -473,8 +476,10 @@ async fn prune_node_connected_to_base_node(
 ) {
     let mut base_node_config = BaseNodeConfig::default();
     base_node_config.storage.pruning_horizon = pruning_horizon;
+    let peers = vec![base_node.clone()];
+    base_node_config.force_sync_peers = get_peer_addresses(world, &peers).await.into();
 
-    spawn_base_node_with_config(world, false, pruned_node, vec![base_node], base_node_config).await;
+    spawn_base_node_with_config(world, false, pruned_node, peers, base_node_config).await;
 }
 
 #[when(expr = "I have a base node {word} connected to node {word}")]
@@ -490,9 +495,7 @@ async fn base_node_connected_to_nodes(world: &mut TariWorld, base_node: String, 
 
 #[then(expr = "node {word} is in state {word}")]
 async fn node_state(world: &mut TariWorld, node_name: String, state: String) {
-    let mut node_client = world.get_node_client(&node_name).await.unwrap();
-    let tip = node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
-    let state = match state.as_str() {
+    let expected_state = match state.as_str() {
         "START_UP" => 0,
         "HEADER_SYNC" => 1,
         "HORIZON_SYNC" => 2,
@@ -502,7 +505,20 @@ async fn node_state(world: &mut TariWorld, node_name: String, state: String) {
         "SYNC_FAILED" => 6,
         _ => panic!("Invalid state"),
     };
-    assert_eq!(state, tip.base_node_state);
+    let mut node_client = world.get_node_client(&node_name).await.unwrap();
+    let mut actual_state = 0i32;
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        let tip = node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
+        actual_state = tip.base_node_state;
+        if actual_state == expected_state {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    panic!(
+        "Node {} is in state {} but expected state {}",
+        node_name, actual_state, expected_state
+    );
 }
 
 #[then(expr = "node {word} is at the same height as node {word}")]
@@ -569,6 +585,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     }
 }
 
+#[given(expr = "I stop node {word}")]
 #[when(expr = "I stop node {word}")]
 #[then(expr = "I stop node {word}")]
 async fn stop_node(world: &mut TariWorld, node: String) {
@@ -1092,6 +1109,63 @@ async fn generate_block_with_zero_coinbase(world: &mut TariWorld, node: String) 
     }
 }
 
+#[then(expr = "I generate a block {word} with zero value coinbase from node {word} for wallet {word}")]
+async fn i_generate_block_with_zero_coinbase(
+    world: &mut TariWorld,
+    block_name: String,
+    node_name: String,
+    wallet_name: String,
+) {
+    let mut client = world.get_node_client(&node_name).await.unwrap();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases: vec![NewBlockCoinbase {
+            address: wallet_address,
+            value: 0,
+            stealth_payment: true,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        }],
+    };
+
+    let template_response = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+    let new_block = template_response.block.clone().unwrap();
+
+    let block = Block::try_from(template_response.block.unwrap()).unwrap();
+    let coinbase_outputs = block
+        .body
+        .outputs()
+        .iter()
+        .filter(|o| o.is_coinbase())
+        .cloned()
+        .collect::<Vec<_>>();
+
+    assert_eq!(coinbase_outputs.len(), 1);
+
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = coinbase_outputs.first().unwrap();
+    assert!(
+        coinbase_output.minimum_value_promise.as_u64() > 0,
+        "Zero coinbase should have been automatically set to block reward"
+    );
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {e}"),
+    }
+
+    world.blocks.insert(block_name, block);
+}
+
 #[when(expr = "I have a lagging delayed node {word} connected to node {word} with \
                blocks_behind_before_considered_lagging {int}")]
 async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node: String, delay: u64) {
@@ -1128,7 +1202,7 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
     horizon: u64,
     node: String,
 ) {
-    for i in 0..=nodes_count {
+    for i in 0..nodes_count {
         let node_name = format!("BaseNode-{i}");
 
         let mut base_node_config = BaseNodeConfig::default();
@@ -1166,4 +1240,28 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
     }
 
     panic!("Node {node} only received {last_num_of_peers} of {num_peers} expected peers")
+}
+
+#[when(expr = "I wait for base node {word} to have {int} base node connections")]
+async fn wait_for_base_node_connections(world: &mut TariWorld, node: String, num_connections: u64) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+    let mut last_count = 0usize;
+
+    for _ in 0..TWO_MINUTES_WITH_HALF_SECOND_SLEEP {
+        last_count = 0;
+        let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
+        while let Some(resp) = peers_stream.next().await {
+            if let Ok(resp) = resp &&
+                resp.peer.is_some()
+            {
+                last_count += 1;
+            }
+        }
+        if last_count >= num_connections as usize {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!("Node {node} only has {last_count} connections, expected at least {num_connections}");
 }

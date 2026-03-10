@@ -223,9 +223,9 @@ typedef struct TransactionSendStatus TariTransactionSendStatus;
 
 typedef struct Balance TariBalance;
 
-typedef struct FeePerGramStat TariFeePerGramStat;
-
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
+
+typedef struct FeePerGramStat TariFeePerGramStat;
 
 /**
  * Payment Record FFI Types
@@ -4017,9 +4017,9 @@ void log_debug_message(const char *msg,
  * The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
  * a memory leak.
  */
-TariFeePerGramStat *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
-                                                  unsigned int count,
-                                                  int *error_out);
+TariFeePerGramStats *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
+                                                   unsigned int count,
+                                                   int *error_out);
 
 /**
  * Get length of stats from the TariFeePerGramStats.

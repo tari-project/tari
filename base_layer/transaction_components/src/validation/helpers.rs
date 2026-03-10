@@ -259,8 +259,8 @@ mod test {
             transaction_components::{RangeProofType, TransactionError},
         };
 
-        #[tokio::test]
-        async fn it_succeeds_for_valid_coinbase() {
+        #[test]
+        fn it_succeeds_for_valid_coinbase() {
             let height = 1;
             let key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&key_manager);
@@ -283,8 +283,8 @@ mod test {
                 .unwrap();
         }
 
-        #[tokio::test]
-        async fn it_returns_error_for_invalid_coinbase_maturity() {
+        #[test]
+        fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
             let key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&key_manager);
@@ -313,8 +313,8 @@ mod test {
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
 
-        #[tokio::test]
-        async fn it_returns_error_for_invalid_coinbase_reward() {
+        #[test]
+        fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
             let key_manager = KeyManager::new_random().unwrap();
             let test_params = TestParams::new(&key_manager);
