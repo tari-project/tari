@@ -169,7 +169,7 @@ pub async fn run_base_node_with_cli(
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{e:?}")))?;
 
     // Run, node, run!
-    let context = CommandContext::new(&ctx, shutdown.clone());
+    let context = CommandContext::new(&ctx, shutdown.clone(), cli.common.config_property_overrides.clone());
     readiness_handler.send_readiness_status(ReadinessState::Ready);
 
     readiness_grpc_shutdown.trigger();

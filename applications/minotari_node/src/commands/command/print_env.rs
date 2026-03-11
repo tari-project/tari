@@ -27,15 +27,15 @@ use tari_common::print_env_vars;
 
 use super::{CommandContext, HandleCommand};
 
-/// Prints all TARI_* and MINOTARI_* environment variables.
-/// Useful for verifying which environment variables are set for configuration.
+/// Prints all TARI_* and MINOTARI_* environment variables, as well as any `-p` config property overrides.
+/// Useful for verifying which environment variables and overrides are set for configuration.
 #[derive(Debug, Parser)]
 pub struct Args {}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        print_env_vars();
+        print_env_vars(&self.config_property_overrides);
         Ok(())
     }
 }

@@ -170,7 +170,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     // Handle --print-env before doing anything else so it works even without a valid config
     if cli.print_env {
-        print_env_vars();
+        print_env_vars(&cli.common.config_property_overrides);
         return Ok(());
     }
 
@@ -195,9 +195,25 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     #[cfg(all(unix, feature = "libtor"))]
-    let mut config = ApplicationConfig::load_from(&cfg)?;
+    let mut config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+        if e.is_unknown_field_error() {
+            eprintln!(
+                "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
+                 field.\n    Run with --print-env to inspect active environment variables and -p overrides."
+            );
+        }
+        e
+    })?;
     #[cfg(not(all(unix, feature = "libtor")))]
-    let config = ApplicationConfig::load_from(&cfg)?;
+    let config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+        if e.is_unknown_field_error() {
+            eprintln!(
+                "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
+                 field.\n    Run with --print-env to inspect active environment variables and -p overrides."
+            );
+        }
+        e
+    })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
 
     // Load or create the Node identity

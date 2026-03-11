@@ -300,6 +300,13 @@ impl ConfigurationError {
             message: msg.into(),
         }
     }
+
+    /// Returns `true` if this error was caused by an unrecognized (unknown) field in the configuration.
+    /// This typically happens when an environment variable or `-p` override sets a key that does not
+    /// correspond to any known field in the config struct.
+    pub fn is_unknown_field_error(&self) -> bool {
+        self.message.contains("unknown field")
+    }
 }
 
 impl Display for ConfigurationError {

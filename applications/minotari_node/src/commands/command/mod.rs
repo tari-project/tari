@@ -183,10 +183,12 @@ pub struct CommandContext {
     pub software_updater: SoftwareUpdaterHandle,
     last_time_full: Instant,
     pub shutdown: Shutdown,
+    /// Config property overrides provided via `-p` args on the command line.
+    pub config_property_overrides: Vec<(String, String)>,
 }
 
 impl CommandContext {
-    pub fn new(ctx: &BaseNodeContext, shutdown: Shutdown) -> Self {
+    pub fn new(ctx: &BaseNodeContext, shutdown: Shutdown, config_property_overrides: Vec<(String, String)>) -> Self {
         Self {
             config: ctx.config(),
             consensus_rules: ctx.consensus_rules().clone(),
@@ -203,6 +205,7 @@ impl CommandContext {
             software_updater: ctx.software_updater(),
             last_time_full: Instant::now(),
             shutdown,
+            config_property_overrides,
         }
     }
 

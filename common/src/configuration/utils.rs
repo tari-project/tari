@@ -154,8 +154,9 @@ fn check_for_incorrect_env_vars() {
 }
 
 /// Prints all TARI_* and MINOTARI_* environment variables to stdout, masking sensitive values.
+/// Also prints any config property overrides (`-p` args) if provided.
 /// This is useful for debugging configuration issues.
-pub fn print_env_vars() {
+pub fn print_env_vars(config_overrides: &[(String, String)]) {
     // Names containing these substrings will have their values masked
     const SENSITIVE_KEYWORDS: &[&str] = &["PASSWORD", "SECRET", "KEY", "SEED"];
 
@@ -176,6 +177,18 @@ pub fn print_env_vars() {
         println!("Tari-related environment variables:");
         for (key, value) in &env_vars {
             println!("  {key}={value}");
+        }
+    }
+
+    if config_overrides.is_empty() {
+        println!("No -p config property overrides are set.");
+    } else {
+        println!("\nConfig property overrides (-p args):");
+        for (key, value) in config_overrides {
+            let upper = key.to_uppercase();
+            let masked = SENSITIVE_KEYWORDS.iter().any(|kw| upper.contains(kw));
+            let display_value = if masked { "***" } else { value.as_str() };
+            println!("  {key}={display_value}");
         }
     }
 }
