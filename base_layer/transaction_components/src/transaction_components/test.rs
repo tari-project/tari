@@ -52,8 +52,8 @@ use crate::{
     validation::{AggregatedBodyValidationError, transaction::TransactionInternalConsistencyValidator},
 };
 
-#[tokio::test]
-async fn input_and_output_and_wallet_output_hash_match() {
+#[test]
+fn input_and_output_and_wallet_output_hash_match() {
     let key_manager = KeyManager::new_random().unwrap();
     let test_params = TestParams::new(&key_manager);
 
@@ -73,8 +73,8 @@ fn test_smt_hashes() {
     assert_eq!(input_hash, output_hash);
 }
 
-#[tokio::test]
-async fn key_manager_input() {
+#[test]
+fn key_manager_input() {
     let key_manager = KeyManager::new_random().unwrap();
     let test_params = TestParams::new(&key_manager);
 
@@ -99,8 +99,8 @@ async fn key_manager_input() {
     assert_eq!(value, i.value());
 }
 
-#[tokio::test]
-async fn range_proof_verification() {
+#[test]
+fn range_proof_verification() {
     let factories = CryptoFactories::new(32);
     let wallet = WalletType::new_random().unwrap();
     let key_manager = KeyManager::new_with_crypto_factories(factories.clone(), wallet).unwrap();
@@ -161,8 +161,8 @@ async fn range_proof_verification() {
     };
 }
 
-#[tokio::test]
-async fn range_proof_verification_batch() {
+#[test]
+fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
     let key_manager = KeyManager::new_random().unwrap();
     let wallet_output1 = TestParams::new(&key_manager)
@@ -243,8 +243,8 @@ async fn range_proof_verification_batch() {
     assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
 }
 
-#[tokio::test]
-async fn sender_signature_verification() {
+#[test]
+fn sender_signature_verification() {
     let key_manager = KeyManager::new_random().unwrap();
     let test_params = TestParams::new(&key_manager);
     let wallet_output = test_params.create_output(Default::default(), &key_manager).unwrap();
@@ -405,8 +405,8 @@ fn check_timelocks() {
     assert_eq!(tx.min_spendable_height().unwrap(), 10);
 }
 
-#[tokio::test]
-async fn test_validate_internal_consistency() {
+#[test]
+fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
     let key_manager = KeyManager::new_random().unwrap();
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager)
@@ -417,9 +417,9 @@ async fn test_validate_internal_consistency() {
     assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
 }
 
-#[tokio::test]
+#[test]
 #[allow(clippy::identity_op)]
-async fn check_cut_through() {
+fn check_cut_through() {
     let key_manager = KeyManager::new_random().unwrap();
     let (tx, _, outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
@@ -474,8 +474,8 @@ async fn check_cut_through() {
     validator.validate(&tx3_cut_through, None, None, u64::MAX).unwrap_err();
 }
 
-#[tokio::test]
-async fn check_duplicate_inputs_outputs() {
+#[test]
+fn check_duplicate_inputs_outputs() {
     let key_manager = KeyManager::new_random().unwrap();
     let (tx, _, _outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
@@ -496,8 +496,8 @@ async fn check_duplicate_inputs_outputs() {
     assert!(broken_tx_2.body.contains_duplicated_outputs());
 }
 
-#[tokio::test]
-async fn inputs_not_malleable() {
+#[test]
+fn inputs_not_malleable() {
     let key_manager = KeyManager::new_random().unwrap();
     let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
@@ -530,8 +530,8 @@ async fn inputs_not_malleable() {
     unpack_enum!(AggregatedBodyValidationError::TransactionError(_a) = err);
 }
 
-#[tokio::test]
-async fn test_output_recover_openings() {
+#[test]
+fn test_output_recover_openings() {
     let key_manager = KeyManager::new_random().unwrap();
     let test_params = TestParams::new(&key_manager);
     let v = MicroMinotari::from(42);
@@ -602,8 +602,8 @@ mod validate_internal_consistency {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn it_validates_that_the_covenant_is_honoured() {
+    #[test]
+    fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant))).unwrap();
         let features = OutputFeatures { ..Default::default() };

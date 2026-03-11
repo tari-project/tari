@@ -586,8 +586,8 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn check_burned_succeeds_for_valid_outputs() {
+    #[test]
+    fn check_burned_succeeds_for_valid_outputs() {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
@@ -640,8 +640,8 @@ mod test {
     mod transaction_ordering {
         use super::*;
 
-        #[tokio::test]
-        async fn it_rejects_unordered_bodies() {
+        #[test]
+        fn it_rejects_unordered_bodies() {
             let mut kernels =
                 iter::repeat_with(|| test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::default()))
                     .take(10)

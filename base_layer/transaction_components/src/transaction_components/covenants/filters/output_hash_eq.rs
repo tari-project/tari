@@ -54,8 +54,8 @@ mod test {
         },
     };
 
-    #[tokio::test]
-    async fn it_filters_output_with_specific_hash() {
+    #[test]
+    fn it_filters_output_with_specific_hash() {
         let key_manager = KeyManager::new_random().unwrap();
         let output = create_outputs(1, Default::default(), &key_manager).remove(0);
         let output_hash = output.hash();

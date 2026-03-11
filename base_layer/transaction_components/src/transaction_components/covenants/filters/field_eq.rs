@@ -92,8 +92,8 @@ mod test {
         },
     };
 
-    #[tokio::test]
-    async fn it_filters_uint() {
+    #[test]
+    fn it_filters_uint() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(@field::features_maturity, @uint(42))).unwrap();
         let input = create_input(&key_manager);
@@ -109,8 +109,8 @@ mod test {
         assert_eq!(output_set.get(5).unwrap().features.maturity, 42);
     }
 
-    #[tokio::test]
-    async fn it_filters_sender_offset_public_key() {
+    #[test]
+    fn it_filters_sender_offset_public_key() {
         let pk =
             CompressedPublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
         let key_manager = KeyManager::new_random().unwrap();
@@ -132,8 +132,8 @@ mod test {
         assert_eq!(output_set.get(5).unwrap().sender_offset_public_key, pk);
     }
 
-    #[tokio::test]
-    async fn it_filters_commitment() {
+    #[test]
+    fn it_filters_commitment() {
         let key_manager = KeyManager::new_random().unwrap();
         let commitment =
             CompressedCommitment::from_hex("7ca31ba517d8b563609ed6707fedde5a2be64ac1d67b254cb5348bc2f680557f").unwrap();
@@ -156,8 +156,8 @@ mod test {
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
     }
 
-    #[tokio::test]
-    async fn it_filters_tari_script() {
+    #[test]
+    fn it_filters_tari_script() {
         let key_manager = KeyManager::new_random().unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(field_eq(
@@ -179,8 +179,8 @@ mod test {
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
     }
 
-    #[tokio::test]
-    async fn it_filters_covenant() {
+    #[test]
+    fn it_filters_covenant() {
         let key_manager = KeyManager::new_random().unwrap();
         let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42))))).unwrap();
         let covenant = covenant!(field_eq(@field::covenant, @covenant(next_cov.clone()))).unwrap();
@@ -198,8 +198,8 @@ mod test {
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
     }
 
-    #[tokio::test]
-    async fn it_filters_output_type() {
+    #[test]
+    fn it_filters_output_type() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(@field::features_output_type, @output_type(Coinbase))).unwrap();
         let input = create_input(&key_manager);
@@ -216,8 +216,8 @@ mod test {
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
     }
 
-    #[tokio::test]
-    async fn it_errors_if_field_has_an_incorrect_type() {
+    #[test]
+    fn it_errors_if_field_has_an_incorrect_type() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(field_eq(@field::features, @uint(42))).unwrap();
         let input = create_input(&key_manager);

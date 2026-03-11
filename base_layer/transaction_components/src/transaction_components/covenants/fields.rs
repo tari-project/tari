@@ -398,8 +398,8 @@ mod test {
             use super::*;
             use crate::{MicroMinotari, transaction_components::RangeProofType};
 
-            #[tokio::test]
-            async fn it_returns_true_if_eq() {
+            #[test]
+            fn it_returns_true_if_eq() {
                 let key_manager = KeyManager::new_random().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
@@ -452,8 +452,8 @@ mod test {
                 );
             }
 
-            #[tokio::test]
-            async fn it_returns_false_if_not_eq() {
+            #[test]
+            fn it_returns_false_if_not_eq() {
                 let key_manager = KeyManager::new_random().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
@@ -518,8 +518,8 @@ mod test {
 
             use super::*;
 
-            #[tokio::test]
-            async fn it_returns_true_if_eq_input() {
+            #[test]
+            fn it_returns_true_if_eq_input() {
                 let key_manager = KeyManager::new_random().unwrap();
                 let output = create_outputs(
                     1,
@@ -593,8 +593,8 @@ mod test {
             use super::*;
             use crate::{MicroMinotari, transaction_components::RangeProofType};
 
-            #[tokio::test]
-            async fn it_constructs_challenge_using_consensus_encoding() {
+            #[test]
+            fn it_constructs_challenge_using_consensus_encoding() {
                 let key_manager = KeyManager::new_random().unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
@@ -640,8 +640,8 @@ mod test {
             use super::*;
             use crate::{MicroMinotari, transaction_components::RangeProofType};
 
-            #[tokio::test]
-            async fn it_retrieves_the_value_as_ref() {
+            #[test]
+            fn it_retrieves_the_value_as_ref() {
                 let key_manager = KeyManager::new_random().unwrap();
                 let features = OutputFeatures {
                     maturity: 42,

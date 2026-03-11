@@ -507,8 +507,8 @@ mod test {
         (CoinbaseBuilder::new(key_manager.clone()), rules, factories, key_manager)
     }
 
-    #[tokio::test]
-    async fn missing_height() {
+    #[test]
+    fn missing_height() {
         let (builder, rules, _, _) = get_builder();
 
         assert_eq!(
@@ -523,8 +523,8 @@ mod test {
         );
     }
 
-    #[tokio::test]
-    async fn missing_fees() {
+    #[test]
+    fn missing_fees() {
         let (builder, rules, _, _) = get_builder();
         let builder = builder.with_block_height(42);
         assert_eq!(
@@ -539,9 +539,9 @@ mod test {
         );
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::erasing_op)]
-    async fn missing_spend_key() {
+    fn missing_spend_key() {
         let (builder, rules, _, _) = get_builder();
         let fees = 0 * uT;
         let builder = builder.with_block_height(42).with_fees(fees);
@@ -557,8 +557,8 @@ mod test {
         );
     }
 
-    #[tokio::test]
-    async fn valid_coinbase() {
+    #[test]
+    fn valid_coinbase() {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager);
         let wallet_payment_address = TariAddress::default();
@@ -610,8 +610,8 @@ mod test {
             .unwrap();
     }
 
-    #[tokio::test]
-    async fn invalid_coinbase_maturity() {
+    #[test]
+    fn invalid_coinbase_maturity() {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager);
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -647,9 +647,9 @@ mod test {
         ));
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::identity_op)]
-    async fn invalid_coinbase_value() {
+    fn invalid_coinbase_value() {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager);
         // We just want some small amount here.
@@ -738,10 +738,10 @@ mod test {
         );
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::identity_op)]
-    async fn invalid_coinbase_amount() {
+    fn invalid_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and
         // a duplicate coinbase kernel to the other one.
         let (builder, rules, factories, key_manager) = get_builder();
@@ -875,10 +875,10 @@ mod test {
             .unwrap();
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::identity_op)]
-    async fn multi_coinbase_amount() {
+    fn multi_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and
         // a duplicate coinbase kernel to the other one.
         let (builder, rules, factories, key_manager) = get_builder();
@@ -1013,10 +1013,10 @@ mod test {
         body2.verify_kernel_signatures().unwrap();
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::identity_op)]
-    async fn too_may_coinbases() {
+    fn too_may_coinbases() {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager);
         // We just want some small amount here.
@@ -1129,8 +1129,8 @@ mod test {
         .unwrap_err();
     }
 
-    #[tokio::test]
-    async fn test_generate_coinbase_with_payment_id_from_address() {
+    #[test]
+    fn test_generate_coinbase_with_payment_id_from_address() {
         let key_manager = KeyManager::new_random().unwrap();
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);

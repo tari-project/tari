@@ -68,8 +68,8 @@ mod test {
             },
         },
     };
-    #[tokio::test]
-    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
+    #[test]
+    fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let key_manager = KeyManager::new_random().unwrap();
         let features = OutputFeatures {
             maturity: 42,

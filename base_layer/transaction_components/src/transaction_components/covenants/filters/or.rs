@@ -59,8 +59,8 @@ mod test {
         key_manager::KeyManager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
-    #[tokio::test]
-    async fn it_filters_outputset_using_union() {
+    #[test]
+    fn it_filters_outputset_using_union() {
         let key_manager = KeyManager::new_random().unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone())))).unwrap();

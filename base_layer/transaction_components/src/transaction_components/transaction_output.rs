@@ -593,8 +593,8 @@ mod test {
         transaction_components::{OutputFeatures, RangeProofType},
     };
 
-    #[tokio::test]
-    async fn it_builds_correctly() {
+    #[test]
+    fn it_builds_correctly() {
         let factories = CryptoFactories::default();
         let key_manager = KeyManager::new_random().unwrap();
         let test_params = TestParams::new(&key_manager);
@@ -623,8 +623,8 @@ mod test {
         assert_eq!(recovered_value, value);
     }
 
-    #[tokio::test]
-    async fn it_does_not_verify_incorrect_minimum_value() {
+    #[test]
+    fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
         let key_manager = KeyManager::new_random().unwrap();
         let test_params = TestParams::new(&key_manager);
@@ -642,8 +642,8 @@ mod test {
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_err());
     }
 
-    #[tokio::test]
-    async fn it_does_batch_verify_correct_minimum_values() {
+    #[test]
+    fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
         let key_manager = KeyManager::new_random().unwrap();
         let test_params = TestParams::new(&key_manager);
@@ -678,8 +678,8 @@ mod test {
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_ok());
     }
 
-    #[tokio::test]
-    async fn it_does_batch_verify_with_mixed_range_proof_types() {
+    #[test]
+    fn it_does_batch_verify_with_mixed_range_proof_types() {
         let key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
         let test_params = TestParams::new(&key_manager);
@@ -722,8 +722,8 @@ mod test {
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_ok());
     }
 
-    #[tokio::test]
-    async fn invalid_revealed_value_proofs_are_blocked() {
+    #[test]
+    fn invalid_revealed_value_proofs_are_blocked() {
         let key_manager = KeyManager::new_random().unwrap();
         let test_params = TestParams::new(&key_manager);
         assert!(
@@ -752,8 +752,8 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn it_does_not_batch_verify_incorrect_minimum_values() {
+    #[test]
+    fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
         let key_manager = KeyManager::new_random().unwrap();
         let test_params = TestParams::new(&key_manager);

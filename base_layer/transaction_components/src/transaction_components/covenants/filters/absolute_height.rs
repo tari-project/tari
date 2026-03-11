@@ -74,8 +74,8 @@ mod test {
         key_manager::KeyManager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
-    #[tokio::test]
-    async fn it_filters_all_out_if_height_not_reached() {
+    #[test]
+    fn it_filters_all_out_if_height_not_reached() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
         let input = create_input(&key_manager);
@@ -87,8 +87,8 @@ mod test {
         assert!(output_set.is_empty());
     }
 
-    #[tokio::test]
-    async fn it_filters_all_in_if_height_reached() {
+    #[test]
+    fn it_filters_all_in_if_height_reached() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
         let input = create_input(&key_manager);
@@ -100,8 +100,8 @@ mod test {
         assert_eq!(output_set.len(), 10);
     }
 
-    #[tokio::test]
-    async fn it_filters_all_in_if_height_exceeded() {
+    #[test]
+    fn it_filters_all_in_if_height_exceeded() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(absolute_height(@uint(42))).unwrap();
         let input = create_input(&key_manager);

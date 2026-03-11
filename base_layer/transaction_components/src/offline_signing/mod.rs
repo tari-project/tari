@@ -95,8 +95,8 @@ mod test {
         KeyManager::new(wallet)
     }
 
-    #[tokio::test]
-    async fn offline_sign_is_valid() {
+    #[test]
+    fn offline_sign_is_valid() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
@@ -209,9 +209,9 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn batch_offline_sign_is_valid() {
+    fn batch_offline_sign_is_valid() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
@@ -345,8 +345,8 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
-    async fn large_batch_offline_sign_is_valid() {
+    #[test]
+    fn large_batch_offline_sign_is_valid() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
@@ -443,9 +443,9 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn offline_deposit_multisign_is_valid() {
+    fn offline_deposit_multisign_is_valid() {
         let rules = create_consensus_manager();
         let charlie_key_manager = KeyManager::new_random().unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
@@ -564,9 +564,9 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn offline_withdraw_multisign_is_valid() {
+    fn offline_withdraw_multisign_is_valid() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
@@ -764,8 +764,8 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    #[tokio::test]
-    async fn offline_sign_can_be_claimed() {
+    #[test]
+    fn offline_sign_can_be_claimed() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
@@ -879,8 +879,8 @@ mod test {
         assert_eq!(res.2, payment_id_bob);
     }
 
-    #[tokio::test]
-    async fn view_only_cannot_sign_offline() {
+    #[test]
+    fn view_only_cannot_sign_offline() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(

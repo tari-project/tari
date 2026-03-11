@@ -46,8 +46,8 @@ mod tests {
         key_manager::KeyManager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
-    #[tokio::test]
-    async fn it_returns_the_outputset_unchanged() {
+    #[test]
+    fn it_returns_the_outputset_unchanged() {
         let key_manager = KeyManager::new_random().unwrap();
         let covenant = covenant!(identity()).unwrap();
         let input = create_input(&key_manager);

@@ -364,8 +364,8 @@ mod test {
     use super::*;
     use crate::key_manager::KeyManager;
 
-    #[tokio::test]
-    async fn test_try_build() {
+    #[test]
+    fn test_try_build() {
         let key_manager = KeyManager::new_random().unwrap();
         let (commitment_mask_key, script_key_id) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
         let value = MicroMinotari(100);
@@ -412,8 +412,8 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_partial_metadata_signatures() {
+    #[test]
+    fn test_partial_metadata_signatures() {
         let key_manager = KeyManager::new_random().unwrap();
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
         let value = MicroMinotari(100);

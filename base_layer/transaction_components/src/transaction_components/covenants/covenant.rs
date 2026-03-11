@@ -202,8 +202,8 @@ mod test {
         },
     };
 
-    #[tokio::test]
-    async fn it_succeeds_when_empty() {
+    #[test]
+    fn it_succeeds_when_empty() {
         let key_manager = KeyManager::new_random().unwrap();
         let outputs = create_outputs(10, UtxoTestParams::default(), &key_manager);
         let input = create_input(&key_manager);
@@ -212,8 +212,8 @@ mod test {
         assert_eq!(num_matching_outputs, 10);
     }
 
-    #[tokio::test]
-    async fn it_executes_the_covenant() {
+    #[test]
+    fn it_executes_the_covenant() {
         let key_manager = KeyManager::new_random().unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager);
         outputs[4].features.maturity = 42;
@@ -230,8 +230,8 @@ mod test {
         assert_eq!(num_matching_outputs, 3);
     }
 
-    #[tokio::test]
-    async fn test_borsh_de_serialization() {
+    #[test]
+    fn test_borsh_de_serialization() {
         let key_manager = KeyManager::new_random().unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager);
         outputs[4].features.maturity = 42;
@@ -252,8 +252,8 @@ mod test {
         assert_eq!(buf, &[1, 2, 3]);
     }
 
-    #[tokio::test]
-    async fn test_borsh_de_serialization_too_large() {
+    #[test]
+    fn test_borsh_de_serialization_too_large() {
         // We dont care about the actual convent here, just that its not too large on the varint size
         // We lie about the size to try and get a mem panic, and say this covenant is u64::max large.
         let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
