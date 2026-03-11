@@ -3299,3 +3299,34 @@ async fn wallet_has_balance(world: &mut TariWorld, wallet_name: String, balance_
 
     panic!("Wallet {wallet_name} doesn't have the correct balance: expected {balance:?} current {balance_res:?}");
 }
+
+/// Records the current wall-clock time under the given label so it can later be compared with a stop step.
+/// Usage in a feature file: `When I start benchmark timer <label>`
+#[when(expr = "I start benchmark timer {word}")]
+async fn start_benchmark_timer(world: &mut TariWorld, name: String) {
+    world.benchmark_timers.insert(name.clone(), std::time::Instant::now());
+    let msg = format!("BENCHMARK [{name}]: timer started");
+    eprintln!("{msg}");
+    cucumber_steps_log(&msg);
+}
+
+/// Stops the named benchmark timer, prints the elapsed duration to stderr and appends it to the cucumber step log.
+/// Uses eprintln! because Cucumber's Basic writer owns stdout; stderr is the correct channel for step output.
+/// Panics if the corresponding start step was never called.
+/// Usage in a feature file: `Then I stop benchmark timer <label> and log elapsed time`
+#[then(expr = "I stop benchmark timer {word} and log elapsed time")]
+async fn stop_benchmark_timer_and_log(world: &mut TariWorld, name: String) {
+    let start = world
+        .benchmark_timers
+        .get(&name)
+        .unwrap_or_else(|| panic!("Benchmark timer '{name}' was never started"));
+    let elapsed = start.elapsed();
+    let msg = format!(
+        "BENCHMARK [{}]: {:.3}s ({} ms)",
+        name,
+        elapsed.as_secs_f64(),
+        elapsed.as_millis()
+    );
+    eprintln!("{msg}");
+    cucumber_steps_log(&msg);
+}

@@ -24,6 +24,7 @@ use std::{
     collections::VecDeque,
     fmt::{Debug, Formatter},
     path::PathBuf,
+    time::Instant,
 };
 
 use cucumber::gherkin::{Feature, Scenario};
@@ -105,6 +106,9 @@ pub struct TariWorld {
     pub default_payment_address: TariAddress,
     pub consensus_manager: BaseNodeConsensusManager,
     pub assigned_ports: IndexMap<u64, u64>,
+    /// Named benchmark timers, keyed by a label set in the feature file.
+    /// Used by "I start benchmark timer {word}" / "I stop benchmark timer {word} and log elapsed time" steps.
+    pub benchmark_timers: IndexMap<String, Instant>,
 }
 
 impl Debug for TariWorld {
@@ -173,6 +177,7 @@ impl TariWorld {
             default_payment_address,
             consensus_manager: BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
             assigned_ports: Default::default(),
+            benchmark_timers: Default::default(),
         }
     }
 
