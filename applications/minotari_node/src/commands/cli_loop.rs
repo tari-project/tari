@@ -222,9 +222,26 @@ impl CliLoop {
         // Reset the interruption flag if the command entered.
         self.first_signal = false;
         if !line.is_empty() {
+            // Handle the built-in "help" command before passing to the command parser.
+            if line.trim() == "help" {
+                println!("Available commands:");
+                for cmd in &self.commands {
+                    println!("  {cmd}");
+                }
+                return;
+            }
             match self.context.handle_command_str(&line).await {
                 Err(err) => {
-                    println!("Command `{line}` failed: {err}");
+                    // Check if the entered command is unrecognized (does not match any known command).
+                    let cmd_name = line.split_whitespace().next().unwrap_or("");
+                    if !cmd_name.is_empty() && !self.commands.iter().any(|c| c.as_str() == cmd_name) {
+                        println!(
+                            "Unknown command '{}'. Use Tab for auto-completion or type 'help' to list all commands.",
+                            cmd_name
+                        );
+                    } else {
+                        println!("Command `{line}` failed: {err}");
+                    }
                 },
                 Ok(command) => {
                     self.watch_task = command;

@@ -62,7 +62,7 @@ pub use configuration::{
     error::ConfigError,
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, SubConfigPath},
     name_server::DnsNameServer,
-    utils::load_configuration,
+    utils::{load_configuration, print_env_vars},
 };
 pub mod dir_utils;
 
