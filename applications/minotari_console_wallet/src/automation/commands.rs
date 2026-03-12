@@ -2815,21 +2815,22 @@ pub async fn command_runner(
                             .into_iter()
                             .filter(|tx| {
                                 let ts = tx.mined_timestamp.unwrap_or(tx.timestamp);
-                                if let Some(start) = args.start_date {
-                                    if ts < start {
-                                        return false;
-                                    }
+                                if let Some(start) = args.start_date &&
+                                    ts < start
+                                {
+                                    return false;
                                 }
-                                if let Some(end) = args.end_date {
-                                    if ts > end {
-                                        return false;
-                                    }
+                                if let Some(end) = args.end_date &&
+                                    ts > end
+                                {
+                                    return false;
                                 }
                                 true
                             })
                             .collect();
                         println!("Exporting {} transaction(s) to audit CSV...", filtered.len());
-                        match write_audit_to_csv_file(filtered, args.output_file, args.conversion_rate, &args.currency) {
+                        match write_audit_to_csv_file(filtered, args.output_file, args.conversion_rate, &args.currency)
+                        {
                             Ok(()) => println!("Audit export complete."),
                             Err(e) => eprintln!("ExportAudit error! {e}"),
                         }
@@ -3131,9 +3132,7 @@ fn write_audit_to_csv_file(
 
     for tx in &transactions {
         // Determine transaction type: Deposit = inbound/coinbase, Withdraw = outbound
-        let tx_type = if tx.direction == TransactionDirection::Inbound ||
-            tx.status.is_coinbase()
-        {
+        let tx_type = if tx.direction == TransactionDirection::Inbound || tx.status.is_coinbase() {
             "Deposit"
         } else {
             "Withdraw"
