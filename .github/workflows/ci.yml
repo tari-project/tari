@@ -98,7 +98,7 @@ jobs:
     name: ledger build tests
     runs-on: [ubuntu-latest]
     env:
-      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:4.23.0"
+      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.1.0"
     steps:
       - name: checkout tari
         uses: actions/checkout@v6
