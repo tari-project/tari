@@ -120,14 +120,13 @@ fn main_inner() -> Result<(), ExitError> {
         console_subscriber::init();
     }
 
-    let mut config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+    let mut config = ApplicationConfig::load_from(&cfg).inspect_err(|e| {
         if e.is_unknown_field_error() {
             eprintln!(
                 "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
                  field.\n    Run with --print-env to inspect active environment variables and -p overrides."
             );
         }
-        e
     })?;
 
     setup_grpc_config(&mut config);

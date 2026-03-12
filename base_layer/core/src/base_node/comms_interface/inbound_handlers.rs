@@ -1058,6 +1058,8 @@ where B: BlockchainBackend + 'static
                 metrics::tip_height().set(block.height() as i64);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
                 metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
+                metrics::reorg_blocks_added().set(0);
+                metrics::reorg_blocks_removed().set(0);
             },
             BlockAddResult::ChainReorg { added, removed } => {
                 if let Some(fork_height) = added.last().map(|b| b.height()) {
@@ -1079,6 +1081,8 @@ where B: BlockchainBackend + 'static
             },
             BlockAddResult::OrphanBlock => {
                 metrics::orphaned_blocks().inc();
+                metrics::reorg_blocks_added().set(0);
+                metrics::reorg_blocks_removed().set(0);
             },
             _ => {},
         }
