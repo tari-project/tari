@@ -29,20 +29,13 @@ pub use service::DhtRpcServiceImpl;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
-use crate::proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse};
+use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
 
 mod peer_info;
 pub use peer_info::UnvalidatedPeerInfo;
 
 #[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
 pub trait DhtRpcService: Send + Sync + 'static {
-    /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetCloserPeersRequest`
-    #[rpc(method = 1)]
-    async fn get_closer_peers(
-        &self,
-        request: Request<GetCloserPeersRequest>,
-    ) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
-
     #[rpc(method = 10)]
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
 }

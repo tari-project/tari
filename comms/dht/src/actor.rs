@@ -27,7 +27,7 @@
 //!
 //! [DhtRequest]: ./enum.DhtRequest.html
 
-use std::{cmp, fmt, fmt::Display, sync::Arc, time::Instant};
+use std::{fmt, fmt::Display, sync::Arc, time::Instant};
 
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
@@ -38,7 +38,7 @@ use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
+    peer_manager::{NodeId, NodeIdentity, PeerManager, PeerManagerError},
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
@@ -57,7 +57,7 @@ use tokio::{
 use crate::{
     DhtConfig,
     DhtDiscoveryRequester,
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
+    broadcast_strategy::BroadcastStrategy,
     dedup::DedupCacheDatabase,
     discovery::DhtDiscoveryError,
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
@@ -537,12 +537,12 @@ impl DhtActor {
         .await?;
         let message = JoinMessage::from(&node_identity);
 
-        debug!(target: LOG_TARGET, "Sending Join message to closest peers");
+        debug!(target: LOG_TARGET, "Sending Join message to peers");
 
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(node_identity.node_id().clone(), vec![])
+                    .broadcast(vec![])
                     .with_destination(node_identity.public_key().clone().into())
                     .with_dht_message_type(DhtMessageType::Join)
                     .with_debug_info("Broadcast join".to_string())
@@ -595,32 +595,6 @@ impl DhtActor {
                     .select_connections(ConnectivitySelection::all_nodes(exclude))
                     .await?;
                 (peers.into_iter().map(|p| p.peer_node_id().clone()).collect(), true)
-            },
-            ClosestNodes(closest_request) => (
-                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone())
-                    .await?,
-                true,
-            ),
-            DirectOrClosestNodes(closest_request) => {
-                // First check if a direct connection exists
-                if connectivity
-                    .get_connection(closest_request.node_id.clone())
-                    .await?
-                    .is_some()
-                {
-                    (vec![closest_request.node_id.clone()], true)
-                } else {
-                    (
-                        Self::select_closest_node_connected(
-                            closest_request,
-                            config,
-                            connectivity,
-                            peer_manager.clone(),
-                        )
-                        .await?,
-                        true,
-                    )
-                }
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
@@ -678,32 +652,13 @@ impl DhtActor {
                                 vec![conn]
                             },
                             None => {
-                                // Select connections closer to the destination
+                                // Select random connections for propagation
                                 let mut connections = connectivity
-                                    .select_connections(ConnectivitySelection::closest_to(
-                                        node_id.clone(),
+                                    .select_connections(ConnectivitySelection::random_nodes(
                                         config.num_neighbouring_nodes,
                                         exclude.clone(),
                                     ))
                                     .await?;
-
-                                // Exclude candidates that are further away from the destination than this node
-                                // unless this node has not selected a big enough sample i.e. this node is not well
-                                // connected
-                                if connections.len() >= config.propagation_factor {
-                                    let dist_from_dest = node_identity.node_id().distance(&node_id);
-                                    let before_len = connections.len();
-                                    connections = connections
-                                        .into_iter()
-                                        .filter(|conn| conn.peer_node_id().distance(&node_id) <= dist_from_dest)
-                                        .collect::<Vec<_>>();
-
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Filtered out {} node(s) that are further away than this node.",
-                                        before_len - connections.len()
-                                    );
-                                }
 
                                 connections.truncate(config.propagation_factor);
                                 connections
@@ -782,94 +737,6 @@ impl DhtActor {
         } else {
             Ok(filtered_peers)
         }
-    }
-
-    /// Selects at least `n` MESSAGE_PROPAGATION peers (assuming that many are known) that are closest to `node_id` as
-    /// well as other peers which do not advertise the MESSAGE_PROPAGATION flag (unless excluded by some other means
-    /// e.g. `excluded` list.
-    ///
-    /// This ensures that peers are selected which are able to propagate the message further while still allowing
-    /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
-    async fn select_closest_peers_for_propagation(
-        peer_manager: &PeerManager,
-        region_node_id: &NodeId,
-        n: usize,
-        excluded_peers: &[NodeId],
-        features: PeerFeatures,
-    ) -> Result<Vec<NodeId>, DhtActorError> {
-        // Fetch to all n nearest neighbour Communication Nodes
-        // which are eligible for connection.
-        // Currently that means:
-        // - The peer isn't banned,
-        // - it has the required features
-        // - it didn't recently fail to connect, and
-        // - it's address is reachable
-        // - it is not in the exclusion list in closest_request
-        let peers = peer_manager
-            .closest_n_active_peers(
-                region_node_id,
-                n,
-                excluded_peers,
-                Some(features),
-                None,
-                Some(STALE_PEER_THRESHOLD_DURATION),
-                true,
-                None,
-                true,
-            )
-            .await?;
-        debug!(
-            target: LOG_TARGET,
-            "👨‍👧‍👦 Closest Peer Selection: {} peer(s) selected, {} explicitly excluded",
-            peers.len(),
-            excluded_peers.len(),
-        );
-
-        Ok(peers.into_iter().map(|p| p.node_id).collect())
-    }
-
-    async fn select_closest_node_connected(
-        closest_request: Box<BroadcastClosestRequest>,
-        config: &DhtConfig,
-        mut connectivity: ConnectivityRequester,
-        peer_manager: Arc<PeerManager>,
-    ) -> Result<Vec<NodeId>, DhtActorError> {
-        let connections = connectivity
-            .select_connections(ConnectivitySelection::closest_to(
-                closest_request.node_id.clone(),
-                config.broadcast_factor,
-                closest_request.excluded_peers.clone(),
-            ))
-            .await?;
-
-        let mut candidates = connections
-            .iter()
-            .map(|conn| conn.peer_node_id())
-            .cloned()
-            .collect::<Vec<_>>();
-
-        if !closest_request.connected_only {
-            let excluded = closest_request
-                .excluded_peers
-                .iter()
-                .chain(candidates.iter())
-                .cloned()
-                .collect::<Vec<_>>();
-            // If we don't have enough connections, let's select some more disconnected peers (at least 2)
-            let n = cmp::max(config.broadcast_factor.saturating_sub(candidates.len()), 2);
-            let additional = Self::select_closest_peers_for_propagation(
-                &peer_manager,
-                &closest_request.node_id,
-                n,
-                &excluded,
-                PeerFeatures::MESSAGE_PROPAGATION,
-            )
-            .await?;
-
-            candidates.extend(additional);
-        }
-
-        Ok(candidates)
     }
 }
 
@@ -1290,39 +1157,6 @@ mod test {
             .await
             .unwrap();
         assert_eq!(peers.len(), 1);
-
-        let send_request = Box::new(BroadcastClosestRequest {
-            node_id: node_identity.node_id().clone(),
-            excluded_peers: vec![],
-            connected_only: false,
-        });
-        let peers = requester
-            .select_peers(BroadcastStrategy::ClosestNodes(send_request))
-            .await
-            .unwrap();
-        assert_eq!(peers.len(), 2);
-
-        let send_request = Box::new(BroadcastClosestRequest {
-            node_id: node_identity.node_id().clone(),
-            excluded_peers: vec![],
-            connected_only: false,
-        });
-        let peers = requester
-            .select_peers(BroadcastStrategy::DirectOrClosestNodes(send_request))
-            .await
-            .unwrap();
-        assert_eq!(peers.len(), 1);
-
-        let send_request = Box::new(BroadcastClosestRequest {
-            node_id: client_node_identity.node_id().clone(),
-            excluded_peers: vec![],
-            connected_only: false,
-        });
-        let peers = requester
-            .select_peers(BroadcastStrategy::DirectOrClosestNodes(send_request))
-            .await
-            .unwrap();
-        assert_eq!(peers.len(), 2);
 
         let peers = requester
             .select_peers(BroadcastStrategy::DirectNodeId(Box::new(

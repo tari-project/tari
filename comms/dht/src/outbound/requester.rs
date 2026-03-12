@@ -188,33 +188,6 @@ impl OutboundMessageRequester {
         .map_err(Into::into)
     }
 
-    /// Send to peers closer to the given `NodeId`. This strategy will attempt to establish new some closer connections.
-    ///
-    /// Use this strategy to broadcast a message destined for a particular peer.
-    pub async fn closest_broadcast<T>(
-        &mut self,
-        destination_public_key: CommsPublicKey,
-        encryption: OutboundEncryption,
-        exclude_peers: Vec<NodeId>,
-        message: OutboundDomainMessage<T>,
-    ) -> Result<MessageSendStates, DhtOutboundError>
-    where
-        T: prost::Message,
-    {
-        self.send_message(
-            SendMessageParams::new()
-                .closest(NodeId::from_public_key(&destination_public_key), exclude_peers)
-                .with_encryption(encryption)
-                .with_destination(destination_public_key.into())
-                .finish(),
-            message,
-        )
-        .await?
-        .resolve()
-        .await
-        .map_err(Into::into)
-    }
-
     /// Send to all _connected_ peers.
     pub async fn flood<T>(
         &mut self,

@@ -81,9 +81,6 @@ mod hashing;
 pub mod node_id;
 pub use node_id::NodeId;
 
-mod node_distance;
-pub use node_distance::NodeDistance;
-
 mod node_identity;
 pub use node_identity::NodeIdentity;
 

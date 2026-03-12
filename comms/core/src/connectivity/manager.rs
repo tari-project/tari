@@ -93,12 +93,8 @@ pub struct ConnectivityManager {
 
 impl ConnectivityManager {
     pub fn spawn(self) -> JoinHandle<()> {
-        let proactive_dialer = ProactiveDialer::new(
-            self.config,
-            self.connection_manager.clone(),
-            self.peer_manager.clone(),
-            self.node_identity.clone(),
-        );
+        let proactive_dialer =
+            ProactiveDialer::new(self.config, self.connection_manager.clone(), self.peer_manager.clone());
 
         ConnectivityManagerActor {
             config: self.config,
@@ -513,17 +509,13 @@ impl ConnectivityManagerActor {
     async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, task_id: u64) {
         let start = Instant::now();
         // Select all active peer connections (that are communication nodes) with health-aware selection
-        let selection = ConnectivitySelection::healthy_closest_to(
-            self.node_identity.node_id().clone(),
-            self.pool.count_connected_nodes(),
-            vec![],
-        );
+        let selection = ConnectivitySelection::random_nodes(self.pool.count_connected_nodes(), vec![]);
         let mut connections = match self.select_connections_with_health(selection) {
             Ok(peers) => peers,
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Connectivity error trying to maintain {threshold} closest peers ({task_id}) ({e:?})",
+                    "Connectivity error trying to maintain {threshold} peer connections ({task_id}) ({e:?})",
                 );
                 return;
             },
@@ -545,7 +537,7 @@ impl ConnectivityManagerActor {
         for conn in connections.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,
-                "minimize_connections: ({}) Disconnecting '{}' because the node is not among the {} closest peers",
+                "minimize_connections: ({}) Disconnecting '{}' because the node exceeds the {} connection threshold",
                 task_id,
                 conn.peer_node_id(),
                 threshold
@@ -554,7 +546,7 @@ impl ConnectivityManagerActor {
                 conn,
                 Minimized::Yes,
                 Some(task_id),
-                "ConnectivityManagerActor maintain closest",
+                "ConnectivityManagerActor maintain connections",
             )
             .await
             {

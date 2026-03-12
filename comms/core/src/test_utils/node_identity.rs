@@ -25,7 +25,7 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 
 use crate::{
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures},
+    peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
 };
 
@@ -44,14 +44,4 @@ pub fn ordered_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<Node
 
 pub fn build_many_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {
     (0..n).map(|_| build_node_identity(features)).collect()
-}
-
-pub fn ordered_node_identities_by_distance(
-    node_id: &NodeId,
-    n: usize,
-    features: PeerFeatures,
-) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = build_many_node_identities(n, features);
-    ids.sort_unstable_by_key(|a| a.node_id().distance(node_id));
-    ids
 }

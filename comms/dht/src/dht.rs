@@ -188,7 +188,6 @@ impl Dht {
         DhtConnectivity::new(
             self.config.clone(),
             self.peer_manager.clone(),
-            self.node_identity.clone(),
             self.connectivity.clone(),
             self.dht_requester(),
             self.event_publisher.subscribe(),

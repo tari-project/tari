@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    cmp,
     cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt,
@@ -42,7 +41,7 @@ use tari_utilities::{
 };
 use thiserror::Error;
 
-use crate::{peer_manager::node_distance::NodeDistance, types::CommsPublicKey};
+use crate::types::CommsPublicKey;
 
 pub(super) type NodeIdArray = [u8; NodeId::byte_size()];
 
@@ -85,44 +84,6 @@ impl NodeId {
     /// Derive a node id from a public key: node_id = hash(public_key)
     pub fn from_public_key(key: &CommsPublicKey) -> Self {
         Self::from_key(key)
-    }
-
-    /// Calculate the distance between the current node id and the provided node id using the XOR metric
-    pub fn distance(&self, node_id: &NodeId) -> NodeDistance {
-        NodeDistance::from_node_ids(self, node_id)
-    }
-
-    /// Find and return the indices of the K nearest neighbours from the provided node id list
-    pub fn closest_indices(&self, node_ids: &[NodeId], k: usize) -> Vec<usize> {
-        let k = cmp::min(k, node_ids.len());
-        let mut indices: Vec<usize> = Vec::with_capacity(node_ids.len());
-        let mut dists: Vec<NodeDistance> = Vec::with_capacity(node_ids.len());
-        for (i, node_id) in node_ids.iter().enumerate() {
-            indices.push(i);
-            dists.push(self.distance(node_id))
-        }
-        // Perform partial sort of elements only up to K elements
-        let mut nearest_node_indices: Vec<usize> = Vec::with_capacity(k);
-        for i in 0..k {
-            for j in i + 1..node_ids.len() {
-                if dists.get(i).expect("Index should exist") > dists.get(j).expect("Index should exist") {
-                    dists.swap(i, j);
-                    indices.swap(i, j);
-                }
-            }
-            nearest_node_indices.push(*indices.get(i).expect("Index should exist"));
-        }
-        nearest_node_indices
-    }
-
-    /// Find and return the node ids of the K nearest neighbours from the provided node id list
-    pub fn closest(&self, node_ids: &[NodeId], k: usize) -> Vec<NodeId> {
-        let nearest_node_indices = self.closest_indices(node_ids, k);
-        let mut nearest_node_ids: Vec<NodeId> = Vec::with_capacity(nearest_node_indices.len());
-        for nearest in nearest_node_indices {
-            nearest_node_ids.push(node_ids.get(nearest).expect("Index should exist").clone());
-        }
-        nearest_node_ids
     }
 
     pub fn into_inner(self) -> NodeIdArray {
@@ -294,85 +255,11 @@ mod test {
     }
 
     #[test]
-    fn test_distance_and_ordering() {
-        let node_id1 = NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap();
-        let node_id2 = NodeId::try_from(&[186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83][..]).unwrap();
-        let node_id3 = NodeId::try_from(&[60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31][..]).unwrap();
-        assert!(node_id1.0 < node_id2.0);
-        assert!(node_id1.0 > node_id3.0);
-        // XOR metric
-        let desired_n1_to_n2_dist =
-            NodeDistance::try_from(&[42, 55, 84, 126, 224, 19, 209, 195, 152, 163, 29, 237, 204][..]).unwrap();
-        let desired_n1_to_n3_dist =
-            NodeDistance::try_from(&[172, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128][..]).unwrap();
-
-        let n1_to_n2_dist = node_id1.distance(&node_id2);
-        let n1_to_n3_dist = node_id1.distance(&node_id3);
-        // Big-endian ordering
-        assert!(n1_to_n2_dist < n1_to_n3_dist);
-        assert_eq!(n1_to_n2_dist, desired_n1_to_n2_dist);
-        assert_eq!(n1_to_n3_dist, desired_n1_to_n3_dist);
-
-        // Commutative
-        let n1_to_n2_dist = node_id1.distance(&node_id2);
-        let n2_to_n1_dist = node_id2.distance(&node_id1);
-
-        assert_eq!(n1_to_n2_dist, n2_to_n1_dist);
-    }
-
-    #[test]
-    #[allow(clippy::vec_init_then_push)]
-    fn test_closest() {
-        let mut node_ids: Vec<NodeId> = Vec::new();
-        node_ids.push(NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[75, 249, 102, 1, 2, 166, 155, 37, 22, 54, 84, 98, 56][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[155, 210, 214, 160, 153, 70, 172, 234, 177, 178, 62, 82, 166][..]).unwrap());
-        node_ids.push(NodeId::try_from(&[173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242][..]).unwrap());
-
-        let node_id = NodeId::try_from(&[169, 125, 200, 137, 210, 73, 241, 238, 25, 108, 8, 48, 66][..]).unwrap();
-
-        let k = 3;
-        let knn_node_ids = node_id.closest(&node_ids, k);
-        assert_eq!(knn_node_ids.len(), k);
-        // XOR metric nearest neighbours
-        assert_eq!(knn_node_ids[0].0, [
-            173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242
-        ]);
-        assert_eq!(knn_node_ids[1].0, [
-            186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83
-        ]);
-        assert_eq!(knn_node_ids[2].0, [
-            143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
-        ]);
-
-        assert_eq!(node_id.closest(&node_ids, node_ids.len() + 1).len(), node_ids.len());
-    }
-
-    #[test]
     fn partial_eq() {
         let bytes = &[173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242][..];
         let nid1 = NodeId::try_from(bytes).unwrap();
         let nid2 = NodeId::try_from(bytes).unwrap();
 
         assert_eq!(nid1, nid2);
-    }
-
-    #[test]
-    fn convert_xor_distance_to_u128() {
-        let node_id1 = NodeId::try_from(&[128, 28, 106, 112, 220, 197, 216, 119, 9, 128, 42, 77, 55][..]).unwrap();
-        let node_id2 = NodeId::try_from(&[160, 28, 106, 112, 220, 197, 216, 119, 9, 128, 42, 77, 54][..]).unwrap();
-        let node_id3 = NodeId::try_from(&[64, 28, 106, 112, 220, 197, 216, 119, 9, 128, 42, 77, 54][..]).unwrap();
-        let n12_distance = node_id1.distance(&node_id2);
-        let n13_distance = node_id1.distance(&node_id3);
-        assert_eq!(n12_distance.to_bytes()[..4], [0, 0, 0, 32]);
-        assert_eq!(n13_distance.to_bytes()[..4], [0, 0, 0, 192]);
-        assert!(n12_distance < n13_distance);
-        assert_eq!(n12_distance.as_u128(), ((128 ^ 160) << (12 * 8)) + 1);
-        assert_eq!(n13_distance.as_u128(), ((128 ^ 64) << (12 * 8)) + 1);
     }
 }

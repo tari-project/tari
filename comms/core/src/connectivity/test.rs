@@ -360,19 +360,11 @@ async fn peer_selection() {
     assert_eq!(conns.len(), 9);
     assert!(conns.iter().all(|c| c.peer_node_id() != connections[0].peer_node_id()));
 
-    let mut conns = connectivity
-        .select_connections(ConnectivitySelection::closest_to(
-            connections.last().unwrap().peer_node_id().clone(),
-            5,
-            vec![],
-        ))
+    let conns = connectivity
+        .select_connections(ConnectivitySelection::random_nodes(5, vec![]))
         .await
         .unwrap();
     assert_eq!(conns.len(), 5);
-    for i in connections.iter().take(5 + 1).skip(9usize) {
-        let c = conns.remove(0);
-        assert_eq!(c.peer_node_id(), i.peer_node_id());
-    }
 }
 
 #[tokio::test]

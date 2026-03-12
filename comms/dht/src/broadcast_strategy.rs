@@ -24,34 +24,11 @@
 //!
 //! Describes a strategy for selecting peers and active connections when sending messages.
 
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
+use std::{fmt, fmt::Formatter};
 
 use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 use crate::envelope::NodeDestination;
-
-/// Parameters for the [ClosestNodes](self::BroadcastStrategy::ClosestNodes) broadcast strategy.
-#[derive(Debug, Clone)]
-pub struct BroadcastClosestRequest {
-    pub node_id: NodeId,
-    pub excluded_peers: Vec<NodeId>,
-    pub connected_only: bool,
-}
-
-impl Display for BroadcastClosestRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ClosestRequest: node_id = {}, excluded_peers = {} peer(s), connected_only = {}",
-            self.node_id,
-            self.excluded_peers.len(),
-            self.connected_only
-        )
-    }
-}
 
 /// Describes a strategy for selecting peers and active connections when sending messages.
 #[derive(Debug, Clone)]
@@ -64,13 +41,9 @@ pub enum BroadcastStrategy {
     Flood(Vec<NodeId>),
     /// Send to a random set of peers of size n that are Communication Nodes, excluding the given node IDs
     Random(usize, Vec<NodeId>),
-    /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
-    ClosestNodes(Box<BroadcastClosestRequest>),
-    /// Send directly to destination if connected but otherwise send to all n nearest Communication Nodes
-    DirectOrClosestNodes(Box<BroadcastClosestRequest>),
     Broadcast(Vec<NodeId>),
     SelectedPeers(Vec<NodeId>),
-    /// Propagate to a set of closest neighbours and random peers
+    /// Propagate to a set of neighbours and random peers
     Propagate(NodeDestination, Vec<NodeId>),
 }
 
@@ -82,8 +55,6 @@ impl fmt::Display for BroadcastStrategy {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({pk})"),
             DirectNodeId(node_id) => write!(f, "DirectNodeId({node_id})"),
             Flood(excluded) => write!(f, "Flood({} excluded)", excluded.len()),
-            ClosestNodes(request) => write!(f, "ClosestNodes({request})"),
-            DirectOrClosestNodes(request) => write!(f, "DirectOrClosestNodes({request})"),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
             Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),
@@ -94,17 +65,10 @@ impl fmt::Display for BroadcastStrategy {
 
 impl BroadcastStrategy {
     /// Returns true if this strategy will send multiple indirect messages, otherwise false
-    pub fn is_multi_message(&self, chosen_peers: &[NodeId]) -> bool {
-        use BroadcastStrategy::{Broadcast, ClosestNodes, DirectOrClosestNodes, Flood, Propagate, Random};
+    pub fn is_multi_message(&self, _chosen_peers: &[NodeId]) -> bool {
+        use BroadcastStrategy::{Broadcast, Flood, Propagate, Random};
 
-        match self {
-            DirectOrClosestNodes(strategy) => {
-                // Testing if there is a single chosen peer and it is the target NodeId
-                chosen_peers.len() == 1 && chosen_peers.first() == Some(&strategy.node_id)
-            },
-            ClosestNodes(_) | Broadcast(_) | Propagate(_, _) | Flood(_) | Random(_, _) => true,
-            _ => false,
-        }
+        matches!(self, Broadcast(_) | Propagate(_, _) | Flood(_) | Random(_, _))
     }
 
     /// Returns true if the strategy is to send directly to the peer, otherwise false
@@ -155,14 +119,6 @@ mod test {
         assert!(!BroadcastStrategy::Broadcast(Default::default()).is_direct());
         assert!(!BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),);
         assert!(!BroadcastStrategy::Flood(Default::default()).is_direct());
-        assert!(
-            !BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-                node_id: NodeId::default(),
-                excluded_peers: Default::default(),
-                connected_only: false
-            }))
-            .is_direct(),
-        );
         assert!(!BroadcastStrategy::Random(0, vec![]).is_direct());
     }
 
@@ -188,15 +144,6 @@ mod test {
                 .direct_public_key()
                 .is_none()
         );
-        assert!(
-            BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-                node_id: NodeId::default(),
-                excluded_peers: Default::default(),
-                connected_only: false
-            }))
-            .direct_public_key()
-            .is_none(),
-        );
         assert!(BroadcastStrategy::Random(0, vec![]).direct_public_key().is_none());
     }
 
@@ -218,15 +165,6 @@ mod test {
                 .is_none()
         );
         assert!(BroadcastStrategy::Flood(Default::default()).direct_node_id().is_none());
-        assert!(
-            BroadcastStrategy::ClosestNodes(Box::new(BroadcastClosestRequest {
-                node_id: NodeId::default(),
-                excluded_peers: Default::default(),
-                connected_only: false
-            }))
-            .direct_node_id()
-            .is_none(),
-        );
         assert!(BroadcastStrategy::Random(0, vec![]).direct_node_id().is_none());
     }
 }
