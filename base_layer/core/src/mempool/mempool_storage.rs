@@ -229,6 +229,10 @@ impl MempoolStorage {
             Ok(stats) => debug!(target: LOG_TARGET, "{stats}"),
             Err(e) => warn!(target: LOG_TARGET, "error to obtain stats: {e}"),
         }
+
+        // we set this to 0, as we have not removed any invalid double spent txs due to a reorg
+        #[cfg(feature = "metrics")]
+        metrics::reorg_invalid_transactions().set(0);
         Ok(())
     }
 
