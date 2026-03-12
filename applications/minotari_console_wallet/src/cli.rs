@@ -111,6 +111,10 @@ pub struct Cli {
     /// Skip wallet recovery
     #[clap(long)]
     pub skip_recovery: bool,
+    /// Print all TARI_* and MINOTARI_* environment variables and exit.
+    /// Useful for verifying which environment variables are set before starting the wallet.
+    #[clap(long)]
+    pub print_env: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

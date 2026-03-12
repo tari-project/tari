@@ -82,7 +82,7 @@ use clap::Parser;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{ApplicationConfig, cli::Cli, run_base_node_with_cli};
-use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
+use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration, print_env_vars};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -167,6 +167,13 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
+
+    // Handle --print-env before doing anything else so it works even without a valid config
+    if cli.print_env {
+        print_env_vars(&cli.common.config_property_overrides);
+        return Ok(());
+    }
+
     let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("base_node"),
@@ -188,9 +195,25 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     #[cfg(all(unix, feature = "libtor"))]
-    let mut config = ApplicationConfig::load_from(&cfg)?;
+    let mut config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+        if e.is_unknown_field_error() {
+            eprintln!(
+                "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
+                 field.\n    Run with --print-env to inspect active environment variables and -p overrides."
+            );
+        }
+        e
+    })?;
     #[cfg(not(all(unix, feature = "libtor")))]
-    let config = ApplicationConfig::load_from(&cfg)?;
+    let config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+        if e.is_unknown_field_error() {
+            eprintln!(
+                "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
+                 field.\n    Run with --print-env to inspect active environment variables and -p overrides."
+            );
+        }
+        e
+    })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
 
     // Load or create the Node identity

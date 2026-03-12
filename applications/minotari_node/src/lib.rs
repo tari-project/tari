@@ -103,8 +103,11 @@ pub async fn run_base_node(
         watch: None,
         profile_with_tokio_console: false,
         mining_enabled: false,
+        grpc_enabled: false,
+        grpc_address: None,
         second_layer_grpc_enabled: false,
         disable_splash_screen: true,
+        print_env: false,
         libtor_data_dir: None,
     };
 
@@ -166,7 +169,7 @@ pub async fn run_base_node_with_cli(
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{e:?}")))?;
 
     // Run, node, run!
-    let context = CommandContext::new(&ctx, shutdown.clone());
+    let context = CommandContext::new(&ctx, shutdown.clone(), cli.common.config_property_overrides.clone());
     readiness_handler.send_readiness_status(ReadinessState::Ready);
 
     readiness_grpc_shutdown.trigger();
