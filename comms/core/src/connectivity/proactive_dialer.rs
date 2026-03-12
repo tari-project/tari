@@ -42,7 +42,6 @@ pub struct ProactiveDialer {
     config: ConnectivityConfig,
     connection_manager: ConnectionManagerRequester,
     peer_manager: Arc<PeerManager>,
-    node_identity: Arc<crate::NodeIdentity>,
 }
 
 impl ProactiveDialer {
@@ -50,13 +49,11 @@ impl ProactiveDialer {
         config: ConnectivityConfig,
         connection_manager: ConnectionManagerRequester,
         peer_manager: Arc<PeerManager>,
-        node_identity: Arc<crate::NodeIdentity>,
     ) -> Self {
         Self {
             config,
             connection_manager,
             peer_manager,
-            node_identity,
         }
     }
 

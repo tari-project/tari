@@ -97,7 +97,6 @@ impl ConnectivityManager {
             self.config,
             self.connection_manager.clone(),
             self.peer_manager.clone(),
-            self.node_identity.clone(),
         );
 
         ConnectivityManagerActor {

@@ -26,7 +26,7 @@
 
 use std::{
     fmt,
-    fmt::{Display, Formatter},
+    fmt::{Formatter},
 };
 
 use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};

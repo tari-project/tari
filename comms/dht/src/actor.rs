@@ -38,7 +38,7 @@ use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, PeerManager, PeerManagerError},
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;

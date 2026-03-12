@@ -34,6 +34,7 @@ pub struct ConnectivitySelection {
     excluded_peers: Vec<NodeId>,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone)]
 enum SelectionMode {
     AllNodes,

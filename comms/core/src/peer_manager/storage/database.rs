@@ -1525,7 +1525,6 @@ impl PeerDatabaseSql {
                     "features & {} != 0",
                     PeerFeatures::COMMUNICATION_NODE.to_i32()
                 )))
-                .filter(multi_addresses::last_seen.is_not_null())
                 .filter(peers::node_id.ne_all(exclude_node_ids))
                 .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"))
                 .limit(i64::try_from(n).unwrap_or(i64::MAX))

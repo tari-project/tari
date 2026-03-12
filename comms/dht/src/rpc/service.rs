@@ -38,8 +38,6 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::rpc";
 
-const MAX_NUM_PEERS: usize = 100;
-const MAX_EXCLUDED_PEERS: usize = 1000;
 
 pub struct DhtRpcServiceImpl {
     peer_manager: Arc<PeerManager>,

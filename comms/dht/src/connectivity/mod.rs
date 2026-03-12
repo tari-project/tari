@@ -43,7 +43,6 @@ use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
     Minimized,
-    NodeIdentity,
     PeerConnection,
     PeerManager,
     connectivity::{
@@ -81,7 +80,6 @@ pub enum DhtConnectivityError {
 pub(crate) struct DhtConnectivity {
     config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
-    node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
     dht_requester: DhtRequester,
     /// A randomly-selected set of peers managed by this actor.
@@ -103,7 +101,6 @@ impl DhtConnectivity {
     pub fn new(
         config: Arc<DhtConfig>,
         peer_manager: Arc<PeerManager>,
-        node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,
         dht_requester: DhtRequester,
         dht_events: broadcast::Receiver<Arc<DhtEvent>>,
@@ -116,7 +113,6 @@ impl DhtConnectivity {
             connection_handles: Vec::with_capacity(pool_size),
             config,
             peer_manager,
-            node_identity,
             connectivity,
             dht_requester,
             metrics_collector,
@@ -336,9 +332,6 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    fn connected_pool_peers_iter(&self) -> impl Iterator<Item = &NodeId> {
-        self.connection_handles.iter().map(|c| c.peer_node_id())
-    }
 
     async fn redial_pool_peers_as_required(&mut self) -> Result<(), DhtConnectivityError> {
         let disconnected = self
@@ -630,19 +623,6 @@ impl DhtConnectivity {
 
     async fn peer_allow_list(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
         Ok(self.connectivity.get_allow_list().await?)
-    }
-
-    async fn all_connected_comms_nodes(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
-        let all_connections = self
-            .connectivity
-            .select_connections(ConnectivitySelection::all_nodes(vec![]))
-            .await?;
-        let comms_nodes = all_connections
-            .iter()
-            .filter(|p| p.peer_features().is_node())
-            .map(|p| p.peer_node_id().clone())
-            .collect();
-        Ok(comms_nodes)
     }
 
     async fn replace_pool_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {

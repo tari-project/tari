@@ -80,7 +80,6 @@ async fn setup(
     let dht_connectivity = DhtConnectivity::new(
         Arc::new(config),
         peer_manager.clone(),
-        node_identity.clone(),
         connectivity,
         dht_requester,
         event_publisher.subscribe(),
