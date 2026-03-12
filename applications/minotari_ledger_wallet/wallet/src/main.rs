@@ -197,7 +197,7 @@ fn show_status_and_home_if_needed(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn sample_main() {
     // Create the communication manager, and configure it to accept only APDU from the 0x80 class.
     // If any APDU with a wrong class value is received, comm will respond automatically with
