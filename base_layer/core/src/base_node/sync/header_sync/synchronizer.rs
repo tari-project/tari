@@ -309,8 +309,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     split_info
                         .best_block_header
                         .height()
-                        .checked_sub(split_info.reorg_steps_back)
-                        .unwrap_or_default(),
+                        .saturating_sub(split_info.reorg_steps_back),
                     sync_peer.claimed_chain_metadata().best_block_height(),
                     sync_peer,
                 );
