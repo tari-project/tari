@@ -93,11 +93,8 @@ pub struct ConnectivityManager {
 
 impl ConnectivityManager {
     pub fn spawn(self) -> JoinHandle<()> {
-        let proactive_dialer = ProactiveDialer::new(
-            self.config,
-            self.connection_manager.clone(),
-            self.peer_manager.clone(),
-        );
+        let proactive_dialer =
+            ProactiveDialer::new(self.config, self.connection_manager.clone(), self.peer_manager.clone());
 
         ConnectivityManagerActor {
             config: self.config,
@@ -512,10 +509,7 @@ impl ConnectivityManagerActor {
     async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, task_id: u64) {
         let start = Instant::now();
         // Select all active peer connections (that are communication nodes) with health-aware selection
-        let selection = ConnectivitySelection::random_nodes(
-            self.pool.count_connected_nodes(),
-            vec![],
-        );
+        let selection = ConnectivitySelection::random_nodes(self.pool.count_connected_nodes(), vec![]);
         let mut connections = match self.select_connections_with_health(selection) {
             Ok(peers) => peers,
             Err(e) => {

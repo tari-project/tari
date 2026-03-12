@@ -24,10 +24,7 @@
 //!
 //! Describes a strategy for selecting peers and active connections when sending messages.
 
-use std::{
-    fmt,
-    fmt::{Formatter},
-};
+use std::{fmt, fmt::Formatter};
 
 use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 

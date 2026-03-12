@@ -96,11 +96,7 @@ pub async fn network_graph_snapshot(
         for peer in &connected_peers {
             let peer_node_index = node_indices.get(peer.peer_node_id()).expect("Can't find Node Index 2");
 
-            graph.add_edge(
-                node_index.to_owned(),
-                peer_node_index.to_owned(),
-                String::new(),
-            );
+            graph.add_edge(node_index.to_owned(), peer_node_index.to_owned(), String::new());
         }
         if let Some(n) = num_neighbours {
             let connected_neighbours = node
@@ -116,11 +112,7 @@ pub async fn network_graph_snapshot(
                     .get(neighbour.peer_node_id())
                     .expect("Can't find Node Index 2");
 
-                neighbour_graph.add_edge(
-                    node_index.to_owned(),
-                    peer_node_index.to_owned(),
-                    String::new(),
-                );
+                neighbour_graph.add_edge(node_index.to_owned(), peer_node_index.to_owned(), String::new());
             }
         }
     }

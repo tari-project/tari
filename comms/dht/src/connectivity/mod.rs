@@ -332,7 +332,6 @@ impl DhtConnectivity {
         Ok(())
     }
 
-
     async fn redial_pool_peers_as_required(&mut self) -> Result<(), DhtConnectivityError> {
         let disconnected = self
             .connection_handles

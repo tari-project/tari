@@ -38,7 +38,6 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::rpc";
 
-
 pub struct DhtRpcServiceImpl {
     peer_manager: Arc<PeerManager>,
 }

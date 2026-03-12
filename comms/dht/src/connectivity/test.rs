@@ -120,15 +120,18 @@ async fn initialize() {
 
     // Check that some pool peers were dialed (total pool size = 6)
     let dialed = connectivity.get_dialed_peers().await;
-    assert!(dialed.len() >= 2, "Expected at least 2 peers to be dialed, got {}", dialed.len());
+    assert!(
+        dialed.len() >= 2,
+        "Expected at least 2 peers to be dialed, got {}",
+        dialed.len()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn added_pool_peers() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"` // Pipe to `> .\target\output.log 2>&1`
     let node_identity = make_node_identity();
-    let mut node_identities =
-        build_many_node_identities(6, PeerFeatures::COMMUNICATION_NODE);
+    let mut node_identities = build_many_node_identities(6, PeerFeatures::COMMUNICATION_NODE);
     let extra_peer = node_identities.remove(0);
     let mut peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
     for peer in &mut peers {
@@ -187,8 +190,7 @@ async fn added_pool_peers() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn replace_peer_when_peer_goes_offline() {
     let node_identity = make_node_identity();
-    let node_identities =
-        build_many_node_identities(7, PeerFeatures::COMMUNICATION_NODE);
+    let node_identities = build_many_node_identities(7, PeerFeatures::COMMUNICATION_NODE);
     let peers = node_identities
         .iter()
         .map(|ni| create_good_standing_peer(ni))
@@ -242,14 +244,16 @@ async fn replace_peer_when_peer_goes_offline() {
 
     // After connect failure, either the spare peer or the failed peer itself gets dialed
     let replacement_dialed = connectivity.take_dialed_peers().await;
-    assert!(!replacement_dialed.is_empty(), "Expected replacement dial after connect failure");
+    assert!(
+        !replacement_dialed.is_empty(),
+        "Expected replacement dial after connect failure"
+    );
 }
 
 #[tokio::test]
 async fn insert_into_pool() {
     let node_identity = make_node_identity();
-    let node_identities =
-        build_many_node_identities(10, PeerFeatures::COMMUNICATION_NODE);
+    let node_identities = build_many_node_identities(10, PeerFeatures::COMMUNICATION_NODE);
 
     let config = DhtConfig {
         num_neighbouring_nodes: 4,
