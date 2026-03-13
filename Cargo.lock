@@ -9564,16 +9564,16 @@ dependencies = [
 
 [[package]]
 name = "yamux"
-version = "0.13.4"
+version = "0.13.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17610762a1207ee816c6fadc29220904753648aba0a9ed61c7b8336e80a559c4"
+checksum = "1991f6690292030e31b0144d73f5e8368936c58e45e7068254f7138b23b00672"
 dependencies = [
  "futures 0.3.31",
  "log",
  "nohash-hasher",
  "parking_lot 0.12.3",
  "pin-project 1.1.7",
- "rand 0.8.5",
+ "rand 0.9.1",
  "static_assertions",
  "web-time",
 ]
