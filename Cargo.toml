@@ -39,6 +39,7 @@ members = [
     "applications/minotari_app_utilities",
     "applications/minotari_merge_mining_proxy",
     "applications/minotari_miner",
+    "applications/minotari_xmrig_proxy",
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
     "applications/minotari_utils",
@@ -83,6 +84,7 @@ minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client", v
 minotari_console_wallet = { path = "applications/minotari_console_wallet", version = "5.3.0-pre.2" }
 minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy", version = "5.3.0-pre.2" }
 minotari_miner = { path = "applications/minotari_miner", version = "5.3.0-pre.2" }
+minotari_xmrig_proxy = { path = "applications/minotari_xmrig_proxy", version = "5.3.0-pre.2" }
 minotari_node = { path = "applications/minotari_node", version = "5.3.0-pre.2" }
 minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "5.3.0-pre.2" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }

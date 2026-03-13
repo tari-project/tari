@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2025. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,30 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Crates for proof of work monero_rx
-pub mod monero_rx;
+use hyper::StatusCode;
+use thiserror::Error;
 
-pub use monero_rx::{create_tari_mining_blob, monero_randomx_difficulty, tari_randomx_difficulty};
+#[derive(Debug, Error)]
+pub enum XmrigProxyError {
+    #[error("gRPC request error: {0}")]
+    GrpcError(#[from] tonic::Status),
 
-/// Crates for proof of work sha3_pow
-mod sha3x_pow;
-pub use sha3x_pow::sha3x_difficulty;
+    #[error("Hyper error: {0}")]
+    HyperError(#[from] hyper::Error),
 
-/// Crates for proof of work target_difficulty
-mod target_difficulty;
-pub use target_difficulty::AchievedTargetDifficulty;
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
 
-/// Crates for proof of work target_difficulty_window
-mod target_difficulty_window;
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
 
-pub use target_difficulty_window::TargetDifficultyWindow;
+    #[error("Base node not responding: {0}")]
+    BaseNodeNotResponding(String),
 
-/// Crates for proof of work lwma_diff
-pub mod lwma_diff;
+    #[error("Block template not found for mining hash: {0}")]
+    BlockTemplateNotFound(String),
 
-/// Crates for proof of work randomx_factory
-pub mod randomx_factory;
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
 
-pub mod siphash;
+    #[error("Missing data: {0}")]
+    MissingData(String),
+}
 
-pub mod cuckaroo_pow;
+impl XmrigProxyError {
+    pub fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}

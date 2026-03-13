@@ -1,0 +1,37 @@
+[package]
+name = "minotari_xmrig_proxy"
+description = "A proxy enabling XMRig to solo mine Tari RandomXT blocks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+minotari_app_grpc = { workspace = true }
+minotari_app_utilities = { workspace = true, features = ["miner_input"] }
+minotari_node_grpc_client = { workspace = true }
+minotari_wallet_grpc_client = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true }
+tari_comms = { workspace = true }
+tari_utilities = { workspace = true }
+
+tonic = { version = "0.13.1", features = ["tls-webpki-roots"] }
+anyhow = "1.0.53"
+borsh = { workspace = true }
+bytes = "1.1"
+clap = { version = "3.2", features = ["derive", "env"] }
+config = { version = "0.14.0" }
+futures = "0.3"
+hex = "0.4.2"
+hyper = { version = "1.6.0", features = ["full"] }
+hyper-util = "0.1"
+http-body-util = "0.1"
+log = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "signal"] }

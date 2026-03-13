@@ -69,34 +69,39 @@ pub fn monero_randomx_difficulty(
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
 }
 
+/// Creates the 76-byte XMRig-compatible mining blob for Tari RandomXT.
+///
+/// The blob format is:
+/// ```text
+/// | 1 byte | 1 byte | 1 byte | 32 bytes | 8 bytes | 1 byte | 32 bytes |
+/// | major  | minor  | ts     | mining_hash | nonce (big-endian u64) | pow_algo | pow_data (padded to 32 bytes) |
+/// ```
+///
+/// The 8-byte nonce is split so that:
+/// - High 4 bytes (offset 35): per-thread extra nonce (written at `reserved_offset` by XMRig)
+/// - Low 4 bytes (offset 39): main nonce iterated by XMRig (at the standard Monero nonce offset)
+///
+/// XMRig should be configured with `"coin": "tari"` and `"daemon": true` to use this blob.
+pub fn create_tari_mining_blob(header: &BlockHeader) -> Vec<u8> {
+    let mut blob = vec![0u8; 3];
+    blob.extend_from_slice(header.mining_hash().as_slice());
+    let nonce = header.nonce.to_be_bytes();
+    blob.extend_from_slice(&nonce);
+    let mut pow_bytes = header.pow.to_bytes();
+    if pow_bytes.len() < 33 {
+        pow_bytes.resize(33, 0)
+    }
+    blob.extend_from_slice(pow_bytes.get(0..33).expect("This should exist"));
+    blob
+}
+
 pub fn tari_randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
     vm_key: &FixedHash,
 ) -> Result<Difficulty, MergeMineError> {
     let vm = randomx_factory.create(vm_key.as_slice(), None, None)?;
-    // This is done to make a blob that xmrig can process.
-    // xmrig assumes the nonce is at offset 39.
-
-    // The format is:
-    // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
-    // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
-    //
-    // Major version: 0
-    // Minor version: 0
-    // Timestamp: 0
-
-    let mut blob = vec![0u8; 3];
-    blob.extend_from_slice(header.mining_hash().as_slice());
-    // Note, only the first 4 bytes of the nonce are used (u32)
-    let nonce = header.nonce.to_be_bytes();
-    blob.extend_from_slice(&nonce);
-    // The pow_algo is the first byte of the pow field when serialized to bytes
-    let mut pow_bytes = header.pow.to_bytes();
-    if pow_bytes.len() < 33 {
-        pow_bytes.resize(33, 0)
-    }
-    blob.extend_from_slice(pow_bytes.get(0..33).expect("This should exists"));
+    let blob = create_tari_mining_blob(header);
     get_random_x_difficulty(&blob, &vm).map(|(diff, _)| diff)
 }
 

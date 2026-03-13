@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2025. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,30 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Crates for proof of work monero_rx
-pub mod monero_rx;
+pub mod block_template_storage;
+pub mod cli;
+pub mod config;
+pub mod error;
+pub mod proxy;
+pub mod run_proxy;
 
-pub use monero_rx::{create_tari_mining_blob, monero_randomx_difficulty, tari_randomx_difficulty};
-
-/// Crates for proof of work sha3_pow
-mod sha3x_pow;
-pub use sha3x_pow::sha3x_difficulty;
-
-/// Crates for proof of work target_difficulty
-mod target_difficulty;
-pub use target_difficulty::AchievedTargetDifficulty;
-
-/// Crates for proof of work target_difficulty_window
-mod target_difficulty_window;
-
-pub use target_difficulty_window::TargetDifficultyWindow;
-
-/// Crates for proof of work lwma_diff
-pub mod lwma_diff;
-
-/// Crates for proof of work randomx_factory
-pub mod randomx_factory;
-
-pub mod siphash;
-
-pub mod cuckaroo_pow;
+pub use cli::Cli;
