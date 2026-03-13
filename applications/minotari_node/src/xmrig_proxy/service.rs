@@ -31,9 +31,9 @@ use hyper::{Method, Request, Response, StatusCode, body::Incoming};
 use log::{error, trace};
 use serde_json::Value;
 
-use crate::{error::XmrigProxyError, proxy::inner::InnerService};
+use super::{error::XmrigProxyError, inner::InnerService};
 
-const LOG_TARGET: &str = "minotari::xmrig_proxy::service";
+const LOG_TARGET: &str = "minotari::base_node::xmrig_proxy::service";
 
 pub type ProxyBody = Full<bytes::Bytes>;
 

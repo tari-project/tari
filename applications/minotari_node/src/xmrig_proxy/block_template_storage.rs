@@ -30,7 +30,7 @@ use log::debug;
 use minotari_app_grpc::tari_rpc::Block;
 use tokio::sync::RwLock;
 
-const LOG_TARGET: &str = "minotari::xmrig_proxy::storage";
+const LOG_TARGET: &str = "minotari::base_node::xmrig_proxy::storage";
 const MAX_TEMPLATE_AGE: Duration = Duration::from_secs(20 * 60); // 20 minutes
 
 struct TemplateEntry {

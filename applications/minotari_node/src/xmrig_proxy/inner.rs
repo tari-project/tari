@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use hyper::{Response, StatusCode, body::Bytes};
 use log::{debug, info, trace, warn};
 use minotari_app_grpc::tari_rpc::{
@@ -33,15 +31,15 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_app_utilities::parse_miner_input::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 use tari_common_types::tari_address::TariAddress;
+use tari_transaction_components::transaction_components::RangeProofType;
 
-use crate::{
+use super::{
     block_template_storage::BlockTemplateStorage,
-    config::XmrigProxyConfig,
     error::XmrigProxyError,
-    proxy::service::{ProxyBody, json_response},
+    service::{ProxyBody, json_response},
 };
 
-const LOG_TARGET: &str = "minotari::xmrig_proxy";
+const LOG_TARGET: &str = "minotari::base_node::xmrig_proxy";
 
 /// The byte offset in the 76-byte mining blob where the extra nonce starts.
 /// XMRig writes a per-thread extra nonce here so mining threads don't duplicate work.
@@ -55,10 +53,11 @@ const POW_ALGO_RANDOMXT: u8 = 2;
 
 #[derive(Clone)]
 pub struct InnerService {
-    pub config: Arc<XmrigProxyConfig>,
     pub base_node_client: BaseNodeGrpcClient,
     pub block_templates: BlockTemplateStorage,
     pub wallet_payment_address: TariAddress,
+    pub coinbase_extra: Vec<u8>,
+    pub range_proof_type: RangeProofType,
 }
 
 impl InnerService {
@@ -106,22 +105,6 @@ impl InnerService {
     async fn handle_get_block_template(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
         let mut client = self.base_node_client.clone();
 
-        // Check if the base node has completed initial sync
-        if self.config.wait_for_initial_sync_at_startup {
-            let tip = client.get_tip_info(tari_rpc::Empty {}).await?.into_inner();
-            if !tip.initial_sync_achieved {
-                let height = tip.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0);
-                let msg = format!("Base node initial sync not yet achieved at height #{height}. Waiting...");
-                info!(target: LOG_TARGET, "{msg}");
-                return json_response(
-                    StatusCode::OK,
-                    &json_rpc_error(req["id"].as_i64(), -1, &msg),
-                );
-            }
-        }
-
-        // Get a new RandomXT block template from the base node with a coinbase for our wallet
-        let coinbase_extra = self.config.coinbase_extra.as_bytes().to_vec();
         let result = client
             .get_new_block_template_with_coinbases(GetNewBlockTemplateWithCoinbasesRequest {
                 algo: Some(tari_rpc::PowAlgo {
@@ -132,11 +115,8 @@ impl InnerService {
                     address: self.wallet_payment_address.to_base58(),
                     value: 1,
                     stealth_payment: false,
-                    revealed_value_proof: matches!(
-                        self.config.range_proof_type,
-                        tari_transaction_components::transaction_components::RangeProofType::RevealedValue
-                    ),
-                    coinbase_extra,
+                    revealed_value_proof: matches!(self.range_proof_type, RangeProofType::RevealedValue),
+                    coinbase_extra: self.coinbase_extra.clone(),
                 }],
             })
             .await
@@ -150,8 +130,8 @@ impl InnerService {
         let miner_data = result
             .miner_data
             .ok_or_else(|| XmrigProxyError::MissingData("miner_data".to_string()))?;
-        let merge_mining_hash = result.merge_mining_hash; // 32-byte mining hash for RandomXT
-        let vm_key = result.vm_key; // RandomX VM key (seed hash for XMRig)
+        let merge_mining_hash = result.merge_mining_hash;
+        let vm_key = result.vm_key;
 
         let height = block.header.as_ref().map(|h| h.height).unwrap_or(0);
         let prev_hash = block.header.as_ref().map(|h| h.prev_hash.clone()).unwrap_or_default();
@@ -177,7 +157,6 @@ impl InnerService {
         let target_difficulty = miner_data.target_difficulty;
         let expected_reward = miner_data.reward.saturating_add(miner_data.total_fees);
 
-        // Store the block template keyed by the 32-byte mining hash
         let mining_hash_key: [u8; 32] = merge_mining_hash
             .as_slice()
             .try_into()
@@ -278,14 +257,14 @@ impl InnerService {
         }
 
         let height = block.header.as_ref().map(|h| h.height).unwrap_or(0);
-        info!(target: LOG_TARGET, "Submitting block #{height} with nonce={nonce} to Tari node");
+        info!(target: LOG_TARGET, "Submitting block #{height} with nonce={nonce} to base node");
 
-        // Submit to the Tari base node
+        // Submit to the base node
         let mut client = self.base_node_client.clone();
         match client.submit_block(block).await {
             Ok(resp) => {
                 let block_hash = hex::encode(resp.into_inner().block_hash);
-                info!(target: LOG_TARGET, "Block #{height} accepted by node, hash={block_hash}");
+                info!(target: LOG_TARGET, "Block #{height} accepted, hash={block_hash}");
                 json_response(
                     StatusCode::OK,
                     &json_rpc_success(req["id"].as_i64(), json!({
@@ -295,7 +274,7 @@ impl InnerService {
                 )
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Block #{height} rejected by node: {e}");
+                warn!(target: LOG_TARGET, "Block #{height} rejected: {e}");
                 json_response(
                     StatusCode::OK,
                     &json_rpc_error(req["id"].as_i64(), -5, &format!("Block rejected: {e}")),

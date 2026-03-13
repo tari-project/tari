@@ -191,7 +191,6 @@ Compiled executables can be found at these paths::
     ./target/release/minotari_node
     ./target/release/minotari_console_wallet
     ./target/release/minotari_merge_mining_proxy
-    ./target/release/minotari_xmrig_proxy
     ./target/release/minotari_miner
     ./target/release/minotari_mcp_wallet
     ./target/release/minotari_mcp_node
@@ -202,7 +201,6 @@ on your system:
     cargo install --path=applications/minotari_node --force
     cargo install --path=applications/minotari_console_wallet --force
     cargo install --path=applications/minotari_merge_mining_proxy --force
-    cargo install --path=applications/minotari_xmrig_proxy --force
     cargo install --path=applications/minotari_miner --force
     cargo install --path=applications/minotari_mcp_wallet --force
     cargo install --path=applications/minotari_mcp_node --force
@@ -224,8 +222,6 @@ Running:
 
     minotari_merge_mining_proxy
 
-    minotari_xmrig_proxy
-
     minotari_miner
 
     minotari_mcp_wallet
@@ -238,8 +234,6 @@ flag if you want to run in debug mode:
     cargo run --bin minotari_node --release
 
     cargo run --bin minotari_merge_mining_proxy --release
-
-    cargo run --bin minotari_xmrig_proxy --release
 
     cargo run --bin minotari_console_wallet --release
 

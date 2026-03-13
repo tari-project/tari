@@ -40,6 +40,7 @@ mod recovery;
 mod utils;
 
 mod http;
+mod xmrig_proxy;
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
@@ -194,7 +195,60 @@ pub async fn run_base_node_with_cli(
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
     if config.base_node.grpc_enabled {
-        task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
+        task::spawn(run_grpc(grpc, grpc_address.clone(), auth.clone(), tls_identity, shutdown.to_signal()));
+    }
+
+    // Start the built-in XMRig proxy if enabled
+    if config.base_node.xmrig_proxy_enabled {
+        if config.base_node.xmrig_proxy_wallet_payment_address.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "xmrig_proxy_enabled is true but xmrig_proxy_wallet_payment_address is not set. XMRig proxy will not \
+                 start."
+            );
+        } else if !config.base_node.grpc_enabled {
+            warn!(
+                target: LOG_TARGET,
+                "xmrig_proxy_enabled is true but grpc_enabled is false. XMRig proxy requires gRPC. Not starting."
+            );
+        } else {
+            let proxy_wallet_address = config.base_node.xmrig_proxy_wallet_payment_address.clone();
+            let proxy_listener = config.base_node.xmrig_proxy_address.clone();
+            let proxy_extra = config.base_node.xmrig_proxy_coinbase_extra.as_bytes().to_vec();
+            let proxy_range_proof = config.base_node.xmrig_proxy_range_proof_type;
+            let grpc_auth = config.base_node.grpc_authentication.clone();
+            let signal = shutdown.to_signal();
+            let network = config.base_node.network;
+
+            match minotari_app_utilities::parse_miner_input::wallet_payment_address(
+                proxy_wallet_address,
+                network,
+            ) {
+                Ok(wallet_addr) => {
+                    task::spawn(async move {
+                        if let Err(e) = xmrig_proxy::run_xmrig_proxy(
+                            grpc_address,
+                            grpc_auth,
+                            proxy_listener,
+                            wallet_addr,
+                            proxy_extra,
+                            proxy_range_proof,
+                            signal,
+                        )
+                        .await
+                        {
+                            error!(target: LOG_TARGET, "XMRig proxy error: {e}");
+                        }
+                    });
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Invalid xmrig_proxy_wallet_payment_address: {e}. XMRig proxy will not start."
+                    );
+                },
+            }
+        }
     }
 
     let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);

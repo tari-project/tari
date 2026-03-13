@@ -20,25 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use clap::Parser;
-use tari_common::initialize_logging;
+use hyper::StatusCode;
+use thiserror::Error;
 
-use minotari_xmrig_proxy::{Cli, run_proxy::start_xmrig_proxy};
+#[derive(Debug, Error)]
+pub enum XmrigProxyError {
+    #[error("gRPC request error: {0}")]
+    GrpcError(#[from] tonic::Status),
 
-#[tokio::main]
-async fn main() {
-    let cli = Cli::parse();
+    #[error("Hyper error: {0}")]
+    HyperError(#[from] hyper::Error),
 
-    // Initialize logging from the standard Tari config path
-    let log_config = cli.common.log_config_path("xmrig_proxy");
-    initialize_logging(&log_config, &cli.common.get_base_path(), include_str!("../log4rs_sample.yml"))
-        .expect("Failed to initialize logging");
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
 
-    match start_xmrig_proxy(cli).await {
-        Ok(()) => std::process::exit(0),
-        Err(e) => {
-            eprintln!("Fatal error: {e}");
-            std::process::exit(1);
-        },
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
+    #[error("Missing data: {0}")]
+    MissingData(String),
+}
+
+impl XmrigProxyError {
+    pub fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 }
