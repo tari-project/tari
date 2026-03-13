@@ -411,3 +411,31 @@ excluded_dial_addresses = []
 # The Cache-Control string to use for the 'get_utxos_mined_info' handler
 # [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
 #http_cache.get_utxos_mined_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+########################################################################################################################
+#                                                                                                                      #
+#                                         XMRig Solo Mining Proxy                                                     #
+#                                                                                                                      #
+########################################################################################################################
+
+# Enable the built-in XMRig-compatible JSON-RPC proxy for solo RandomXT mining.
+# When enabled, XMRig can be pointed at `xmrig_proxy_address` with "coin": "tari", "daemon": true.
+# (default = false)
+#xmrig_proxy_enabled = false
+
+# The address the XMRig proxy listens on. (default = "/ip4/127.0.0.1/tcp/18085")
+#xmrig_proxy_address = "/ip4/127.0.0.1/tcp/18085"
+
+# Wallet address that receives RandomXT mining rewards via the XMRig proxy.
+# Must match the network the base node is running on. Required when xmrig_proxy_enabled = true.
+# (default = "")
+#xmrig_proxy_wallet_payment_address = ""
+
+# Extra data embedded in the coinbase produced by the XMRig proxy (e.g. pool tag or miner name).
+# (default = "tari_base_node_xmrig")
+#xmrig_proxy_coinbase_extra = "tari_base_node_xmrig"
+
+# Range proof type for coinbase outputs produced by the XMRig proxy.
+# Valid values: "RevealedValue", "BulletProofPlus". (default = "RevealedValue")
+#xmrig_proxy_range_proof_type = "RevealedValue"
+

@@ -217,11 +217,8 @@ pub async fn run_base_node_with_cli(
             let consensus_rules = ctx.consensus_rules().clone();
             let state_machine = ctx.state_machine();
 
-            match minotari_app_utilities::parse_miner_input::wallet_payment_address(
-                proxy_wallet_address,
-                network,
-            ) {
-                Ok(wallet_addr) => {
+            match proxy_wallet_address.parse::<tari_common_types::tari_address::TariAddress>() {
+                Ok(wallet_addr) if wallet_addr.network() == network => {
                     task::spawn(async move {
                         if let Err(e) = xmrig_proxy::run_xmrig_proxy(
                             node_service,
@@ -238,6 +235,14 @@ pub async fn run_base_node_with_cli(
                             error!(target: LOG_TARGET, "XMRig proxy error: {e}");
                         }
                     });
+                },
+                Ok(wallet_addr) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Invalid xmrig_proxy_wallet_payment_address: address network '{}' does not match node \
+                         network '{network}'. XMRig proxy will not start.",
+                        wallet_addr.network()
+                    );
                 },
                 Err(e) => {
                     warn!(

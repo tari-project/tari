@@ -10,7 +10,7 @@ license.workspace = true
 
 [dependencies]
 minotari_app_grpc = { workspace = true }
-minotari_app_utilities = { workspace = true, features = ["miner_input"] }
+minotari_app_utilities = { workspace = true }
 tari_common = { workspace = true }
 tari_comms = { workspace = true, features = ["rpc"] }
 tari_common_types = { workspace = true }
