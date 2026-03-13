@@ -27,7 +27,7 @@ use std::{
 };
 
 use log::debug;
-use minotari_app_grpc::tari_rpc::Block;
+use tari_node_components::blocks::Block;
 use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "minotari::base_node::xmrig_proxy::storage";

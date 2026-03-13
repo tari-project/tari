@@ -206,19 +206,16 @@ pub async fn run_base_node_with_cli(
                 "xmrig_proxy_enabled is true but xmrig_proxy_wallet_payment_address is not set. XMRig proxy will not \
                  start."
             );
-        } else if !config.base_node.grpc_enabled {
-            warn!(
-                target: LOG_TARGET,
-                "xmrig_proxy_enabled is true but grpc_enabled is false. XMRig proxy requires gRPC. Not starting."
-            );
         } else {
             let proxy_wallet_address = config.base_node.xmrig_proxy_wallet_payment_address.clone();
             let proxy_listener = config.base_node.xmrig_proxy_address.clone();
             let proxy_extra = config.base_node.xmrig_proxy_coinbase_extra.as_bytes().to_vec();
             let proxy_range_proof = config.base_node.xmrig_proxy_range_proof_type;
-            let grpc_auth = config.base_node.grpc_authentication.clone();
             let signal = shutdown.to_signal();
             let network = config.base_node.network;
+            let node_service = ctx.local_node();
+            let consensus_rules = ctx.consensus_rules().clone();
+            let state_machine = ctx.state_machine();
 
             match minotari_app_utilities::parse_miner_input::wallet_payment_address(
                 proxy_wallet_address,
@@ -227,8 +224,9 @@ pub async fn run_base_node_with_cli(
                 Ok(wallet_addr) => {
                     task::spawn(async move {
                         if let Err(e) = xmrig_proxy::run_xmrig_proxy(
-                            grpc_address,
-                            grpc_auth,
+                            node_service,
+                            consensus_rules,
+                            state_machine,
                             proxy_listener,
                             wallet_addr,
                             proxy_extra,

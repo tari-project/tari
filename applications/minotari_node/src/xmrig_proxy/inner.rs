@@ -22,16 +22,29 @@
 
 use hyper::{Response, StatusCode, body::Bytes};
 use log::{debug, info, trace, warn};
-use minotari_app_grpc::tari_rpc::{
-    self,
-    GetNewBlockTemplateWithCoinbasesRequest,
-    NewBlockCoinbase,
-    pow_algo::PowAlgos,
-};
-use minotari_app_utilities::parse_miner_input::BaseNodeGrpcClient;
 use serde_json::{Value, json};
+use tari_common_types::types::CompressedCommitment;
+use tari_core::{
+    base_node::{LocalNodeCommsInterface, StateMachineHandle},
+    consensus::BaseNodeConsensusManager,
+    validation::tari_rx_vm_key_height,
+};
+use tari_transaction_components::{
+    generate_coinbase_with_wallet_output,
+    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    tari_proof_of_work::PowAlgorithm,
+    transaction_components::{
+        CoinBaseExtra,
+        KernelBuilder,
+        RangeProofType,
+        TransactionKernel,
+        TransactionKernelVersion,
+        memo_field::{MemoField, TxType},
+    },
+};
+use tari_utilities::ByteArray;
 use tari_common_types::tari_address::TariAddress;
-use tari_transaction_components::transaction_components::RangeProofType;
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, UncompressedCommitment, UncompressedPublicKey};
 
 use super::{
     block_template_storage::BlockTemplateStorage,
@@ -53,7 +66,11 @@ const POW_ALGO_RANDOMXT: u8 = 2;
 
 #[derive(Clone)]
 pub struct InnerService {
-    pub base_node_client: BaseNodeGrpcClient,
+    pub node_service: LocalNodeCommsInterface,
+    pub consensus_rules: BaseNodeConsensusManager,
+    /// State machine handle, available for future sync-status checks.
+    #[allow(dead_code)]
+    pub state_machine: StateMachineHandle,
     pub block_templates: BlockTemplateStorage,
     pub wallet_payment_address: TariAddress,
     pub coinbase_extra: Vec<u8>,
@@ -89,9 +106,9 @@ impl InnerService {
     }
 
     async fn handle_get_height(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
-        let mut client = self.base_node_client.clone();
-        let tip = client.get_tip_info(tari_rpc::Empty {}).await?.into_inner();
-        let height = tip.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0);
+        let mut handler = self.node_service.clone();
+        let meta = handler.get_metadata().await?;
+        let height = meta.best_block_height();
         json_response(
             StatusCode::OK,
             &json_rpc_success(
@@ -103,69 +120,173 @@ impl InnerService {
 
     #[allow(clippy::too_many_lines)]
     async fn handle_get_block_template(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
-        let mut client = self.base_node_client.clone();
+        let mut handler = self.node_service.clone();
 
-        let result = client
-            .get_new_block_template_with_coinbases(GetNewBlockTemplateWithCoinbasesRequest {
-                algo: Some(tari_rpc::PowAlgo {
-                    pow_algo: PowAlgos::Randomxt.into(),
-                }),
-                max_weight: 0,
-                coinbases: vec![NewBlockCoinbase {
-                    address: self.wallet_payment_address.to_base58(),
-                    value: 1,
-                    stealth_payment: false,
-                    revealed_value_proof: matches!(self.range_proof_type, RangeProofType::RevealedValue),
-                    coinbase_extra: self.coinbase_extra.clone(),
-                }],
-            })
+        // Get chain metadata to determine block height for weight/coinbase calculations
+        let meta = handler.get_metadata().await?;
+        let next_height = meta.best_block_height().saturating_add(1);
+
+        let constants = self.consensus_rules.consensus_constants(next_height);
+        let asking_weight = constants.max_block_transaction_weight();
+
+        // Get a new RandomXT block template from the local node
+        let mut new_template = handler
+            .get_new_block_template(PowAlgorithm::RandomXT, asking_weight)
             .await
-            .map_err(|status| {
-                warn!(target: LOG_TARGET, "Failed to get block template: {status}");
-                XmrigProxyError::GrpcError(status)
-            })?
-            .into_inner();
+            .map_err(|e| {
+                warn!(target: LOG_TARGET, "Failed to get block template: {e}");
+                e
+            })?;
 
-        let block = result.block.ok_or_else(|| XmrigProxyError::MissingData("block".to_string()))?;
-        let miner_data = result
-            .miner_data
-            .ok_or_else(|| XmrigProxyError::MissingData("miner_data".to_string()))?;
-        let merge_mining_hash = result.merge_mining_hash;
-        let vm_key = result.vm_key;
+        let height = new_template.header.height;
+        // Capture target_difficulty from the template before it's consumed by get_new_block
+        let target_difficulty = new_template.target_difficulty.as_u64();
 
-        let height = block.header.as_ref().map(|h| h.height).unwrap_or(0);
-        let prev_hash = block.header.as_ref().map(|h| h.prev_hash.clone()).unwrap_or_default();
+        // Calculate the coinbase reward for this block
+        let reward = self
+            .consensus_rules
+            .calculate_coinbase_and_fees(height, new_template.body.kernels())
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?
+            .as_u64();
 
-        if merge_mining_hash.len() != 32 {
+        // Validate coinbase count
+        let max_coinbases = self.consensus_rules.consensus_constants(height).max_block_coinbase_count();
+        if 1 > max_coinbases {
+            return Err(XmrigProxyError::InternalError(
+                "No coinbases allowed by consensus".to_string(),
+            ));
+        }
+
+        // Generate the coinbase output and kernel for our wallet address
+        let coinbase_extra = CoinBaseExtra::try_from(self.coinbase_extra.clone())
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+        let key_manager = KeyManager::new_random().map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+        let script_key_id = TariKeyId::default();
+
+        let (_, coinbase_output, coinbase_kernel, wallet_output) = generate_coinbase_with_wallet_output(
+            0.into(),
+            reward.into(),
+            height,
+            &coinbase_extra,
+            &key_manager,
+            &script_key_id,
+            &self.wallet_payment_address,
+            false, // stealth_payment
+            constants,
+            self.range_proof_type,
+            MemoField::new_open(vec![], TxType::Coinbase).expect("empty user-data should always be valid"),
+        )
+        .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+
+        new_template.body.add_output(coinbase_output);
+
+        // Build the kernel signature
+        let new_nonce = key_manager
+            .get_random_key(None, None)
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+        let total_nonce: UncompressedPublicKey = new_nonce
+            .pub_key
+            .to_public_key()
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+        let total_excess: UncompressedCommitment = coinbase_kernel
+            .excess
+            .to_commitment()
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
+            TransactionKernelVersion::get_current_version(),
+            coinbase_kernel.fee,
+            coinbase_kernel.lock_height,
+            &coinbase_kernel.features,
+            &None,
+        );
+        let kernel_signature = key_manager
+            .get_partial_txo_kernel_signature(
+                wallet_output.commitment_mask_key_id(),
+                &new_nonce.key_id,
+                &CompressedPublicKey::new_from_pk(total_nonce),
+                &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
+                TransactionKernelVersion::get_current_version(),
+                &kernel_message,
+                &coinbase_kernel.features,
+                TxoStage::Output,
+            )
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?
+            .to_schnorr_signature()
+            .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?;
+
+        let kernel_new = KernelBuilder::new()
+            .with_fee(0.into())
+            .with_features(coinbase_kernel.features)
+            .with_lock_height(coinbase_kernel.lock_height)
+            .with_excess(&CompressedCommitment::from_commitment(
+                coinbase_kernel
+                    .excess
+                    .to_commitment()
+                    .map_err(|e| XmrigProxyError::InternalError(e.to_string()))?,
+            ))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
+            .build()
+            .unwrap();
+
+        new_template.body.add_kernel(kernel_new);
+        new_template.body.sort();
+
+        // Ask the node to finalize the block (fills in MMR roots etc.)
+        let new_block = handler
+            .get_new_block(new_template)
+            .await
+            .map_err(|e| {
+                warn!(target: LOG_TARGET, "Failed to get new block: {e}");
+                e
+            })?;
+
+        let block_height = new_block.header.height;
+        let prev_hash = new_block.header.prev_hash.to_vec();
+
+        // Compute the RandomXT mining hash
+        let mining_hash = match new_block.header.pow.pow_algo {
+            PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
+            algo => {
+                return Err(XmrigProxyError::InternalError(format!(
+                    "Expected RandomXT block template, got {algo:?}"
+                )));
+            },
+        };
+
+        if mining_hash.len() != 32 {
             return Err(XmrigProxyError::MissingData(format!(
-                "merge_mining_hash has wrong length: {}",
-                merge_mining_hash.len()
+                "mining_hash has wrong length: {}",
+                mining_hash.len()
             )));
         }
 
-        // Build the 76-byte XMRig-compatible mining blob:
-        // | 3 bytes (zeros) | 32 bytes (mining_hash) | 8 bytes (nonce, big-endian) | 33 bytes (pow_algo + padding) |
-        //
-        // The nonce region (bytes 35..43) is structured so that:
-        //   - bytes 35..39: extra nonce written per-thread by XMRig at reserved_offset
-        //   - bytes 39..43: main nonce iterated by XMRig (at standard Monero nonce offset 39)
-        let blob = build_tari_mining_blob(&merge_mining_hash, 0u64, POW_ALGO_RANDOMXT);
+        // Get the RandomX VM key (seed hash for XMRig) from the block at tari_rx_vm_key_height
+        let vm_key_height = tari_rx_vm_key_height(block_height);
+        let vm_key = *handler
+            .get_header(vm_key_height)
+            .await?
+            .ok_or_else(|| XmrigProxyError::MissingData(format!("block header at height {vm_key_height} not found")))?
+            .hash();
+
+        // Build the 76-byte XMRig-compatible mining blob
+        let blob = build_tari_mining_blob(&mining_hash, 0u64, POW_ALGO_RANDOMXT);
         let blob_hex = hex::encode(&blob);
-        let seed_hex = hex::encode(&vm_key);
+        let seed_hex = hex::encode(vm_key);
         let prev_hash_hex = hex::encode(&prev_hash);
 
-        let target_difficulty = miner_data.target_difficulty;
-        let expected_reward = miner_data.reward.saturating_add(miner_data.total_fees);
+        let target_difficulty_val = target_difficulty;
+        let expected_reward = reward;
 
-        let mining_hash_key: [u8; 32] = merge_mining_hash
+        // Store the block template keyed by the 32-byte mining hash
+        let mining_hash_key: [u8; 32] = mining_hash
             .as_slice()
             .try_into()
             .map_err(|_| XmrigProxyError::MissingData("mining hash not 32 bytes".to_string()))?;
-        self.block_templates.store(mining_hash_key, block).await;
+        self.block_templates.store(mining_hash_key, new_block).await;
 
         debug!(
             target: LOG_TARGET,
-            "Returning block template for height #{height}, difficulty={target_difficulty}, seed={seed_hex}"
+            "Returning block template for height #{block_height}, seed={seed_hex}"
         );
 
         json_response(
@@ -174,8 +295,8 @@ impl InnerService {
                 "blocktemplate_blob": blob_hex,
                 "blockhashing_blob": blob_hex,
                 "seed_hash": seed_hex,
-                "difficulty": target_difficulty,
-                "height": height,
+                "difficulty": target_difficulty_val,
+                "height": block_height,
                 "prev_hash": prev_hash_hex,
                 "reserved_offset": TARI_BLOB_RESERVED_OFFSET,
                 "expected_reward": expected_reward,
@@ -250,21 +371,17 @@ impl InnerService {
         };
 
         // Update the nonce in the block header
-        if let Some(ref mut header) = block.header {
-            header.nonce = nonce;
-        } else {
-            return Err(XmrigProxyError::MissingData("block header".to_string()));
-        }
+        block.header.nonce = nonce;
 
-        let height = block.header.as_ref().map(|h| h.height).unwrap_or(0);
-        info!(target: LOG_TARGET, "Submitting block #{height} with nonce={nonce} to base node");
+        let block_height = block.header.height;
+        info!(target: LOG_TARGET, "Submitting block #{block_height} with nonce={nonce} to base node");
 
-        // Submit to the base node
-        let mut client = self.base_node_client.clone();
-        match client.submit_block(block).await {
-            Ok(resp) => {
-                let block_hash = hex::encode(resp.into_inner().block_hash);
-                info!(target: LOG_TARGET, "Block #{height} accepted, hash={block_hash}");
+        // Submit to the base node via LocalNodeCommsInterface
+        let mut handler = self.node_service.clone();
+        match handler.submit_block(block).await {
+            Ok(block_hash) => {
+                let block_hash_hex = hex::encode(block_hash);
+                info!(target: LOG_TARGET, "Block #{block_height} accepted, hash={block_hash_hex}");
                 json_response(
                     StatusCode::OK,
                     &json_rpc_success(req["id"].as_i64(), json!({
@@ -274,7 +391,7 @@ impl InnerService {
                 )
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Block #{height} rejected: {e}");
+                warn!(target: LOG_TARGET, "Block #{block_height} rejected: {e}");
                 json_response(
                     StatusCode::OK,
                     &json_rpc_error(req["id"].as_i64(), -5, &format!("Block rejected: {e}")),

@@ -30,18 +30,16 @@ use std::time::Duration;
 use futures::FutureExt;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
-use log::{error, info, warn};
-use minotari_app_grpc::{
-    authentication::ClientAuthenticationInterceptor,
-    tari_rpc::base_node_client::BaseNodeClient,
-};
-use tari_common::MAX_GRPC_MESSAGE_SIZE;
-use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
+use log::{error, info};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_core::{
+    base_node::{LocalNodeCommsInterface, StateMachineHandle},
+    consensus::BaseNodeConsensusManager,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::transaction_components::RangeProofType;
 use tokio::net::TcpListener;
-use tonic::{codegen::InterceptedService, transport::Channel};
 
 use self::{block_template_storage::BlockTemplateStorage, inner::InnerService, service::XmrigProxyService};
 
@@ -51,27 +49,28 @@ const CLEANUP_INTERVAL_SECS: u64 = 10 * 60;
 /// Start the XMRig-compatible JSON-RPC proxy server embedded in the base node.
 ///
 /// The proxy accepts connections from XMRig (configured with `"coin": "tari"`, `"daemon": true`)
-/// and forwards `getblocktemplate`/`submitblock` calls to the base node's local gRPC server.
+/// and uses `LocalNodeCommsInterface` directly to fetch block templates and submit mined blocks,
+/// bypassing the gRPC server entirely.
 ///
 /// # Arguments
-/// * `grpc_address` - the base node's own gRPC address (the proxy connects to this internally)
-/// * `grpc_auth` - gRPC authentication to use when connecting to the local gRPC server
+/// * `node_service` - direct handle to the base node's comms interface
+/// * `consensus_rules` - consensus manager for block template construction
+/// * `state_machine` - state machine handle (available for future sync-check use)
 /// * `listener_address` - the address on which this proxy listens for XMRig connections
 /// * `wallet_payment_address` - where mining rewards are sent
 /// * `coinbase_extra` - optional extra data in the coinbase
 /// * `range_proof_type` - range proof type for coinbase outputs
 /// * `shutdown` - shutdown signal from the base node
 pub async fn run_xmrig_proxy(
-    grpc_address: Multiaddr,
-    grpc_auth: GrpcAuthentication,
+    node_service: LocalNodeCommsInterface,
+    consensus_rules: BaseNodeConsensusManager,
+    state_machine: StateMachineHandle,
     listener_address: Multiaddr,
     wallet_payment_address: TariAddress,
     coinbase_extra: Vec<u8>,
     range_proof_type: RangeProofType,
     shutdown: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    let base_node_client = connect_to_grpc(grpc_address, grpc_auth).await?;
-
     let listen_addr = multiaddr_to_socketaddr(&listener_address)?;
     let block_templates = BlockTemplateStorage::new();
 
@@ -90,7 +89,9 @@ pub async fn run_xmrig_proxy(
     });
 
     let service = XmrigProxyService::new(InnerService {
-        base_node_client,
+        node_service,
+        consensus_rules,
+        state_machine,
         block_templates,
         wallet_payment_address,
         coinbase_extra,
@@ -134,37 +135,11 @@ pub async fn run_xmrig_proxy(
             Ok(())
         },
         Err(e) => {
-            warn!(
+            error!(
                 target: LOG_TARGET,
                 "Cannot bind XMRig proxy to '{listen_addr}': {e}. XMRig solo mining will not be available."
             );
             Err(e.into())
         },
     }
-}
-
-async fn connect_to_grpc(
-    grpc_address: Multiaddr,
-    grpc_auth: GrpcAuthentication,
-) -> Result<BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>, anyhow::Error> {
-    // Convert multiaddr to a URI that tonic can use
-    let socket_addr = multiaddr_to_socketaddr(&grpc_address)?;
-    let uri = format!("http://{socket_addr}");
-
-    info!(target: LOG_TARGET, "XMRig proxy connecting to local gRPC at {uri}");
-
-    let channel = tonic::transport::Channel::from_shared(uri)?
-        .connect()
-        .await
-        .map_err(|e| anyhow::anyhow!("XMRig proxy failed to connect to base node gRPC: {e}"))?;
-
-    let client = BaseNodeClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&grpc_auth)
-            .map_err(|e| anyhow::anyhow!("XMRig proxy gRPC auth error: {e}"))?,
-    )
-    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-    Ok(client)
 }

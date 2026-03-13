@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use hyper::StatusCode;
+use tari_core::base_node::comms_interface::CommsInterfaceError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum XmrigProxyError {
-    #[error("gRPC request error: {0}")]
-    GrpcError(#[from] tonic::Status),
+    #[error("Node comms error: {0}")]
+    CommsError(#[from] CommsInterfaceError),
 
     #[error("Hyper error: {0}")]
     HyperError(#[from] hyper::Error),
@@ -39,6 +40,9 @@ pub enum XmrigProxyError {
 
     #[error("Missing data: {0}")]
     MissingData(String),
+
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 impl XmrigProxyError {
