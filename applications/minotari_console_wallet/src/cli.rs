@@ -203,6 +203,7 @@ pub enum CliCommands {
     SignMessage(SignMessageArgs),
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
+    ExportAudit(ExportAuditArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -504,6 +505,45 @@ pub struct ExportTxArgs {
 pub struct ExportViewKeyAndSpendKeyArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
+}
+
+fn parse_utc_datetime(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    if arg.to_uppercase() == "NOW" {
+        return Ok(Utc::now());
+    }
+    // Try RFC3339 first, then a few common formats
+    if let Ok(dt) = DateTime::parse_from_rfc3339(arg) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    for fmt in &["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"] {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(arg, fmt) {
+            return Ok(dt.and_utc());
+        }
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(arg, fmt) {
+            return Ok(d.and_hms_opt(0, 0, 0).expect("valid hms").and_utc());
+        }
+    }
+    // Trigger a parse error by parsing with rfc3339 to return the right error type
+    DateTime::parse_from_rfc3339(arg).map(|dt| dt.with_timezone(&Utc))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportAuditArgs {
+    /// Output file path for the audit CSV
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+    /// Optional start date/time filter (RFC3339, e.g. "2021-01-01T00:00:00Z" or "2021-01-01")
+    #[clap(long, parse(try_from_str = parse_utc_datetime))]
+    pub start_date: Option<DateTime<Utc>>,
+    /// Optional end date/time filter (RFC3339, e.g. "2021-12-31T23:59:59Z" or "2021-12-31")
+    #[clap(long, parse(try_from_str = parse_utc_datetime))]
+    pub end_date: Option<DateTime<Utc>>,
+    /// Conversion rate from XTM to the selected fiat currency (e.g. 3130.0)
+    #[clap(long)]
+    pub conversion_rate: Option<f64>,
+    /// Fiat currency ticker for conversion (default: USD)
+    #[clap(long, default_value = "USD")]
+    pub currency: String,
 }
 
 #[derive(Debug, Args, Clone)]
