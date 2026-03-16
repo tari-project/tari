@@ -266,11 +266,13 @@ Query for a transaction in the mempool by its excess signature. Returns
 
 #### Query Parameters
 
-| Name                | Type   | Description                      |
-| ------------------- | ------ | -------------------------------- |
-| start_header_hash | string | Starting block header hash (hex) |
-| limit               | int    | Max UTXOs to return per page     |
-| page                | int    | Page number (0-based index)      |
+| Name                | Type   | Description                                                   |
+| ------------------- | ------ | ------------------------------------------------------------- |
+| start_header_hash | string | Starting block header hash (hex)                              |
+| limit               | int    | Max UTXOs to return per page                                  |
+| page                | int    | Page number (0-based index)                                   |
+| exclude_spent       | bool   | If true, excludes spent outputs from the response (default: false) |
+| exclude_inputs      | bool   | If true, excludes inputs from the response (default: false)   |
 
 #### Description
 Fetch paginated UTXOs mined in blocks, beginning from the specified block header hash. Enables efficient synchronization of UTXO data in manageable chunks, ideal for wallets or services needing incremental blockchain state updates.
