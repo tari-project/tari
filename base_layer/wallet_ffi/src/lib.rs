@@ -7452,9 +7452,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// as an out parameter. Returns a 0 if any pointer argument is null.
 ///
 /// ## Returns
-/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the first sent transaction if successful. For large
-/// wallets, multiple transactions may be created (batched by the maximum inputs limit). The caller should query the
-/// completed transaction list to find all transactions created by this call.
+/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the first sent transaction if successful. Returns 0
+/// with no error set if the wallet has no unspent outputs to scrape. For large wallets, multiple transactions may be
+/// created (batched by the maximum inputs limit). The caller should query the completed transaction list to find all
+/// transactions created by this call.
 ///
 /// # Safety
 /// None

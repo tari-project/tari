@@ -2737,6 +2737,11 @@ where
             .db
             .fetch_all_unspent_outputs(&self.resources.key_manager)?;
 
+        if src_outputs.is_empty() {
+            debug!(target: LOG_TARGET, "scrape_wallet called but wallet has no unspent outputs");
+            return Ok(vec![]);
+        }
+
         let mut batches = Vec::new();
         for batch in src_outputs.chunks(TRANSACTION_INPUTS_LIMIT as usize) {
             let tx_id = TxId::new_random();
@@ -2761,6 +2766,12 @@ where
             self.resources.db.encumber_outputs(tx_id, batch.to_vec(), vec![])?;
             batches.push((tx_id, builder));
         }
+        debug!(
+            target: LOG_TARGET,
+            "scrape_wallet: created {} transaction batch(es) from {} unspent outputs",
+            batches.len(),
+            src_outputs.len()
+        );
         Ok(batches)
     }
 
