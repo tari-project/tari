@@ -2302,10 +2302,10 @@ pub async fn command_runner(
                         .await
                         .map_err(CommandError::TransactionServiceError)
                     {
-                        Ok(tx_id) => {
-                            debug!(target: LOG_TARGET, "send-minotari concluded with tx_id {tx_id}");
+                        Ok(tx_ids) => {
+                            debug!(target: LOG_TARGET, "scrape-wallet concluded with tx_ids {:?}", tx_ids);
                             let duration = config.command_send_wait_timeout;
-                            match timeout(duration, monitor_transactions(tms.clone(), vec![tx_id], wait_stage)).await {
+                            match timeout(duration, monitor_transactions(tms.clone(), tx_ids, wait_stage)).await {
                                 Ok(txs) => {
                                     debug!(
                                         target: LOG_TARGET,

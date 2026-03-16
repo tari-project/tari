@@ -448,9 +448,16 @@ where
                         .await?,
                 ))
             },
-            OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
-                .scrape_wallet(tx_id, fee_per_gram)
-                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
+            OutputManagerRequest::ScrapeWallet { fee_per_gram } => self
+                .scrape_wallet(fee_per_gram)
+                .map(|batches| {
+                    OutputManagerResponse::TransactionBuildersToSend(
+                        batches
+                            .into_iter()
+                            .map(|(tx_id, builder)| (tx_id, Box::new(builder)))
+                            .collect(),
+                    )
+                }),
 
             OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
@@ -2723,34 +2730,38 @@ where
 
     pub fn scrape_wallet(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
-    ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
+    ) -> Result<Vec<(TxId, TransactionBuilder<TKeyManagerInterface>)>, OutputManagerError> {
         let src_outputs = self
             .resources
             .db
             .fetch_all_unspent_outputs(&self.resources.key_manager)?;
 
-        let mut builder = TransactionBuilder::new(
-            self.resources.consensus_constants.clone(),
-            self.resources.key_manager.clone(),
-            self.resources.network,
-        )?;
-        builder
-            .with_fee_per_gram(fee_per_gram)
-            .with_memo(
-                MemoField::new_open_from_string("scraping wallet", TxType::PaymentToOther)
-                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
-            )
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+        let mut batches = Vec::new();
+        for batch in src_outputs.chunks(TRANSACTION_INPUTS_LIMIT as usize) {
+            let tx_id = TxId::new_random();
+            let mut builder = TransactionBuilder::new(
+                self.resources.consensus_constants.clone(),
+                self.resources.key_manager.clone(),
+                self.resources.network,
+            )?;
+            builder
+                .with_fee_per_gram(fee_per_gram)
+                .with_memo(
+                    MemoField::new_open_from_string("scraping wallet", TxType::PaymentToOther)
+                        .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+                )
+                .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
-        for uo in &src_outputs {
-            builder.with_input(uo.wallet_output.clone())?;
+            for uo in batch {
+                builder.with_input(uo.wallet_output.clone())?;
+            }
+
+            // encumber this batch of outputs
+            self.resources.db.encumber_outputs(tx_id, batch.to_vec(), vec![])?;
+            batches.push((tx_id, builder));
         }
-
-        // encumbering transaction
-        self.resources.db.encumber_outputs(tx_id, src_outputs.clone(), vec![])?;
-        Ok(builder)
+        Ok(batches)
     }
 
     pub async fn fetch_unspent_outputs_from_node(

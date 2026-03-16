@@ -845,7 +845,7 @@ where
                     let res = self
                         .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
                         .await?;
-                    Ok(TransactionServiceResponse::TransactionSent(res))
+                    Ok(TransactionServiceResponse::TransactionsSent(res))
                 }
                 .await
             },
@@ -2584,157 +2584,162 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let temp_tx_id = TxId::new_random();
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
-        // Prepare sender part of the transaction
-        let mut tx_builder = self
+        // Prepare sender part of the transactions, batched by TRANSACTION_INPUTS_LIMIT
+        let batches = self
             .resources
             .output_manager_service
-            .scrape_wallet(temp_tx_id, fee_per_gram)
+            .scrape_wallet(fee_per_gram)
             .await?;
 
-        // Prepare receiver part of the transaction
+        let mut tx_ids = Vec::with_capacity(batches.len());
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+        for (temp_tx_id, mut tx_builder) in batches {
+            // Prepare receiver part of the transaction
 
-        let shared_secret = self
-            .resources
-            .transaction_key_manager_service
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                dest_address
-                    .public_view_key()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        temp_tx_id,
-                        TransactionServiceError::OneSidedTransactionError("Missing public view key".to_string()),
-                    ))?,
-            )?;
-        let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
-        let commitment_mask_key_id = &self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
+            // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+            // KDFs to produce the spending, rewind, and encryption keys
+            let sender_offset_private_key = self
+                .resources
+                .transaction_key_manager_service
+                .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
 
-        let script_spending_key = self
-            .resources
-            .transaction_key_manager_service
-            .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())?;
-        let script = push_pubkey_script(&script_spending_key);
+            let shared_secret = self
+                .resources
+                .transaction_key_manager_service
+                .get_diffie_hellman_shared_secret(
+                    &sender_offset_private_key.key_id,
+                    dest_address
+                        .public_view_key()
+                        .ok_or(TransactionServiceProtocolError::new(
+                            temp_tx_id,
+                            TransactionServiceError::OneSidedTransactionError("Missing public view key".to_string()),
+                        ))?,
+                )?;
+            let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)
+                .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
+            let commitment_mask_key_id = &self
+                .resources
+                .transaction_key_manager_service
+                .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
 
-        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(encryption_private_key, None)?;
+            let script_spending_key = self
+                .resources
+                .transaction_key_manager_service
+                .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())?;
+            let script = push_pubkey_script(&script_spending_key);
 
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(commitment_mask_private_key, None)?;
+            let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
+            let encryption_key = self
+                .resources
+                .transaction_key_manager_service
+                .create_encrypted_key(encryption_private_key, None)?;
 
-        let sender_offset_public_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
-        let amount = tx_builder.get_total_input_value()?;
-        let fee = tx_builder.get_fee_estimate_without_change()?;
-        let minimum_value_promise = MicroMinotari::zero();
-        let payment_id = MemoField::new_address_and_data(
-            self.resources.one_sided_tari_address.clone(),
-            fee,
-            true,
-            TxType::PaymentToOther,
-            vec![],
-        )
-        .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(Default::default())
-            .with_script(script)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&encryption_key),
-                payment_id.clone(),
-            )?
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_metadata_signature_user_verified(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-                &dest_address,
-            )?
-            .try_build(&self.resources.transaction_key_manager_service)?;
+            let spending_key_id = self
+                .resources
+                .transaction_key_manager_service
+                .create_encrypted_key(commitment_mask_private_key, None)?;
 
-        tx_builder.add_recipient(
-            dest_address.clone(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id),
-            Some(encryption_key),
-        )?;
-
-        let finalized = tx_builder.build()?;
-
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
-
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
-
-        // Broadcast one-sided transaction
-
-        let tx = finalized.transaction.clone();
-        let fee = finalized.fee;
-        self.resources
-            .output_manager_service
-            .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
-            .await?;
-        let change = finalized.change.clone().map(|change| vec![change]);
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
-        let received_hashes = finalized.sent_output_hashes.clone();
-        let change_hashes = finalized.change_output_hashes.clone();
-
-        let mut final_payment_id = payment_id.clone();
-        final_payment_id.set_fee(fee);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                finalized.tx_id,
+            let sender_offset_public_key = self
+                .resources
+                .transaction_key_manager_service
+                .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
+            let amount = tx_builder.get_total_input_value()?;
+            let fee = tx_builder.get_fee_estimate_without_change()?;
+            let minimum_value_promise = MicroMinotari::zero();
+            let payment_id = MemoField::new_address_and_data(
                 self.resources.one_sided_tari_address.clone(),
-                dest_address,
-                amount,
                 fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                final_payment_id,
+                true,
+                TxType::PaymentToOther,
                 vec![],
-                received_hashes,
-                change_hashes,
-            )?,
-        )
-        .await?;
+            )
+            .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
+            let output = WalletOutputBuilder::new(amount, spending_key_id)
+                .with_features(Default::default())
+                .with_script(script)
+                .encrypt_data_for_recovery(
+                    &self.resources.transaction_key_manager_service,
+                    Some(&encryption_key),
+                    payment_id.clone(),
+                )?
+                .with_input_data(Default::default())
+                .with_sender_offset_public_key(sender_offset_public_key)
+                .with_script_key(TariKeyId::Zero)
+                .with_minimum_value_promise(minimum_value_promise)
+                .sign_metadata_signature_user_verified(
+                    &self.resources.transaction_key_manager_service,
+                    &sender_offset_private_key.key_id,
+                    &dest_address,
+                )?
+                .try_build(&self.resources.transaction_key_manager_service)?;
 
-        Ok(finalized.tx_id)
+            tx_builder.add_recipient(
+                dest_address.clone(),
+                output.clone(),
+                Some(sender_offset_private_key.key_id),
+                Some(encryption_key),
+            )?;
+
+            let finalized = tx_builder.build()?;
+
+            info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
+
+            // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+            // there are no subscribers.
+            let _result = self
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                    finalized.tx_id,
+                )));
+
+            // Broadcast one-sided transaction
+
+            let tx = finalized.transaction.clone();
+            let fee = finalized.fee;
+            self.resources
+                .output_manager_service
+                .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+                .await?;
+            let change = finalized.change.clone().map(|change| vec![change]);
+            self.resources
+                .output_manager_service
+                .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
+            let received_hashes = finalized.sent_output_hashes.clone();
+            let change_hashes = finalized.change_output_hashes.clone();
+
+            let mut final_payment_id = payment_id.clone();
+            final_payment_id.set_fee(fee);
+            self.submit_transaction(
+                transaction_broadcast_join_handles,
+                CompletedTransaction::new_with_output_hashes(
+                    finalized.tx_id,
+                    self.resources.one_sided_tari_address.clone(),
+                    dest_address.clone(),
+                    amount,
+                    fee,
+                    tx.clone(),
+                    LegacyTransactionStatus::Completed,
+                    Utc::now(),
+                    TransactionDirection::Outbound,
+                    None,
+                    None,
+                    final_payment_id,
+                    vec![],
+                    received_hashes,
+                    change_hashes,
+                )?,
+            )
+            .await?;
+
+            tx_ids.push(finalized.tx_id);
+        }
+
+        Ok(tx_ids)
     }
 
     /// Sends a one side payment transaction to a recipient

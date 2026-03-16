@@ -137,7 +137,6 @@ pub enum OutputManagerRequest {
     PreviewCoinJoin((Vec<CompressedCommitment>, MicroMinotari)),
     PreviewCoinSplitEven((Vec<CompressedCommitment>, usize, MicroMinotari)),
     ScrapeWallet {
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
     },
     CreateCoinJoin {
@@ -199,8 +198,8 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
-            ScrapeWallet { tx_id, fee_per_gram } => {
-                write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram})")
+            ScrapeWallet { fee_per_gram } => {
+                write!(f, "ScrapeWallet (fee_per_gram: {fee_per_gram})")
             },
             EncumberAggregateUtxo {
                 expected_commitment,
@@ -327,6 +326,7 @@ pub enum OutputManagerResponse<KM> {
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction, TxId)),
     TransactionBuilderToSend(Box<TransactionBuilder<KM>>),
+    TransactionBuildersToSend(Vec<(TxId, Box<TransactionBuilder<KM>>)>),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
     UnspentOutputs(Vec<DbWalletOutput>),
@@ -645,16 +645,17 @@ where KM: LegacyTransactionKeyManagerInterface
 
     pub async fn scrape_wallet(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
-    ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
+    ) -> Result<Vec<(TxId, TransactionBuilder<KM>)>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram })
+            .call(OutputManagerRequest::ScrapeWallet { fee_per_gram })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::ScrapeWallet({e})"))??
         {
-            OutputManagerResponse::TransactionBuilderToSend(tx_builder) => Ok(*tx_builder),
+            OutputManagerResponse::TransactionBuildersToSend(batches) => {
+                Ok(batches.into_iter().map(|(tx_id, builder)| (tx_id, *builder)).collect())
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::ScrapeWallet".to_string(),
             )),

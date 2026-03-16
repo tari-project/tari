@@ -7452,7 +7452,9 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// as an out parameter. Returns a 0 if any pointer argument is null.
 ///
 /// ## Returns
-/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
+/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the first sent transaction if successful. For large
+/// wallets, multiple transactions may be created (batched by the maximum inputs limit). The caller should query the
+/// completed transaction list to find all transactions created by this call.
 ///
 /// # Safety
 /// None
@@ -7484,7 +7486,7 @@ pub unsafe extern "C" fn scrape_wallet(
                 .transaction_service
                 .scrape_wallet((*destination).clone(), MicroMinotari::from(fee_per_gram)),
         ) {
-            Ok(tx_id) => tx_id.as_u64(),
+            Ok(tx_ids) => tx_ids.into_iter().next().map(|id| id.as_u64()).unwrap_or(0),
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
                 0
