@@ -116,6 +116,7 @@ pub async fn run_base_node(
 }
 
 /// Sets up the base node and runs the cli_loop
+#[allow(clippy::too_many_lines)]
 pub async fn run_base_node_with_cli(
     node_identity: Arc<NodeIdentity>,
     config: Arc<ApplicationConfig>,
@@ -195,7 +196,13 @@ pub async fn run_base_node_with_cli(
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
     if config.base_node.grpc_enabled {
-        task::spawn(run_grpc(grpc, grpc_address.clone(), auth.clone(), tls_identity, shutdown.to_signal()));
+        task::spawn(run_grpc(
+            grpc,
+            grpc_address.clone(),
+            auth.clone(),
+            tls_identity,
+            shutdown.to_signal(),
+        ));
     }
 
     // Start the built-in XMRig proxy if enabled

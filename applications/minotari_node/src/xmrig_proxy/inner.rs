@@ -23,7 +23,16 @@
 use hyper::{Response, StatusCode, body::Bytes};
 use log::{debug, info, trace, warn};
 use serde_json::{Value, json};
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+    },
+};
 use tari_core::{
     base_node::{LocalNodeCommsInterface, StateMachineHandle},
     consensus::BaseNodeConsensusManager,
@@ -43,8 +52,6 @@ use tari_transaction_components::{
     },
 };
 use tari_utilities::ByteArray;
-use tari_common_types::tari_address::TariAddress;
-use tari_common_types::types::{CompressedPublicKey, CompressedSignature, UncompressedCommitment, UncompressedPublicKey};
 
 use super::{
     block_template_storage::BlockTemplateStorage,
@@ -91,7 +98,11 @@ impl InnerService {
                 debug!(target: LOG_TARGET, "Unknown method: {method}");
                 json_response(
                     StatusCode::OK,
-                    &json_rpc_error(json["id"].as_i64(), -32601, "Method not found"),
+                    &json_rpc_error(
+                        json.get("id").map(|v| v.as_i64()).unwrap_or_default(),
+                        -32601,
+                        "Method not found",
+                    ),
                 )
             },
         }
@@ -112,7 +123,7 @@ impl InnerService {
         json_response(
             StatusCode::OK,
             &json_rpc_success(
-                req["id"].as_i64(),
+                req["id"].get("id").map(|v| v.as_i64()).unwrap_or_default(),
                 json!({ "count": height, "status": "OK" }),
             ),
         )
@@ -150,7 +161,10 @@ impl InnerService {
             .as_u64();
 
         // Validate coinbase count
-        let max_coinbases = self.consensus_rules.consensus_constants(height).max_block_coinbase_count();
+        let max_coinbases = self
+            .consensus_rules
+            .consensus_constants(height)
+            .max_block_coinbase_count();
         if 1 > max_coinbases {
             return Err(XmrigProxyError::InternalError(
                 "No coinbases allowed by consensus".to_string(),
@@ -232,13 +246,10 @@ impl InnerService {
         new_template.body.sort();
 
         // Ask the node to finalize the block (fills in MMR roots etc.)
-        let new_block = handler
-            .get_new_block(new_template)
-            .await
-            .map_err(|e| {
-                warn!(target: LOG_TARGET, "Failed to get new block: {e}");
-                e
-            })?;
+        let new_block = handler.get_new_block(new_template).await.map_err(|e| {
+            warn!(target: LOG_TARGET, "Failed to get new block: {e}");
+            e
+        })?;
 
         let block_height = new_block.header.height;
         let prev_hash = new_block.header.prev_hash.to_vec();
@@ -291,18 +302,21 @@ impl InnerService {
 
         json_response(
             StatusCode::OK,
-            &json_rpc_success(req["id"].as_i64(), json!({
-                "blocktemplate_blob": blob_hex,
-                "blockhashing_blob": blob_hex,
-                "seed_hash": seed_hex,
-                "difficulty": target_difficulty_val,
-                "height": block_height,
-                "prev_hash": prev_hash_hex,
-                "reserved_offset": TARI_BLOB_RESERVED_OFFSET,
-                "expected_reward": expected_reward,
-                "status": "OK",
-                "untrusted": false,
-            })),
+            &json_rpc_success(
+                req["id"].as_i64(),
+                json!({
+                    "blocktemplate_blob": blob_hex,
+                    "blockhashing_blob": blob_hex,
+                    "seed_hash": seed_hex,
+                    "difficulty": target_difficulty_val,
+                    "height": block_height,
+                    "prev_hash": prev_hash_hex,
+                    "reserved_offset": TARI_BLOB_RESERVED_OFFSET,
+                    "expected_reward": expected_reward,
+                    "status": "OK",
+                    "untrusted": false,
+                }),
+            ),
         )
     }
 
@@ -344,12 +358,16 @@ impl InnerService {
         }
 
         // Extract the 32-byte mining hash from bytes 3..35
-        let mining_hash: [u8; 32] = blob[3..35]
+        let mining_hash: [u8; 32] = blob
+            .get(3..35)
+            .ok_or(XmrigProxyError::InvalidRequest("bad mining hash slice".to_string()))?
             .try_into()
             .map_err(|_| XmrigProxyError::InvalidRequest("bad mining hash slice".to_string()))?;
 
         // Extract the 8-byte nonce from bytes 35..43 (big-endian u64)
-        let nonce_bytes: [u8; 8] = blob[35..43]
+        let nonce_bytes: [u8; 8] = blob
+            .get(35..43)
+            .ok_or(XmrigProxyError::InvalidRequest("bad mining hash slice".to_string()))?
             .try_into()
             .map_err(|_| XmrigProxyError::InvalidRequest("bad nonce slice".to_string()))?;
         let nonce = u64::from_be_bytes(nonce_bytes);
@@ -384,10 +402,13 @@ impl InnerService {
                 info!(target: LOG_TARGET, "Block #{block_height} accepted, hash={block_hash_hex}");
                 json_response(
                     StatusCode::OK,
-                    &json_rpc_success(req["id"].as_i64(), json!({
-                        "status": "OK",
-                        "untrusted": false,
-                    })),
+                    &json_rpc_success(
+                        req["id"].as_i64(),
+                        json!({
+                            "status": "OK",
+                            "untrusted": false,
+                        }),
+                    ),
                 )
             },
             Err(e) => {

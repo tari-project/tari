@@ -80,8 +80,9 @@ pub async fn run_xmrig_proxy(
         let mut interval = tokio::time::interval(Duration::from_secs(CLEANUP_INTERVAL_SECS));
         loop {
             interval.tick().await;
-            if let Err(e) =
-                std::panic::AssertUnwindSafe(cleanup_storage.remove_outdated()).catch_unwind().await
+            if let Err(e) = std::panic::AssertUnwindSafe(cleanup_storage.remove_outdated())
+                .catch_unwind()
+                .await
             {
                 error!(target: LOG_TARGET, "Template cleanup panicked: {e:?}");
             }

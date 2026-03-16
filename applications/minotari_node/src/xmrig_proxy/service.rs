@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::Infallible,
-    future::Future,
-    pin::Pin,
-};
+use std::{convert::Infallible, future::Future, pin::Pin};
 
 use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request, Response, StatusCode, body::Incoming};
