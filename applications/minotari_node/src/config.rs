@@ -51,6 +51,7 @@ use tari_core::{
 };
 use tari_p2p::{P2pConfig, PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_storage::lmdb_store::LMDBConfig;
+use tari_transaction_components::transaction_components::RangeProofType;
 use url::Url;
 
 #[cfg(feature = "metrics")]
@@ -165,6 +166,17 @@ pub struct BaseNodeConfig {
     pub tari_pulse_health_check: Option<Duration>,
     /// Wallet HTTP service configuration
     pub http_wallet_query_service: WalletHttpServiceConfig,
+    /// Enable the built-in XMRig-compatible JSON-RPC proxy for solo RandomXT mining.
+    /// When enabled, XMRig can be pointed at `xmrig_proxy_address` with `"coin": "tari"`, `"daemon": true`.
+    pub xmrig_proxy_enabled: bool,
+    /// The address the XMRig proxy listens on (default: /ip4/127.0.0.1/tcp/18085).
+    pub xmrig_proxy_address: Multiaddr,
+    /// Wallet address that receives RandomXT mining rewards via the XMRig proxy.
+    pub xmrig_proxy_wallet_payment_address: String,
+    /// Extra data embedded in the coinbase produced by the XMRig proxy (e.g. pool tag).
+    pub xmrig_proxy_coinbase_extra: String,
+    /// Range proof type used for coinbase outputs produced by the XMRig proxy.
+    pub xmrig_proxy_range_proof_type: RangeProofType,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -237,6 +249,11 @@ impl Default for BaseNodeConfig {
             tari_pulse_interval: Duration::from_secs(120),
             tari_pulse_health_check: None,
             http_wallet_query_service: Default::default(),
+            xmrig_proxy_enabled: false,
+            xmrig_proxy_address: "/ip4/127.0.0.1/tcp/18085".parse().unwrap(),
+            xmrig_proxy_wallet_payment_address: String::new(),
+            xmrig_proxy_coinbase_extra: "tari_base_node_xmrig".to_string(),
+            xmrig_proxy_range_proof_type: RangeProofType::RevealedValue,
         }
     }
 }

@@ -74,6 +74,12 @@ http = "0.2.12"
 utoipa = "5.3.1"
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 tower-http = { version = "0.6", features = ["limit"] }
+# XMRig proxy dependencies
+bytes = "1.1"
+hex = "0.4.2"
+hyper = { version = "1.6.0", features = ["full"] }
+hyper-util = "0.1"
+http-body-util = "0.1"
 
 [features]
 default = ["libtor"]
