@@ -262,13 +262,16 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .map(|(output, _spent)| output)
                     .collect::<Vec<TransactionOutput>>()
             };
-            let mut inputs = self
-                .db
-                .fetch_inputs_in_block(current_header_hash)
-                .await?
-                .into_iter()
-                .map(|input| input.output_hash())
-                .collect::<Vec<FixedHash>>();
+            let mut inputs = if request.exclude_inputs {
+                Vec::new()
+            } else {
+                self.db
+                    .fetch_inputs_in_block(current_header_hash)
+                    .await?
+                    .into_iter()
+                    .map(|input| input.output_hash())
+                    .collect::<Vec<FixedHash>>()
+            };
             if outputs.is_empty() && inputs.is_empty() {
                 // No outputs or inputs in this block, put empty placeholder here so wallet knows this height has been
                 // scanned This can happen if all the outputs are spent and exclude_spent is true
@@ -667,6 +670,7 @@ mod tests {
             limit: 4,
             page: 0,
             exclude_spent: false,
+            exclude_inputs: false,
             version: 0,
         };
         let err = service.fetch_utxos(req).await.unwrap_err();
@@ -686,6 +690,7 @@ mod tests {
             limit: 1,
             page: 1,
             exclude_spent: false,
+            exclude_inputs: false,
             version: 0,
         };
         let err = service.fetch_utxos(req).await.unwrap_err();
@@ -721,6 +726,7 @@ mod tests {
                 limit: 1,
                 page: 0,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -740,6 +746,7 @@ mod tests {
                 limit: 1,
                 page: 1,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -759,6 +766,7 @@ mod tests {
                 limit: 1,
                 page: 2,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -776,6 +784,7 @@ mod tests {
                 limit: 1,
                 page: 3,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -793,6 +802,7 @@ mod tests {
                 limit: 1,
                 page: 4,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -807,6 +817,7 @@ mod tests {
                 limit: 2,
                 page: 0,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -860,6 +871,7 @@ mod tests {
                 limit: 10,
                 page: 0,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -885,6 +897,7 @@ mod tests {
                 limit: 10,
                 page: 1,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
@@ -938,6 +951,7 @@ mod tests {
                 limit: 5,
                 page: 0,
                 exclude_spent: false,
+                exclude_inputs: false,
                 version: 0,
             })
             .await
