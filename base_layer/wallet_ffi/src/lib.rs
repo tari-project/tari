@@ -8730,67 +8730,6 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
     }
 }
 
-/// Set the power mode of the wallet to Low Power mode which will reduce the amount of network operations the wallet
-/// performs to conserve power
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns if any pointer argument is null.
-/// # Safety
-/// None
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn wallet_set_low_power_mode(wallet: *mut TariWallet, error_out: *mut c_int) {
-    unsafe {
-        if error_out.is_null() {
-            return;
-        }
-        *error_out = 0;
-
-        if wallet.is_null() {
-            *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-            return;
-        }
-
-        if let Err(e) = (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.set_low_power_mode())
-        {
-            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-        }
-    }
-}
-
-/// Set the power mode of the wallet to Normal Power mode which will then use the standard level of network traffic
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns if any pointer argument is null.
-/// # Safety
-/// None
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, error_out: *mut c_int) {
-    unsafe {
-        if error_out.is_null() {
-            return;
-        }
-        *error_out = 0;
-
-        if wallet.is_null() {
-            *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-            return;
-        }
-
-        if let Err(e) = (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.set_normal_power_mode())
-        {
-            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-        }
-    }
-}
-
 /// Set a Key Value in the Wallet storage used for Client Key Value store
 ///
 /// ## Arguments

@@ -171,13 +171,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// response is handled the transaction is completed and moved to the completed_transaction buffer.
 /// The TransactionService will accept inbound transactions and generate a reply. Received transactions will remain
 /// in the pending_inbound_transactions buffer.
-/// # Fields
-/// `pending_outbound_transactions` - List of transaction protocols sent by this client and waiting response from the
-/// recipient
-/// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
-/// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 pub struct TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
-    config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
@@ -248,15 +242,9 @@ where
             utxo_scanner_handle,
             network,
         };
-        let power_mode = PowerMode::default();
-        let timeout = match power_mode {
-            PowerMode::Low => config.low_power_polling_timeout,
-            PowerMode::Normal => config.broadcast_monitoring_timeout,
-        };
-        let timeout_update_watch = Watch::new(timeout);
+        let timeout_update_watch = Watch::new(config.broadcast_monitoring_timeout);
 
         Ok(Self {
-            config,
             db,
             request_stream: Some(request_stream),
             event_publisher,
@@ -1367,22 +1355,6 @@ where
                     )
                     .await?;
                     Ok(TransactionServiceResponse::TransactionSubmitted)
-                }
-                .await
-            },
-
-            TransactionServiceRequest::SetLowPowerMode => {
-                async {
-                    self.set_power_mode(PowerMode::Low).await?;
-                    Ok(TransactionServiceResponse::LowPowerModeSet)
-                }
-                .await
-            },
-
-            TransactionServiceRequest::SetNormalPowerMode => {
-                async {
-                    self.set_power_mode(PowerMode::Normal).await?;
-                    Ok(TransactionServiceResponse::NormalPowerModeSet)
                 }
                 .await
             },
@@ -3966,16 +3938,6 @@ where
         }
     }
 
-    async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {
-        let timeout = match mode {
-            PowerMode::Low => self.config.low_power_polling_timeout,
-            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
-        };
-        self.timeout_update_watch.send(timeout);
-
-        Ok(())
-    }
-
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
     pub async fn add_utxo_import_transaction_with_status(
         &mut self,
@@ -4556,13 +4518,6 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub wallet_type: Arc<LegacyWalletType>,
     pub utxo_scanner_handle: UtxoScannerHandle,
     pub network: Network,
-}
-
-#[derive(Default, Clone, Copy)]
-enum PowerMode {
-    Low,
-    #[default]
-    Normal,
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result
