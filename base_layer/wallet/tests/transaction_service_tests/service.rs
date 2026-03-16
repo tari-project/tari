@@ -208,7 +208,6 @@ async fn setup_transaction_service(
             TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(5),
                 chain_monitoring_timeout: Duration::from_secs(5),
-                low_power_polling_timeout: Duration::from_secs(20),
                 num_confirmations_required: 0,
                 ..Default::default()
             },
@@ -354,7 +353,6 @@ async fn setup_transaction_service_no_comms(
         chain_monitoring_timeout: Duration::from_secs(5),
         direct_send_timeout: Duration::from_secs(5),
         broadcast_send_timeout: Duration::from_secs(5),
-        low_power_polling_timeout: Duration::from_secs(6),
         transaction_resend_period: Duration::from_secs(200),
         resend_response_cooldown: Duration::from_secs(200),
         pending_transaction_cancellation_timeout: Duration::from_secs(300),

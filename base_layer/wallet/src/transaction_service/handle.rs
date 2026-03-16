@@ -260,8 +260,6 @@ pub enum TransactionServiceRequest {
         optional_tx_id: Option<TxId>,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
-    SetLowPowerMode,
-    SetNormalPowerMode,
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
@@ -509,8 +507,6 @@ impl fmt::Display for TransactionServiceRequest {
                  status: {import_status:?}, height: {current_height:?}, mined at: {mined_timestamp:?}"
             ),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({tx_id})"),
-            Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
-            Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
             Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
@@ -621,8 +617,6 @@ pub enum TransactionServiceResponse {
     BaseNodePublicKeySet,
     UtxoImported(TxId),
     TransactionSubmitted,
-    LowPowerModeSet,
-    NormalPowerModeSet,
     ProtocolsRestarted,
     ReorgProcessed,
     AnyTransaction(Box<Option<WalletTransaction>>),
@@ -1642,20 +1636,6 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn set_low_power_mode(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SetLowPowerMode)
-            .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetLowPowerMode({e})"))??
-        {
-            TransactionServiceResponse::LowPowerModeSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::SetLowPowerMode".to_string(),
-            )),
-        }
-    }
-
     pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
         match self
             .handle
@@ -1681,20 +1661,6 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::ValidationStarted(_) => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::ReValidateRejectedTransactions".to_string(),
-            )),
-        }
-    }
-
-    pub async fn set_normal_power_mode(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SetNormalPowerMode)
-            .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetNormalPowerMode({e})"))??
-        {
-            TransactionServiceResponse::NormalPowerModeSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::SetNormalPowerMode".to_string(),
             )),
         }
     }

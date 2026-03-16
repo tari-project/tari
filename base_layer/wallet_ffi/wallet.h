@@ -3755,33 +3755,6 @@ struct TariSeedWords *wallet_get_seed_words(struct TariWallet *wallet,
                                             int *error_out);
 
 /**
- * Set the power mode of the wallet to Low Power mode which will reduce the amount of network operations the wallet
- * performs to conserve power
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns if any pointer argument is null.
- * # Safety
- * None
- */
-void wallet_set_low_power_mode(struct TariWallet *wallet,
-                               int *error_out);
-
-/**
- * Set the power mode of the wallet to Normal Power mode which will then use the standard level of network traffic
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns if any pointer argument is null.
- * # Safety
- * None
- */
-void wallet_set_normal_power_mode(struct TariWallet *wallet,
-                                  int *error_out);
-
-/**
  * Set a Key Value in the Wallet storage used for Client Key Value store
  *
  * ## Arguments

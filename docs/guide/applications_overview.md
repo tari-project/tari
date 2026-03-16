@@ -376,7 +376,6 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.transactions.chain_monitoring_timeout=<seconds>` - Chain monitoring timeout (default: 60)
 - `wallet.transactions.direct_send_timeout=<seconds>` - Direct send timeout (default: 180)
 - `wallet.transactions.broadcast_send_timeout=<seconds>` - Broadcast send timeout (default: 180)
-- `wallet.transactions.low_power_polling_timeout=<seconds>` - Low power polling timeout (default: 300)
 - `wallet.transactions.transaction_resend_period=<seconds>` - Transaction resend period (default: 600)
 - `wallet.transactions.resend_response_cooldown=<seconds>` - Resend response cooldown (default: 300)
 - `wallet.transactions.pending_transaction_cancellation_timeout=<seconds>` - Pending TX cancellation timeout (default:

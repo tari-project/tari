@@ -532,8 +532,6 @@ unsafe extern "C" {
     pub fn wallet_start_transaction_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong;
     pub fn wallet_restart_transaction_broadcast(wallet: *mut TariWallet, error_out: *mut c_int) -> bool;
     pub fn wallet_get_seed_words(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariSeedWords;
-    pub fn wallet_set_low_power_mode(wallet: *mut TariWallet, error_out: *mut c_int);
-    pub fn wallet_set_normal_power_mode(wallet: *mut TariWallet, error_out: *mut c_int);
     pub fn wallet_set_key_value(
         wallet: *mut TariWallet,
         key: *const c_char,
