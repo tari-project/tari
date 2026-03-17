@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.3](https://github.com/tari-project/tari/compare/v5.3.0-pre.2...v5.3.0-pre.3) (2026-03-17)
+
+
+### Features
+
+* `exclude_inputs` query parameter to `sync_utxos_by_block` endpoint ([#7723](https://github.com/tari-project/tari/issues/7723)) ([363b9fe](https://github.com/tari-project/tari/commit/363b9fedf775683d45430c1df6f0849df335ebee)), closes [tari-project/tari#7722](https://github.com/tari-project/tari/issues/7722)
+* add `export-audit` CLI command for wallet transaction CSV export ([#7700](https://github.com/tari-project/tari/issues/7700)) ([98aebeb](https://github.com/tari-project/tari/commit/98aebebf1ef2c99608230196134cb2ac3512e577)), closes [tari-project/tari#6806](https://github.com/tari-project/tari/issues/6806)
+* provide a way for Xmrig to ask tari node for a block template ([#7714](https://github.com/tari-project/tari/issues/7714)) ([3b6f685](https://github.com/tari-project/tari/commit/3b6f685840a97d47d7bf8d098560449eefa38b17)), closes [tari-project/tari#7102](https://github.com/tari-project/tari/issues/7102)
+* show -p overrides in print-env and improve unknown-field config errors ([#7701](https://github.com/tari-project/tari/issues/7701)) ([c99231a](https://github.com/tari-project/tari/commit/c99231aec78d831918e512e0ce4701da297db3f7)), closes [tari-project/tari#6214](https://github.com/tari-project/tari/issues/6214)
+
+
+### Bug Fixes
+
+* import-paper-wallet when base-dir is absolute ([#7720](https://github.com/tari-project/tari/issues/7720)) ([394e22d](https://github.com/tari-project/tari/commit/394e22d222fc5e03e8e6b714dfc6ecec95ec2520)), closes [applications/minotari_console_wallet/src/automation/commands.rs#L1846](https://github.com/applications/minotari_console_wallet/src/automation/commands.rs/issues/L1846) [tari-project/tari#6563](https://github.com/tari-project/tari/issues/6563)
+* ledger ([#7711](https://github.com/tari-project/tari/issues/7711)) ([ce77655](https://github.com/tari-project/tari/commit/ce7765566dd5b459de35ec5a5ad56e1698bacbf0))
+* remove blocking base node call in TransactionServiceRequest::FetchUnspentOutputs ([#7724](https://github.com/tari-project/tari/issues/7724)) ([b44dee8](https://github.com/tari-project/tari/commit/b44dee8395a8d15c2a447d82039de016209595aa)), closes [tari-project/tari#7568](https://github.com/tari-project/tari/issues/7568)
+* set epoch length to 10 for all networks ([#7725](https://github.com/tari-project/tari/issues/7725)) ([359bf8a](https://github.com/tari-project/tari/commit/359bf8ad6302c4d500b526a8cf8281608ca47017))
+
 ## [5.3.0-pre.2](https://github.com/tari-project/tari/compare/v5.3.0-pre.1...v5.3.0-pre.2) (2026-03-10)
 
 
