@@ -985,11 +985,9 @@ where
             },
 
             TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
-                async {
-                    let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
-                    Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
-                }
-                .await
+                let reply_channel = reply_channel.take().expect("reply_channel is Some");
+                self.handle_fetch_unspent_outputs_request(output_hashes, reply_channel);
+                return Ok(());
             },
 
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
@@ -1717,6 +1715,40 @@ where
         });
     }
 
+    fn handle_fetch_unspent_outputs_request(
+        &self,
+        hashes: Vec<HashOutput>,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) {
+        let connectivity = self.resources.connectivity.clone();
+
+        let query_base_node_fut = async move {
+            let mut res = vec![];
+            let mut client = connectivity.obtain_base_node_wallet_rpc_client().await;
+            for hash in hashes {
+                match client
+                    .fetch_utxo(hash.to_vec())
+                    .await
+                    .map_err(|e| TransactionServiceError::Other(e.to_string()))?
+                {
+                    Some(output) => res.push(output),
+                    None => warn!(target: LOG_TARGET, "UTXO not found for hash: {hash}"),
+                }
+            }
+            Ok(TransactionServiceResponse::UnspentOutputs(res))
+        };
+
+        tokio::spawn(async move {
+            let resp = query_base_node_fut.await;
+            if reply_channel.send(resp).is_err() {
+                warn!(
+                    target: LOG_TARGET,
+                    "handle_fetch_unspent_outputs_request: service reply cancelled"
+                );
+            }
+        });
+    }
+
     async fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
@@ -1764,29 +1796,6 @@ where
                     });
             },
         }
-    }
-
-    async fn fetch_unspent_outputs_from_node(
-        &mut self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, TransactionServiceError> {
-        let mut res = vec![];
-        for hash in hashes {
-            match self
-                .resources
-                .connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .fetch_utxo(hash.to_vec())
-                .await
-                .map_err(|e| TransactionServiceError::Other(e.to_string()))?
-            {
-                Some(output) => res.push(output),
-                None => warn!(target: LOG_TARGET, "UTXO not found for hash: {hash}"),
-            }
-        }
-
-        Ok(res)
     }
 
     /// Creates an encumbered uninitialized transaction
