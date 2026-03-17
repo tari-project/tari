@@ -50,6 +50,9 @@ pub struct SyncUtxosByBlockQueryParams {
     #[param(value_type = bool, example = false)]
     pub exclude_spent: bool,
     #[serde(default)]
+    #[param(value_type = bool, example = false)]
+    pub exclude_inputs: bool,
+    #[serde(default)]
     pub version: u8,
 }
 
@@ -60,6 +63,7 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
             limit: params.limit,
             page: params.page,
             exclude_spent: params.exclude_spent,
+            exclude_inputs: params.exclude_inputs,
             version: params.version,
         }
     }
@@ -123,13 +127,15 @@ impl Display for SyncUtxosByBlockQueryParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "SyncUtxosByBlockQueryParams {{ start_header_hash: {}, limit: {}, page: {}, exclude_spent: {} }}",
+            "SyncUtxosByBlockQueryParams {{ start_header_hash: {}, limit: {}, page: {}, exclude_spent: {}, \
+             exclude_inputs: {} }}",
             HashOutput::try_from(self.start_header_hash.as_slice())
                 .unwrap_or_default()
                 .to_hex(),
             self.limit,
             self.page,
-            self.exclude_spent
+            self.exclude_spent,
+            self.exclude_inputs
         )
     }
 }

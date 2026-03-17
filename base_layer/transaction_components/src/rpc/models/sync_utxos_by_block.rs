@@ -16,6 +16,8 @@ pub struct SyncUtxosByBlockRequest {
     #[serde(default)]
     pub exclude_spent: bool,
     #[serde(default)]
+    pub exclude_inputs: bool,
+    #[serde(default)]
     pub version: u8,
 }
 

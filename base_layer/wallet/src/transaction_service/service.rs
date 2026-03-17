@@ -171,13 +171,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// response is handled the transaction is completed and moved to the completed_transaction buffer.
 /// The TransactionService will accept inbound transactions and generate a reply. Received transactions will remain
 /// in the pending_inbound_transactions buffer.
-/// # Fields
-/// `pending_outbound_transactions` - List of transaction protocols sent by this client and waiting response from the
-/// recipient
-/// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
-/// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 pub struct TransactionService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
-    config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
@@ -248,15 +242,9 @@ where
             utxo_scanner_handle,
             network,
         };
-        let power_mode = PowerMode::default();
-        let timeout = match power_mode {
-            PowerMode::Low => config.low_power_polling_timeout,
-            PowerMode::Normal => config.broadcast_monitoring_timeout,
-        };
-        let timeout_update_watch = Watch::new(timeout);
+        let timeout_update_watch = Watch::new(config.broadcast_monitoring_timeout);
 
         Ok(Self {
-            config,
             db,
             request_stream: Some(request_stream),
             event_publisher,
@@ -997,11 +985,9 @@ where
             },
 
             TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
-                async {
-                    let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
-                    Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
-                }
-                .await
+                let reply_channel = reply_channel.take().expect("reply_channel is Some");
+                self.handle_fetch_unspent_outputs_request(output_hashes, reply_channel);
+                return Ok(());
             },
 
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
@@ -1371,22 +1357,6 @@ where
                 .await
             },
 
-            TransactionServiceRequest::SetLowPowerMode => {
-                async {
-                    self.set_power_mode(PowerMode::Low).await?;
-                    Ok(TransactionServiceResponse::LowPowerModeSet)
-                }
-                .await
-            },
-
-            TransactionServiceRequest::SetNormalPowerMode => {
-                async {
-                    self.set_power_mode(PowerMode::Normal).await?;
-                    Ok(TransactionServiceResponse::NormalPowerModeSet)
-                }
-                .await
-            },
-
             TransactionServiceRequest::RestartBroadcastProtocols => {
                 async {
                     self.restart_broadcast_protocols(transaction_broadcast_join_handles)?;
@@ -1745,6 +1715,40 @@ where
         });
     }
 
+    fn handle_fetch_unspent_outputs_request(
+        &self,
+        hashes: Vec<HashOutput>,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) {
+        let connectivity = self.resources.connectivity.clone();
+
+        let query_base_node_fut = async move {
+            let mut res = vec![];
+            let mut client = connectivity.obtain_base_node_wallet_rpc_client().await;
+            for hash in hashes {
+                match client
+                    .fetch_utxo(hash.to_vec())
+                    .await
+                    .map_err(|e| TransactionServiceError::Other(e.to_string()))?
+                {
+                    Some(output) => res.push(output),
+                    None => warn!(target: LOG_TARGET, "UTXO not found for hash: {hash}"),
+                }
+            }
+            Ok(TransactionServiceResponse::UnspentOutputs(res))
+        };
+
+        tokio::spawn(async move {
+            let resp = query_base_node_fut.await;
+            if reply_channel.send(resp).is_err() {
+                warn!(
+                    target: LOG_TARGET,
+                    "handle_fetch_unspent_outputs_request: service reply cancelled"
+                );
+            }
+        });
+    }
+
     async fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
@@ -1792,29 +1796,6 @@ where
                     });
             },
         }
-    }
-
-    async fn fetch_unspent_outputs_from_node(
-        &mut self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, TransactionServiceError> {
-        let mut res = vec![];
-        for hash in hashes {
-            match self
-                .resources
-                .connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .fetch_utxo(hash.to_vec())
-                .await
-                .map_err(|e| TransactionServiceError::Other(e.to_string()))?
-            {
-                Some(output) => res.push(output),
-                None => warn!(target: LOG_TARGET, "UTXO not found for hash: {hash}"),
-            }
-        }
-
-        Ok(res)
     }
 
     /// Creates an encumbered uninitialized transaction
@@ -3966,16 +3947,6 @@ where
         }
     }
 
-    async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {
-        let timeout = match mode {
-            PowerMode::Low => self.config.low_power_polling_timeout,
-            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
-        };
-        self.timeout_update_watch.send(timeout);
-
-        Ok(())
-    }
-
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
     pub async fn add_utxo_import_transaction_with_status(
         &mut self,
@@ -4556,13 +4527,6 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub wallet_type: Arc<LegacyWalletType>,
     pub utxo_scanner_handle: UtxoScannerHandle,
     pub network: Network,
-}
-
-#[derive(Default, Clone, Copy)]
-enum PowerMode {
-    Low,
-    #[default]
-    Normal,
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result

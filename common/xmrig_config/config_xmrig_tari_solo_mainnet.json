@@ -1,0 +1,17 @@
+{
+    "autosave": true,
+    "cpu": true,
+    "opencl": false,
+    "cuda": false,
+    "log-file": "./xmrig.log",
+    "pools": [
+        {
+            "coin": "tari",
+            "url": "127.0.0.1:18085",
+            "user": "YOUR_TARI_WALLET_ADDRESS",
+            "pass": "worker_name",
+            "tls": false,
+            "daemon": true
+        }
+    ]
+}

@@ -2238,7 +2238,12 @@ pub async fn command_runner(
                     let shutdown = Shutdown::new();
                     let shutdown_signal = shutdown.to_signal();
                     let mut new_config = config.clone();
-                    new_config.set_base_path(temp_path.clone());
+                    // Directly set paths to temp_path. We cannot use set_base_path here because
+                    // config paths may already be absolute (set during wallet initialization), and
+                    // set_base_path only modifies relative paths.
+                    new_config.data_dir = temp_path.clone();
+                    new_config.config_dir = temp_path.join("config");
+                    new_config.db_file = temp_path.join("console_wallet.db");
 
                     let peer_config = PeerSeedsConfig::default();
                     let new_wallet = init_wallet(

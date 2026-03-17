@@ -40,6 +40,7 @@ mod recovery;
 mod utils;
 
 mod http;
+mod xmrig_proxy;
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
@@ -115,6 +116,7 @@ pub async fn run_base_node(
 }
 
 /// Sets up the base node and runs the cli_loop
+#[allow(clippy::too_many_lines)]
 pub async fn run_base_node_with_cli(
     node_identity: Arc<NodeIdentity>,
     config: Arc<ApplicationConfig>,
@@ -194,7 +196,69 @@ pub async fn run_base_node_with_cli(
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
     if config.base_node.grpc_enabled {
-        task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
+        task::spawn(run_grpc(
+            grpc,
+            grpc_address.clone(),
+            auth.clone(),
+            tls_identity,
+            shutdown.to_signal(),
+        ));
+    }
+
+    // Start the built-in XMRig proxy if enabled
+    if config.base_node.xmrig_proxy_enabled {
+        if config.base_node.xmrig_proxy_wallet_payment_address.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "xmrig_proxy_enabled is true but xmrig_proxy_wallet_payment_address is not set. XMRig proxy will not \
+                 start."
+            );
+        } else {
+            let proxy_wallet_address = config.base_node.xmrig_proxy_wallet_payment_address.clone();
+            let proxy_listener = config.base_node.xmrig_proxy_address.clone();
+            let proxy_extra = config.base_node.xmrig_proxy_coinbase_extra.as_bytes().to_vec();
+            let proxy_range_proof = config.base_node.xmrig_proxy_range_proof_type;
+            let signal = shutdown.to_signal();
+            let network = config.base_node.network;
+            let node_service = ctx.local_node();
+            let consensus_rules = ctx.consensus_rules().clone();
+            let state_machine = ctx.state_machine();
+
+            match proxy_wallet_address.parse::<tari_common_types::tari_address::TariAddress>() {
+                Ok(wallet_addr) if wallet_addr.network() == network => {
+                    task::spawn(async move {
+                        if let Err(e) = xmrig_proxy::run_xmrig_proxy(
+                            node_service,
+                            consensus_rules,
+                            state_machine,
+                            proxy_listener,
+                            wallet_addr,
+                            proxy_extra,
+                            proxy_range_proof,
+                            signal,
+                        )
+                        .await
+                        {
+                            error!(target: LOG_TARGET, "XMRig proxy error: {e}");
+                        }
+                    });
+                },
+                Ok(wallet_addr) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Invalid xmrig_proxy_wallet_payment_address: address network '{}' does not match node \
+                         network '{network}'. XMRig proxy will not start.",
+                        wallet_addr.network()
+                    );
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Invalid xmrig_proxy_wallet_payment_address: {e}. XMRig proxy will not start."
+                    );
+                },
+            }
+        }
     }
 
     let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
