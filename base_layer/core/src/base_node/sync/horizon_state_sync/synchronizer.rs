@@ -403,6 +403,41 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
     }
 
+    /// Removes any outputs stored in the given block height range from the database.
+    /// On a fresh start all `fetch_outputs_in_block` calls return empty, so this is a no-op.
+    async fn clean_up_height_range(&mut self, start_height: u64, end_height: u64) -> Result<(), HorizonSyncError> {
+        let db = self.db().clone();
+        let mut txn = db.write_transaction();
+        let mut count: u64 = 0;
+        for height in start_height..=end_height {
+            let header = db
+                .fetch_header(height)
+                .await?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "Header",
+                    field: "height",
+                    value: height.to_string(),
+                })?;
+            let outputs = db.fetch_outputs_in_block(header.hash()).await?;
+            for output in outputs {
+                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+                count += 1;
+                if count % PROGRESS_REPORT_INTERVAL == 0 {
+                    txn.commit().await?;
+                    txn = db.write_transaction();
+                }
+            }
+        }
+        txn.commit().await?;
+        if count > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Cleaned up {} partial output(s) from height range {}-{}", count, start_height, end_height
+            );
+        }
+        Ok(())
+    }
+
     async fn prune_if_needed(&mut self) -> Result<(), HorizonSyncError> {
         let local_metadata = self.db.get_chain_metadata().await?;
         let new_prune_height = cmp::min(local_metadata.best_block_height(), self.horizon_sync_height);
@@ -664,6 +699,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Ok(());
         }
 
+        // Clean up any outputs left by a previous interrupted sync in the first tranche.
+        let first_tranche_end_height = cmp::min(
+            sync_start_height
+                .saturating_add(HORIZON_SYNC_TRANCHE_SIZE)
+                .saturating_sub(1),
+            to_header.height,
+        );
+        self.clean_up_height_range(sync_start_height, first_tranche_end_height)
+            .await?;
+
         self.num_outputs = to_header.output_smt_size;
 
         let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
@@ -803,43 +848,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                 ));
                             }
 
-                            let is_already_persisted = match self
-                                .db()
-                                .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
-                                .await?
-                            {
-                                Some(existing_hash) if existing_hash == output_hash => {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Skipping already persisted UTXO `{}` during horizon output sync resume",
-                                        output_hash
-                                    );
-                                    true
-                                },
-                                Some(existing_hash) => {
-                                    return Err(HorizonSyncError::IncorrectResponse(format!(
-                                        "Peer sent conflicting output commitment during horizon sync (existing: {}, \
-                                         new: {})",
-                                        existing_hash, output_hash,
-                                    )));
-                                },
-                                None => false,
-                            };
+                            let constants = self.rules.consensus_constants(current_header.height).clone();
+                            validate_output_version(&constants, &output)?;
+                            validate_individual_output(&output, &constants)?;
+                            batch_verify_range_proofs(&self.prover, &[&output])?;
 
-                            if !is_already_persisted {
-                                let constants = self.rules.consensus_constants(current_header.height).clone();
-                                validate_output_version(&constants, &output)?;
-                                validate_individual_output(&output, &constants)?;
-                                batch_verify_range_proofs(&self.prover, &[&output])?;
-
-                                txn.insert_output_via_horizon_sync(
-                                    output,
-                                    current_header.hash(),
-                                    current_header.height,
-                                    current_header.timestamp.as_u64(),
-                                );
-                                batch_op_counter += 1;
-                            }
+                            txn.insert_output_via_horizon_sync(
+                                output,
+                                current_header.hash(),
+                                current_header.height,
+                                current_header.timestamp.as_u64(),
+                            );
+                            batch_op_counter += 1;
                         }
                     },
                     Txo::Commitment(commitment_bytes) => {
