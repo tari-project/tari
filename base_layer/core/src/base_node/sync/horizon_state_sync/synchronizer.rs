@@ -64,6 +64,7 @@ use crate::{
         BlockchainBackend,
         ChainStorageError,
         HorizonStateTreeUpdate,
+        HorizonSyncOutputCheckpoint,
         MmrTree,
         async_db::AsyncBlockchainDb,
     },
@@ -335,7 +336,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // Determine where to stop cleaning. If a tranche checkpoint exists, stop at the checkpoint block
         // Otherwise fall back to the current chain tip.
         let stop_hash = match self.db.fetch_horizon_sync_output_checkpoint().await {
-            Ok(Some((h, _))) => match self.db.fetch_header(h).await {
+            Ok(Some(cp)) => match self.db.fetch_header(cp.checkpoint_height).await {
                 Ok(Some(header)) => Some(header.hash()),
                 _ => None,
             },
@@ -597,28 +598,50 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
 
-        let raw_checkpoint = db.fetch_horizon_sync_output_checkpoint().await?;
-        let checkpoint_height = match raw_checkpoint {
-            Some((h, stored_hash)) => match db.fetch_header(h).await? {
-                Some(header) if header.hash() == stored_hash => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Resuming output sync from checkpoint at height {h}, skipping already committed tranches"
-                    );
-                    Some(h)
-                },
-                _ => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Horizon sync checkpoint at height {h} is no longer on the canonical chain (reorg \
-                         detected). Discarding checkpoint and restarting output sync from scratch."
-                    );
-                    db.write_transaction()
-                        .clear_horizon_sync_output_checkpoint()
-                        .commit()
-                        .await?;
-                    None
-                },
+        let stored_checkpoint = db.fetch_horizon_sync_output_checkpoint().await?;
+
+        let checkpoint_height = match stored_checkpoint {
+            Some(ref cp) if cp.sync_target_height == to_header.height && cp.sync_target_hash == to_header.hash() => {
+                match db.fetch_header(cp.checkpoint_height).await? {
+                    Some(header) if header.hash() == cp.checkpoint_hash => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Resuming output sync from checkpoint at height {}, target unchanged",
+                            cp.checkpoint_height
+                        );
+                        Some(cp.checkpoint_height)
+                    },
+                    _ => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Horizon sync checkpoint at height {} is no longer on the canonical chain (reorg \
+                             detected). Discarding checkpoint and restarting output sync from scratch.",
+                            cp.checkpoint_height
+                        );
+                        db.write_transaction()
+                            .clear_horizon_sync_output_checkpoint()
+                            .commit()
+                            .await?;
+                        None
+                    },
+                }
+            },
+            Some(ref cp) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Horizon sync target changed from height {} to {}. Discarding checkpoint and cleaning up \
+                     partial outputs.",
+                    cp.sync_target_height,
+                    to_header.height
+                );
+                db.write_transaction()
+                    .clear_horizon_sync_output_checkpoint()
+                    .commit()
+                    .await?;
+                if let Ok(Some(cleanup_header)) = db.fetch_header(cp.checkpoint_height).await {
+                    self.clean_up_failed_output_sync(&cleanup_header).await;
+                }
+                None
             },
             None => None,
         };
@@ -922,7 +945,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             // We intentionally do not checkpoint the final tranche before verification.
             // If the final root verification fails, the ENTIRE state is considered poisoned.
             if tranche_end_height < to_header.height {
-                txn.set_horizon_sync_output_checkpoint(tranche_end_height, tranche_end_header.hash());
+                txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+                    checkpoint_height: tranche_end_height,
+                    checkpoint_hash: tranche_end_header.hash(),
+                    sync_target_height: to_header.height,
+                    sync_target_hash: to_header.hash(),
+                });
             }
             txn.commit().await?;
             jmt_version = tranche_end_height;
@@ -959,7 +987,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         // Mark output sync as complete
         db.write_transaction()
-            .set_horizon_sync_output_checkpoint(to_header.height, to_header.hash())
+            .set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+                checkpoint_height: to_header.height,
+                checkpoint_hash: to_header.hash(),
+                sync_target_height: to_header.height,
+                sync_target_hash: to_header.hash(),
+            })
             .commit()
             .await?;
 

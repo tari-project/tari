@@ -71,6 +71,7 @@ use crate::{
         DbTransaction,
         DbValue,
         HorizonData,
+        HorizonSyncOutputCheckpoint,
         InputMinedInfo,
         LMDBDatabase,
         MinedInfo,
@@ -475,7 +476,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_horizon_data()
     }
 
-    fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<(u64, FixedHash)>, ChainStorageError> {
+    fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<HorizonSyncOutputCheckpoint>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_horizon_sync_output_checkpoint()
     }
 

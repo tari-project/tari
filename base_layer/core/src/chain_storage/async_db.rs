@@ -65,6 +65,7 @@ use crate::{
         DbTransaction,
         HorizonData,
         HorizonStateTreeUpdate,
+        HorizonSyncOutputCheckpoint,
         MmrTree,
         TargetDifficulties,
         blockchain_database::MmrRoots,
@@ -161,7 +162,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_horizon_data() -> HorizonData, "fetch_horizon_data");
 
-    make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<(u64, FixedHash)>, "fetch_horizon_sync_output_checkpoint");
+    make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<HorizonSyncOutputCheckpoint>, "fetch_horizon_sync_output_checkpoint");
 
     make_async_fn!(verify_horizon_sync_output_root(version: u64, expected_root: HashOutput) -> (), "verify_horizon_sync_output_root");
 
@@ -464,8 +465,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn set_horizon_sync_output_checkpoint(&mut self, height: u64, hash: FixedHash) -> &mut Self {
-        self.transaction.set_horizon_sync_output_checkpoint(height, hash);
+    pub fn set_horizon_sync_output_checkpoint(&mut self, checkpoint: HorizonSyncOutputCheckpoint) -> &mut Self {
+        self.transaction.set_horizon_sync_output_checkpoint(checkpoint);
         self
     }
 

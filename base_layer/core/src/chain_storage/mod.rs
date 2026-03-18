@@ -53,7 +53,14 @@ mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
 mod consts;
 mod db_transaction;
-pub use db_transaction::{DbKey, DbTransaction, DbValue, HorizonStateTreeUpdate, WriteOperation};
+pub use db_transaction::{
+    DbKey,
+    DbTransaction,
+    DbValue,
+    HorizonStateTreeUpdate,
+    HorizonSyncOutputCheckpoint,
+    WriteOperation,
+};
 mod mmr_tree;
 pub use mmr_tree::MmrTree;
 mod error;

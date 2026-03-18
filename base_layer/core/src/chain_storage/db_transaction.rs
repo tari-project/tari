@@ -27,6 +27,7 @@ use std::{
 };
 
 use primitive_types::U512;
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
@@ -36,6 +37,22 @@ use crate::{
     blocks::UpdateBlockAccumulatedData,
     chain_storage::{HorizonData, Reorg, error::ChainStorageError},
 };
+
+/// Persisted state for an in-progress horizon output sync session.
+/// Couples the last verified tranche position with the sync target so that
+/// a checkpoint is never reused for a different `to_header`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HorizonSyncOutputCheckpoint {
+    /// Height of the last fully-verified and committed output tranche.
+    pub checkpoint_height: u64,
+    /// Block hash at `checkpoint_height`, used to detect chain reorgs between sessions.
+    pub checkpoint_hash: FixedHash,
+    /// Height of the `to_header` this sync session is targeting.
+    pub sync_target_height: u64,
+    /// Block hash of the `to_header` this sync session is targeting.
+    pub sync_target_hash: FixedHash,
+}
+
 #[derive(Debug)]
 pub struct DbTransaction {
     operations: Vec<WriteOperation>,
@@ -282,9 +299,9 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_horizon_sync_output_checkpoint(&mut self, height: u64, hash: FixedHash) -> &mut Self {
+    pub fn set_horizon_sync_output_checkpoint(&mut self, checkpoint: HorizonSyncOutputCheckpoint) -> &mut Self {
         self.operations.push(WriteOperation::SetHorizonSyncOutputCheckpoint {
-            checkpoint: Some((height, hash)),
+            checkpoint: Some(checkpoint),
         });
         self
     }
@@ -415,7 +432,7 @@ pub enum WriteOperation {
     },
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
-        checkpoint: Option<(u64, FixedHash)>,
+        checkpoint: Option<HorizonSyncOutputCheckpoint>,
     },
 }
 
@@ -523,13 +540,14 @@ impl fmt::Display for WriteOperation {
             DeleteValidatorNode { public_key, .. } => {
                 write!(f, "Delete validator node with public key: {public_key}")
             },
-            SetHorizonSyncOutputCheckpoint {
-                checkpoint: Some((h, hash)),
-            } => {
+            SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,
-                    "Set horizon sync output checkpoint to height {h} ({})",
-                    hash.to_hex()
+                    "Set horizon sync output checkpoint to height {} ({}) targeting height {} ({})",
+                    cp.checkpoint_height,
+                    cp.checkpoint_hash.to_hex(),
+                    cp.sync_target_height,
+                    cp.sync_target_hash.to_hex()
                 )
             },
             SetHorizonSyncOutputCheckpoint { checkpoint: None } => {
