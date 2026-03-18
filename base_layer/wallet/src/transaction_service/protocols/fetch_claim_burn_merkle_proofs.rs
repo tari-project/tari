@@ -213,7 +213,7 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(burn_proofs_dir: P, proof: DbB
         },
         value: value.as_u64(),
         sender_offset_public_key: proof.burn_proof.sender_offset_public_key,
-        encrypted_data,
+        encrypted_data: encrypted_data.into_vec(),
     };
 
     fs::write(&final_path, serde_json::to_vec_pretty(&complete_proof)?).await?;

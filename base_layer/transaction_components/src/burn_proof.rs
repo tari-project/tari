@@ -22,11 +22,10 @@
 
 use tari_common_types::{
     burn_proof::EncodedMerkleProof,
+    serializers,
     types::{CompressedCommitment, CompressedPublicKey},
 };
 use tari_crypto::ristretto::CompressedRistrettoSchnorr;
-
-use crate::transaction_components::EncryptedData;
 
 #[derive(Debug, Clone, serde::Deserialize, serde:: Serialize)]
 pub struct MinotariBurnClaimProof {
@@ -38,7 +37,8 @@ pub struct MinotariBurnClaimProof {
     pub kernel: AbridgedTransactionKernel,
     pub value: u64,
     pub sender_offset_public_key: CompressedPublicKey,
-    pub encrypted_data: EncryptedData,
+    #[serde(with = "serializers::base64")]
+    pub encrypted_data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
