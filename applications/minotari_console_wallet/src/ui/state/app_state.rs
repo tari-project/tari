@@ -23,7 +23,6 @@
 #![allow(clippy::indexing_slicing)]
 use std::{
     collections::{HashMap, VecDeque},
-    path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
@@ -222,7 +221,6 @@ impl AppState {
 
     pub async fn send_burn_transaction(
         &mut self,
-        burn_proof_filepath: Option<String>,
         claim_public_key: Option<String>,
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
@@ -232,19 +230,6 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-
-        let burn_proof_filepath = match burn_proof_filepath {
-            None => None,
-            Some(path) => {
-                let path = PathBuf::from(path);
-
-                if path.exists() {
-                    return Err(UiError::BurntProofFileExists);
-                }
-
-                Some(path)
-            },
-        };
 
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
@@ -261,7 +246,6 @@ impl AppState {
             .transpose()?;
 
         send_burn_transaction_task(
-            burn_proof_filepath,
             claim_public_key,
             MicroMinotari::from(amount),
             selection_criteria,

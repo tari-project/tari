@@ -25,24 +25,4 @@ mod debouncer;
 mod tasks;
 mod wallet_event_monitor;
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::serializers;
-
 pub use self::app_state::*;
-
-#[derive(Serialize, Deserialize)]
-pub struct SignatureBase64 {
-    #[serde(with = "serializers::base64")]
-    pub public_nonce: Vec<u8>,
-    #[serde(with = "serializers::base64")]
-    pub signature: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct BurntProofBase64 {
-    #[serde(with = "serializers::base64")]
-    pub claim_public_key: Vec<u8>,
-    #[serde(with = "serializers::base64")]
-    pub commitment: Vec<u8>,
-    pub ownership_proof: SignatureBase64,
-}

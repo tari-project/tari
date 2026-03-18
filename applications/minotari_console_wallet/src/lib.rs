@@ -100,6 +100,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         view_private_key: None,
         spend_key: None,
         birthday: None,
+        burn_proof_out: None,
         libtor_data_dir: None,
         skip_recovery: false,
         print_env: false,

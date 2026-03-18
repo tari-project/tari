@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2026. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,46 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use minotari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::OutputManagerError,
-    transaction_service::error::TransactionServiceError,
+use tari_common_types::{
+    burn_proof::EncodedMerkleProof,
+    types::{CompressedCommitment, CompressedPublicKey},
 };
-use tari_common_types::tari_address::TariAddressError;
-use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
-use tari_utilities::hex::HexError;
-use thiserror::Error;
+use tari_crypto::ristretto::CompressedRistrettoSchnorr;
 
-#[derive(Error, Debug)]
-pub enum UiError {
-    #[error(transparent)]
-    TransactionService(#[from] TransactionServiceError),
-    #[error(transparent)]
-    OutputManager(#[from] OutputManagerError),
-    #[error(transparent)]
-    Connectivity(#[from] ConnectivityError),
-    #[error("Conversion: `{0}`")]
-    HexError(String),
-    #[error(transparent)]
-    WalletError(#[from] WalletError),
-    #[error(transparent)]
-    WalletStorageError(#[from] WalletStorageError),
-    #[error(transparent)]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("Could not parse Tari Address: `{0}`")]
-    TariAddressParseError(#[from] TariAddressError),
-    #[error("Channel send error: `{0}`")]
-    SendError(String),
-    #[error("Transaction error: `{0}`")]
-    TransactionError(String),
-    #[error("Couldn't read wallet type")]
-    WalletTypeError,
-    #[error("Could not convert string into Public Key")]
-    PublicKeyParseError,
+use crate::transaction_components::EncryptedData;
+
+#[derive(Debug, Clone, serde::Deserialize, serde:: Serialize)]
+pub struct MinotariBurnClaimProof {
+    /// This is typically the public nonce that the UTXO was burnt with
+    pub burn_public_key: CompressedPublicKey,
+    pub commitment: CompressedCommitment,
+    pub ownership_proof: CompressedRistrettoSchnorr,
+    pub encoded_merkle_proof: EncodedMerkleProof,
+    pub kernel: AbridgedTransactionKernel,
+    pub value: u64,
+    pub sender_offset_public_key: CompressedPublicKey,
+    pub encrypted_data: EncryptedData,
 }
 
-impl From<HexError> for UiError {
-    fn from(err: HexError) -> Self {
-        UiError::HexError(err.to_string())
-    }
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AbridgedTransactionKernel {
+    pub version: u8,
+    pub fee: u64,
+    pub lock_height: u64,
+    pub excess: CompressedCommitment,
+    pub excess_sig: CompressedRistrettoSchnorr,
 }

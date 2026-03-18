@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, time::Duration};
+use std::{fmt, path::PathBuf, time::Duration};
 
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -66,6 +66,10 @@ pub struct TransactionServiceConfig {
     /// This is the timeout period that will be used to re-submit transactions not found in the mempool
     #[serde(with = "serializers::seconds")]
     pub transaction_mempool_resubmission_window: Duration,
+    /// Directory where burn proof files are written after a burn transaction completes. The L2 wallet daemon reads
+    /// this directory to present claimable proofs. If not set, defaults to the platform data directory
+    /// (e.g. ~/.local/share/tari/burn_proofs on Linux, ~/Library/Application Support/tari/burn_proofs on macOS).
+    pub burn_proof_output_dir: PathBuf,
 }
 
 impl Default for TransactionServiceConfig {
@@ -83,8 +87,16 @@ impl Default for TransactionServiceConfig {
             transaction_routing_mechanism: TransactionRoutingMechanism::default(),
             transaction_event_channel_size: 1000,
             transaction_mempool_resubmission_window: Duration::from_secs(600),
+            burn_proof_output_dir: default_burn_proofs_dir(),
         }
     }
+}
+
+pub fn default_burn_proofs_dir() -> PathBuf {
+    dirs_next::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("tari")
+        .join("burn_proofs")
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize, Default)]

@@ -77,6 +77,7 @@ chacha20poly1305 = "0.10.1"
 zeroize = "1"
 url = { version = "2.5.4", features = ["default", "serde"] }
 uuid = "1.17.0"
+dirs-next = "1.0.2"
 [build-dependencies]
 tari_common = { workspace = true, features = [
     "build",

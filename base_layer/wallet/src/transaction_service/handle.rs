@@ -668,7 +668,7 @@ impl Display for TransactionSendStatus {
 }
 
 /// Events that can be published on the Text Message Service Event Stream
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
@@ -703,6 +703,10 @@ pub enum TransactionEvent {
     },
     TransactionValidationCompleted(OperationId),
     TransactionValidationFailed(OperationId, u64),
+    TransactionBurnConfirmed {
+        output_hash: HashOutput,
+        commitment: Box<CompressedCommitment>,
+    },
     Error(String),
 }
 
@@ -772,6 +776,9 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionValidationCompleted(operation_id) => {
                 write!(f, "Transaction validation(#{operation_id}) completed")
+            },
+            TransactionEvent::TransactionBurnConfirmed { output_hash, .. } => {
+                write!(f, "Transaction Burn Confirmed for output hash {output_hash}")
             },
             TransactionEvent::TransactionValidationFailed(operation_id, reason) => {
                 write!(f, "Transaction validation(#{operation_id}) failed: {reason}")
