@@ -344,9 +344,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         };
         let stop_hash = match stop_hash {
             Some(h) => h,
-            None => match self.db.fetch_tip_header().await {
-                Ok(header) => *header.hash(),
-                Err(_) => return,
+            None => match self.db.fetch_header(0).await {
+                Ok(Some(header)) => header.hash(),
+                _ => return,
             },
         };
 
@@ -681,11 +681,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             None => None,
         };
         let (sync_start_height, mut jmt_version) = match checkpoint_height {
-            Some(h) => (h + 1, h),
+            Some(h) => {
+                // Only the in-progress (first resumption) tranche may have partial output data.
+                let first_tranche_end = cmp::min(
+                    (h + 1).saturating_add(HORIZON_SYNC_TRANCHE_SIZE).saturating_sub(1),
+                    to_header.height,
+                );
+                self.clean_up_height_range(h + 1, first_tranche_end).await?;
+                (h + 1, h)
+            },
             None => {
-                let tip_header = db.fetch_tip_header().await?;
-                let tip_height = tip_header.height();
-                (tip_height + 1, tip_height)
+                self.clean_up_height_range(0, to_header.height).await?;
+                (0, 0)
             },
         };
 
@@ -698,16 +705,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             );
             return Ok(());
         }
-
-        // Clean up any outputs left by a previous interrupted sync in the first tranche.
-        let first_tranche_end_height = cmp::min(
-            sync_start_height
-                .saturating_add(HORIZON_SYNC_TRANCHE_SIZE)
-                .saturating_sub(1),
-            to_header.height,
-        );
-        self.clean_up_height_range(sync_start_height, first_tranche_end_height)
-            .await?;
 
         self.num_outputs = to_header.output_smt_size;
 

@@ -85,13 +85,30 @@ impl DecideNextSync {
                     "Unable to find any appropriate sync peers for horizon sync, trying for block sync"
                 );
             } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "Proceeding to horizon sync with {} sync peer(s) with a best latency of {:.2?}",
-                    sync_peers.len(),
-                    sync_peers.first().map(|p| p.latency()).unwrap_or_default()
-                );
-                return ProceedToHorizonSync(sync_peers);
+                // If our tip already covers the new horizon we have the full blocks locally — use block
+                // sync + prune rather than re-downloading the entire aggregate snapshot from genesis.
+                let best_peer_tip = sync_peers
+                    .iter()
+                    .map(|p| p.claimed_chain_metadata().best_block_height())
+                    .max()
+                    .unwrap_or(0);
+                let new_horizon = local_metadata.pruned_height_at_given_chain_tip(best_peer_tip);
+                if local_metadata.best_block_height() >= new_horizon {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Local tip {} >= new horizon {}, using block sync + prune instead of horizon sync",
+                        local_metadata.best_block_height(),
+                        new_horizon
+                    );
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Proceeding to horizon sync with {} sync peer(s) with a best latency of {:.2?}",
+                        sync_peers.len(),
+                        sync_peers.first().map(|p| p.latency()).unwrap_or_default()
+                    );
+                    return ProceedToHorizonSync(sync_peers);
+                }
             }
         }
 
