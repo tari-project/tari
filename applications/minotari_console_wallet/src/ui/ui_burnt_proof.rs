@@ -22,13 +22,13 @@
 
 use chrono::NaiveDateTime;
 use serde::Serialize;
-use tari_common_types::burn_proof::{BurnClaimProof, EncodedMerkleProof};
+use tari_common_types::burn_proof::{EncodedMerkleProof, PartialBurnClaimProof};
 use tari_transaction_components::transaction_components::TransactionKernel;
 
 #[derive(Debug, Clone)]
 pub struct UiBurnProof {
     pub id: i32,
-    pub proof: BurnClaimProof,
+    pub proof: PartialBurnClaimProof,
     pub encoded_merkle_proof: Option<EncodedMerkleProof>,
     pub kernel: TransactionKernel,
     pub burned_at: NaiveDateTime,
@@ -47,7 +47,7 @@ impl UiBurnProof {
 /// Used to save the proof to a file
 #[derive(Debug, Clone, Serialize)]
 pub struct ConfirmedBurnClaimProof<'a> {
-    pub claim_proof: &'a BurnClaimProof,
+    pub claim_proof: &'a PartialBurnClaimProof,
     pub merkle_proof: &'a EncodedMerkleProof,
     pub kernel: &'a TransactionKernel,
 }

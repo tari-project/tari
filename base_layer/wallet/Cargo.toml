@@ -35,12 +35,12 @@ tari_sidechain = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
 minotari_node_wallet_client = { workspace = true }
-minotari_ledger_wallet_common = { workspace = true}
+minotari_ledger_wallet_common = { workspace = true }
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.4"
 #tokio = { workspace = true, features = ["sync", "macros", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
-tokio = { workspace = true, features = ["sync", "macros"] }
+tokio = { workspace = true, features = ["sync", "macros", "fs"] }
 
 anyhow = { workspace = true }
 async-trait = "0.1.50"

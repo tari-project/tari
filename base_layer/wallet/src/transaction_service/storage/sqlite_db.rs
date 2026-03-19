@@ -31,7 +31,7 @@ use diesel::{prelude::*, result::Error as DieselError};
 use log::*;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
-    burn_proof::{BurnClaimProof, EncodedMerkleProof},
+    burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
@@ -1346,7 +1346,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn insert_burn_proof(
         &self,
         output_hash: FixedHash,
-        proof: &BurnClaimProof,
+        proof: &PartialBurnClaimProof,
         kernel: &TransactionKernel,
         encrypted_data: &EncryptedData,
         value: MicroMinotari,

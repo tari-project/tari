@@ -11,7 +11,7 @@ use anyhow::anyhow;
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
-use tari_transaction_components::burn_proof::{AbridgedTransactionKernel, MinotariBurnClaimProof};
+use tari_sidechain::{AbridgedTransactionKernel, BurnClaimProof, CompleteClaimBurnProof};
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{fs, sync::broadcast};
 
@@ -199,20 +199,22 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(burn_proofs_dir: P, proof: DbB
     );
     let final_path = burn_proofs_dir.as_ref().join(filename);
 
-    let complete_proof = MinotariBurnClaimProof {
-        burn_public_key: proof.burn_proof.claim_public_key,
-        commitment: proof.burn_proof.commitment,
-        ownership_proof: proof.burn_proof.ownership_proof,
-        encoded_merkle_proof: kernel_merkle_proof,
-        kernel: AbridgedTransactionKernel {
-            version: proof.kernel.version.as_u8(),
-            fee: proof.kernel.fee.as_u64(),
-            lock_height: proof.kernel.lock_height,
-            excess: proof.kernel.excess,
-            excess_sig: proof.kernel.excess_sig,
+    let complete_proof = CompleteClaimBurnProof {
+        claim_proof: BurnClaimProof {
+            burn_public_key: proof.burn_proof.claim_public_key,
+            commitment: proof.burn_proof.commitment,
+            ownership_proof: proof.burn_proof.ownership_proof,
+            encoded_merkle_proof: kernel_merkle_proof,
+            kernel: AbridgedTransactionKernel {
+                version: proof.kernel.version.as_u8(),
+                fee: proof.kernel.fee.as_u64(),
+                lock_height: proof.kernel.lock_height,
+                excess: proof.kernel.excess,
+                excess_sig: proof.kernel.excess_sig,
+            },
+            value: value.as_u64(),
+            sender_offset_public_key: proof.burn_proof.sender_offset_public_key,
         },
-        value: value.as_u64(),
-        sender_offset_public_key: proof.burn_proof.sender_offset_public_key,
         encrypted_data: encrypted_data.into_vec(),
     };
 

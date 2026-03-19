@@ -30,7 +30,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::warn;
 use tari_common_types::{
-    burn_proof::BurnClaimProof,
+    burn_proof::PartialBurnClaimProof,
     epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
@@ -603,7 +603,7 @@ pub enum TransactionServiceResponse {
     TransactionImported(TxId),
     BurntTransactionSent {
         tx_id: TxId,
-        proof: Option<Box<BurnClaimProof>>,
+        proof: Option<Box<PartialBurnClaimProof>>,
     },
     TemplateRegistrationTransactionSent {
         tx_id: TxId,
@@ -1148,7 +1148,7 @@ impl TransactionServiceHandle {
         payment_id: MemoField,
         claim_public_key: Option<CompressedPublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
-    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
+    ) -> Result<(TxId, Option<PartialBurnClaimProof>), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {

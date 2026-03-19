@@ -39,7 +39,6 @@ use crate::transaction_components::TransactionOutput;
 
 pub mod weight;
 
-pub mod burn_proof;
 pub mod helpers;
 
 /// The reason for a peer being banned

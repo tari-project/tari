@@ -37,7 +37,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burn_proof::BurnClaimProof,
+    burn_proof::PartialBurnClaimProof,
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
@@ -2939,7 +2939,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
+    ) -> Result<(TxId, Option<PartialBurnClaimProof>), TransactionServiceError> {
         if selection_criteria.range_limit.is_some() {
             return Err(TransactionServiceError::RangeLimitError {
                 reason: "Range limit coin-join cannot be set for burn_tari".to_string(),
@@ -3112,7 +3112,7 @@ where
                 .resources
                 .transaction_key_manager_service
                 .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
-            let proof = BurnClaimProof {
+            let proof = PartialBurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 claim_public_key,
                 commitment,
