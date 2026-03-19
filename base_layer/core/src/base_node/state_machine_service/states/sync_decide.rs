@@ -100,6 +100,12 @@ impl DecideNextSync {
                         local_metadata.best_block_height(),
                         new_horizon
                     );
+                    if local_metadata.pruned_height() < new_horizon {
+                        debug!(target: LOG_TARGET, "Pruning to new horizon height {new_horizon}");
+                        if let Err(e) = shared.db.prune_to_height(new_horizon).await {
+                            return FatalError(format!("Failed to prune to height {new_horizon}: {e}"));
+                        }
+                    }
                 } else {
                     debug!(
                         target: LOG_TARGET,
