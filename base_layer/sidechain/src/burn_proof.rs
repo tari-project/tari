@@ -27,14 +27,14 @@ use tari_common_types::{
 };
 use tari_crypto::ristretto::CompressedRistrettoSchnorr;
 
-#[derive(Debug, Clone, serde::Deserialize, serde:: Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct CompleteClaimBurnProof {
     pub claim_proof: BurnClaimProof,
     #[serde(with = "serializers::base64")]
     pub encrypted_data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde:: Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct BurnClaimProof {
     /// This is typically the public nonce that the UTXO was burnt with
     pub burn_public_key: CompressedPublicKey,

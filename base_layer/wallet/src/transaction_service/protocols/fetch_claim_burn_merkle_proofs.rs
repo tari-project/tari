@@ -75,7 +75,7 @@ pub async fn execute<TBackend, TConnectivity>(
 async fn execute_inner<TBackend, TConnectivity>(
     db: &TransactionDatabase<TBackend>,
     connectivity: &TConnectivity,
-    confirmed_burns: &Vec<FixedHash>,
+    confirmed_burns: &[FixedHash],
     event_publisher: &broadcast::Sender<Arc<TransactionEvent>>,
     burn_proofs_output_dir: &Path,
 ) -> anyhow::Result<()>
@@ -156,7 +156,15 @@ where
                     )
                 })?;
 
-                write_burn_proof_to_file(burn_proofs_output_dir, proof).await?;
+                if let Err(err) = write_burn_proof_to_file(burn_proofs_output_dir, proof).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to write burn proof file for output {}: {}",
+                        output_hash,
+                        err
+                    );
+                    continue;
+                }
 
                 let _ignore = event_publisher.send(Arc::new(TransactionEvent::TransactionBurnConfirmed {
                     output_hash: *output_hash,
