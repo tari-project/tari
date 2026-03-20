@@ -28,7 +28,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BurnClaimProof {
+pub struct PartialBurnClaimProof {
     /// Public key used in the DH exchange to derive the decryption key
     pub claim_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,

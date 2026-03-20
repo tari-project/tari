@@ -108,6 +108,10 @@ pub struct Cli {
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
+    /// Directory where burn proof files are written after a burn transaction completes. If relative, resolved against
+    /// base-dir. Defaults to the platform shared data directory (e.g. ~/.local/share/tari/burn_proofs).
+    #[clap(long, alias = "burn-proof-out", parse(from_os_str))]
+    pub burn_proof_out: Option<PathBuf>,
     /// Skip wallet recovery
     #[clap(long)]
     pub skip_recovery: bool,
@@ -138,6 +142,9 @@ impl ConfigOverrideProvider for Cli {
             replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
         } else {
             // GRPC is disabled
+        }
+        if let Some(ref path) = self.burn_proof_out {
+            replace_or_add_override(&mut overrides, "wallet.burn_proofs_dir", &path.display().to_string());
         }
         overrides
     }

@@ -3,7 +3,7 @@
 
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
-    burn_proof::{BurnClaimProof, EncodedMerkleProof},
+    burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::FixedHash,
 };
@@ -15,10 +15,11 @@ use tari_utilities::Hidden;
 
 use crate::{error::WalletStorageError, schema, storage::serializers};
 
+#[derive(Debug)]
 pub struct DbBurnProof {
     pub id: i32,
     pub output_hash: FixedHash,
-    pub burn_proof: BurnClaimProof,
+    pub burn_proof: PartialBurnClaimProof,
     pub kernel: TransactionKernel,
     pub kernel_merkle_proof: Option<EncodedMerkleProof>,
     pub created_at: chrono::NaiveDateTime,

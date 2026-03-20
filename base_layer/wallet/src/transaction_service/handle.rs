@@ -30,7 +30,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::warn;
 use tari_common_types::{
-    burn_proof::BurnClaimProof,
+    burn_proof::PartialBurnClaimProof,
     epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
@@ -71,6 +71,7 @@ use tower::Service;
 use crate::{
     OperationId,
     output_manager_service::{UtxoSelectionCriteria, service::UseOutput},
+    storage::sqlite_db::models::DbBurnProof,
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -304,6 +305,9 @@ pub enum TransactionServiceRequest {
     },
     ProcessReorg {
         height: u64,
+    },
+    GetBurnProof {
+        output_hash: HashOutput,
     },
 }
 
@@ -581,6 +585,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::PrepareWithdrawMultisigTransaction { request } => {
                 write!(f, "PrepareWithdrawMultisigTransaction (request: {:?})", request)
             },
+            Self::GetBurnProof { output_hash } => {
+                write!(f, "GetBurnProof (output: {output_hash})")
+            },
         }
     }
 }
@@ -603,7 +610,7 @@ pub enum TransactionServiceResponse {
     TransactionImported(TxId),
     BurntTransactionSent {
         tx_id: TxId,
-        proof: Option<Box<BurnClaimProof>>,
+        proof: Option<Box<PartialBurnClaimProof>>,
     },
     TemplateRegistrationTransactionSent {
         tx_id: TxId,
@@ -648,6 +655,9 @@ pub enum TransactionServiceResponse {
     CreateMultisigUtxo(TxId),
     GetMultisigUtxoData(Box<GetMultisigUtxoDataOutput>),
     SendMultisigUtxo(TxId),
+    GetBurnProof {
+        proof: Option<Box<DbBurnProof>>,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -668,7 +678,7 @@ impl Display for TransactionSendStatus {
 }
 
 /// Events that can be published on the Text Message Service Event Stream
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
@@ -703,6 +713,10 @@ pub enum TransactionEvent {
     },
     TransactionValidationCompleted(OperationId),
     TransactionValidationFailed(OperationId, u64),
+    TransactionBurnConfirmed {
+        output_hash: HashOutput,
+        commitment: Box<CompressedCommitment>,
+    },
     Error(String),
 }
 
@@ -772,6 +786,9 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionValidationCompleted(operation_id) => {
                 write!(f, "Transaction validation(#{operation_id}) completed")
+            },
+            TransactionEvent::TransactionBurnConfirmed { output_hash, .. } => {
+                write!(f, "Transaction Burn Confirmed for output hash {output_hash}")
             },
             TransactionEvent::TransactionValidationFailed(operation_id, reason) => {
                 write!(f, "Transaction validation(#{operation_id}) failed: {reason}")
@@ -1141,7 +1158,7 @@ impl TransactionServiceHandle {
         payment_id: MemoField,
         claim_public_key: Option<CompressedPublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
-    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
+    ) -> Result<(TxId, Option<PartialBurnClaimProof>), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::BurnTari {
@@ -1996,6 +2013,23 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::ReorgProcessed => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::ProcessReorg".to_string(),
+            )),
+        }
+    }
+
+    pub async fn get_burn_proof(
+        &mut self,
+        output_hash: HashOutput,
+    ) -> Result<Option<DbBurnProof>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetBurnProof { output_hash })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetBurnProof({e})"))??
+        {
+            TransactionServiceResponse::GetBurnProof { proof } => Ok(proof.map(|p| *p)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetBurnProof".to_string(),
             )),
         }
     }

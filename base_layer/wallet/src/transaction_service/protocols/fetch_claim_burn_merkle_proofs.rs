@@ -1,17 +1,22 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
 use tari_utilities::ByteArray;
+use tokio::sync::broadcast;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
-    transaction_service::storage::database::{TransactionBackend, TransactionDatabase},
+    transaction_service::{
+        handle::TransactionEvent,
+        storage::database::{TransactionBackend, TransactionDatabase},
+    },
 };
+
 const RETRY_DELAY: Duration = Duration::from_secs(10);
 const MAX_ATTEMPTS: usize = 10;
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::sync_claim_burn_merkle_proofs";
@@ -19,6 +24,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::sync_claim_bur
 pub async fn execute<TBackend, TConnectivity>(
     db: TransactionDatabase<TBackend>,
     connectivity: TConnectivity,
+    event_publisher: broadcast::Sender<Arc<TransactionEvent>>,
     confirmed_burns: Vec<FixedHash>,
 ) where
     TBackend: TransactionBackend + 'static,
@@ -31,7 +37,7 @@ pub async fn execute<TBackend, TConnectivity>(
     );
     let mut attempt = 0usize;
     loop {
-        if let Err(err) = execute_inner(&db, &connectivity, &confirmed_burns).await {
+        if let Err(err) = execute_inner(&db, &connectivity, &confirmed_burns, &event_publisher).await {
             // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
             error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
             tokio::time::sleep(RETRY_DELAY).await;
@@ -53,7 +59,8 @@ pub async fn execute<TBackend, TConnectivity>(
 async fn execute_inner<TBackend, TConnectivity>(
     db: &TransactionDatabase<TBackend>,
     connectivity: &TConnectivity,
-    confirmed_burns: &Vec<FixedHash>,
+    confirmed_burns: &[FixedHash],
+    event_publisher: &broadcast::Sender<Arc<TransactionEvent>>,
 ) -> anyhow::Result<()>
 where
     TBackend: TransactionBackend + 'static,
@@ -119,6 +126,17 @@ where
                     encoded_merkle_proof: resp.encoded_merkle_proof,
                     leaf_index: resp.leaf_index,
                 })?;
+
+                info!(
+                    target: LOG_TARGET,
+                    "Successfully updated burn output {} with merkle proof",
+                    output_hash
+                );
+
+                let _ignore = event_publisher.send(Arc::new(TransactionEvent::TransactionBurnConfirmed {
+                    output_hash: *output_hash,
+                    commitment: Box::new(burn.burn_proof.commitment),
+                }));
             },
             Err(err) => {
                 error!(

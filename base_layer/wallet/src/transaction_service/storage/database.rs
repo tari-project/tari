@@ -29,7 +29,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
-    burn_proof::{BurnClaimProof, EncodedMerkleProof},
+    burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
@@ -194,7 +194,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn insert_burn_proof(
         &self,
         output_hash: FixedHash,
-        proof: &BurnClaimProof,
+        proof: &PartialBurnClaimProof,
         kernel: &TransactionKernel,
         encrypted_data: &EncryptedData,
         value: MicroMinotari,
@@ -916,7 +916,7 @@ where T: TransactionBackend + 'static
     pub fn insert_burn_proof(
         &self,
         output_hash: FixedHash,
-        proof: &BurnClaimProof,
+        proof: &PartialBurnClaimProof,
         kernel: &TransactionKernel,
         encrypt_data: &EncryptedData,
         value: MicroMinotari,

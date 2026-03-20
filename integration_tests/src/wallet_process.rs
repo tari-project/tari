@@ -215,6 +215,7 @@ pub fn get_default_cli() -> Cli {
         view_private_key: None,
         birthday: None,
         spend_key: None,
+        burn_proof_out: None,
         libtor_data_dir: None,
         skip_recovery: false,
         print_env: false,

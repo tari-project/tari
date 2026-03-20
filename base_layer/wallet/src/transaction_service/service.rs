@@ -37,7 +37,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    burn_proof::BurnClaimProof,
+    burn_proof::PartialBurnClaimProof,
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
@@ -1661,6 +1661,13 @@ where
                 }
                 .await
             },
+            TransactionServiceRequest::GetBurnProof { output_hash } => self
+                .db
+                .fetch_burn_proof(&output_hash)
+                .map(|proof| TransactionServiceResponse::GetBurnProof {
+                    proof: proof.map(Box::new),
+                })
+                .map_err(TransactionServiceError::TransactionStorageError),
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -1724,7 +1731,7 @@ where
 
         let query_base_node_fut = async move {
             let mut res = vec![];
-            let mut client = connectivity.obtain_base_node_wallet_rpc_client().await;
+            let client = connectivity.obtain_base_node_wallet_rpc_client().await;
             for hash in hashes {
                 match client
                     .fetch_utxo(hash.to_vec())
@@ -2939,7 +2946,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<(TxId, Option<BurnClaimProof>), TransactionServiceError> {
+    ) -> Result<(TxId, Option<PartialBurnClaimProof>), TransactionServiceError> {
         if selection_criteria.range_limit.is_some() {
             return Err(TransactionServiceError::RangeLimitError {
                 reason: "Range limit coin-join cannot be set for burn_tari".to_string(),
@@ -3112,7 +3119,7 @@ where
                 .resources
                 .transaction_key_manager_service
                 .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
-            let proof = BurnClaimProof {
+            let proof = PartialBurnClaimProof {
                 // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 claim_public_key,
                 commitment,

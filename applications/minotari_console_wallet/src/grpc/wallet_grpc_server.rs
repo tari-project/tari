@@ -3034,11 +3034,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 leaf_index: p.leaf_index,
             }),
             kernel: Some(proof.kernel.into()),
-            encrypted_data: proof
-                .encrypted_data
-                .as_ref()
-                .map(|ed| ed.to_byte_vec())
-                .unwrap_or_default(),
+            encrypted_data: proof.encrypted_data.map(|ed| ed.into_vec()).unwrap_or_default(),
             value: proof.value.as_ref().map(|v| v.as_u64()).unwrap_or_default(),
         }))
     }

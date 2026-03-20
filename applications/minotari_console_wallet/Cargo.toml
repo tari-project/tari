@@ -22,6 +22,7 @@ tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_script = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_transaction_key_manager = { workspace = true }
+tari_sidechain = { workspace = true }
 tari_utilities = { workspace = true }
 minotari_wallet = { workspace = true, features = ["bundled_sqlite"] }
 minotari_node_wallet_client = { workspace = true }
@@ -72,6 +73,9 @@ url = "2.3.1"
 zxcvbn = "2"
 tui = { version = "^0.19", default-features = false, features = ["crossterm"] }
 
+
+[dev-dependencies]
+tempfile = "3.1.0"
 
 [build-dependencies]
 tari_features = { workspace = true }
