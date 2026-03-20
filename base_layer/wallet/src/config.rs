@@ -209,10 +209,10 @@ impl WalletConfig {
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
         }
-        if !self.transaction_service_config.burn_proof_output_dir.is_absolute() {
-            self.transaction_service_config.burn_proof_output_dir = base_path
-                .as_ref()
-                .join(self.transaction_service_config.burn_proof_output_dir.as_path());
+        if let Some(ref mut path_mut) = self.transaction_service_config.burn_proof_output_dir &&
+            !path_mut.is_absolute()
+        {
+            *path_mut = base_path.as_ref().join(path_mut.as_path());
         }
     }
 }

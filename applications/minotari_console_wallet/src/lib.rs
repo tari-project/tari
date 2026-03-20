@@ -30,9 +30,11 @@ mod grpc;
 pub mod init;
 mod notifier;
 mod recovery;
+mod transaction_event_handler;
 mod ui;
 mod utils;
 mod wallet_modes;
+
 pub use cli::{
     Cli,
     CliCommands,
@@ -173,6 +175,8 @@ pub fn run_wallet_with_cli(
         cli.non_interactive_mode,
         wallet_type,
     ))?;
+
+    runtime.spawn(transaction_event_handler::start(&wallet));
 
     if !cli.non_interactive_mode &&
         config.wallet.transaction_service_config.transaction_routing_mechanism ==

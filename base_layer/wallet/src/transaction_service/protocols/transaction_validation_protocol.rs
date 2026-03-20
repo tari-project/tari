@@ -112,7 +112,6 @@ where
                 self.connectivity.clone(),
                 self.event_publisher.clone(),
                 confirmed_burnt,
-                self.config.burn_proof_output_dir.clone(),
             ));
         }
 

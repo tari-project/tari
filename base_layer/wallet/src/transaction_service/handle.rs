@@ -71,6 +71,7 @@ use tower::Service;
 use crate::{
     OperationId,
     output_manager_service::{UtxoSelectionCriteria, service::UseOutput},
+    storage::sqlite_db::models::DbBurnProof,
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -304,6 +305,9 @@ pub enum TransactionServiceRequest {
     },
     ProcessReorg {
         height: u64,
+    },
+    GetBurnProof {
+        output_hash: HashOutput,
     },
 }
 
@@ -581,6 +585,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::PrepareWithdrawMultisigTransaction { request } => {
                 write!(f, "PrepareWithdrawMultisigTransaction (request: {:?})", request)
             },
+            Self::GetBurnProof { output_hash } => {
+                write!(f, "GetBurnProof (output: {output_hash})")
+            },
         }
     }
 }
@@ -648,6 +655,9 @@ pub enum TransactionServiceResponse {
     CreateMultisigUtxo(TxId),
     GetMultisigUtxoData(Box<GetMultisigUtxoDataOutput>),
     SendMultisigUtxo(TxId),
+    GetBurnProof {
+        proof: Option<Box<DbBurnProof>>,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -2003,6 +2013,23 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::ReorgProcessed => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::ProcessReorg".to_string(),
+            )),
+        }
+    }
+
+    pub async fn get_burn_proof(
+        &mut self,
+        output_hash: HashOutput,
+    ) -> Result<Option<DbBurnProof>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetBurnProof { output_hash })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetBurnProof({e})"))??
+        {
+            TransactionServiceResponse::GetBurnProof { proof } => Ok(proof.map(|p| *p)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetBurnProof".to_string(),
             )),
         }
     }

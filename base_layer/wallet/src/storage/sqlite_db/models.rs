@@ -15,6 +15,7 @@ use tari_utilities::Hidden;
 
 use crate::{error::WalletStorageError, schema, storage::serializers};
 
+#[derive(Debug)]
 pub struct DbBurnProof {
     pub id: i32,
     pub output_hash: FixedHash,

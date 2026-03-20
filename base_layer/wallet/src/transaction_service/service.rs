@@ -1661,6 +1661,13 @@ where
                 }
                 .await
             },
+            TransactionServiceRequest::GetBurnProof { output_hash } => self
+                .db
+                .fetch_burn_proof(&output_hash)
+                .map(|proof| TransactionServiceResponse::GetBurnProof {
+                    proof: proof.map(Box::new),
+                })
+                .map_err(TransactionServiceError::TransactionStorageError),
         };
 
         // If the individual handlers did not already send the API response then do it here.

@@ -4221,6 +4221,7 @@ dependencies = [
  "tari_p2p",
  "tari_script",
  "tari_shutdown",
+ "tari_sidechain",
  "tari_transaction_components",
  "tari_transaction_key_manager",
  "tari_utilities",

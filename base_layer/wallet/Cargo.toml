@@ -40,7 +40,7 @@ minotari_ledger_wallet_common = { workspace = true }
 #console-subscriber = "0.4"
 #tokio = { workspace = true, features = ["sync", "macros", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
-tokio = { workspace = true, features = ["sync", "macros", "fs"] }
+tokio = { workspace = true, features = ["sync", "macros"] }
 
 anyhow = { workspace = true }
 async-trait = "0.1.50"
