@@ -220,7 +220,7 @@ impl Default for DhtConnectivityConfig {
     fn default() -> Self {
         Self {
             update_interval: Duration::from_secs(2 * 60),
-            random_pool_refresh_interval: Duration::from_secs(2 * 60 * 60),
+            random_pool_refresh_interval: Duration::from_secs(10 * 60 * 60),
             high_failure_rate_cooldown: Duration::from_secs(45),
             minimum_desired_tcpv4_node_ratio: 0.1,
         }
