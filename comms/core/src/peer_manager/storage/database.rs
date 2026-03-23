@@ -169,18 +169,7 @@ impl PeerDatabaseSql {
 
             match self.get_peer_by_node_id_inner(&node_id, conn)? {
                 Some(mut existing_peer) => {
-                    let mut check_merge = false;
-                    if peer.addresses != existing_peer.addresses {
-                        info!(target: LOG_TARGET, "UPDP add_or_update_peer");
-                        info!(target: LOG_TARGET, "UPDP updating exising peer peer: {}: addresses: {}", peer.node_id, peer.addresses);
-                        info!(target: LOG_TARGET, "UPDP found exising data for peer: {}: addresses: {}", existing_peer.node_id, existing_peer.addresses);
-                        check_merge = true;
-                    }
                     existing_peer.merge(&peer);
-                    if check_merge  && peer.addresses.addresses().len() != existing_peer.addresses.addresses().len() {
-                        info!(target: LOG_TARGET, "UPDP after merger");
-                        info!(target: LOG_TARGET, "UPDP exising data for peer: {}: addresses: {}", existing_peer.node_id, existing_peer.addresses);
-                    }
                     let update_peer_sql = PeerDatabaseSql::update_peer_sql(existing_peer.clone())?;
                     self.update_peer_inner(update_peer_sql, conn)?;
                     Ok(existing_peer.id.unwrap_or_default())
