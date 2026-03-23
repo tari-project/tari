@@ -132,7 +132,7 @@ impl Discovering {
                     conn.peer_node_id(),
                     e
                 );
-                let _ = conn.disconnect(Minimized::Yes, "Discovering RPC connect failed").await;
+                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect failed").await;
                 return Err(e.into());
             },
             Err(_) => {
@@ -143,7 +143,7 @@ impl Discovering {
                     conn.peer_node_id(),
                     rpc_connect_timeout,
                 );
-                let _ = conn.disconnect(Minimized::Yes, "Discovering RPC connect timeout").await;
+                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect timeout").await;
                 return Err(NetworkDiscoveryError::Timeout {
                     operation: "connect_rpc".to_string(),
                     peer: conn.peer_node_id().to_hex(),
@@ -166,7 +166,7 @@ impl Discovering {
         );
         let result = self.request_peers(peer_node_id, client).await;
         self.ban_on_offence(peer_node_id.clone(), result).await?;
-        let _ = conn.disconnect(Minimized::Yes, "Discovering sync complete").await;
+        let _unused = conn.disconnect(Minimized::Yes, "Discovering sync complete").await;
 
         Ok(())
     }

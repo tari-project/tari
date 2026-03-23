@@ -25,7 +25,6 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
-    Minimized,
     NodeIdentity,
     PeerManager,
     connectivity::ConnectivityEvent,
