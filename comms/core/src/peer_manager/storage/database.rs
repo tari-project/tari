@@ -161,323 +161,26 @@ impl PeerDatabaseSql {
         })
     }
 
-    // Note: This function is not properly working at the moment, but must be kept here for in its commented out form
-    // for further evaluation.
-    // ==============================================================================================================
-    // /// This function will add peers and their associated multi-addresses in batch mode:
-    // /// - New peers are added with all their information.
-    // /// - Existing peers are not modified.
-    // /// - Only missing multi-addresses are added for existing peers.
-    // ///
-    // ///   Note:
-    // ///   SQLite does not support the DEFAULT keyword in INSERT statements, which Diesel uses for batch inserts.
-    // ///   Diesel's batch insert API is designed for databases like PostgreSQL that support this feature.
-    // #[allow(clippy::too_many_lines)]
-    // pub fn batch_add_peers_with_addresses(
-    //     &self,
-    //     peers_with_addresses: Vec<NewPeerWithAddressesSql>,
-    // ) -> Result<usize, StorageError> {
-    //     let mut conn = self.connection.get_pooled_connection()?;
-    //     conn.immediate_transaction::<_, StorageError, _>(|conn| {
-    //         // Step 1: Insert new peers with ON CONFLICT DO NOTHING
-    //         let values = peers_with_addresses
-    //             .iter()
-    //             .map(|p| {
-    //                 let peer_id = generate_peer_id_as_i64();
-    //                 let public_key = sql_escape(&p.peer.public_key);
-    //                 let node_id = sql_escape(&p.peer.node_id);
-    //                 let distance_to_self = self
-    //                     .this_peer_identity
-    //                     .node_id
-    //                     .distance(&NodeId::from_hex(&p.peer.node_id)?)
-    //                     .to_string();
-    //                 let flags = p.peer.flags;
-    //                 let banned_until = p.peer.banned_until.map_or("NULL".to_string(), |dt| format!("'{}'", dt));
-    //                 let banned_reason = p
-    //                     .peer
-    //                     .banned_reason
-    //                     .clone()
-    //                     .map_or("NULL".to_string(), |reason| format!("'{}'", sql_escape(&reason)));
-    //                 let features = p.peer.features;
-    //                 let supported_protocols = sql_escape(&p.peer.supported_protocols);
-    //                 let added_at = p.peer.added_at;
-    //                 let user_agent = sql_escape(&p.peer.user_agent);
-    //                 let metadata = p
-    //                     .peer
-    //                     .metadata
-    //                     .clone()
-    //                     .map_or("NULL".to_string(), |meta| format!("x'{}'", hex::to_hex(&meta)));
-    //                 let deleted_at = p.peer.deleted_at.map_or("NULL".to_string(), |dt| format!("'{}'", dt));
-    //
-    //                 Ok::<String, StorageError>(format!(
-    //                     "({}, '{}', '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', {}, {})",
-    //                     peer_id,
-    //                     public_key,
-    //                     node_id,
-    //                     distance_to_self,
-    //                     flags,
-    //                     banned_until,
-    //                     banned_reason,
-    //                     features,
-    //                     supported_protocols,
-    //                     added_at,
-    //                     user_agent,
-    //                     metadata,
-    //                     deleted_at
-    //                 ))
-    //             })
-    //             .collect::<Result<Vec<String>, _>>()?;
-    //
-    //         let mut peer_query = format!(
-    //             "INSERT INTO peers (peer_id, public_key, node_id, distance_to_self, flags, banned_until, \
-    //              banned_reason, features, supported_protocols, added_at, user_agent, metadata, deleted_at) VALUES
-    // {}",             values.join(", ")
-    //         );
-    //
-    //         peer_query.push_str(" ON CONFLICT (node_id) DO NOTHING");
-    //         conn.batch_execute(&peer_query)?;
-    //
-    //         // Step 2: Collect all multi-addresses into a map
-    //         let mut address_map: HashMap<String, Vec<NewMultiaddrWithStatsSql>> = HashMap::new();
-    //         for item in peers_with_addresses {
-    //             address_map
-    //                 .entry(item.peer.node_id.to_string())
-    //                 .or_default()
-    //                 .extend(item.addresses);
-    //         }
-    //
-    //         // Step 3: Insert missing multi-addresses
-    //         let mut address_query = String::from(
-    //             "INSERT INTO multi_addresses (peer_id, address, last_seen, connection_attempts, \
-    //              avg_initial_dial_time, initial_dial_time_sample_count, avg_latency, latency_sample_count, \
-    //              last_attempted, last_failed_reason, quality_score, source) VALUES ",
-    //         );
-    //
-    //         let mut total_addresses_inserted = 0;
-    //         for (node_id, addresses) in address_map {
-    //             // Retrieve peer_id for the node_id
-    //             let peer_id = peers::table
-    //                 .filter(peers::node_id.eq(node_id))
-    //                 .select(peers::peer_id)
-    //                 .first::<i64>(conn)?;
-    //
-    //             // Filter out existing addresses
-    //             let existing_addresses: Vec<_> = multi_addresses::table
-    //                 .filter(multi_addresses::peer_id.eq(peer_id))
-    //                 .select(multi_addresses::address)
-    //                 .load::<String>(conn)?;
-    //
-    //             let new_addresses: Vec<_> = addresses
-    //                 .into_iter()
-    //                 .filter(|addr| !existing_addresses.contains(&addr.address.to_string()))
-    //                 .collect();
-    //
-    //             if !new_addresses.is_empty() {
-    //                 address_query.push_str(
-    //                     &new_addresses
-    //                         .iter()
-    //                         .map(|addr| {
-    //                             format!(
-    //                                 "({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}')",
-    //                                 peer_id,
-    //                                 sql_escape(&addr.address),
-    //                                 addr.last_seen.map_or("NULL".to_string(), |dt| format!("'{}'", dt)),
-    //                                 addr.connection_attempts.map_or("NULL".to_string(), |v| v.to_string()),
-    //                                 addr.avg_initial_dial_time.map_or("NULL".to_string(), |v| v.to_string()),
-    //                                 addr.initial_dial_time_sample_count
-    //                                     .map_or("NULL".to_string(), |v| v.to_string()),
-    //                                 addr.avg_latency.map_or("NULL".to_string(), |v| v.to_string()),
-    //                                 addr.latency_sample_count.map_or("NULL".to_string(), |v| v.to_string()),
-    //                                 addr.last_attempted.map_or("NULL".to_string(), |dt| format!("'{}'", dt)),
-    //                                 addr.last_failed_reason
-    //                                     .clone()
-    //                                     .map_or("NULL".to_string(), |reason| format!("'{}'", sql_escape(&reason))),
-    //                                 addr.quality_score.map_or("NULL".to_string(), |v| v.to_string()),
-    //                                 sql_escape(&addr.source),
-    //                             )
-    //                         })
-    //                         .collect::<Vec<String>>()
-    //                         .join(", "),
-    //                 );
-    //
-    //                 total_addresses_inserted += new_addresses.len();
-    //             }
-    //         }
-    //
-    //         if total_addresses_inserted > 0 {
-    //             address_query.push_str(" ON CONFLICT (address) DO NOTHING");
-    //             conn.batch_execute(&address_query)?;
-    //         }
-    //
-    //         Ok(total_addresses_inserted)
-    //     })
-    // }
-    // ==============================================================================================================
-
-    // Note: This function is not properly working at the moment, but must be kept here for in its commented out form
-    // for further evaluation.
-    // ==============================================================================================================
-    // /// This function will update peers and their associated multi-addresses in batch mode.
-    // #[allow(clippy::too_many_lines)]
-    // pub fn batch_update_peers_with_addresses(
-    //     &self,
-    //     peers_with_addresses: Vec<UpdatePeerWithAddressesSql>,
-    // ) -> Result<(), StorageError> {
-    //     let mut conn = self.connection.get_pooled_connection()?;
-    //     conn.immediate_transaction::<_, StorageError, _>(|conn| {
-    //         // Batch update peers
-    //         if !peers_with_addresses.is_empty() {
-    //             let mut peer_query = String::from("UPDATE peers SET ");
-    //             let mut set_clauses = vec![];
-    //             let mut node_ids = vec![];
-    //
-    //             for update in &peers_with_addresses {
-    //                 let peer_update = update.peer.clone();
-    //
-    //                 if let Some(banned_until) = peer_update.banned_until {
-    //                     set_clauses.push(format!(
-    //                         "banned_until = CASE WHEN node_id = '{}' THEN '{}' ELSE banned_until END",
-    //                         peer_update.node_id, banned_until
-    //                     ));
-    //                 }
-    //                 if let Some(banned_reason) = peer_update.banned_reason {
-    //                     set_clauses.push(format!(
-    //                         "banned_reason = CASE WHEN node_id = '{}' THEN '{}' ELSE banned_reason END",
-    //                         peer_update.node_id,
-    //                         sql_escape(&banned_reason)
-    //                     ));
-    //                 }
-    //                 if let Some(supported_protocols) = peer_update.supported_protocols {
-    //                     set_clauses.push(format!(
-    //                         "supported_protocols = CASE WHEN node_id = '{}' THEN '{}' ELSE supported_protocols END",
-    //                         peer_update.node_id,
-    //                         sql_escape(&supported_protocols)
-    //                     ));
-    //                 }
-    //                 if let Some(user_agent) = peer_update.user_agent {
-    //                     set_clauses.push(format!(
-    //                         "user_agent = CASE WHEN node_id = '{}' THEN '{}' ELSE user_agent END",
-    //                         peer_update.node_id,
-    //                         sql_escape(&user_agent)
-    //                     ));
-    //                 }
-    //                 if let Some(metadata) = peer_update.metadata {
-    //                     set_clauses.push(format!(
-    //                         "metadata = CASE WHEN node_id = '{}' THEN x'{}' ELSE metadata END",
-    //                         peer_update.node_id,
-    //                         hex::to_hex(&metadata)
-    //                     ));
-    //                 }
-    //                 if let Some(deleted_at) = peer_update.deleted_at {
-    //                     set_clauses.push(format!(
-    //                         "deleted_at = CASE WHEN node_id = '{}' THEN '{}' ELSE deleted_at END",
-    //                         peer_update.node_id, deleted_at
-    //                     ));
-    //                 }
-    //                 node_ids.push(format!("'{}'", peer_update.node_id.replace('\'', "''")));
-    //             }
-    //
-    //             peer_query.push_str(&set_clauses.join(", "));
-    //             peer_query.push_str(&format!(" WHERE node_id IN ({})", node_ids.join(", ")));
-    //             conn.batch_execute(&peer_query)?;
-    //         }
-    //
-    //         // Batch update multi-addresses
-    //         let mut address_query = String::from("UPDATE multi_addresses SET ");
-    //         let mut set_clauses = vec![];
-    //         let mut addresses = vec![];
-    //
-    //         for update in peers_with_addresses {
-    //             for address_update in update.addresses {
-    //                 if let Some(last_seen) = address_update.last_seen {
-    //                     set_clauses.push(format!(
-    //                         "last_seen = CASE WHEN address = '{}' THEN '{}' ELSE last_seen END",
-    //                         address_update.address, last_seen
-    //                     ));
-    //                 }
-    //                 if let Some(connection_attempts) = address_update.connection_attempts {
-    //                     set_clauses.push(format!(
-    //                         "connection_attempts = CASE WHEN address = '{}' THEN {} ELSE connection_attempts END",
-    //                         address_update.address, connection_attempts
-    //                     ));
-    //                 }
-    //                 if let Some(avg_initial_dial_time) = address_update.avg_initial_dial_time {
-    //                     set_clauses.push(format!(
-    //                         "avg_initial_dial_time = CASE WHEN address = '{}' THEN {} ELSE avg_initial_dial_time
-    // END",                         address_update.address, avg_initial_dial_time
-    //                     ));
-    //                 }
-    //                 if let Some(initial_dial_time_sample_count) = address_update.initial_dial_time_sample_count {
-    //                     set_clauses.push(format!(
-    //                         "initial_dial_time_sample_count = CASE WHEN address = '{}' THEN {} ELSE \
-    //                          initial_dial_time_sample_count END",
-    //                         address_update.address, initial_dial_time_sample_count
-    //                     ));
-    //                 }
-    //                 if let Some(avg_latency) = address_update.avg_latency {
-    //                     set_clauses.push(format!(
-    //                         "avg_latency = CASE WHEN address = '{}' THEN {} ELSE avg_latency END",
-    //                         address_update.address, avg_latency
-    //                     ));
-    //                 }
-    //                 if let Some(latency_sample_count) = address_update.latency_sample_count {
-    //                     set_clauses.push(format!(
-    //                         "latency_sample_count = CASE WHEN address = '{}' THEN {} ELSE latency_sample_count END",
-    //                         address_update.address, latency_sample_count
-    //                     ));
-    //                 }
-    //                 if let Some(last_attempted) = address_update.last_attempted {
-    //                     set_clauses.push(format!(
-    //                         "last_attempted = CASE WHEN address = '{}' THEN '{}' ELSE last_attempted END",
-    //                         address_update.address, last_attempted
-    //                     ));
-    //                 }
-    //                 if let Some(last_failed_reason) = address_update.last_failed_reason {
-    //                     set_clauses.push(format!(
-    //                         "last_failed_reason = CASE WHEN address = '{}' THEN '{}' ELSE last_failed_reason END",
-    //                         address_update.address,
-    //                         sql_escape(&last_failed_reason)
-    //                     ));
-    //                 }
-    //                 if let Some(quality_score) = address_update.quality_score {
-    //                     set_clauses.push(format!(
-    //                         "quality_score = CASE WHEN address = '{}' THEN {} ELSE quality_score END",
-    //                         address_update.address, quality_score
-    //                     ));
-    //                 }
-    //                 if let Some(source) = address_update.source {
-    //                     set_clauses.push(format!(
-    //                         "source = CASE WHEN address = '{}' THEN '{}' ELSE source END",
-    //                         address_update.address,
-    //                         sql_escape(&source)
-    //                     ));
-    //                 }
-    //                 addresses.push(format!("'{}'", address_update.address.replace('\'', "''")));
-    //             }
-    //         }
-    //
-    //         if !set_clauses.is_empty() {
-    //             address_query.push_str(&set_clauses.join(", "));
-    //             address_query.push_str(&format!(" WHERE address IN ({})", addresses.join(", ")));
-    //             conn.batch_execute(&address_query)?;
-    //         }
-    //
-    //         Ok(())
-    //     })
-    // }
-    // ==============================================================================================================
-
     /// Add a new peer or update an existing peer with its associated multi-addresses
     pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let node_id = peer.node_id.clone();
 
             match self.get_peer_by_node_id_inner(&node_id, conn)? {
                 Some(mut existing_peer) => {
-                    trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{node_id}'");
+                    let mut check_merge = false;
+                    if peer.addresses != existing_peer.addresses {
+                        info!(target: LOG_TARGET, "UPDP add_or_update_peer");
+                        info!(target: LOG_TARGET, "UPDP updating exising peer peer: {}: addresses: {}", peer.node_id, peer.addresses);
+                        info!(target: LOG_TARGET, "UPDP found exising data for peer: {}: addresses: {}", existing_peer.node_id, existing_peer.addresses);
+                        check_merge = true;
+                    }
                     existing_peer.merge(&peer);
+                    if check_merge  && peer.addresses.addresses().len() != existing_peer.addresses.addresses().len() {
+                        info!(target: LOG_TARGET, "UPDP after merger");
+                        info!(target: LOG_TARGET, "UPDP exising data for peer: {}: addresses: {}", existing_peer.node_id, existing_peer.addresses);
+                    }
                     let update_peer_sql = PeerDatabaseSql::update_peer_sql(existing_peer.clone())?;
                     self.update_peer_inner(update_peer_sql, conn)?;
                     Ok(existing_peer.id.unwrap_or_default())
@@ -1501,6 +1204,7 @@ impl PeerDatabaseSql {
         exclude_node_ids: &[NodeId],
         peer_flags: Option<PeerFlags>,
         transport_protocols: &[TransportProtocol],
+        known_good: bool,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             warn!(target: LOG_TARGET, "'0' requested for 'get_n_random_peers'");
@@ -1510,7 +1214,6 @@ impl PeerDatabaseSql {
         let mut conn = self.connection.get_pooled_connection()?;
         let exclude_node_ids = exclude_node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
         let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
-
         conn.transaction::<_, StorageError, _>(|conn| {
             // Step 1: Filtered, random and truncated list of node_ids
             let mut query = peers::table
@@ -1532,6 +1235,9 @@ impl PeerDatabaseSql {
                 .distinct()
                 .into_boxed();
 
+            if known_good {
+                query = query.filter(multi_addresses::last_seen.is_not_null());
+            }
             if let Some(flags) = peer_flags {
                 query = query.filter(peers::flags.eq(flags.to_i32()));
             }

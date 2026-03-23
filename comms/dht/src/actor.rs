@@ -600,7 +600,7 @@ impl DhtActor {
                 // Send to a random set of peers of size n that are Communication Nodes
                 (
                     peer_manager
-                        .random_peers(n, &excluded, None)
+                        .random_peers(n, &excluded, None, true)
                         .await?
                         .into_iter()
                         .map(|p| p.node_id)

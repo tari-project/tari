@@ -1724,7 +1724,7 @@ where
 
         let query_base_node_fut = async move {
             let mut res = vec![];
-            let mut client = connectivity.obtain_base_node_wallet_rpc_client().await;
+            let client = connectivity.obtain_base_node_wallet_rpc_client().await;
             for hash in hashes {
                 match client
                     .fetch_utxo(hash.to_vec())

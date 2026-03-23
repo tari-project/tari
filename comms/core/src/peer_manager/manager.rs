@@ -233,9 +233,22 @@ impl PeerManager {
         n: usize,
         excluded: &[NodeId],
         flags: Option<PeerFlags>,
+        known_good: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql
-            .random_peers(n, excluded, flags, &self.transport_protocols)
+        let mut peers =
+            self.peer_storage_sql
+                .random_peers(n, excluded, flags, &self.transport_protocols, known_good)?;
+        if known_good && peers.len() < n {
+            let mut additional = self.peer_storage_sql.random_peers(
+                n.checked_sub(peers.len()).unwrap_or(1),
+                excluded,
+                flags,
+                &self.transport_protocols,
+                false,
+            )?;
+            peers.append(&mut additional);
+        }
+        Ok(peers)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
