@@ -325,7 +325,7 @@ impl DhtConnectivity {
     async fn refresh_peer_pools(&mut self, refresh_entire_pool: bool) -> Result<(), DhtConnectivityError> {
         info!(
             target: LOG_TARGET,
-            "Reinitializing peer pool. (size={}, try_revive_connections {try_revive_connections})",
+            "Reinitializing peer pool. (size={}, try_revive_connections {refresh_entire_pool})",
             self.random_pool.len(),
         );
 

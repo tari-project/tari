@@ -1838,33 +1838,33 @@ mod tests {
 
         // All peers as random
         let random_peers = peers_db
-            .get_n_random_peers(12, &[], None, &transport_protocols)
+            .get_n_random_peers(12, &[], None, &transport_protocols, false)
             .unwrap();
         assert_eq!(random_peers.len(), 12);
 
         // All seed peers only as random
         let random_peers = peers_db
-            .get_n_random_peers(12, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .get_n_random_peers(12, &[], Some(PeerFlags::SEED), &transport_protocols, false)
             .unwrap();
         assert_eq!(random_peers.len(), 4);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::SEED));
 
         // One seed peer as random
         let random_peers = peers_db
-            .get_n_random_peers(1, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .get_n_random_peers(1, &[], Some(PeerFlags::SEED), &transport_protocols, false)
             .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::SEED);
 
         // All normal peers only as random
         let random_peers = peers_db
-            .get_n_random_peers(12, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .get_n_random_peers(12, &[], Some(PeerFlags::NONE), &transport_protocols, false)
             .unwrap();
         assert_eq!(random_peers.len(), 8);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::NONE));
 
         // One normal peer as random
         let random_peers = peers_db
-            .get_n_random_peers(1, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .get_n_random_peers(1, &[], Some(PeerFlags::NONE), &transport_protocols, false)
             .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::NONE);
     }
@@ -2022,7 +2022,7 @@ mod tests {
 
         // Test 'random_peers_sqlite'
         let random_peers = peers_db
-            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None, &transport_protocols)
+            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None, &transport_protocols, false)
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned

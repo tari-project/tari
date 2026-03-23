@@ -691,8 +691,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager.random_peers(10, &[], None).await.unwrap();
-        let identities2 = peer_manager.random_peers(10, &[], None).await.unwrap();
+        let identities1 = peer_manager.random_peers(10, &[], None, false).await.unwrap();
+        let identities2 = peer_manager.random_peers(10, &[], None, false).await.unwrap();
         assert_ne!(identities1, identities2);
     }
 
@@ -878,7 +878,7 @@ mod test {
                 let peer_manager = peer_manager.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
-                    let _random_peers = peer_manager.random_peers(n, &[], None).await.unwrap();
+                    let _random_peers = peer_manager.random_peers(n, &[], None, false).await.unwrap();
                     tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
                     let _total_peers = peer_manager.count().await;
                     Ok::<_, PeerManagerError>(())
@@ -899,7 +899,7 @@ mod test {
 
         // Do one final read
         tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
-        let random_peers = peer_manager.random_peers(n, &[], None).await.unwrap();
+        let random_peers = peer_manager.random_peers(n, &[], None, false).await.unwrap();
         let total_peers = peer_manager.count().await;
         assert_eq!(total_peers, num_peers * num_write_tasks);
         assert!(random_peers.len() <= n);
