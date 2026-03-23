@@ -22,6 +22,7 @@
 
 use std::{
     cmp,
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
@@ -30,7 +31,12 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
-use tari_comms::{PeerConnection, connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient};
+use tari_comms::{
+    PeerConnection,
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcClient, RpcStatus},
+};
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_node_components::blocks::{BlockHeader, ChainHeader};
 use tari_transaction_components::{
@@ -54,7 +60,14 @@ use crate::{
         rpc::BaseNodeSyncRpcClient,
     },
     blocks::UpdateBlockAccumulatedData,
-    chain_storage::{BlockchainBackend, ChainStorageError, MmrTree, async_db::AsyncBlockchainDb},
+    chain_storage::{
+        BlockchainBackend,
+        ChainStorageError,
+        HorizonStateTreeUpdate,
+        HorizonSyncOutputCheckpoint,
+        MmrTree,
+        async_db::AsyncBlockchainDb,
+    },
     common::rolling_avg::RollingAverageTime,
     consensus::BaseNodeConsensusManager,
     proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse, sync_utxos_response::Txo},
@@ -64,6 +77,9 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
 const MAX_LATENCY_INCREASES: usize = 5;
+const HORIZON_SYNC_BATCH_SIZE: usize = 10_000;
+const PROGRESS_REPORT_INTERVAL: u64 = 100;
+const HORIZON_SYNC_TRANCHE_SIZE: u64 = 5_000;
 
 pub struct HorizonStateSynchronization<'a, B> {
     config: BlockchainSyncConfig,
@@ -315,33 +331,36 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
     }
 
-    /// We clean up a failed output sync attempt and ignore any errors that occur during the clean up process.
+    /// Cleanup stops at the last committed checkpoint so that previously-completed tranches are not disturbed.
     async fn clean_up_failed_output_sync(&mut self, to_header: &BlockHeader) {
-        let tip_header = if let Ok(header) = self.db.fetch_tip_header().await {
-            header
-        } else {
-            return;
+        // Determine where to stop cleaning. If a tranche checkpoint exists, stop at the checkpoint block
+        // Otherwise fall back to the current chain tip.
+        let stop_hash = match self.db.fetch_horizon_sync_output_checkpoint().await {
+            Ok(Some(cp)) => match self.db.fetch_header(cp.checkpoint_height).await {
+                Ok(Some(header)) => Some(header.hash()),
+                _ => None,
+            },
+            _ => None,
         };
+        let stop_hash = match stop_hash {
+            Some(h) => h,
+            None => match self.db.fetch_header(0).await {
+                Ok(Some(header)) => header.hash(),
+                _ => return,
+            },
+        };
+
         let db = self.db().clone();
         let mut txn = db.write_transaction();
         let mut current_header = to_header.clone();
         loop {
             if let Ok(outputs) = self.db.fetch_outputs_in_block(current_header.hash()).await {
                 for (count, output) in (1..=outputs.len()).zip(outputs.iter()) {
-                    // Note: We do not need to clean up the SMT as it was not saved in the database yet, however, we
-                    // need to clean up the outputs
                     txn.prune_output_from_all_dbs(
                         output.hash(),
                         output.commitment.clone(),
                         output.features.output_type,
                     );
-                    if let Err(e) = txn.commit().await {
-                        warn!(
-                        target: LOG_TARGET,
-                        "Clean up failed sync - prune output from all dbs for header '{}': {}",
-                        current_header.hash(), e
-                        );
-                    }
                     if (count % 100 == 0 || count == outputs.len()) &&
                         let Err(e) = txn.commit().await
                     {
@@ -353,17 +372,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
                 }
             }
-            if let Err(e) = txn.commit().await {
-                warn!(
-                    target: LOG_TARGET, "Clean up failed output sync - commit delete kernels for header '{}': {}",
-                    current_header.hash(), e
-                );
-            }
+
             if let Ok(header) = db.fetch_header_by_block_hash(current_header.prev_hash).await {
                 if let Some(previous_header) = header {
                     current_header = previous_header;
                 } else {
-                    warn!(target: LOG_TARGET, "Could not clean up failed output sync, previous_header link missing frm db");
+                    warn!(target: LOG_TARGET, "Could not clean up failed output sync, previous_header link missing from db");
                     break;
                 }
             } else {
@@ -374,11 +388,54 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 );
                 break;
             }
-            if &current_header.hash() == tip_header.hash() {
-                debug!(target: LOG_TARGET, "Finished cleaning up failed output sync");
+            if current_header.hash() == stop_hash {
+                debug!(target: LOG_TARGET, "Reached stop point while cleaning up failed output sync");
                 break;
             }
         }
+
+        if let Err(e) = txn.commit().await {
+            warn!(
+                target: LOG_TARGET,
+                "Clean up failed output sync - final commit failed: {}",
+                e
+            );
+        }
+    }
+
+    /// Removes any outputs stored in the given block height range from the database.
+    /// On a fresh start all `fetch_outputs_in_block` calls return empty, so this is a no-op.
+    async fn clean_up_height_range(&mut self, start_height: u64, end_height: u64) -> Result<(), HorizonSyncError> {
+        let db = self.db().clone();
+        let mut txn = db.write_transaction();
+        let mut count: u64 = 0;
+        for height in start_height..=end_height {
+            let header = db
+                .fetch_header(height)
+                .await?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "Header",
+                    field: "height",
+                    value: height.to_string(),
+                })?;
+            let outputs = db.fetch_outputs_in_block(header.hash()).await?;
+            for output in outputs {
+                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+                count += 1;
+                if count % PROGRESS_REPORT_INTERVAL == 0 {
+                    txn.commit().await?;
+                    txn = db.write_transaction();
+                }
+            }
+        }
+        txn.commit().await?;
+        if count > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Cleaned up {} partial output(s) from height range {}-{}", count, start_height, end_height
+            );
+        }
+        Ok(())
     }
 
     async fn prune_if_needed(&mut self) -> Result<(), HorizonSyncError> {
@@ -565,7 +622,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
-    // Synchronize outputs, returning true if any keys were deleted from the output SMT.
+    // Synchronize outputs in independently-verifiable tranches
     #[allow(clippy::too_many_lines)]
     async fn synchronize_outputs(
         &mut self,
@@ -575,25 +632,81 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     ) -> Result<(), HorizonSyncError> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
-        let tip_header = db.fetch_tip_header().await?;
 
-        // Estimate the number of outputs to be downloaded; this cannot be known exactly until the sync is complete.
-        let mut current_header = to_header.clone();
-        self.num_outputs = 0;
-        loop {
-            current_header =
-                if let Some(previous_header) = db.fetch_header_by_block_hash(current_header.prev_hash).await? {
-                    self.num_outputs += current_header
-                        .output_smt_size
-                        .saturating_sub(previous_header.output_smt_size);
-                    previous_header
-                } else {
-                    break;
-                };
-            if &current_header.hash() == tip_header.hash() {
-                break;
-            }
+        let stored_checkpoint = db.fetch_horizon_sync_output_checkpoint().await?;
+
+        let checkpoint_height = match stored_checkpoint {
+            Some(ref cp) if cp.sync_target_height == to_header.height && cp.sync_target_hash == to_header.hash() => {
+                match db.fetch_header(cp.checkpoint_height).await? {
+                    Some(header) if header.hash() == cp.checkpoint_hash => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Resuming output sync from checkpoint at height {}, target unchanged",
+                            cp.checkpoint_height
+                        );
+                        Some(cp.checkpoint_height)
+                    },
+                    _ => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Horizon sync checkpoint at height {} is no longer on the canonical chain (reorg \
+                             detected). Discarding checkpoint and restarting output sync from scratch.",
+                            cp.checkpoint_height
+                        );
+                        db.write_transaction()
+                            .clear_horizon_sync_output_checkpoint()
+                            .commit()
+                            .await?;
+                        None
+                    },
+                }
+            },
+            Some(ref cp) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Horizon sync target changed from height {} to {}. Discarding checkpoint and cleaning up \
+                     partial outputs.",
+                    cp.sync_target_height,
+                    to_header.height
+                );
+                db.write_transaction()
+                    .clear_horizon_sync_output_checkpoint()
+                    .commit()
+                    .await?;
+                if let Ok(Some(cleanup_header)) = db.fetch_header(cp.checkpoint_height).await {
+                    self.clean_up_failed_output_sync(&cleanup_header).await;
+                }
+                None
+            },
+            None => None,
+        };
+        let (sync_start_height, mut jmt_version) = match checkpoint_height {
+            Some(h) => {
+                // Only the in-progress (first resumption) tranche may have partial output data.
+                let first_tranche_end = cmp::min(
+                    (h + 1).saturating_add(HORIZON_SYNC_TRANCHE_SIZE).saturating_sub(1),
+                    to_header.height,
+                );
+                self.clean_up_height_range(h + 1, first_tranche_end).await?;
+                (h + 1, h)
+            },
+            None => {
+                self.clean_up_height_range(0, to_header.height).await?;
+                (0, 0)
+            },
+        };
+
+        if sync_start_height > to_header.height {
+            info!(
+                target: LOG_TARGET,
+                "Output sync already complete (sync_start_height {} > horizon height {})",
+                sync_start_height,
+                to_header.height
+            );
+            return Ok(());
         }
+
+        self.num_outputs = to_header.output_smt_size;
 
         let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
             current: 0,
@@ -605,207 +718,310 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
-            "Initiating output sync with peer `{}`, requesting ~{} outputs, tip_header height `{}`, \
+            "Initiating output sync with peer `{}`, requesting ~{} outputs from height {} to height {} \
             last_chain_header height `{}` (latency = {}ms)",
             sync_peer.node_id(),
             self.num_outputs,
-            tip_header.height(),
+            sync_start_height,
+            to_header.height,
             db.fetch_last_chain_header().await?.height(),
             latency.unwrap_or_default().as_millis(),
         );
 
-        let start_chain_header = db.fetch_chain_header(tip_header.height() + 1).await?;
-        let req = SyncUtxosRequest {
-            start_header_hash: start_chain_header.hash().to_vec(),
-            end_header_hash: to_header.hash().to_vec(),
-        };
-        let mut output_stream = client.sync_utxos(req).await?;
+        let timer = Instant::now();
+        let mut total_utxo_counter = 0u64;
+        let mut total_stxo_counter = 0u64;
+        let mut tranche_start_height = sync_start_height;
 
-        // let mut txn = db.write_transaction();
-        let mut utxo_counter = 0u64;
-        let mut stxo_counter = 0u64;
-        // let mut output_smt = (*db.inner().smt_write_access()?).clone();
-        let mut last_sync_timer = Instant::now();
-        let mut avg_latency = RollingAverageTime::new(20);
+        // Process the full block range in tranches
+        while tranche_start_height <= to_header.height {
+            let tranche_end_height = cmp::min(
+                tranche_start_height
+                    .saturating_add(HORIZON_SYNC_TRANCHE_SIZE)
+                    .saturating_sub(1),
+                to_header.height,
+            );
 
-        // let mut inputs_to_delete = Vec::new();
-        while let Some(response) = output_stream.next().await {
-            let latency = last_sync_timer.elapsed();
-            avg_latency.add_sample(latency);
-            let res: SyncUtxosResponse = response?;
+            let tranche_start_header =
+                db.fetch_header(tranche_start_height)
+                    .await?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "Header",
+                        field: "height",
+                        value: tranche_start_height.to_string(),
+                    })?;
+            let tranche_end_header = if tranche_end_height == to_header.height {
+                to_header.clone()
+            } else {
+                db.fetch_header(tranche_end_height)
+                    .await?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "Header",
+                        field: "height",
+                        value: tranche_end_height.to_string(),
+                    })?
+            };
 
-            let output_header_hash = FixedHash::try_from(res.mined_header)
-                .map_err(|_| HorizonSyncError::IncorrectResponse("Peer sent no mined header".into()))?;
-            let current_header = self
-                .db()
-                .fetch_header_by_block_hash(output_header_hash)
-                .await?
-                .ok_or_else(|| {
-                    HorizonSyncError::IncorrectResponse("Peer sent mined header we do not know of".into())
+            debug!(
+                target: LOG_TARGET,
+                "Syncing output tranche heights {}-{} ({} blocks) from peer {}",
+                tranche_start_height,
+                tranche_end_height,
+                tranche_end_height - tranche_start_height + 1,
+                sync_peer.node_id(),
+            );
+
+            let req = SyncUtxosRequest {
+                start_header_hash: tranche_start_header.hash().to_vec(),
+                end_header_hash: tranche_end_header.hash().to_vec(),
+            };
+            let mut output_stream = tokio::time::timeout(self.config.rpc_deadline, client.sync_utxos(req))
+                .await
+                .map_err(|_| {
+                    HorizonSyncError::RpcStatus(RpcStatus::general(&format!(
+                        "Timed out waiting for sync_utxos stream from peer {}",
+                        sync_peer.node_id()
+                    )))
+                })??;
+
+            let mut txn = db.write_transaction();
+            let mut utxo_counter = 0u64;
+            let mut stxo_counter = 0u64;
+            let mut items_processed = 0u64;
+            let mut last_sync_timer = Instant::now();
+            let mut avg_latency = RollingAverageTime::new(20);
+
+            // Accumulate SMT updates for the current tranche only. These are not applied until the full tranche
+            // stream has been received and the SMT root verified.
+            let mut state_tree_updates = BTreeMap::<FixedHash, Option<FixedHash>>::new();
+            let mut inputs_to_delete = Vec::new();
+            let mut batch_op_counter = 0;
+            let mut last_mined_header: Option<FixedHash> = None;
+
+            while let Some(response) = output_stream.next().await {
+                let latency = last_sync_timer.elapsed();
+                avg_latency.add_sample(latency);
+                let res: SyncUtxosResponse = response?;
+
+                let output_header_hash = FixedHash::try_from(res.mined_header).map_err(|e| {
+                    HorizonSyncError::IncorrectResponse(format!("Peer sent invalid mined header: {}", e))
                 })?;
+                last_mined_header = Some(output_header_hash);
+                let current_header = self
+                    .db()
+                    .fetch_header_by_block_hash(output_header_hash)
+                    .await?
+                    .ok_or_else(|| {
+                        HorizonSyncError::IncorrectResponse("Peer sent mined header we do not know of".into())
+                    })?;
 
-            let proto_output = res
-                .txo
-                .ok_or_else(|| HorizonSyncError::IncorrectResponse("Peer sent no transaction output data".into()))?;
-            match proto_output {
-                Txo::Output(output) => {
-                    utxo_counter += 1;
-                    // Increase the estimate number of outputs to be downloaded (for display purposes only).
-                    if utxo_counter >= self.num_outputs {
-                        self.num_outputs = utxo_counter + u64::from(current_header.hash() != to_header.hash());
-                    }
-
-                    let constants = self.rules.consensus_constants(current_header.height).clone();
-                    let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    if !output.is_burned() {
-                        debug!(
-                            target: LOG_TARGET,
-                            "UTXO `{}` received from sync peer ({} of {})",
-                            output.hash(),
-                            utxo_counter,
-                            self.num_outputs,
-                        );
-                        validate_output_version(&constants, &output)?;
-                        validate_individual_output(&output, &constants)?;
-
-                        batch_verify_range_proofs(&self.prover, &[&output])?;
-                        // let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
-                        // let smt_node = ValueHash::try_from(output.smt_hash(current_header.height).as_slice())?;
-                        // if let Err(e) = output_smt.insert(smt_key, smt_node) {
-                        //     error!(
-                        //         target: LOG_TARGET,
-                        //         "Output commitment({}) already in SMT",
-                        //         output.commitment.to_hex(),
-                        //     );
-                        //     return Err(e.into());
-                        // }
-                        todo!("Implement smt changes");
-                        // txn.insert_output_via_horizon_sync(
-                        //     output,
-                        //     current_header.hash(),
-                        //     current_header.height,
-                        //     current_header.timestamp.as_u64(),
-                        // );
-
-                        // // We have checked the range proof, and we have checked that the linked to header exists.
-                        // txn.commit().await?;
-                    }
-                },
-                Txo::Commitment(commitment_bytes) => {
-                    stxo_counter += 1;
-
-                    let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes.as_slice())?;
-                    match self
-                        .db()
-                        .fetch_unspent_output_hash_by_commitment(commitment.clone())
-                        .await?
-                    {
-                        Some(output_hash) => {
+                let proto_output = res.txo.ok_or_else(|| {
+                    HorizonSyncError::IncorrectResponse("Peer sent no transaction output data".into())
+                })?;
+                match proto_output {
+                    Txo::Output(output) => {
+                        let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
+                        if !output.is_burned() {
+                            utxo_counter += 1;
+                            let output_hash = output.hash();
                             debug!(
                                 target: LOG_TARGET,
-                                "STXO hash `{output_hash}` received from sync peer ({stxo_counter})",
+                                "UTXO `{}` received from sync peer ({} of {})",
+                                output_hash,
+                                total_utxo_counter + utxo_counter,
+                                self.num_outputs,
                             );
-                            // let smt_key = NodeKey::try_from(commitment_bytes.as_slice())?;
-                            // match output_smt.delete(&smt_key)? {
-                            //     DeleteResult::Deleted(_value_hash) => {},
-                            //     DeleteResult::KeyNotFound => {
-                            //         error!(
-                            //             target: LOG_TARGET,
-                            //             "Could not find input({}) in SMT",
-                            //             commitment.to_hex(),
-                            //         );
-                            //         return Err(HorizonSyncError::ChainStorageError(
-                            //             ChainStorageError::UnspendableInput,
-                            //         ));
-                            //     },
-                            // };
-                            todo!("Implement smt changes");
-                            // This will only be committed once the SMT has been verified due to rewind difficulties if
-                            // we need to abort the sync
-                            // inputs_to_delete.push((output_hash, commitment));
-                        },
-                        None => {
-                            return Err(HorizonSyncError::IncorrectResponse(
-                                "Peer sent unknown commitment hash".into(),
-                            ));
-                        },
-                    }
-                },
+                            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().map_err(|e| {
+                                HorizonSyncError::IncorrectResponse(format!("Peer sent malformed commitment: {}", e))
+                            })?;
+                            let key = FixedHash::from(key_bytes);
+
+                            if state_tree_updates
+                                .insert(key, Some(output.smt_hash(current_header.height)))
+                                .is_some()
+                            {
+                                return Err(HorizonSyncError::IncorrectResponse(
+                                    "Peer sent duplicate output commitment during horizon sync".into(),
+                                ));
+                            }
+
+                            let constants = self.rules.consensus_constants(current_header.height).clone();
+                            validate_output_version(&constants, &output)?;
+                            validate_individual_output(&output, &constants)?;
+                            batch_verify_range_proofs(&self.prover, &[&output])?;
+
+                            txn.insert_output_via_horizon_sync(
+                                output,
+                                current_header.hash(),
+                                current_header.height,
+                                current_header.timestamp.as_u64(),
+                            );
+                            batch_op_counter += 1;
+                        }
+                    },
+                    Txo::Commitment(commitment_bytes) => {
+                        stxo_counter += 1;
+
+                        let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes.as_slice())?;
+                        match self
+                            .db()
+                            .fetch_unspent_output_hash_by_commitment(commitment.clone())
+                            .await?
+                        {
+                            Some(output_hash) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "STXO hash `{output_hash}` received from sync peer ({stxo_counter})",
+                                );
+                                let key_bytes: [u8; 32] = commitment_bytes.as_slice().try_into().map_err(|e| {
+                                    HorizonSyncError::IncorrectResponse(format!(
+                                        "Peer sent malformed commitment: {}",
+                                        e
+                                    ))
+                                })?;
+                                let key = FixedHash::from(key_bytes);
+
+                                if matches!(state_tree_updates.get(&key), Some(None)) {
+                                    return Err(HorizonSyncError::ChainStorageError(
+                                        ChainStorageError::UnspendableInput,
+                                    ));
+                                }
+                                state_tree_updates.insert(key, None);
+
+                                let output_info = self.db().fetch_output(output_hash).await?.ok_or_else(|| {
+                                    HorizonSyncError::IncorrectResponse(
+                                        "Could not fetch full output for spent commitment".into(),
+                                    )
+                                })?;
+                                inputs_to_delete.push(output_info.output);
+                            },
+                            None => {
+                                return Err(HorizonSyncError::IncorrectResponse(
+                                    "Peer sent unknown commitment hash".into(),
+                                ));
+                            },
+                        }
+                    },
+                }
+
+                items_processed += 1;
+                if items_processed.is_multiple_of(PROGRESS_REPORT_INTERVAL) {
+                    let utxo_progress = total_utxo_counter + utxo_counter;
+                    let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
+                        current: utxo_progress,
+                        total: self.num_outputs,
+                        sync_peer: sync_peer.clone(),
+                    });
+                    self.hooks.call_on_progress_horizon_hooks(info);
+                }
+
+                if batch_op_counter >= HORIZON_SYNC_BATCH_SIZE {
+                    txn.commit().await?;
+                    txn = db.write_transaction();
+                    batch_op_counter = 0;
+                }
+
+                sync_peer.set_latency(latency);
+                sync_peer.add_sample(last_sync_timer.elapsed());
+                last_sync_timer = Instant::now();
             }
 
-            if utxo_counter.is_multiple_of(100) {
-                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
-                    current: utxo_counter,
-                    total: self.num_outputs,
-                    sync_peer: sync_peer.clone(),
+            // Verify the stream completed the full tranche before committing.
+            if let Some(last_hash) = last_mined_header &&
+                last_hash != tranche_end_header.hash()
+            {
+                return Err(HorizonSyncError::IncorrectResponse(format!(
+                    "Sync peer did not complete output stream for tranche {}-{}. Last block received: {}, expected: {}",
+                    tranche_start_height,
+                    tranche_end_height,
+                    last_hash.to_hex(),
+                    tranche_end_header.hash().to_hex()
+                )));
+            }
+
+            let tranche_updates = state_tree_updates
+                .into_iter()
+                .map(|(key, value)| HorizonStateTreeUpdate { key, value })
+                .collect::<Vec<_>>();
+
+            txn.apply_horizon_state_tree_updates(jmt_version, tranche_end_header.height, tranche_updates);
+            for output in &inputs_to_delete {
+                if let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() &&
+                    let Some(vn_reg) = sidechain_feature.validator_node_registration()
+                {
+                    txn.delete_validator_node(
+                        sidechain_feature.sidechain_public_key().cloned(),
+                        vn_reg.public_key().clone(),
+                    );
+                }
+            }
+            for output in inputs_to_delete {
+                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+            }
+            // Only checkpoint intermediate tranches for network recovery.
+            // We intentionally do not checkpoint the final tranche before verification.
+            // If the final root verification fails, the ENTIRE state is considered poisoned.
+            if tranche_end_height < to_header.height {
+                txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+                    checkpoint_height: tranche_end_height,
+                    checkpoint_hash: tranche_end_header.hash(),
+                    sync_target_height: to_header.height,
+                    sync_target_hash: to_header.hash(),
                 });
-                self.hooks.call_on_progress_horizon_hooks(info);
             }
-            sync_peer.set_latency(latency);
-            sync_peer.add_sample(last_sync_timer.elapsed());
-            last_sync_timer = Instant::now();
+            txn.commit().await?;
+            jmt_version = tranche_end_height;
+
+            debug!(
+                target: LOG_TARGET,
+                "Committed output tranche heights {}-{}: {} UTXOs and {} STXOs",
+                tranche_start_height,
+                tranche_end_height,
+                utxo_counter,
+                stxo_counter,
+            );
+
+            total_utxo_counter += utxo_counter;
+            total_stxo_counter += stxo_counter;
+            tranche_start_height = tranche_end_height + 1;
         }
-        // The SMT can only be verified after all outputs have been downloaded, due to the way we optimize fetching
-        // outputs from the sync peer. As an example:
-        // 1. Initial sync:
-        //    - We request outputs from height 0 to 100 (the tranche)
-        //    - The sync peer only returns outputs per block that would still be unspent at height 100 and all inputs
-        //      per block. All outputs that were created and spent within the tranche are never returned.
-        //    - For example, an output is created in block 50 and spent in block 70. It would be included in the SMT for
-        //      headers from height 50 to 69, but due to the optimization, the sync peer would never know about it.
-        // 2. Consecutive sync:
-        //    - We request outputs from height 101 to 200 (the tranche)
-        //    - The sync peer only returns outputs per block that would still be unspent at height 200, as well as all
-        //      inputs per block, but in this case, only those inputs that are not an output of the current tranche of
-        //      outputs. Similarly, all outputs created and spent within the tranche are never returned.
-        //    - For example, an output is created in block 110 and spent in block 180. It would be included in the SMT
-        //      for headers from height 110 to 179, but due to the optimization, the sync peer would never know about
-        //      it.
-        // 3. In both cases it would be impossible to verify the SMT per block, as we would not be able to update the
-        //    SMT with the outputs that were created and spent within the tranche.
-        todo!("Implement SMT check");
-        // HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, to_header)?;
 
-        // // Commit in chunks to avoid locking the database for too long
-        // let inputs_to_delete_len = inputs_to_delete.len();
-        // for (count, (output_hash, commitment)) in (1..=inputs_to_delete_len).zip(inputs_to_delete.into_iter()) {
-        //     txn.prune_output_from_all_dbs(output_hash, commitment, OutputType::default());
-        //     if count % 100 == 0 || count == inputs_to_delete_len {
-        //         txn.commit().await?;
-        //     }
-        // }
-        // let mut writing_lock_output_smt = db.inner().smt_write_access()?;
-        // *writing_lock_output_smt = output_smt;
-        // debug!(
-        //     target: LOG_TARGET,
-        //     "Finished syncing TXOs: {} unspent and {} spent downloaded in {:.2?}",
-        //     utxo_counter,
-        //     stxo_counter,
-        //     timer.elapsed()
-        // );
-        // Ok(())
+        if let Err(e) = db
+            .verify_horizon_sync_output_root(to_header.height, to_header.output_mr)
+            .await
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Final JMT root verification failed! The entire synced state is poisoned. Clearing checkpoint."
+            );
+            let _unused = db
+                .write_transaction()
+                .clear_horizon_sync_output_checkpoint()
+                .commit()
+                .await;
+            return Err(HorizonSyncError::ChainStorageError(e));
+        }
+
+        // Mark output sync as complete
+        db.write_transaction()
+            .set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+                checkpoint_height: to_header.height,
+                checkpoint_hash: to_header.hash(),
+                sync_target_height: to_header.height,
+                sync_target_hash: to_header.hash(),
+            })
+            .commit()
+            .await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Finished syncing TXOs: {} unspent and {} spent downloaded in {:.2?}",
+            total_utxo_counter,
+            total_stxo_counter,
+            timer.elapsed()
+        );
+        Ok(())
     }
-
-    // Helper function to check the output SMT root hash against the expected root hash.
-    // fn check_output_smt_root_hash(output_smt: &LmdbTreeReader, header: &BlockHeader) -> Result<(), HorizonSyncError>
-    // {     let tree = JellyfishMerkleTree::<_, SmtHasher>::new(output_smt);
-    //     let root = tree.get_root_hash(header.height).map_err(|e| HorizonSyncError::SMTError(()))
-    //     if root != header.output_mr {
-    //         warn!(
-    //             target: LOG_TARGET,
-    //             "Target root(#{}) did not match expected (#{})",
-    //                 header.output_mr.to_hex(),
-    //                 root.to_hex(),
-    //         );
-    //         return Err(HorizonSyncError::InvalidMrRoot {
-    //             mr_tree: "UTXO SMT".to_string(),
-    //             at_height: header.height,
-    //             expected_hex: header.output_mr.to_hex(),
-    //             actual_hex: root.to_hex(),
-    //         });
-    //     }
-    //     Ok(())
-    // }
 
     // Finalize the horizon state synchronization by setting the chain metadata to the local tip and committing
     // the horizon state to the blockchain backend.
@@ -846,6 +1062,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             )
             .set_pruned_height(header.height())
             .set_horizon_data(calc_kernel_sum, calc_utxo_sum)
+            .clear_horizon_sync_output_checkpoint()
             .commit()
             .await?;
 

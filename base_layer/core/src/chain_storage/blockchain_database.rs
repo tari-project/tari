@@ -120,7 +120,7 @@ use crate::{
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
-        db_transaction::{DbKey, DbTransaction, DbValue},
+        db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
         error::ChainStorageError,
         kernel_merkle_proof::KernelMerkleProof,
         lmdb_db::{BREATHING_TIME_MS_MAX, BREATHING_TIME_MS_MIN, BlockchainCheckStatus},
@@ -2030,6 +2030,22 @@ where B: BlockchainBackend
     pub fn fetch_horizon_data(&self) -> Result<HorizonData, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_horizon_data()?.unwrap_or_default())
+    }
+
+    pub fn fetch_horizon_sync_output_checkpoint(
+        &self,
+    ) -> Result<Option<HorizonSyncOutputCheckpoint>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_horizon_sync_output_checkpoint()
+    }
+
+    pub fn verify_horizon_sync_output_root(
+        &self,
+        version: u64,
+        expected_root: HashOutput,
+    ) -> Result<(), ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.verify_horizon_sync_output_root(version, expected_root)
     }
 
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {

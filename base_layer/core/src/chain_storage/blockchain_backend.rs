@@ -29,6 +29,7 @@ use crate::{
         DbTransaction,
         DbValue,
         HorizonData,
+        HorizonSyncOutputCheckpoint,
         InputMinedInfo,
         MmrTree,
         OutputMinedInfo,
@@ -213,6 +214,15 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError>;
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
+
+    /// Fetch the horizon sync output checkpoint, if one is stored.
+    /// This records up to which block height output tranches have been fully committed during horizon sync,
+    /// coupled with the sync target so the checkpoint is never reused for a different `to_header`.
+    fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<HorizonSyncOutputCheckpoint>, ChainStorageError>;
+
+    /// Verify that the JMT output root at the given version matches the expected root.
+    fn verify_horizon_sync_output_root(&self, version: u64, expected_root: HashOutput)
+    -> Result<(), ChainStorageError>;
 
     /// Returns basic database stats for each internal database, such as number of entries and page sizes. This call may
     /// not apply to every database implementation.

@@ -75,6 +75,15 @@ impl<'a> LmdbTreeWriter<'a> {
 
         Ok(())
     }
+
+    pub fn put_node(&self, node_key: &jmt::storage::NodeKey, node: &jmt::storage::Node) -> anyhow::Result<()> {
+        let mut lmdb_key: Vec<u8> = vec![];
+        lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
+        borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
+
+        lmdb_insert(self.txn, &self.node_db, &lmdb_key, node, "jmt_node_table")?;
+        Ok(())
+    }
 }
 
 impl TreeWriter for LmdbTreeWriter<'_> {
