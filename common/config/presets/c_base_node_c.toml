@@ -290,6 +290,9 @@ database_url = "data/base_node/dht.db"
 #connectivity.update_interval = 120 # 2 * 60
 # The interval to change the random pool peers. Default = 30 mins
 #connectivity.random_pool_refresh_interval = 1_800 # 30 * 60
+# This is the percentage of nodes that we want to churn per refresh cycle
+# This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes
+# connectivity.churn_rate = 10
 # Length of cooldown when high connection failure rates are encountered. Default: 45s
 #connectivity.high_failure_rate_cooldown = 45
 # The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,

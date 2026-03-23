@@ -425,7 +425,7 @@ impl DhtConnectivity {
             .drain(..)
             .partition::<Vec<_>, _>(|n| disconnected.iter().any(|c| c.peer_node_id() == n));
         // we want add and at most 10% new peers or at least 1 peer
-        let keep_size = max(pool_size / 10, 1);
+        let keep_size = pool_size - max(pool_size * self.config.connectivity.churn_rate / 100, 1);
         while connected.len() > keep_size {
             // we remove a random peer so as not to keep swapping the same peer each time.
             let mut rng = thread_rng();
