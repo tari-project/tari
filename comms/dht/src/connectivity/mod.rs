@@ -322,14 +322,14 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    async fn refresh_peer_pools(&mut self, try_revive_connections: bool) -> Result<(), DhtConnectivityError> {
+    async fn refresh_peer_pools(&mut self, refresh_entire_pool: bool) -> Result<(), DhtConnectivityError> {
         info!(
             target: LOG_TARGET,
             "Reinitializing peer pool. (size={}, try_revive_connections {try_revive_connections})",
             self.random_pool.len(),
         );
 
-        if try_revive_connections {
+        if refresh_entire_pool {
             let should_refresh = self
                 .random_pool_last_refresh
                 .map(|instant| instant.elapsed() >= self.config.connectivity.random_pool_refresh_interval)
@@ -339,7 +339,7 @@ impl DhtConnectivity {
             } else {
                 debug!(
                     target: LOG_TARGET,
-                    "Attempting to revive existing peer connections before refreshing the entire pool. Last refresh was {:.0?} ago.",
+                    "Attempting to refresh entire pool, but time has not expired yet. Last refresh was {:.0?} ago.",
                     self.random_pool_last_refresh.map(|instant| instant.elapsed()).unwrap_or_default()
                 );
             }
