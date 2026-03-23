@@ -35,7 +35,6 @@ mod test;
 
 mod metrics;
 use std::{
-    cmp::max,
     sync::Arc,
     time::{Duration, Instant},
 };
