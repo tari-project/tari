@@ -517,7 +517,14 @@ impl DhtConnectivity {
                 pool_size
             );
             let mut conn = conn;
-            conn.disconnect(Minimized::Yes, "DhtConnectivity pool full").await?;
+            if let Err(err) = conn.disconnect(Minimized::Yes, "DhtConnectivity pool full").await {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to disconnect excess peer '{}': {:?}",
+                    conn.peer_node_id().short_str(),
+                    err
+                );
+            }
         }
 
         Ok(())
