@@ -25,6 +25,7 @@ use std::{collections::HashSet, convert::TryInto};
 use futures::{Stream, StreamExt, stream::FuturesUnordered};
 use log::*;
 use tari_comms::{
+    Minimized,
     PeerConnection,
     connectivity::ConnectivityError,
     peer_manager::{NodeId, Peer, PeerId},
@@ -122,29 +123,34 @@ impl Discovering {
 
     async fn request_from_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
         let rpc_connect_timeout = self.config().network_discovery.bootstrap_rpc_connect_timeout;
-        let client = tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<DhtClient>())
-            .await
-            .map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Discovering: RPC connect_rpc to sync peer '{}' timed out after {:?}",
-                    conn.peer_node_id(),
-                    rpc_connect_timeout,
-                );
-                NetworkDiscoveryError::Timeout {
-                    operation: "connect_rpc".to_string(),
-                    peer: conn.peer_node_id().to_hex(),
-                    duration: format!("{rpc_connect_timeout:.2?}"),
-                }
-            })?
-            .inspect_err(|e| {
+        let client = match tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<DhtClient>()).await {
+            Ok(Ok(client)) => client,
+            Ok(Err(e)) => {
                 error!(
                     target: LOG_TARGET,
                     "Discovering: Failed to connect RPC client to sync peer {}: {}",
                     conn.peer_node_id(),
                     e
                 );
-            })?;
+                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect failed").await;
+                return Err(e.into());
+            },
+            Err(_) => {
+                // the peer most likely is not online or has an old address.
+                debug!(
+                    target: LOG_TARGET,
+                    "Discovering: RPC connect_rpc to sync peer '{}' timed out after {:?}",
+                    conn.peer_node_id(),
+                    rpc_connect_timeout,
+                );
+                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect timeout").await;
+                return Err(NetworkDiscoveryError::Timeout {
+                    operation: "connect_rpc".to_string(),
+                    peer: conn.peer_node_id().to_hex(),
+                    duration: format!("{rpc_connect_timeout:.2?}"),
+                });
+            },
+        };
 
         trace!(
             target: LOG_TARGET,
@@ -160,6 +166,7 @@ impl Discovering {
         );
         let result = self.request_peers(peer_node_id, client).await;
         self.ban_on_offence(peer_node_id.clone(), result).await?;
+        let _unused = conn.disconnect(Minimized::Yes, "Discovering sync complete").await;
 
         Ok(())
     }

@@ -214,15 +214,19 @@ pub struct DhtConnectivityConfig {
     /// Currently, it only emits a warning if the ratio is below this setting.
     /// Default: 0.1 (10%)
     pub minimum_desired_tcpv4_node_ratio: f32,
+    /// This is the percentage of nodes that we want to churn per refresh cycle
+    /// This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes,
+    pub churn_rate: usize,
 }
 
 impl Default for DhtConnectivityConfig {
     fn default() -> Self {
         Self {
             update_interval: Duration::from_secs(2 * 60),
-            random_pool_refresh_interval: Duration::from_secs(2 * 60 * 60),
+            random_pool_refresh_interval: Duration::from_secs(10 * 60 * 60),
             high_failure_rate_cooldown: Duration::from_secs(45),
             minimum_desired_tcpv4_node_ratio: 0.1,
+            churn_rate: 10,
         }
     }
 }

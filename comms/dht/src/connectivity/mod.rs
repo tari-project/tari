@@ -41,9 +41,11 @@ use std::{
 
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
+use rand::{Rng, thread_rng};
 use tari_comms::{
     Minimized,
     PeerConnection,
+    PeerConnectionError,
     PeerManager,
     connectivity::{
         ConnectivityError,
@@ -74,6 +76,8 @@ pub enum DhtConnectivityError {
     SendJoinFailed(#[from] DhtActorError),
     #[error("Metrics error: {0}")]
     MetricError(#[from] MetricsError),
+    #[error("Peer connection error: {0}")]
+    PeerConnectionError(#[from] PeerConnectionError),
 }
 
 /// DHT connectivity actor.
@@ -317,43 +321,59 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    async fn refresh_peer_pools(&mut self, try_revive_connections: bool) -> Result<(), DhtConnectivityError> {
+    async fn refresh_peer_pools(&mut self, refresh_entire_pool: bool) -> Result<(), DhtConnectivityError> {
         info!(
             target: LOG_TARGET,
-            "Reinitializing peer pool. (size={})",
+            "Reinitializing peer pool. (size={}, try_revive_connections {refresh_entire_pool})",
             self.random_pool.len(),
         );
 
-        if try_revive_connections {
-            self.redial_pool_peers_as_required().await?;
+        if refresh_entire_pool {
+            let should_refresh = self
+                .random_pool_last_refresh
+                .map(|instant| instant.elapsed() >= self.config.connectivity.random_pool_refresh_interval)
+                .unwrap_or(true);
+            if should_refresh {
+                self.refresh_entire_pool().await?;
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Attempting to refresh entire pool, but time has not expired yet. Last refresh was {:.0?} ago.",
+                    self.random_pool_last_refresh.map(|instant| instant.elapsed()).unwrap_or_default()
+                );
+            }
+        } else {
+            self.refresh_random_pool().await?;
         }
-        self.refresh_random_pool().await?;
 
         Ok(())
     }
 
-    async fn redial_pool_peers_as_required(&mut self) -> Result<(), DhtConnectivityError> {
-        let disconnected = self
-            .connection_handles
-            .iter()
-            .filter(|c| !c.is_connected())
-            .collect::<Vec<_>>();
-        let to_redial = self
-            .random_pool
-            .iter()
-            .filter(|n| disconnected.iter().any(|c| c.peer_node_id() == *n))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        if !to_redial.is_empty() {
-            debug!(
-                target: LOG_TARGET,
-                "Redialling {} disconnected peer(s)",
-                to_redial.len()
-            );
-            self.dial_multiple_peers(&to_redial).await?;
+    async fn refresh_entire_pool(&mut self) -> Result<(), DhtConnectivityError> {
+        let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        // we have no peers, so we need to get peers, so lets double our chances of dialing twice the number we want, we
+        // can close them later on And we only select known healty ones
+        debug!(
+            target: LOG_TARGET,
+            "We have no connections asking for {} nodes",
+            pool_size * 2,
+        );
+        let new_peers = self.fetch_random_peers(pool_size * 2, &Vec::new(), true).await?;
+        debug!(
+            target: LOG_TARGET,
+            "Refreshing peer pool (#new = {})",
+            new_peers.len(),
+        );
+        let old_peers = self.random_pool.drain(..).collect::<Vec<_>>();
+        for peer in &new_peers {
+            self.insert_random_peer(peer.clone());
         }
-
+        // Make sure we drop any connection handles that removed from the pool
+        for old_peer in &old_peers {
+            self.remove_connection_handle(old_peer).await?;
+        }
+        self.dial_multiple_peers(&new_peers).await?;
+        self.random_pool_last_refresh = Some(Instant::now());
         Ok(())
     }
 
@@ -385,41 +405,64 @@ impl DhtConnectivity {
         if self.config.minimize_connections {
             exclude.extend(self.previous_random.iter().cloned());
         }
-        let mut new_peers = self.fetch_random_peers(pool_size, &exclude).await?;
-        if new_peers.is_empty() {
-            info!(
-                target: LOG_TARGET,
-                "Unable to refresh peer pool because there are insufficient known peers",
-            );
-            return Ok(());
-        }
+        info!(
+            target: LOG_TARGET,
+            "refreshing random peer list, asking for {pool_size} peers",
+        );
+        let mut new_peers = self.fetch_random_peers(pool_size, &exclude, false).await?;
 
-        let (intersection, difference) = self
+        // let see who is not connected and remove them
+        let disconnected = self
+            .connection_handles
+            .iter()
+            .filter(|c| !c.is_connected())
+            .collect::<Vec<_>>();
+
+        // lets remove disconnected ones
+        let (mut disconnected_peers, mut connected) = self
             .random_pool
             .drain(..)
-            .partition::<Vec<_>, _>(|n| new_peers.contains(n));
-        // Remove the peers that we want to keep from the `new_peers` to be added
-        new_peers.retain(|n| !intersection.contains(n));
-        self.random_pool = intersection;
+            .partition::<Vec<_>, _>(|n| disconnected.iter().any(|c| c.peer_node_id() == n));
+        // we want add and at most 10% new peers or at least 1 peer
+        let keep_size = pool_size - pool_size * self.config.connectivity.churn_rate / 100;
+        while connected.len() > keep_size {
+            // we remove a random peer so as not to keep swapping the same peer each time.
+            let mut rng = thread_rng();
+            let index = rng.gen_range(0..connected.len());
+            let disconnect_peer = connected.swap_remove(index);
+            disconnected_peers.push(disconnect_peer);
+        }
+        new_peers.truncate(pool_size.saturating_sub(connected.len()));
+
+        self.random_pool = connected;
         debug!(
             target: LOG_TARGET,
-            "Adding new peers to peer pool (#new = {}, #keeping = {}, #removing = {})",
+            "Adding new peers to peer pool (#new = {}, #keeping = {})",
             new_peers.len(),
             self.random_pool.len(),
-            difference.len()
-        );
-        trace!(
-            target: LOG_TARGET,
-            "Pool peers: Adding = {new_peers:?}, Removing = {difference:?}"
-
         );
         for peer in &new_peers {
             self.insert_random_peer(peer.clone());
         }
-        // Drop any connection handles that removed from the pool
-        difference.iter().for_each(|peer| {
-            self.remove_connection_handle(peer);
-        });
+        // Drop any connection handles that were removed from the pool
+        for peer_to_disconnect in &disconnected_peers {
+            self.remove_connection_handle(peer_to_disconnect).await?;
+        }
+        // Clean up any connection handles not in the current pool (e.g. accumulated between refresh cycles)
+        let stale_handles: Vec<NodeId> = self
+            .connection_handles
+            .iter()
+            .filter(|c| !self.random_pool.contains(c.peer_node_id()) && c.direction().is_outbound())
+            .map(|c| c.peer_node_id().clone())
+            .collect();
+        for node_id in &stale_handles {
+            debug!(
+                target: LOG_TARGET,
+                "Removing stale connection handle for '{}' (not in current pool)",
+                node_id.short_str()
+            );
+            self.remove_connection_handle(node_id).await?;
+        }
         self.dial_multiple_peers(&new_peers).await?;
 
         self.random_pool_last_refresh = Some(Instant::now());
@@ -452,7 +495,7 @@ impl DhtConnectivity {
                 "Added pool peer '{}' to connection handles",
                 conn.peer_node_id()
             );
-            self.insert_connection_handle(conn);
+            self.insert_connection_handle(conn).await?;
             return Ok(());
         }
 
@@ -464,7 +507,24 @@ impl DhtConnectivity {
                 conn.peer_node_id().short_str()
             );
             self.random_pool.push(conn.peer_node_id().clone());
-            self.insert_connection_handle(conn);
+            self.insert_connection_handle(conn).await?;
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Peer '{}' connected but peer pool is full ({}/{}). Disconnecting.",
+                conn.peer_node_id().short_str(),
+                self.random_pool.len(),
+                pool_size
+            );
+            let mut conn = conn;
+            if let Err(err) = conn.disconnect(Minimized::Yes, "DhtConnectivity pool full").await {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to disconnect excess peer '{}': {:?}",
+                    conn.peer_node_id().short_str(),
+                    err
+                );
+            }
         }
 
         Ok(())
@@ -503,24 +563,29 @@ impl DhtConnectivity {
                 threshold
             );
             self.replace_pool_peer(&peer.node_id).await?;
-            self.remove_connection_handle(&peer.node_id);
+            self.remove_connection_handle(&peer.node_id).await?;
         }
 
         Ok(())
     }
 
-    fn insert_connection_handle(&mut self, conn: PeerConnection) {
+    async fn insert_connection_handle(&mut self, conn: PeerConnection) -> Result<(), PeerConnectionError> {
         // Remove any existing connection for this peer
-        self.remove_connection_handle(conn.peer_node_id());
+        self.remove_connection_handle(conn.peer_node_id()).await?;
         trace!(target: LOG_TARGET, "Insert new peer connection {conn}" );
         self.connection_handles.push(conn);
+        Ok(())
     }
 
-    fn remove_connection_handle(&mut self, node_id: &NodeId) {
+    async fn remove_connection_handle(&mut self, node_id: &NodeId) -> Result<(), PeerConnectionError> {
         if let Some(idx) = self.connection_handles.iter().position(|c| c.peer_node_id() == node_id) {
-            let conn = self.connection_handles.swap_remove(idx);
+            let mut conn = self.connection_handles.swap_remove(idx);
+            if conn.is_connected() {
+                conn.disconnect(Minimized::No, "DhtConnectivty").await?;
+            }
             trace!(target: LOG_TARGET, "Removing peer connection {conn}" );
         }
+        Ok(())
     }
 
     async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) -> Result<(), DhtConnectivityError> {
@@ -586,13 +651,11 @@ impl DhtConnectivity {
                     // Remove from managed pool if applicable
                     self.replace_pool_peer(&node_id).await?;
                     // In case the connections was not managed, remove the connection handle
-                    self.remove_connection_handle(&node_id);
+                    self.remove_connection_handle(&node_id).await?;
                     return Ok(());
                 }
-                debug!(target: LOG_TARGET, "Pool peer {node_id} disconnected. Redialling...");
-                // Attempt to reestablish the lost connection to the pool peer. If reconnection fails,
-                // it is replaced with another peer (replace_pool_peer via PeerConnectFailed)
-                self.dial_multiple_peers(&[node_id]).await?;
+                debug!(target: LOG_TARGET, "Pool peer {node_id} disconnected. Replacing with a new peer.");
+                self.replace_pool_peer(&node_id).await?;
             },
             ConnectivityStateOnline(n) => {
                 self.refresh_peer_pools(false).await?;
@@ -643,13 +706,13 @@ impl DhtConnectivity {
             }
 
             self.random_pool.retain(|n| n != current_peer);
-            self.remove_connection_handle(current_peer);
+            self.remove_connection_handle(current_peer).await?;
 
             debug!(
                 target: LOG_TARGET,
                 "Peer '{current_peer}' in peer pool is unavailable. Adding a new peer if possible"
             );
-            match self.fetch_random_peers(1, &exclude).await?.pop() {
+            match self.fetch_random_peers(1, &exclude, false).await?.pop() {
                 Some(new_peer) => {
                     self.insert_random_peer(new_peer.clone());
                     self.dial_multiple_peers(&[new_peer]).await?;
@@ -725,10 +788,15 @@ impl DhtConnectivity {
         self.random_pool.clone()
     }
 
-    async fn fetch_random_peers(&mut self, n: usize, excluded: &[NodeId]) -> Result<Vec<NodeId>, DhtConnectivityError> {
+    async fn fetch_random_peers(
+        &mut self,
+        n: usize,
+        excluded: &[NodeId],
+        known_good: bool,
+    ) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let mut excluded = excluded.to_vec();
         excluded.extend(self.peer_allow_list().await?);
-        let peers = self.peer_manager.random_peers(n, &excluded, None).await?;
+        let peers = self.peer_manager.random_peers(n, &excluded, None, known_good).await?;
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 

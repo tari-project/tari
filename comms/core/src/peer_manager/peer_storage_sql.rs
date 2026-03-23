@@ -260,10 +260,11 @@ impl PeerStorageSql {
         exclude_peers: &[NodeId],
         flags: Option<PeerFlags>,
         transport_protocols: &[TransportProtocol],
+        known_good: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self
             .peer_db
-            .get_n_random_peers(n, exclude_peers, flags, transport_protocols)?)
+            .get_n_random_peers(n, exclude_peers, flags, transport_protocols, known_good)?)
     }
 
     /// Unban the peer

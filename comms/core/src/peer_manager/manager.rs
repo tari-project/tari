@@ -233,9 +233,22 @@ impl PeerManager {
         n: usize,
         excluded: &[NodeId],
         flags: Option<PeerFlags>,
+        known_good: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql
-            .random_peers(n, excluded, flags, &self.transport_protocols)
+        let mut peers =
+            self.peer_storage_sql
+                .random_peers(n, excluded, flags, &self.transport_protocols, known_good)?;
+        if known_good && peers.len() < n {
+            let mut additional = self.peer_storage_sql.random_peers(
+                n.checked_sub(peers.len()).unwrap_or(1),
+                excluded,
+                flags,
+                &self.transport_protocols,
+                false,
+            )?;
+            peers.append(&mut additional);
+        }
+        Ok(peers)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
@@ -678,8 +691,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager.random_peers(10, &[], None).await.unwrap();
-        let identities2 = peer_manager.random_peers(10, &[], None).await.unwrap();
+        let identities1 = peer_manager.random_peers(10, &[], None, false).await.unwrap();
+        let identities2 = peer_manager.random_peers(10, &[], None, false).await.unwrap();
         assert_ne!(identities1, identities2);
     }
 
@@ -865,7 +878,7 @@ mod test {
                 let peer_manager = peer_manager.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
-                    let _random_peers = peer_manager.random_peers(n, &[], None).await.unwrap();
+                    let _random_peers = peer_manager.random_peers(n, &[], None, false).await.unwrap();
                     tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
                     let _total_peers = peer_manager.count().await;
                     Ok::<_, PeerManagerError>(())
@@ -886,7 +899,7 @@ mod test {
 
         // Do one final read
         tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
-        let random_peers = peer_manager.random_peers(n, &[], None).await.unwrap();
+        let random_peers = peer_manager.random_peers(n, &[], None, false).await.unwrap();
         let total_peers = peer_manager.count().await;
         assert_eq!(total_peers, num_peers * num_write_tasks);
         assert!(random_peers.len() <= n);

@@ -330,8 +330,6 @@ minimize_connections = true
 
 # The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
 connectivity.update_interval = 300 # 2 * 60
-# The interval to change the random pool peers. Default = 2 hours
-#connectivity.random_pool_refresh_interval = 7_200 # 2 * 60 * 60
 # Length of cooldown when high connection failure rates are encountered. Default: 45s
 #connectivity.high_failure_rate_cooldown = 45
 # The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,

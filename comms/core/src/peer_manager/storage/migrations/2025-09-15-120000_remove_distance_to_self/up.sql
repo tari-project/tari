@@ -1,4 +1,7 @@
 -- Remove distance_to_self column from peers table (SQLite requires table recreation)
+-- Must disable foreign keys to prevent cascading deletion of multi_addresses
+
+PRAGMA foreign_keys = OFF;
 
 CREATE TABLE peers_new (
     peer_id BIGINT PRIMARY KEY NOT NULL,
@@ -28,3 +31,5 @@ ALTER TABLE peers_new RENAME TO peers;
 CREATE INDEX idx_node_id ON peers (node_id);
 CREATE INDEX idx_banned_until ON peers (banned_until);
 CREATE INDEX idx_deleted_at ON peers (deleted_at);
+
+PRAGMA foreign_keys = ON;

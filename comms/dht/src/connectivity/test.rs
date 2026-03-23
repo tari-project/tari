@@ -25,7 +25,6 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
-    Minimized,
     NodeIdentity,
     PeerManager,
     connectivity::ConnectivityEvent,
@@ -185,69 +184,6 @@ async fn added_pool_peers() {
 
     // 1 for this test, 1 for the connectivity manager [FLAKY test, sometimes it is 3]
     assert!(conn.handle_count() == 2 || conn.handle_count() == 3);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn replace_peer_when_peer_goes_offline() {
-    let node_identity = make_node_identity();
-    let node_identities = build_many_node_identities(7, PeerFeatures::COMMUNICATION_NODE);
-    let peers = node_identities
-        .iter()
-        .map(|ni| create_good_standing_peer(ni))
-        .collect::<Vec<_>>();
-
-    // pool_size = 3+3 = 6, with 7 peers available, 6 will be dialed, 1 stays as a spare
-    let config = DhtConfig {
-        num_neighbouring_nodes: 3,
-        num_random_nodes: 3,
-        ..Default::default()
-    };
-    let (dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, node_identity, peers).await;
-    dht_connectivity.spawn();
-
-    // Wait for calls to dial peers
-    async_assert!(
-        connectivity.call_count().await >= 6,
-        max_attempts = 20,
-        interval = Duration::from_millis(10),
-    );
-    let _result = connectivity.take_calls().await;
-
-    let dialed = connectivity.take_dialed_peers().await;
-    assert_eq!(dialed.len(), 6);
-
-    // Disconnect the first peer that was dialed
-    let disconnected_peer = dialed[0].clone();
-    connectivity.publish_event(ConnectivityEvent::PeerDisconnected(
-        disconnected_peer.clone(),
-        Minimized::No,
-    ));
-
-    async_assert!(
-        connectivity.call_count().await >= 1,
-        max_attempts = 20,
-        interval = Duration::from_millis(10),
-    );
-
-    let _result = connectivity.take_calls().await;
-    let redialed = connectivity.take_dialed_peers().await;
-    // After a disconnect, the peer should be redialed
-    assert!(!redialed.is_empty(), "Expected at least one redial after disconnect");
-
-    connectivity.publish_event(ConnectivityEvent::PeerConnectFailed(disconnected_peer.clone()));
-
-    async_assert!(
-        connectivity.call_count().await >= 1,
-        max_attempts = 20,
-        interval = Duration::from_millis(10),
-    );
-
-    // After connect failure, either the spare peer or the failed peer itself gets dialed
-    let replacement_dialed = connectivity.take_dialed_peers().await;
-    assert!(
-        !replacement_dialed.is_empty(),
-        "Expected replacement dial after connect failure"
-    );
 }
 
 #[tokio::test]

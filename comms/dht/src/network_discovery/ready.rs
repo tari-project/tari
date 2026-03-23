@@ -56,6 +56,7 @@ async fn select_peers_for_discovery_round(
                 config.network_discovery.max_sync_peers,
                 excluded_peers,
                 Some(PeerFlags::NONE),
+                true,
             )
             .await?
     };
