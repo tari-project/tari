@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.4](https://github.com/tari-project/tari/compare/v5.3.0-pre.3...v5.3.0-pre.4) (2026-03-24)
+
+
+### Features
+
+* change logic in node pool management ([#7728](https://github.com/tari-project/tari/issues/7728)) ([f70500d](https://github.com/tari-project/tari/commit/f70500d01447256fc45777531641478fbfc596a7))
+
+
+### Bug Fixes
+
+* pruning mode ([#7704](https://github.com/tari-project/tari/issues/7704)) ([a6e12e0](https://github.com/tari-project/tari/commit/a6e12e030d0c9a00435ac69929d1dabe5a4a9213))
+* **wallet:** save complete burn proof in file ([#7726](https://github.com/tari-project/tari/issues/7726)) ([5a278cb](https://github.com/tari-project/tari/commit/5a278cb8834acc10ebe714c39f012249ea2e966c))
+
 ## [5.3.0-pre.3](https://github.com/tari-project/tari/compare/v5.3.0-pre.2...v5.3.0-pre.3) (2026-03-17)
 
 
