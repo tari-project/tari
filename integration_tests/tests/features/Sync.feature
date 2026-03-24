@@ -81,7 +81,6 @@ Feature: Block Sync
     Then NODE1 has at least 11 peers
     Then NODE2 has at least 11 peers
 
-    @broken
   Scenario: Pruned mode sync test
     Given I have a seed node SEED
     When I have a base node NODE1 connected to all seed nodes
