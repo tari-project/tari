@@ -4,8 +4,6 @@
 @wallet-transfer @wallet @flaky
 Feature: Wallet Transfer
 
-  # BROKEN: Runs fine when run by itself, but not with other tests - or maybe is flaky
-  @critical
   Scenario: As a wallet send to a wallet connected to a different base node
     Given I have a seed node SEED_A
     When I have a seed node SEED_B
@@ -15,10 +13,10 @@ Feature: Wallet Transfer
     When I have wallet WALLET_B connected to base node NODE_B
     When I wait 5 seconds
     When I transfer 5T one-sided from WALLET_A to WALLET_B
-    When I mine 4 blocks on SEED_A
+    When I mine 5 blocks on NODE_A
+    Then all nodes are at height 10
     Then wallet WALLET_A has 5T
-    When I wait 5 seconds
-    When wallet WALLET_B has 5T
+    Then wallet WALLET_B has 5T
 
   Scenario: As a wallet I want to submit multiple transfers
     Given I have a seed node NODE

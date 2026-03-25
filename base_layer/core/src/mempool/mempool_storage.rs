@@ -23,7 +23,7 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
@@ -358,6 +358,11 @@ impl MempoolStorage {
             )),
             Err(e) => Err(e),
         }
+    }
+
+    /// Returns the subset of provided output hashes that exist in the mempool's unconfirmed pool.
+    pub fn filter_outputs_in_mempool(&self, output_hashes: &[HashOutput]) -> Vec<HashOutput> {
+        self.unconfirmed_pool.filter_outputs(output_hashes)
     }
 
     /// Check if the specified excess signature is found in the Mempool.

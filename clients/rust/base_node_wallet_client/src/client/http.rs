@@ -351,17 +351,22 @@ impl BaseNodeWalletClient for Client {
         self.last_latency.read().await.map(|(duration, _)| duration)
     }
 
-    async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, anyhow::Error> {
+    async fn get_utxos_mined_info(
+        &self,
+        hashes: Vec<Vec<u8>>,
+        version: u32,
+    ) -> Result<GetUtxosMinedInfoResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(
             target: LOG_TARGET,
-            "Requesting matching UTXOs for {} hashes from Base Node wallet service at {}",
-            hashes.len(), server_address
+            "Requesting matching UTXOs (version={}) for {} hashes from Base Node wallet service at {}",
+            version, hashes.len(), server_address
         );
         let mut target_url = server_address.join("/get_utxos_mined_info")?;
         target_url.set_query(Some(&format!(
-            "hashes={}",
-            hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(",")
+            "hashes={}&version={}",
+            hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(","),
+            version
         )));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;

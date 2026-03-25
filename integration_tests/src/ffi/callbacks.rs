@@ -65,6 +65,7 @@ pub struct Callbacks {
     tx_validation_result: Mutex<u64>,
     basenode_state_updated: Mutex<u64>,
     connectivity_status: Mutex<(FfiConnectivityStatus, u64)>,
+    scanned_height: Mutex<u64>,
     pub wallet: Option<Arc<Mutex<Wallet>>>,
 }
 
@@ -120,9 +121,17 @@ impl Callbacks {
         *self.txo_validation_complete.lock().unwrap()
     }
 
-    #[allow(dead_code)]
     pub fn get_txo_validation_result(&self) -> u64 {
         *self.txo_validation_result.lock().unwrap()
+    }
+
+    pub fn reset_txo_validation(&self) {
+        *self.txo_validation_complete.lock().unwrap() = false;
+        *self.txo_validation_result.lock().unwrap() = 0;
+    }
+
+    pub fn get_scanned_height(&self) -> u64 {
+        *self.scanned_height.lock().unwrap()
     }
 
     pub fn get_tx_validation_complete(&self) -> bool {
@@ -288,6 +297,7 @@ impl Callbacks {
 
     pub fn callback_wallet_scanned_height(&mut self, height: u64) {
         println!("wallet scanned up to height {height}.");
+        *self.scanned_height.lock().unwrap() = height;
     }
 
     pub fn on_basenode_state_update(&mut self, state: *mut c_void) {
@@ -314,6 +324,7 @@ impl Callbacks {
         *self.tx_validation_complete.lock().unwrap() = false;
         *self.tx_validation_result.lock().unwrap() = 0;
         *self.basenode_state_updated.lock().unwrap() = 0;
+        *self.scanned_height.lock().unwrap() = 0;
         self.wallet = Some(wallet);
         println!("wallet {:?}", self.wallet);
     }

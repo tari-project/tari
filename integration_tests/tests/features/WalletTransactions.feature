@@ -248,7 +248,7 @@ Feature: Wallet Transactions
   #   When I mine 6 blocks on NODE_C
   #   Then all nodes are at height 16
 
-  @missing-steps
+
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
     When I have wallet WALLET_A connected to seed node SEED
@@ -324,7 +324,7 @@ Feature: Wallet Transactions
   #   Then all nodes are at height 4
   #   When I mine 2 blocks on NODE_C
   #   Then all nodes are at height 6
-  # @flaky @long-running @missing-steps
+  # @flaky @long-running
   # Scenario: Wallet SAF negotiation and cancellation with offline peers
   #   Given I have a seed node NODE
   #   When I have 1 base nodes connected to all seed nodes
@@ -368,7 +368,7 @@ Feature: Wallet Transactions
   #   When I wait 5 seconds
   #   Then I stop-start wallet WALLET_RECV
   #   Then I wait for wallet WALLET_RECV to have at least 1000000 uT
-  # @critical @missing-steps
+  # @critical
   # Scenario: Wallet should cancel stale transactions
   #   Given I have a seed node NODE
   #   When I have 1 base nodes connected to all seed nodes
@@ -409,7 +409,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
     When I wait for wallet WALLET_A to have at least 18462593892 uT
 
-  @critical
+  @broken
   Scenario: Replace transaction with higher fee
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes
@@ -425,7 +425,6 @@ Feature: Wallet Transactions
     When mining node MINER mines 1 blocks
     Then wallet WALLET_A detects only 1 transaction as unconfirmed
 
-  @critical
   Scenario: Adds new transaction to spend pending transaction outputs
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes

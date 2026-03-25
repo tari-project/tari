@@ -467,7 +467,6 @@ unsafe extern "C" {
         amount: c_ulonglong,
         commitments: *mut TariVector,
         fee_per_gram: c_ulonglong,
-        one_sided: bool,
         payment_id_string: *const c_char,
         error_out: *mut c_int,
     ) -> c_ulonglong;
@@ -484,18 +483,22 @@ unsafe extern "C" {
     pub fn wallet_set_num_confirmations_required(wallet: *mut TariWallet, num: c_ulonglong, error_out: *mut c_int);
     pub fn wallet_get_completed_transactions(
         wallet: *mut TariWallet,
+        max_search_limit: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariCompletedTransactions;
     pub fn wallet_get_pending_inbound_transactions(
         wallet: *mut TariWallet,
+        max_search_limit: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariPendingInboundTransactions;
     pub fn wallet_get_pending_outbound_transactions(
         wallet: *mut TariWallet,
+        max_search_limit: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariPendingOutboundTransactions;
     pub fn wallet_get_cancelled_transactions(
         wallet: *mut TariWallet,
+        max_search_limit: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariCompletedTransactions;
     pub fn wallet_get_completed_transaction_by_id(
@@ -506,11 +509,13 @@ unsafe extern "C" {
     pub fn wallet_get_pending_inbound_transaction_by_id(
         wallet: *mut TariWallet,
         transaction_id: c_ulonglong,
+        max_search_limit: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariPendingInboundTransaction;
     pub fn wallet_get_pending_outbound_transaction_by_id(
         wallet: *mut TariWallet,
         transaction_id: c_ulonglong,
+        max_search_limit: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariPendingOutboundTransaction;
     pub fn wallet_get_cancelled_transaction_by_id(

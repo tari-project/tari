@@ -84,6 +84,17 @@ impl DbWalletOutput {
             payment_id,
         }
     }
+
+    /// Returns true if this output is in an encumbered state (part of a pending transaction).
+    pub fn is_encumbered(&self) -> bool {
+        matches!(
+            self.status,
+            OutputStatus::EncumberedToBeReceived |
+                OutputStatus::EncumberedToBeSpent |
+                OutputStatus::ShortTermEncumberedToBeReceived |
+                OutputStatus::ShortTermEncumberedToBeSpent
+        )
+    }
 }
 
 impl UtxoValue for DbWalletOutput {

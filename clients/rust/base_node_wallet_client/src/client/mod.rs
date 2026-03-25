@@ -44,7 +44,11 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 
     async fn get_last_request_latency(&self) -> Option<std::time::Duration>;
 
-    async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error>;
+    async fn get_utxos_mined_info(
+        &self,
+        hashes: Vec<Vec<u8>>,
+        version: u32,
+    ) -> Result<GetUtxosMinedInfoResponse, Error>;
 
     async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error>;
 

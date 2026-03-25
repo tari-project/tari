@@ -23,7 +23,7 @@
 use core::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::CompressedSignature;
+use tari_common_types::types::{CompressedSignature, HashOutput};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
@@ -38,6 +38,7 @@ pub enum MempoolRequest {
     GetTxStateByExcessSig(CompressedSignature),
     SubmitTransaction(Transaction),
     GetFeePerGramStats { count: usize, tip_height: u64 },
+    FilterOutputsInMempool(Vec<HashOutput>),
 }
 
 impl Display for MempoolRequest {
@@ -57,6 +58,9 @@ impl Display for MempoolRequest {
             },
             MempoolRequest::GetFeePerGramStats { count, tip_height } => {
                 write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)
+            },
+            MempoolRequest::FilterOutputsInMempool(hashes) => {
+                write!(f, "FilterOutputsInMempool({} hashes)", hashes.len())
             },
         }
     }

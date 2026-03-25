@@ -4,10 +4,8 @@
 @transaction-info @wallet
 Feature: Transaction Info
 
-@critical @long-running
 Scenario: Get Transaction Info
     Given I have a seed node NODE
-    When I have a stealth SHA3 miner MINER connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A

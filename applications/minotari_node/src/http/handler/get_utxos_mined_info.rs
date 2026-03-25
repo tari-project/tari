@@ -36,11 +36,21 @@ const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxos_mined_info
 pub struct GetUtxosMinedInfoParams {
     #[serde(deserialize_with = "from_hex_comma_separated")]
     pub hashes: Vec<Vec<u8>>,
+    /// Version of the request. Version 2 also checks the mempool for unmined outputs.
+    #[serde(default = "default_version")]
+    pub version: u32,
+}
+
+fn default_version() -> u32 {
+    1
 }
 
 impl From<GetUtxosMinedInfoParams> for GetUtxosMinedInfoRequest {
     fn from(params: GetUtxosMinedInfoParams) -> Self {
-        Self { hashes: params.hashes }
+        Self {
+            hashes: params.hashes,
+            version: params.version,
+        }
     }
 }
 

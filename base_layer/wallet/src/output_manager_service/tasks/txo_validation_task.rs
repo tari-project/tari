@@ -28,9 +28,13 @@ use std::{
 use chrono::{Duration, Utc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_common_types::types::{BlockHash, FixedHash};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlockHash, FixedHash},
+};
+use tari_transaction_components::rpc::models::TxLocation;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -137,14 +141,15 @@ where
             .for_protocol(self.operation_id)?;
 
         for batch in invalid_outputs.chunks(self.config.tx_validator_batch_size) {
-            let (mined, unmined, tip_height) = self
+            let (mined, in_mempool, unmined, tip_height) = self
                 .query_base_node_for_outputs(batch, wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
             debug!(
                 target: LOG_TARGET,
-                "Base node returned {} outputs as mined and {} outputs as unmined (Operation ID: {})",
+                "Base node returned {} mined, {} in mempool, {} unmined invalid outputs (Operation ID: {})",
                 mined.len(),
+                in_mempool.len(),
                 unmined.len(),
                 self.operation_id
             );
@@ -172,6 +177,27 @@ where
             if !mined_updates.is_empty() {
                 self.db
                     .set_received_outputs_mined_height_and_statuses(mined_updates)
+                    .for_protocol(self.operation_id)?;
+            }
+
+            // Outputs found in the mempool are no longer invalid — restore to EncumberedToBeReceived
+            if !in_mempool.is_empty() {
+                let mempool_commitments: Vec<_> = in_mempool
+                    .iter()
+                    .map(|uo| {
+                        info!(
+                            target: LOG_TARGET,
+                            "Restoring invalid output comm:{}: hash {} to EncumberedToBeReceived \
+                             (found in mempool) (Operation ID: {})",
+                            uo.commitment.to_hex(),
+                            uo.hash.to_hex(),
+                            self.operation_id
+                        );
+                        uo.commitment.clone()
+                    })
+                    .collect();
+                self.db
+                    .set_outputs_to_encumbered_to_be_received(mempool_commitments)
                     .for_protocol(self.operation_id)?;
             }
 
@@ -319,14 +345,15 @@ where
                 self.operation_id
             );
 
-            let (mined, unmined, tip_height) = self
+            let (mined, in_mempool, unmined, tip_height) = self
                 .query_base_node_for_outputs(batch, wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
             debug!(
                 target: LOG_TARGET,
-                "Base node returned {} outputs as mined and {} outputs as unmined (Operation ID: {})",
+                "Base node returned {} mined, {} in mempool, {} unmined outputs (Operation ID: {})",
                 mined.len(),
+                in_mempool.len(),
                 unmined.len(),
                 self.operation_id
             );
@@ -357,12 +384,24 @@ where
                     .for_protocol(self.operation_id)?;
             }
 
+            // Outputs confirmed in mempool remain in their current status
+            for uo in &in_mempool {
+                debug!(
+                    target: LOG_TARGET,
+                    "Output comm:{}: hash {} confirmed in mempool, keeping current status (Operation ID: {})",
+                    uo.commitment.to_hex(),
+                    uo.hash.to_hex(),
+                    self.operation_id
+                );
+            }
+
+            // Outputs not found anywhere are marked invalid
             let unmined_and_invalid: Vec<_> = unmined
                 .iter()
                 .map(|uo| {
                     info!(
                         target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as unmined(Operation ID: {})",
+                        "Updating output comm:{}: hash {} as unmined and invalid (Operation ID: {})",
                         uo.commitment.to_hex(),
                         uo.hash.to_hex(),
                         self.operation_id
@@ -526,12 +565,14 @@ where
         Ok(result.map(|b| b.hash))
     }
 
+    /// Query the base node for output status. Uses v2 endpoint which also checks the mempool.
+    /// Returns (mined, in_mempool, unmined, tip_height).
     async fn query_base_node_for_outputs(
         &self,
         batch: &[DbWalletOutput],
         base_node_client: &mut TWalletConnectivity::BaseNodeClient,
-    ) -> Result<(Vec<MinedOutputInfo>, Vec<DbWalletOutput>, u64), OutputManagerError> {
-        let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
+    ) -> Result<(Vec<MinedOutputInfo>, Vec<DbWalletOutput>, Vec<DbWalletOutput>, u64), OutputManagerError> {
+        let batch_hashes: Vec<Vec<u8>> = batch.iter().map(|o| o.hash.to_vec()).collect();
         trace!(
             target: LOG_TARGET,
             "UTXO hashes queried from base node: {:?}",
@@ -539,11 +580,12 @@ where
         );
 
         let batch_response = base_node_client
-            .get_utxos_mined_info(batch_hashes)
+            .get_utxos_mined_info(batch_hashes.clone(), 2)
             .await
             .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))?;
 
         let mut mined = vec![];
+        let mut in_mempool = vec![];
         let mut unmined = vec![];
 
         let mut returned_outputs = HashMap::new();
@@ -551,8 +593,11 @@ where
             returned_outputs.insert(mined_info.utxo_hash.clone(), mined_info.clone());
         }
 
+        let mempool_set: std::collections::HashSet<Vec<u8>> = batch_response.mempool_utxos.into_iter().collect();
+
         for output in batch {
-            if let Some(returned_output) = returned_outputs.get(&output.hash.to_vec()) {
+            let hash_vec = output.hash.to_vec();
+            if let Some(returned_output) = returned_outputs.get(&hash_vec) {
                 mined.push(MinedOutputInfo {
                     output: output.clone(),
                     mined_at_height: returned_output.mined_in_height,
@@ -560,12 +605,86 @@ where
                         .map_err(|_| OutputManagerError::UnexpectedApiResponse("FixedHash".to_string()))?,
                     mined_timestamp: returned_output.mined_in_timestamp,
                 });
+            } else if mempool_set.contains(&hash_vec) {
+                in_mempool.push(output.clone());
             } else {
                 unmined.push(output.clone());
             }
         }
 
-        Ok((mined, unmined, batch_response.best_block_height))
+        // If the base node returned no mempool info (v1 fallback), use per-output
+        // kernel signature queries for encumbered outputs that appear unmined.
+        if mempool_set.is_empty() && unmined.iter().any(|o| o.is_encumbered()) {
+            let mut still_unmined = Vec::new();
+            for uo in unmined {
+                if uo.is_encumbered() {
+                    let tx_id = uo.received_in_tx_id.or(uo.spent_in_tx_id);
+                    let found = if let Some(tx_id) = tx_id {
+                        self.check_tx_in_mempool(tx_id, base_node_client).await
+                    } else {
+                        false
+                    };
+                    if found {
+                        in_mempool.push(uo);
+                    } else {
+                        still_unmined.push(uo);
+                    }
+                } else {
+                    still_unmined.push(uo);
+                }
+            }
+            unmined = still_unmined;
+        }
+
+        Ok((mined, in_mempool, unmined, batch_response.best_block_height))
+    }
+
+    /// Fallback: Check if the parent transaction of an encumbered output is still in the mempool
+    /// by querying the kernel signature. Used when base node doesn't support v2.
+    async fn check_tx_in_mempool(
+        &self,
+        tx_id: TxId,
+        base_node_client: &mut TWalletConnectivity::BaseNodeClient,
+    ) -> bool {
+        let sig = match self.db.fetch_kernel_signature_for_tx(tx_id) {
+            Ok(Some(sig)) => sig,
+            Ok(None) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "No kernel signature found for tx_id {} (Operation ID: {})", tx_id, self.operation_id
+                );
+                return false;
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error fetching kernel signature for tx_id {}: {} (Operation ID: {})",
+                    tx_id, e, self.operation_id
+                );
+                return false;
+            },
+        };
+
+        match base_node_client
+            .transaction_query(
+                sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                sig.get_signature().as_bytes().to_vec(),
+            )
+            .await
+        {
+            Ok(response) => {
+                matches!(response.location, TxLocation::InMempool | TxLocation::Mined)
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error querying mempool for tx_id {}: {} (Operation ID: {})",
+                    tx_id, e, self.operation_id
+                );
+                // On error, don't invalidate - be conservative
+                true
+            },
+        }
     }
 
     fn publish_event(&self, event: OutputManagerEvent) {

@@ -386,12 +386,17 @@ where KM: TransactionKeyManagerInterface
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let fee_without_change = self.get_fee_estimate_without_change()?;
         let temp_script = script!(PushPubKey(Box::default()))?;
+        let change_payment_id_size = self
+            .create_change_memo(MicroMinotari(0))
+            .map(|m| m.get_size())
+            .unwrap_or(0);
         let change_features_and_scripts_size = OutputFeatures::default()
             .get_serialized_size()
             .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
             temp_script
                 .get_serialized_size()
-                .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?;
+                .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
+            change_payment_id_size;
         let change_features_and_scripts_size = fee_weighting
             .weighting()
             .round_up_features_and_scripts_size(change_features_and_scripts_size);
@@ -428,9 +433,7 @@ where KM: TransactionKeyManagerInterface
         if fee > total_sent {
             warn!(
                 target: LOG_TARGET,
-                "Fee ({}) is greater than amount ({}) being sent for Transaction.",
-                fee,
-                total_sent,
+                "Fee ({fee}) is greater than amount ({total_sent}) being sent for Transaction.",
             );
             if self.prevent_fee_gt_amount {
                 return Err(TransactionBuilderError::FeeGreaterThanAmount { fee, sent: total_sent });
@@ -1299,8 +1302,6 @@ mod test {
         let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
-        // Alice's parameters
-        let alice_key = TestParams::new(&key_manager);
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager);
         let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None);
@@ -1308,15 +1309,20 @@ mod test {
         let mut builder =
             TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
         let script = script!(PushPubKey(Box::default())).unwrap();
-        let expected_fee = Fee::new(*consensus_constants.transaction_weight_params()).calculate(
-            MicroMinotari(20),
-            1,
-            1,
-            2,
-            alice_key
-                .get_size_for_default_features_and_scripts(2)
-                .expect("Failed to get size for default features and scripts"),
-        );
+        // The correct fee accounts for: 1 recipient output (empty payment_id) + 1 change output (with change
+        // TransactionInfo memo ~130 bytes, minimum PADDING_SIZE). The change output's payment_id is included in
+        // the builder's fee estimate via add_change_if_required.
+        let base_size = script!(PushPubKey(Box::default()))
+            .unwrap()
+            .get_serialized_size()
+            .unwrap() +
+            OutputFeatures::default().get_serialized_size().unwrap();
+        let fee_weighting = Fee::new(*consensus_constants.transaction_weight_params());
+        let bob_output_size = fee_weighting.weighting().round_up_features_and_scripts_size(base_size);
+        let change_output_size = fee_weighting
+            .weighting()
+            .round_up_features_and_scripts_size(base_size + 130); // 130 = PADDING_SIZE from MemoField
+        let expected_fee = fee_weighting.calculate(MicroMinotari(20), 1, 1, 2, bob_output_size + change_output_size);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(20))

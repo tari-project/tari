@@ -30,7 +30,7 @@ use borsh::BorshDeserialize;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{
-    dsl::{count_star, sql},
+    dsl::{count_star, not, sql},
     prelude::*,
     sql_query,
     sql_types::{BigInt, Nullable},
@@ -910,14 +910,15 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
-    pub fn find_by_commitments_excluding_status(
+    pub fn find_by_commitments_excluding_statuses(
         commitments: Vec<&[u8]>,
-        status: OutputStatus,
+        statuses: &[OutputStatus],
         conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let status_values: Vec<i32> = statuses.iter().map(|s| *s as i32).collect();
         Ok(outputs::table
             .filter(outputs::commitment.eq_any(commitments))
-            .filter(outputs::status.ne(status as i32))
+            .filter(not(outputs::status.eq_any(status_values)))
             .load(conn)?)
     }
 

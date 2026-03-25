@@ -4,7 +4,7 @@
 @reorg @base-node
 Feature: Reorgs
 
-  @critical
+  @broken
   Scenario: Simple reorg to stronger chain
     # Chain 1
     #     Note: Use more than 1 base node to speed up the test
@@ -70,31 +70,31 @@ Feature: Reorgs
     When I submit block BLOCKA to B
     Then all nodes are at height 5
 
-  # @reorg @missing-steps
-  # Scenario: Pruned mode reorg simple
-  #   When I have a base node NODE1 connected to all seed nodes
-  #   When I have wallet WALLET1 connected to base node NODE1
-  #   When I have SHA3X mining node MINING1 connected to base node NODE1 and wallet WALLET1
-  #   When mining node MINING1 mines 5 blocks with min difficulty 1 and max difficulty 20
-  #   Then all nodes are at height 5
-  #   When I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
-  #   When I have wallet WALLET2 connected to base node PNODE2
-  #   When I have SHA3X mining node MINING2 connected to base node PNODE2 and wallet WALLET2
-  #   When mining node MINING1 mines 4 blocks with min difficulty 1 and max difficulty 20
-  #   Then all nodes are at height 9
-  #   When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 20
-  #   Then all nodes are at height 14
-  #   When I stop node PNODE2
-  #   When mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
-  #   Then node NODE1 is at height 17
-  #   When I stop node NODE1
-  #   When I start base node PNODE2
-  #   When mining node MINING2 mines 6 blocks with min difficulty 2 and max difficulty 1000000
-  #   Then node PNODE2 is at height 20
-  #   When I start base node NODE1
-  #   Then all nodes are at height 20
+   @broken
+   Scenario: Pruned mode reorg simple
+     When I have a base node NODE1 connected to all seed nodes
+     When I have wallet WALLET1 connected to base node NODE1
+     When I have SHA3X mining node MINING1 connected to base node NODE1 and wallet WALLET1
+     When mining node MINING1 mines 5 blocks with min difficulty 1 and max difficulty 20
+     Then all nodes are at height 5
+     When I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
+     When I have wallet WALLET2 connected to base node PNODE2
+     When I have SHA3X mining node MINING2 connected to base node PNODE2 and wallet WALLET2
+     When mining node MINING1 mines 4 blocks with min difficulty 1 and max difficulty 20
+     Then all nodes are at height 9
+     When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 20
+     Then all nodes are at height 14
+     When I stop node PNODE2
+     When mining node MINING1 mines 3 blocks with min difficulty 1 and max difficulty 20
+     Then node NODE1 is at height 17
+     When I stop node NODE1
+     When I start base node PNODE2
+     When mining node MINING2 mines 6 blocks with min difficulty 2 and max difficulty 1000000
+     Then node PNODE2 is at height 20
+     When I start base node NODE1
+     Then all nodes are at height 20
 
-  @reorg @flaky @missing-steps
+  @broken
   Scenario: Pruned mode reorg past horizon
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
@@ -126,7 +126,7 @@ Feature: Reorgs
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
 
-  @reorg @broken
+  @reorg
   Scenario: Zero-conf reorg with spending
     When I have a base node NODE1 connected to all seed nodes
     When I have a base node NODE2 connected to node NODE1
@@ -168,6 +168,7 @@ Feature: Reorgs
     And node NODE1 is at height 25
     When I start base node NODE2
     Then all nodes are on the same chain at height 25
+
 
   Scenario Outline: Massive multiple reorg
     #
@@ -253,42 +254,32 @@ Feature: Reorgs
       | 100  | 125  | 150  | 175  |
       | 1010 | 1110 | 1210 | 1310 |
 
-  @reorg @missing-steps
-  Scenario: Full block sync with small reorg
-    Given I have a base node NODE1
-    When I have wallet WALLET1 connected to base node NODE1
-    When I have SHA3X mining node MINER1 connected to base node NODE1 and wallet WALLET1
-    # And I have a base node NODE2 connected to node NODE1
-    # When I have wallet WALLET2 connected to base node NODE2
-    # And I have SHA3X mining node MINER2 connected to base node NODE2 and wallet WALLET2
-    # And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
-    # Then all nodes are at height 5
-    # Given I stop node NODE2
-    # And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 1
-    # Then node NODE1 is at height 10
-    # Given I stop node NODE1
-    # And I start base node NODE2
-    # And mining node MINER2 mines 7 blocks with min difficulty 2 and max difficulty 100000
-    # Then node NODE2 is at height 12
-    # When I start base node NODE1
-    # Then all nodes are on the same chain at height 12
 
-  @reorg @long-running @missing-steps
-  Scenario: Full block sync with large reorg
+  @reorg
+  Scenario Outline: Full block sync with reorg
     Given I have a base node NODE1
     When I have wallet WALLET1 connected to base node NODE1
     When I have SHA3X mining node MINER1 connected to base node NODE1 and wallet WALLET1
-    # And I have a base node NODE2 connected to node NODE1
-    # When I have wallet WALLET2 connected to base node NODE2
-    # And I have SHA3X mining node MINER2 connected to base node NODE2 and wallet WALLET2
-    # And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
-    # Then all nodes are at height 5
-    # Given I stop node NODE2
-    # And mining node MINER1 mines 1001 blocks with min difficulty 1 and max difficulty 10
-    # Then node NODE1 is at height 1006
-    # Given I stop node NODE1
-    # And I start base node NODE2
-    # And mining node MINER2 mines 1500 blocks with min difficulty 11 and max difficulty 100000
-    # Then node NODE2 is at height 1505
-    # When I start base node NODE1
-    # Then all nodes are on the same chain at height 1505
+    And I have a base node NODE2 connected to node NODE1
+    When I have wallet WALLET2 connected to base node NODE2
+    And I have SHA3X mining node MINER2 connected to base node NODE2 and wallet WALLET2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
+    Then all nodes are at height 5
+    Given I stop node NODE2
+    And mining node MINER1 mines <X_1> blocks with min difficulty 1 and max difficulty 1
+    Then node NODE1 is at height <X_2>
+    Given I stop node NODE1
+    And I start base node NODE2
+    And mining node MINER2 mines <Y_1> blocks with min difficulty 2 and max difficulty 100000
+    Then node NODE2 is at height <Y_2>
+    When I start base node NODE1
+    Then all nodes are on the same chain at height <Y_2>
+
+    Examples:
+      | X_1 | X_2 | Y_1 | Y_2 |
+      | 5 | 5 | 7 | 12 |
+
+    @long-running
+    Examples:
+      | X_1 | X_2 | Y_1 | Y_2 |
+      | 1001 | 1006 | 1500 | 1505 |

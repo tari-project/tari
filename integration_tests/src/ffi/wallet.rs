@@ -180,6 +180,7 @@ impl Wallet {
         wallet_db_config: WalletDbConfig,
         log_path: String,
         seed_words_ptr: *const c_void,
+        base_node_address: String,
     ) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
@@ -197,7 +198,7 @@ impl Wallet {
                 ptr::null(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
-                CString::new("").unwrap().into_raw(),
+                CString::new(base_node_address).unwrap().into_raw(),
                 0,
                 callback_received_transaction,
                 callback_received_transaction_reply,
@@ -258,6 +259,19 @@ impl Wallet {
         WalletAddress::from_ptr(ptr)
     }
 
+    pub fn get_one_sided_address(&self) -> WalletAddress {
+        let ptr;
+        let mut error = 0;
+        unsafe {
+            ptr = ffi_import::wallet_get_tari_one_sided_address(self.ptr, &mut error);
+            if error > 0 {
+                println!("wallet_get_tari_one_sided_address error {error}");
+                panic!("wallet_get_tari_one_sided_address error");
+            }
+        }
+        WalletAddress::from_ptr(ptr)
+    }
+
     pub fn get_balance(&self) -> Balance {
         let ptr;
         let mut error = 0;
@@ -271,14 +285,7 @@ impl Wallet {
         Balance::from_ptr(ptr)
     }
 
-    pub fn send_transaction(
-        &self,
-        dest: String,
-        amount: u64,
-        fee_per_gram: u64,
-        payment_id: MemoField,
-        one_sided: bool,
-    ) -> u64 {
+    pub fn send_transaction(&self, dest: String, amount: u64, fee_per_gram: u64, payment_id: MemoField) -> u64 {
         let tx_id;
         let mut error = 0;
         unsafe {
@@ -288,7 +295,6 @@ impl Wallet {
                 amount,
                 null_mut(),
                 fee_per_gram,
-                one_sided,
                 CString::new(payment_id.payment_id_as_string()).unwrap().into_raw(),
                 &mut error,
             );
@@ -304,7 +310,7 @@ impl Wallet {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::wallet_get_pending_outbound_transactions(self.ptr, &mut error);
+            ptr = ffi_import::wallet_get_pending_outbound_transactions(self.ptr, 0, &mut error);
             if error > 0 {
                 println!("wallet_get_pending_outbound_transactions error {error}");
                 panic!("wallet_get_pending_outbound_transactions error");
@@ -317,7 +323,7 @@ impl Wallet {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::wallet_get_pending_inbound_transactions(self.ptr, &mut error);
+            ptr = ffi_import::wallet_get_pending_inbound_transactions(self.ptr, 0, &mut error);
             if error > 0 {
                 println!("wallet_get_pending_inbound_transactions error {error}");
                 panic!("wallet_get_pending_inbound_transactions error");
@@ -330,7 +336,7 @@ impl Wallet {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::wallet_get_completed_transactions(self.ptr, &mut error);
+            ptr = ffi_import::wallet_get_completed_transactions(self.ptr, 0, &mut error);
             if error > 0 {
                 println!("wallet_get_completed_transactions error {error}");
                 panic!("wallet_get_completed_transactions error");

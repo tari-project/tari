@@ -124,7 +124,14 @@ impl MempoolServiceMock {
     }
 
     async fn handle_request(&self, req: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        use MempoolRequest::{GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
+        use MempoolRequest::{
+            FilterOutputsInMempool,
+            GetFeePerGramStats,
+            GetState,
+            GetStats,
+            GetTxStateByExcessSig,
+            SubmitTransaction,
+        };
 
         self.state.inc_call_count();
         match req {
@@ -139,6 +146,7 @@ impl MempoolServiceMock {
             GetFeePerGramStats { .. } => {
                 unimplemented!()
             },
+            FilterOutputsInMempool(_) => Ok(MempoolResponse::FilteredOutputs(vec![])),
         }
     }
 }

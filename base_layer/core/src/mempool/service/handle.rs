@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::CompressedSignature;
+use tari_common_types::types::{CompressedSignature, HashOutput};
 use tari_service_framework::{Service, reply_channel::TrySenderService};
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 
@@ -91,6 +91,20 @@ impl MempoolHandle {
             .await??
         {
             MempoolResponse::FeePerGramStats { response } => Ok(response),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
+        }
+    }
+
+    pub async fn filter_outputs_in_mempool(
+        &mut self,
+        output_hashes: Vec<HashOutput>,
+    ) -> Result<Vec<HashOutput>, MempoolServiceError> {
+        match self
+            .inner
+            .call(MempoolRequest::FilterOutputsInMempool(output_hashes))
+            .await??
+        {
+            MempoolResponse::FilteredOutputs(response) => Ok(response),
             _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }

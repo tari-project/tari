@@ -22,6 +22,7 @@
 
 use std::{fmt, fmt::Formatter};
 
+use tari_common_types::types::HashOutput;
 use tari_transaction_components::rpc::models::FeePerGramStat;
 
 use crate::{
@@ -36,16 +37,18 @@ pub enum MempoolResponse {
     State(StateResponse),
     TxStorage(TxStorageResponse),
     FeePerGramStats { response: Vec<FeePerGramStat> },
+    FilteredOutputs(Vec<HashOutput>),
 }
 
 impl fmt::Display for MempoolResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use MempoolResponse::{FeePerGramStats, State, Stats, TxStorage};
+        use MempoolResponse::{FeePerGramStats, FilteredOutputs, State, Stats, TxStorage};
         match &self {
             Stats(_) => write!(f, "Stats"),
             State(_) => write!(f, "State"),
             TxStorage(_) => write!(f, "TxStorage"),
             FeePerGramStats { response } => write!(f, "FeePerGramStats({} item(s))", response.len()),
+            FilteredOutputs(outputs) => write!(f, "FilteredOutputs({} item(s))", outputs.len()),
         }
     }
 }

@@ -31,7 +31,7 @@ pub use output_sql::OutputSql;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
     transaction::TxId,
-    types::{CompressedCommitment, FixedHash},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_crypto::tari_utilities::{ByteArray, hex::Hex};
 use tari_script::{ExecutionStack, TariScript};
@@ -588,6 +588,51 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn fetch_kernel_signature_for_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<CompressedSignature>, OutputManagerStorageError> {
+        use crate::schema::completed_transactions;
+
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let result: Option<(Vec<u8>, Vec<u8>)> = completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_i64_wrapped()))
+            .select((
+                completed_transactions::transaction_signature_nonce,
+                completed_transactions::transaction_signature_key,
+            ))
+            .first(&mut conn)
+            .optional()?;
+        let signature = result.and_then(
+            |(completed_transaction_signature_nonce, completed_transaction_signature_key)| {
+                match CompressedPublicKey::from_vec(&completed_transaction_signature_nonce) {
+                    Ok(public_nonce) => match PrivateKey::from_vec(&completed_transaction_signature_key) {
+                        Ok(signature) => Some(CompressedSignature::new(public_nonce, signature)),
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                }
+            },
+        );
+        Ok(signature)
+    }
+
+    fn set_outputs_to_encumbered_to_be_received(
+        &self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let commitment_bytes: Vec<Vec<u8>> = commitments.iter().map(|c| c.to_vec()).collect();
+        diesel::update(
+            outputs::table
+                .filter(outputs::commitment.eq_any(&commitment_bytes))
+                .filter(outputs::status.eq(OutputStatus::Invalid as i32)),
+        )
+        .set(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32))
+        .execute(&mut conn)?;
+        Ok(())
+    }
+
     fn get_last_scanned_height(&self) -> Result<Option<u64>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -866,9 +911,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             commitments.push(output.commitment.as_bytes());
         }
         conn.transaction::<_, _, _>(|conn| {
-            // Any output in the list without the `Unspent` status will invalidate the encumberance
-            if !OutputSql::find_by_commitments_excluding_status(commitments.clone(), OutputStatus::Unspent, conn)?
-                .is_empty()
+            // Any output in the list without the `Unspent` or `EncumberedToBeReceived` status will invalidate the
+            // encumberance. `EncumberedToBeReceived` outputs are allowed because they represent pending
+            // transaction outputs that can be spent in chained transactions (e.g. user_pay_for_fee).
+            // Any output in the list without the `Unspent` or `EncumberedToBeReceived` status will invalidate the
+            // encumberance. `EncumberedToBeReceived` outputs are allowed because they represent pending
+            // transaction outputs that can be spent in chained transactions (e.g. user_pay_for_fee).
+            if !OutputSql::find_by_commitments_excluding_statuses(
+                commitments.clone(),
+                &[OutputStatus::Unspent, OutputStatus::EncumberedToBeReceived],
+                conn,
+            )?
+            .is_empty()
             {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             };

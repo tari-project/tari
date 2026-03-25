@@ -33,6 +33,7 @@ use tari_comms::{
 use tari_test_utils::collect_recv;
 
 use crate::{
+    DhtConfig,
     rpc::{DhtRpcService, DhtRpcServiceImpl},
     test_utils::build_peer_manager,
 };
@@ -40,7 +41,8 @@ use crate::{
 fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
     let peer_manager = build_peer_manager();
     let mock = RpcRequestMock::new(peer_manager.clone());
-    let service = DhtRpcServiceImpl::new(peer_manager.clone());
+    let config = Arc::new(DhtConfig::default_local_test());
+    let service = DhtRpcServiceImpl::new(peer_manager.clone(), config);
 
     (service, mock, peer_manager)
 }

@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use tari_common_types::{
     transaction::TxId,
-    types::{CompressedCommitment, FixedHash},
+    types::{CompressedCommitment, CompressedSignature, FixedHash},
 };
 use tari_transaction_components::{
     MicroMinotari,
@@ -85,6 +85,17 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unmined and invalid state
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
+    /// Fetch kernel signature (nonce, key) for a completed transaction by tx_id.
+    /// Used to verify mempool presence of encumbered outputs' parent transactions.
+    fn fetch_kernel_signature_for_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<CompressedSignature>, OutputManagerStorageError>;
+    /// Restore invalid outputs that are found in the mempool back to EncumberedToBeReceived status.
+    fn set_outputs_to_encumbered_to_be_received(
+        &self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' last validation timestamp
     fn update_last_validation_timestamps(
         &self,

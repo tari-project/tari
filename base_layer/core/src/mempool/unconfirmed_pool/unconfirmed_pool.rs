@@ -179,6 +179,15 @@ impl UnconfirmedPool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
+    /// Returns the subset of provided output hashes that exist in the unconfirmed pool.
+    pub fn filter_outputs(&self, output_hashes: &[HashOutput]) -> Vec<HashOutput> {
+        output_hashes
+            .iter()
+            .filter(|hash| self.txs_by_output.contains_key(*hash))
+            .copied()
+            .collect()
+    }
+
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
     #[allow(clippy::too_many_lines)]
     pub fn fetch_highest_priority_txs(&self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {

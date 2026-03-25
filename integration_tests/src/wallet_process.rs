@@ -71,7 +71,7 @@ pub async fn spawn_wallet(
 
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
-    let wallet_config: WalletConfig;
+    let mut wallet_config: WalletConfig;
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
         if wallet_ps.is_running() {
@@ -93,7 +93,7 @@ pub async fn spawn_wallet(
 
         wallet_config = WalletConfig::default();
     };
-
+    wallet_config.scanning_interval = 1; // set scanning interval to 1 second for faster tests
     let peer_addresses = get_peer_addresses(world, &peer_seeds).await;
 
     let shutdown = Shutdown::new();

@@ -514,10 +514,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         request.validate()?;
 
         let mut utxos = vec![];
+        let mut unmined_hashes = vec![];
 
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
-            let hash = hash.try_into()?;
+            let hash: types::HashOutput = hash.try_into()?;
             let output = self.db().fetch_output(hash).await?;
             if let Some(output) = output {
                 utxos.push(models::MinedUtxoInfo {
@@ -526,13 +527,29 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
                     mined_in_height: output.mined_height,
                     mined_in_timestamp: output.mined_timestamp,
                 });
+            } else {
+                unmined_hashes.push(hash);
             }
         }
+
+        // Version 2: also check mempool for unmined outputs
+        let mempool_utxos = if request.version >= 2 && !unmined_hashes.is_empty() {
+            let mut mempool = self.mempool();
+            mempool
+                .filter_outputs_in_mempool(unmined_hashes)
+                .await?
+                .into_iter()
+                .map(|h| h.to_vec())
+                .collect()
+        } else {
+            vec![]
+        };
 
         Ok(models::GetUtxosMinedInfoResponse {
             utxos,
             best_block_hash: tip_header.hash().to_vec(),
             best_block_height: tip_header.height(),
+            mempool_utxos,
         })
     }
 

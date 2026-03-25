@@ -53,10 +53,17 @@ pub struct WalletFFI {
     pub base_dir: PathBuf,
     pub log_path: String,
     pub wallet: Arc<Mutex<ffi::Wallet>>,
+    pub base_node_address: String,
 }
 
 impl WalletFFI {
-    fn spawn(world: &mut TariWorld, name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
+    fn spawn(
+        world: &mut TariWorld,
+        name: String,
+        seed_words_ptr: *const c_void,
+        base_dir: PathBuf,
+        base_node_address: String,
+    ) -> Self {
         let id = get_port(world, 18000..18499).unwrap().to_string();
         let base_dir_path = base_dir.join("ffi_wallets").join(format!("{name}_id_{id}"));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
@@ -68,13 +75,19 @@ impl WalletFFI {
             .to_str()
             .unwrap()
             .into();
-        let wallet = ffi::Wallet::create(comms_config, log_path.clone(), seed_words_ptr);
+        let wallet = ffi::Wallet::create(
+            comms_config,
+            log_path.clone(),
+            seed_words_ptr,
+            base_node_address.clone(),
+        );
         Self {
             name,
             id,
             base_dir: base_dir_path,
             log_path,
             wallet,
+            base_node_address,
         }
     }
 
@@ -97,6 +110,10 @@ impl WalletFFI {
 
     pub fn get_address(&self) -> WalletAddress {
         self.wallet.lock().unwrap().get_address()
+    }
+
+    pub fn get_one_sided_address(&self) -> WalletAddress {
+        self.wallet.lock().unwrap().get_one_sided_address()
     }
 
     pub fn get_connectivity_status(&self) -> (FfiConnectivityStatus, u64) {
@@ -135,24 +152,22 @@ impl WalletFFI {
         self.wallet.lock().unwrap().start_transaction_validation()
     }
 
-    pub fn send_transaction(
-        &self,
-        dest: String,
-        amount: u64,
-        fee_per_gram: u64,
-        payment_id: MemoField,
-        one_sided: bool,
-    ) -> u64 {
+    pub fn send_transaction(&self, dest: String, amount: u64, fee_per_gram: u64, payment_id: MemoField) -> u64 {
         self.wallet
             .lock()
             .unwrap()
-            .send_transaction(dest, amount, fee_per_gram, payment_id, one_sided)
+            .send_transaction(dest, amount, fee_per_gram, payment_id)
     }
 
     pub fn restart(&mut self) {
         self.wallet.lock().unwrap().destroy();
         let comms_config = ffi::WalletDbConfig::create(self.base_dir.as_os_str().to_str().unwrap().into());
-        self.wallet = ffi::Wallet::create(comms_config, self.log_path.clone(), null());
+        self.wallet = ffi::Wallet::create(
+            comms_config,
+            self.log_path.clone(),
+            null(),
+            self.base_node_address.clone(),
+        );
     }
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
@@ -160,12 +175,18 @@ impl WalletFFI {
     }
 }
 
-pub fn spawn_wallet_ffi(world: &mut TariWorld, wallet_name: String, seed_words_ptr: *const c_void) {
+pub fn spawn_wallet_ffi(
+    world: &mut TariWorld,
+    wallet_name: String,
+    seed_words_ptr: *const c_void,
+    base_node_address: String,
+) {
     let wallet_ffi = WalletFFI::spawn(
         world,
         wallet_name.clone(),
         seed_words_ptr,
         world.current_base_dir.clone().expect("Base dir on world"),
+        base_node_address,
     );
     world.ffi_wallets.insert(wallet_name, wallet_ffi);
 }

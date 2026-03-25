@@ -23,7 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use log::debug;
-use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 use tokio::task;
@@ -157,6 +157,15 @@ impl Mempool {
         excess_sigs: Vec<PrivateKey>,
     ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
         self.with_read_access(move |storage| storage.retrieve_by_excess_sigs(&excess_sigs))
+            .await
+    }
+
+    /// Returns the subset of provided output hashes that exist in the mempool's unconfirmed pool.
+    pub async fn filter_outputs_in_mempool(
+        &self,
+        output_hashes: Vec<HashOutput>,
+    ) -> Result<Vec<HashOutput>, MempoolError> {
+        self.with_read_access(move |storage| Ok(storage.filter_outputs_in_mempool(&output_hashes)))
             .await
     }
 
