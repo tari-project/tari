@@ -32,10 +32,10 @@ use tari_comms::{
 use tokio::{sync::mpsc, task};
 
 use crate::{
+    DhtConfig,
     proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc::{DhtRpcService, UnvalidatedPeerInfo},
 };
-use crate::DhtConfig;
 const LOG_TARGET: &str = "comms::dht::rpc";
 
 pub struct DhtRpcServiceImpl {

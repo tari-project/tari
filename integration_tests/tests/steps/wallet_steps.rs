@@ -3435,7 +3435,8 @@ async fn coinbase_transactions_have_opposing_cancellation(world: &mut TariWorld,
         }
         if i < num_retries - 1 {
             cucumber_steps_log(format!(
-                "Wallets {wallet_a} and {wallet_b} both show cancelled={cancelled_a}, waiting for reorg to propagate..."
+                "Wallets {wallet_a} and {wallet_b} both show cancelled={cancelled_a}, waiting for reorg to \
+                 propagate..."
             ));
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
@@ -3473,9 +3474,7 @@ async fn get_coinbase_cancellation_status(world: &mut TariWorld, wallet_name: &s
             total_coinbase += 1;
             // A coinbase is considered cancelled/reorged if it is explicitly cancelled OR
             // if it has CoinbaseNotInBlockChain status (set when the block it was mined in is reorged out).
-            if tx_info.is_cancelled ||
-                tx_info.status == grpc::TransactionStatus::CoinbaseNotInBlockChain as i32
-            {
+            if tx_info.is_cancelled || tx_info.status == grpc::TransactionStatus::CoinbaseNotInBlockChain as i32 {
                 cancelled_count += 1;
             }
         }
@@ -3501,8 +3500,7 @@ async fn wait_for_recovered_wallets_to_have_micro_tari(world: &mut TariWorld, am
                 .into_inner();
             // Include all balance components: recovered coinbase outputs may be stored as
             // UnspentMinedUnconfirmed (pending_incoming) until TXO validation confirms them.
-            total_balance =
-                balance.available_balance + balance.timelocked_balance + balance.pending_incoming_balance;
+            total_balance = balance.available_balance + balance.timelocked_balance + balance.pending_incoming_balance;
             if total_balance >= amount {
                 cucumber_steps_log(format!(
                     "Recovered wallet {wallet_name} has at least {amount} uT (DONE): {total_balance}"

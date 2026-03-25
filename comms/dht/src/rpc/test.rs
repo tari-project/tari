@@ -33,10 +33,10 @@ use tari_comms::{
 use tari_test_utils::collect_recv;
 
 use crate::{
+    DhtConfig,
     rpc::{DhtRpcService, DhtRpcServiceImpl},
     test_utils::build_peer_manager,
 };
-use crate::DhtConfig;
 
 fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
     let peer_manager = build_peer_manager();

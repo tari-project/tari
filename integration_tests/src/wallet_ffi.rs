@@ -152,13 +152,7 @@ impl WalletFFI {
         self.wallet.lock().unwrap().start_transaction_validation()
     }
 
-    pub fn send_transaction(
-        &self,
-        dest: String,
-        amount: u64,
-        fee_per_gram: u64,
-        payment_id: MemoField,
-    ) -> u64 {
+    pub fn send_transaction(&self, dest: String, amount: u64, fee_per_gram: u64, payment_id: MemoField) -> u64 {
         self.wallet
             .lock()
             .unwrap()

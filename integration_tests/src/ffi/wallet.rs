@@ -285,13 +285,7 @@ impl Wallet {
         Balance::from_ptr(ptr)
     }
 
-    pub fn send_transaction(
-        &self,
-        dest: String,
-        amount: u64,
-        fee_per_gram: u64,
-        payment_id: MemoField,
-    ) -> u64 {
+    pub fn send_transaction(&self, dest: String, amount: u64, fee_per_gram: u64, payment_id: MemoField) -> u64 {
         let tx_id;
         let mut error = 0;
         unsafe {
