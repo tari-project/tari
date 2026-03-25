@@ -152,7 +152,11 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         state.last_request_latency
     }
 
-    async fn get_utxos_mined_info(&self, _hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error> {
+    async fn get_utxos_mined_info(
+        &self,
+        _hashes: Vec<Vec<u8>>,
+        _version: u32,
+    ) -> Result<GetUtxosMinedInfoResponse, Error> {
         todo!()
     }
 

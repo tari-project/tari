@@ -2148,16 +2148,14 @@ where
             .iter()
             .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value());
 
-        let payment_id = MemoField::new_open_from_string(
-            &format!("Coin join {} outputs", src_outputs.len()),
-            TxType::CoinJoin,
-        )
-        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let payment_id =
+            MemoField::new_open_from_string(&format!("Coin join {} outputs", src_outputs.len()), TxType::CoinJoin)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&payment_id)?;
 
-        let fee = self
-            .get_fee_calc()
-            .calculate(fee_per_gram, 1, src_outputs.len(), 1, output_features_and_scripts_size);
+        let fee =
+            self.get_fee_calc()
+                .calculate(fee_per_gram, 1, src_outputs.len(), 1, output_features_and_scripts_size);
 
         Ok((vec![accumulated_amount.saturating_sub(fee)], fee))
     }
@@ -2185,11 +2183,9 @@ where
             &self.resources.key_manager,
         )?;
 
-        let output_payment_id = MemoField::new_open_from_string(
-            &format!("{number_of_splits} even coin splits"),
-            TxType::CoinSplit,
-        )
-        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let output_payment_id =
+            MemoField::new_open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&output_payment_id)?;
 
         let fee = self.get_fee_calc().calculate(
@@ -2285,11 +2281,9 @@ where
             ));
         }
 
-        let output_payment_id = MemoField::new_open_from_string(
-            &format!("{number_of_splits} even coin splits"),
-            TxType::CoinSplit,
-        )
-        .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let output_payment_id =
+            MemoField::new_open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&output_payment_id)?;
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
 

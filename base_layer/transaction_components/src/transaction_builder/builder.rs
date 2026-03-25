@@ -1302,8 +1302,6 @@ mod test {
         let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
         let factories = CryptoFactories::default();
-        // Alice's parameters
-        let alice_key = TestParams::new(&key_manager);
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager);
         let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None);

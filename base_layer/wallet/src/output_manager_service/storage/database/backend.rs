@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use tari_common_types::{
     transaction::TxId,
-    types::{CompressedCommitment, FixedHash},
+    types::{CompressedCommitment, CompressedSignature, FixedHash},
 };
 use tari_transaction_components::{
     MicroMinotari,
@@ -90,7 +90,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn fetch_kernel_signature_for_tx(
         &self,
         tx_id: TxId,
-    ) -> Result<Option<(Vec<u8>, Vec<u8>)>, OutputManagerStorageError>;
+    ) -> Result<Option<CompressedSignature>, OutputManagerStorageError>;
     /// Restore invalid outputs that are found in the mempool back to EncumberedToBeReceived status.
     fn set_outputs_to_encumbered_to_be_received(
         &self,

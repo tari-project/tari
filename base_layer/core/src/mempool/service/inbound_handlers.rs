@@ -62,7 +62,11 @@ impl MempoolInboundHandlers {
     pub async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "Handling remote request: {request}");
         use MempoolRequest::{
-            FilterOutputsInMempool, GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig,
+            FilterOutputsInMempool,
+            GetFeePerGramStats,
+            GetState,
+            GetStats,
+            GetTxStateByExcessSig,
             SubmitTransaction,
         };
         match request {

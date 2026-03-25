@@ -184,7 +184,7 @@ impl UnconfirmedPool {
         output_hashes
             .iter()
             .filter(|hash| self.txs_by_output.contains_key(*hash))
-            .cloned()
+            .copied()
             .collect()
     }
 

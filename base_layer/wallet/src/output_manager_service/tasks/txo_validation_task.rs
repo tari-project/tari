@@ -28,10 +28,13 @@ use std::{
 use chrono::{Duration, Utc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_common_types::{transaction::TxId, types::{BlockHash, FixedHash}};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlockHash, FixedHash},
+};
 use tari_transaction_components::rpc::models::TxLocation;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -590,8 +593,7 @@ where
             returned_outputs.insert(mined_info.utxo_hash.clone(), mined_info.clone());
         }
 
-        let mempool_set: std::collections::HashSet<Vec<u8>> =
-            batch_response.mempool_utxos.into_iter().collect();
+        let mempool_set: std::collections::HashSet<Vec<u8>> = batch_response.mempool_utxos.into_iter().collect();
 
         for output in batch {
             let hash_vec = output.hash.to_vec();
@@ -663,7 +665,13 @@ where
             },
         };
 
-        match base_node_client.transaction_query(sig.0, sig.1).await {
+        match base_node_client
+            .transaction_query(
+                sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                sig.get_signature().as_bytes().to_vec(),
+            )
+            .await
+        {
             Ok(response) => {
                 matches!(response.location, TxLocation::InMempool | TxLocation::Mined)
             },

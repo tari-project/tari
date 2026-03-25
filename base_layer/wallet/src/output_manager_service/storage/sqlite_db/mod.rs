@@ -31,7 +31,7 @@ pub use output_sql::OutputSql;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
     transaction::TxId,
-    types::{CompressedCommitment, FixedHash},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_crypto::tari_utilities::{ByteArray, hex::Hex};
 use tari_script::{ExecutionStack, TariScript};
@@ -591,7 +591,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn fetch_kernel_signature_for_tx(
         &self,
         tx_id: TxId,
-    ) -> Result<Option<(Vec<u8>, Vec<u8>)>, OutputManagerStorageError> {
+    ) -> Result<Option<CompressedSignature>, OutputManagerStorageError> {
         use crate::schema::completed_transactions;
 
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -603,7 +603,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             ))
             .first(&mut conn)
             .optional()?;
-        Ok(result)
+        let signature = result.and_then(
+            |(completed_transaction_signature_nonce, completed_transaction_signature_key)| {
+                match CompressedPublicKey::from_vec(&completed_transaction_signature_nonce) {
+                    Ok(public_nonce) => match PrivateKey::from_vec(&completed_transaction_signature_key) {
+                        Ok(signature) => Some(CompressedSignature::new(public_nonce, signature)),
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                }
+            },
+        );
+        Ok(signature)
     }
 
     fn set_outputs_to_encumbered_to_be_received(

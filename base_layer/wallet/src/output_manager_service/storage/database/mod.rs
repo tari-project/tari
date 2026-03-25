@@ -31,7 +31,7 @@ pub use backend::OutputManagerBackend;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{CompressedCommitment, FixedHash, HashOutput},
+    types::{CompressedCommitment, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_transaction_components::{
     MicroMinotari,
@@ -522,7 +522,7 @@ where T: OutputManagerBackend + 'static
     pub fn fetch_kernel_signature_for_tx(
         &self,
         tx_id: TxId,
-    ) -> Result<Option<(Vec<u8>, Vec<u8>)>, OutputManagerStorageError> {
+    ) -> Result<Option<CompressedSignature>, OutputManagerStorageError> {
         self.db.fetch_kernel_signature_for_tx(tx_id)
     }
 

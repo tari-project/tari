@@ -4133,7 +4133,8 @@ where
         );
 
         // Cancel the original transaction to free its inputs in the output manager before creating the replacement
-        self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled).await;
+        self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled)
+            .await;
 
         let new_tx_id = self
             .send_one_sided_transaction(

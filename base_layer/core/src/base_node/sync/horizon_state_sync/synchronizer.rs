@@ -422,7 +422,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             for output in outputs {
                 txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
                 count += 1;
-                if count % PROGRESS_REPORT_INTERVAL == 0 {
+                if count.is_multiple_of(PROGRESS_REPORT_INTERVAL) {
                     txn.commit().await?;
                     txn = db.write_transaction();
                 }
