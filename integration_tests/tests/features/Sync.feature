@@ -56,7 +56,6 @@ Feature: Block Sync
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 20
 
-  @broken
   Scenario: Pruned node should handle burned output
     Given I have a seed node NODE
     When I have a base node NODE1 connected to all seed nodes
