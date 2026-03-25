@@ -108,6 +108,14 @@ impl DbTransaction {
         self
     }
 
+    /// Delete block accumulated data at the given height. Used during rewind past pruning horizon
+    /// where the full block body has already been pruned and `delete_tip_block` cannot be used.
+    pub fn delete_block_accumulated_data(&mut self, height: u64) -> &mut Self {
+        self.operations
+            .push(WriteOperation::DeleteBlockAccumulatedData(height));
+        self
+    }
+
     /// Inserts a transaction kernel into the current transaction.
     pub fn insert_kernel(
         &mut self,
@@ -378,6 +386,7 @@ pub enum WriteOperation {
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
     DeleteTipBlock(HashOutput),
+    DeleteBlockAccumulatedData(u64),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput, U512),
     InsertMoneroSeedHeight(Vec<u8>, u64),
@@ -485,6 +494,7 @@ impl fmt::Display for WriteOperation {
                 write!(f, "InsertOrphanChainTip({hash}, {total_accumulated_difficulty})")
             },
             DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({hash})"),
+            DeleteBlockAccumulatedData(height) => write!(f, "DeleteBlockAccumulatedData({height})"),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },

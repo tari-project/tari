@@ -2726,12 +2726,22 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
     let mut txn = DbTransaction::new();
     for h in 0..steps_back {
+        let height = last_header_height - h;
         info!(
             target: LOG_TARGET,
             "Rewinding headers at height {}",
-            last_header_height - h
+            height,
         );
-        txn.delete_header(last_header_height - h);
+        // If block accumulated data exists at this height (e.g. from a previous incomplete rewind
+        // past pruning horizon), remove it and any remaining block data before deleting the header.
+        if db.fetch_block_accumulated_data_by_height(height)?.is_some() {
+            let header = fetch_header(db, height)?;
+            let header_hash = header.hash();
+            txn.delete_block_accumulated_data(height);
+            txn.delete_all_kernerls_in_block(header_hash);
+            txn.delete_all_inputs_in_block(header_hash);
+        }
+        txn.delete_header(height);
     }
     db.write(txn)?;
     // Delete blocks
@@ -2793,6 +2803,11 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             expected_block_hash,
             chain_header.timestamp(),
         );
+        // When rewinding past the pruning horizon to height 0, reset pruned_height in the same
+        // transaction to maintain the invariant that pruned_height <= best_block_height.
+        if prune_past_horizon && h + 1 == steps_back {
+            txn.set_pruned_height(0);
+        }
         if h == 0 {
             // insert the new orphan chain tip
             debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {block_hash}");
@@ -2811,20 +2826,29 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     }
 
     if prune_past_horizon {
-        // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
-        // have to delete the headers as they are still valid.
+        // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them.
+        // We also delete headers above the target height since they belong to the old chain and will be
+        // replaced during re-sync. The header at target_height is preserved as it is the chain split point.
         // We don't have these complete blocks, so we don't push them to the removed blocks.
         for h in 0..(last_block_height - steps_back) {
-            let mut txn = DbTransaction::new();
+            let height = last_block_height - h - steps_back;
             debug!(
                 target: LOG_TARGET,
-                "Deleting blocks and utxos {}",
-                last_block_height - h - steps_back,
+                "Deleting pruned block data at height {}",
+                height,
             );
-            let header = fetch_header(db, last_block_height - h - steps_back)?;
-            // Although we do not have this full block, this method  will remove all remaining data that is linked to
-            // the specific header hash
-            txn.delete_tip_block(header.hash());
+            // For pruned blocks, we cannot use delete_tip_block because it requires JMT validation
+            // which is not possible for pruned data. Instead, directly delete the accumulated data,
+            // kernels, inputs and then the header (above the target height).
+            let header = fetch_header(db, height)?;
+            let header_hash = header.hash();
+            let mut txn = DbTransaction::new();
+            txn.delete_block_accumulated_data(height);
+            txn.delete_all_kernerls_in_block(header_hash);
+            txn.delete_all_inputs_in_block(header_hash);
+            if height > target_height {
+                txn.delete_header(height);
+            }
             db.write(txn)?;
         }
     }

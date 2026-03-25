@@ -70,7 +70,7 @@ Feature: Reorgs
     When I submit block BLOCKA to B
     Then all nodes are at height 5
 
-   @broken
+   @critical
    Scenario: Pruned mode reorg simple
      When I have a base node NODE1 connected to all seed nodes
      When I have wallet WALLET1 connected to base node NODE1
@@ -94,7 +94,7 @@ Feature: Reorgs
      When I start base node NODE1
      Then all nodes are at height 20
 
-  @broken
+  @critical
   Scenario: Pruned mode reorg past horizon
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
@@ -119,12 +119,16 @@ Feature: Reorgs
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then node PNODE1 is at height 10
     When I start base node NODE2
-    # Here is where it all goes wrong. the restarted node never syncs
-    Then all nodes are at height 20
-    # Because TX1 should have been re_orged out we should be able to spend CB1 again
+    # Wait for NODE1 to reorg to NODE2's stronger chain
+    Then node NODE1 is at height 20
+    # Create a new pruned node connected to NODE1 (now on the new chain) to verify pruned sync works
+    Given I have a pruned node PNODE2 connected to node NODE1 with pruning horizon set to 5
+    Then node PNODE2 is at height 20
+    Then node NODE2 is at height 20
+    # Because TX1 was re_orged out we should be able to spend CB1 again
     When I create a transaction TX2 spending CB1 to UTX2
-    When I submit transaction TX2 to PNODE1
-    Then PNODE1 has TX2 in MEMPOOL state
+    When I submit transaction TX2 to PNODE2
+    Then PNODE2 has TX2 in MEMPOOL state
 
   @reorg
   Scenario: Zero-conf reorg with spending

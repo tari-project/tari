@@ -684,6 +684,14 @@ impl LMDBDatabase {
                 DeleteTipBlock(hash) => {
                     self.delete_tip_block_body(&write_txn, hash)?;
                 },
+                DeleteBlockAccumulatedData(height) => {
+                    lmdb_delete(
+                        &write_txn,
+                        &self.block_accumulated_data_db,
+                        height,
+                        "block_accumulated_data_db",
+                    )?;
+                },
                 InsertMoneroSeedHeight(data, height) => {
                     self.insert_monero_seed_height(&write_txn, data, *height)?;
                 },

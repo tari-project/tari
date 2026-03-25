@@ -211,10 +211,15 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
             .iter()
             .filter(|(_, at_height)| at_height != &&height)
         {
-            let mut client = world.get_node_client(name).await.unwrap();
+            let Ok(mut client) = world.get_node_client(name).await else {
+                continue;
+            };
 
-            let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-            let chain_hgt = chain_tip.metadata.unwrap().best_block_height;
+            let Ok(chain_tip) = client.get_tip_info(Empty {}).await else {
+                // Node may be temporarily unavailable during sync/reorg, retry later
+                continue;
+            };
+            let chain_hgt = chain_tip.into_inner().metadata.unwrap().best_block_height;
 
             nodes_at_height.insert(name, chain_hgt);
         }

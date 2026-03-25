@@ -288,5 +288,11 @@ impl BaseNodeProcess {
                 break;
             }
         }
+        loop {
+            // lets wait till the http port is cleared
+            if TcpListener::bind(("127.0.0.1", self.http_port.try_into().unwrap())).is_ok() {
+                break;
+            }
+        }
     }
 }
