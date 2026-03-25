@@ -46,7 +46,6 @@ Feature: Block Sync
     When I have a base node NODE2 connected to all seed nodes
     Then all nodes are at height 25
 
-  @broken
   Scenario: Pruned mode simple sync
     Given I have 1 seed nodes
     When I have a SHA3 miner NODE1 connected to all seed nodes
