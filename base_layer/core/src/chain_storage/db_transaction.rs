@@ -111,8 +111,7 @@ impl DbTransaction {
     /// Delete block accumulated data at the given height. Used during rewind past pruning horizon
     /// where the full block body has already been pruned and `delete_tip_block` cannot be used.
     pub fn delete_block_accumulated_data(&mut self, height: u64) -> &mut Self {
-        self.operations
-            .push(WriteOperation::DeleteBlockAccumulatedData(height));
+        self.operations.push(WriteOperation::DeleteBlockAccumulatedData(height));
         self
     }
 
