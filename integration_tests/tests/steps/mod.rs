@@ -39,7 +39,10 @@ pub mod wallet_ffi_steps;
 pub mod wallet_steps;
 
 pub const CONFIRMATION_PERIOD: u64 = 4;
+// Deprecated: use tari_integration_tests::wait_for_or_panic with DEFAULT_TIMEOUT instead
+#[allow(dead_code)]
 pub const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
+#[allow(dead_code)]
 pub const HALF_SECOND: u64 = 500;
 
 #[when(expr = "I wait {int} seconds")]

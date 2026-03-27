@@ -44,7 +44,7 @@ use grpc::{
 };
 use minotari_app_grpc::{
     tari_rpc,
-    tari_rpc::{self as grpc, GetBalanceResponse, GetStateRequest, TransactionStatus, TxOutputsToSpendTransfer},
+    tari_rpc::{self as grpc, GetStateRequest, TransactionStatus, TxOutputsToSpendTransfer},
 };
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -79,10 +79,10 @@ use tari_transaction_components::{
 };
 use tari_utilities::hex::Hex;
 
+use tari_integration_tests::{DEFAULT_TIMEOUT, SHORT_TIMEOUT, wait_for};
+
 use crate::steps::{
     CONFIRMATION_PERIOD,
-    HALF_SECOND,
-    TWO_MINUTES_WITH_HALF_SECOND_SLEEP,
     cucumber_steps_log,
     mining_steps::create_miner,
 };
@@ -121,38 +121,29 @@ async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: S
 #[then(expr = "I wait for wallet {word} to have at least {int} uT")]
 async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
     let wallet_ps = world.wallets.get(&wallet).unwrap();
-    let num_retries = 100;
-
     let mut client = wallet_ps.get_grpc_client().await.unwrap();
-    let mut available_balance = 0;
 
-    for i in 0..=num_retries {
-        let _result = client.validate_all_transactions(ValidateRequest {}).await;
-        let balance = client
-            .get_balance(GetBalanceRequest { payment_id: None })
-            .await
-            .unwrap()
-            .into_inner();
-        available_balance = balance.available_balance;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("wallet {wallet} to have at least {amount} uT"),
+        condition: async {
+            let _result = client.validate_all_transactions(ValidateRequest {}).await;
+            let balance = client
+                .get_balance(GetBalanceRequest { payment_id: None })
+                .await
+                .unwrap()
+                .into_inner();
 
-        if available_balance >= amount {
-            cucumber_steps_log(format!(
-                "Wallet {wallet} needs at least available {amount} uT (DONE), has {balance:?}"
-            ));
-            return;
-        } else if i % 5 == 0 {
-            cucumber_steps_log(format!(
-                "Wallet {wallet} needs at least available {amount} uT, has {balance:?}"
-            ));
-        } else {
-            // Nothing here
+            if balance.available_balance >= amount {
+                cucumber_steps_log(format!(
+                    "Wallet {wallet} needs at least available {amount} uT (DONE), has {balance:?}"
+                ));
+                Ok(true)
+            } else {
+                Err(format!("available balance: {}", balance.available_balance))
+            }
         }
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    // failed to get wallet right amount, so we panic
-    panic!("wallet {wallet} failed to get balance of at least amount {amount}, current amount is {available_balance}");
+    );
 }
 
 #[when(expr = "I remember wallet {word} balance {word}")]
@@ -575,38 +566,32 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         _ => panic!("Invalid transaction status {transaction_status}"),
     };
 
-    let num_retries = 100;
-    let mut current_status = 0;
-    let mut total_found = 0;
-
-    for _ in 0..num_retries {
-        let mut txs = client
-            .get_completed_transactions(grpc::GetCompletedTransactionsRequest {
-                payment_id: None,
-                block_hash: None,
-                block_height: None,
-            })
-            .await
-            .unwrap()
-            .into_inner();
-        let mut found_tx = 0;
-        while let Some(tx) = txs.next().await {
-            let tx_info = tx.unwrap().transaction.unwrap();
-            current_status = tx_info.status;
-            if current_status == transaction_status {
-                found_tx += 1;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("wallet {wallet} to have at least {num_txs} txs with status {transaction_status}"),
+        condition: async {
+            let mut txs = client
+                .get_completed_transactions(grpc::GetCompletedTransactionsRequest {
+                    payment_id: None,
+                    block_hash: None,
+                    block_height: None,
+                })
+                .await
+                .unwrap()
+                .into_inner();
+            let mut found_tx = 0u64;
+            while let Some(tx) = txs.next().await {
+                let tx_info = tx.unwrap().transaction.unwrap();
+                if tx_info.status == transaction_status {
+                    found_tx += 1;
+                }
+            }
+            if found_tx >= num_txs {
+                Ok(true)
+            } else {
+                Err(format!("found {found_tx} matching txs"))
             }
         }
-        if found_tx >= num_txs {
-            return;
-        }
-        total_found += found_tx;
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    panic!(
-        "Wallet {wallet} failed to have at least num {num_txs} txs with status {transaction_status}, current status \
-         is {current_status}, scanned txs {total_found}"
     );
 }
 
@@ -661,30 +646,26 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     cucumber_steps_log(format!("Waiting for wallet {wallet} to have less than {amount} uT"));
 
-    let num_retries = 100;
-    for i in 0..num_retries {
-        let _result = client.validate_all_transactions(ValidateRequest {}).await;
-        let balance_res = client
-            .get_balance(GetBalanceRequest { payment_id: None })
-            .await
-            .unwrap()
-            .into_inner();
-        if balance_res.available_balance < amount {
-            cucumber_steps_log(format!(
-                "Wallet {wallet} needs less than available {amount} uT (DONE), has {balance_res:?}"
-            ));
-            return;
-        } else if i % 5 == 0 {
-            cucumber_steps_log(format!(
-                "Wallet {wallet} needs less than available {amount} uT, has {balance_res:?}"
-            ));
-        } else {
-            // Nothing here
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("wallet {wallet} to have less than {amount} uT"),
+        condition: async {
+            let _result = client.validate_all_transactions(ValidateRequest {}).await;
+            let balance_res = client
+                .get_balance(GetBalanceRequest { payment_id: None })
+                .await
+                .unwrap()
+                .into_inner();
+            if balance_res.available_balance < amount {
+                cucumber_steps_log(format!(
+                    "Wallet {wallet} needs less than available {amount} uT (DONE), has {balance_res:?}"
+                ));
+                Ok(true)
+            } else {
+                Err(format!("available balance: {}", balance_res.available_balance))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    panic!("Wallet {wallet} didn't get less than {amount} after num_retries {num_retries}");
+    );
 }
 
 #[then(expr = "I wait for wallet {word} to have scanned to height {int}")]
@@ -695,26 +676,22 @@ async fn wait_for_wallet_to_have_scanned_to_height(world: &mut TariWorld, wallet
         "Waiting for wallet {wallet} to have scanned to height {height}"
     ));
 
-    let num_retries = 40;
-    for i in 0..num_retries {
-        let _result = client.validate_all_transactions(ValidateRequest {}).await;
-        let state_res = client.get_state(GetStateRequest {}).await.unwrap().into_inner();
-        if state_res.scanned_height == height {
-            cucumber_steps_log(format!(
-                "Wallet {wallet} needs to scan to height {height} (DONE), current {state_res:?}"
-            ));
-            return;
-        } else if i % 3 == 0 {
-            cucumber_steps_log(format!(
-                "Wallet {wallet} needs to scan to height {height}, current {state_res:?}"
-            ));
-        } else {
-            // Nothing here
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("wallet {wallet} to scan to height {height}"),
+        condition: async {
+            let _result = client.validate_all_transactions(ValidateRequest {}).await;
+            let state_res = client.get_state(GetStateRequest {}).await.unwrap().into_inner();
+            if state_res.scanned_height == height {
+                cucumber_steps_log(format!(
+                    "Wallet {wallet} needs to scan to height {height} (DONE), current {state_res:?}"
+                ));
+                Ok(true)
+            } else {
+                Err(format!("scanned height: {}", state_res.scanned_height))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    panic!("Wallet {wallet} didn't scan to height {height} after num_retries {num_retries}");
+    );
 }
 
 #[then(expr = "all wallets validate their transactions")]
@@ -3271,96 +3248,88 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
     let result = client.create_burn_transaction(req).await.unwrap();
     let tx_id = result.into_inner().transaction_id;
 
-    let mut last_status = 0;
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        let result = client
-            .get_transaction_info(grpc::GetTransactionInfoRequest {
-                transaction_ids: vec![tx_id],
-            })
-            .await
-            .unwrap();
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("burn transaction from {wallet} to be broadcast/confirmed"),
+        condition: async {
+            let result = client
+                .get_transaction_info(grpc::GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id],
+                })
+                .await
+                .unwrap();
 
-        last_status = result.into_inner().transactions.last().unwrap().status;
-
-        if let 1 | 2 | 6 = last_status {
-            return;
+            let status = result.into_inner().transactions.last().unwrap().status;
+            if let 1 | 2 | 6 = status {
+                Ok(true)
+            } else {
+                Err(format!("status: {status}"))
+            }
         }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!(
-        "Burn transaction has status {last_status} when we desired 1 (TRANSACTION_STATUS_BROADCAST), 2 \
-         (TRANSACTION_STATUS_UNCONFIRMED), or 6 (TRANSACTION_STATUS_CONFIRMED)"
-    )
+    );
 }
 
 #[then(expr = "wallet {word} balance is {word}")]
 async fn wallet_has_balance(world: &mut TariWorld, wallet_name: String, balance_key: String) {
     let mut client = world.get_wallet_client(&wallet_name).await.unwrap();
-    let balance = world.balance.get(&balance_key).unwrap();
+    let balance = world.balance.get(&balance_key).unwrap().clone();
 
-    let balance_res = GetBalanceResponse::default();
-    let num_retries = 30;
-    for i in 0..num_retries {
-        let _result = client.validate_all_transactions(ValidateRequest {}).await;
-        let balance_res = client
-            .get_balance(GetBalanceRequest { payment_id: None })
-            .await
-            .unwrap()
-            .into_inner();
-        if &balance_res == balance {
-            cucumber_steps_log(format!(
-                "Wallet {wallet_name} needs balance {balance:?} (DONE), has {balance_res:?}"
-            ));
-            return;
-        } else if i % 3 == 0 {
-            cucumber_steps_log(format!(
-                "Wallet {wallet_name} needs balance {balance:?}, has {balance_res:?}"
-            ));
-        } else {
-            // Nothing here
+    wait_for!(
+        timeout: SHORT_TIMEOUT,
+        description: format!("wallet {wallet_name} to match balance {balance_key}"),
+        condition: async {
+            let _result = client.validate_all_transactions(ValidateRequest {}).await;
+            let balance_res = client
+                .get_balance(GetBalanceRequest { payment_id: None })
+                .await
+                .unwrap()
+                .into_inner();
+            if balance_res == balance {
+                cucumber_steps_log(format!(
+                    "Wallet {wallet_name} needs balance {balance:?} (DONE), has {balance_res:?}"
+                ));
+                Ok(true)
+            } else {
+                Err(format!("current: {balance_res:?}"))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    panic!("Wallet {wallet_name} doesn't have the correct balance: expected {balance:?} current {balance_res:?}");
+    );
 }
 
 #[then(expr = "wallet {word} has {int} coinbase transactions")]
 async fn wallet_has_num_coinbase_transactions(world: &mut TariWorld, wallet_name: String, expected: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let num_retries = 100;
-    let mut found = 0u64;
-    for _ in 0..num_retries {
-        let mut txs = client
-            .get_completed_transactions(GetCompletedTransactionsRequest {
-                payment_id: None,
-                block_hash: None,
-                block_height: None,
-            })
-            .await
-            .unwrap()
-            .into_inner();
-        found = 0;
-        while let Some(tx) = txs.next().await {
-            let tx_info = tx.unwrap().transaction.unwrap();
-            let is_coinbase = tx_info.status == grpc::TransactionStatus::Coinbase as i32 ||
-                tx_info.status == grpc::TransactionStatus::CoinbaseConfirmed as i32 ||
-                tx_info.status == grpc::TransactionStatus::CoinbaseUnconfirmed as i32 ||
-                tx_info.status == grpc::TransactionStatus::CoinbaseNotInBlockChain as i32;
-            if is_coinbase {
-                found += 1;
+
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("wallet {wallet_name} to have {expected} coinbase transactions"),
+        condition: async {
+            let mut txs = client
+                .get_completed_transactions(GetCompletedTransactionsRequest {
+                    payment_id: None,
+                    block_hash: None,
+                    block_height: None,
+                })
+                .await
+                .unwrap()
+                .into_inner();
+            let mut found = 0u64;
+            while let Some(tx) = txs.next().await {
+                let tx_info = tx.unwrap().transaction.unwrap();
+                let is_coinbase = tx_info.status == grpc::TransactionStatus::Coinbase as i32 ||
+                    tx_info.status == grpc::TransactionStatus::CoinbaseConfirmed as i32 ||
+                    tx_info.status == grpc::TransactionStatus::CoinbaseUnconfirmed as i32 ||
+                    tx_info.status == grpc::TransactionStatus::CoinbaseNotInBlockChain as i32;
+                if is_coinbase {
+                    found += 1;
+                }
+            }
+            if found >= expected {
+                Ok(true)
+            } else {
+                Err(format!("found {found} coinbase txs"))
             }
         }
-        if found >= expected {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-    assert_eq!(
-        found, expected,
-        "Wallet {wallet_name} has {found} coinbase transactions, expected {expected}"
     );
 }
 

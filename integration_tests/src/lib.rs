@@ -33,8 +33,11 @@ pub mod transaction;
 pub mod wallet;
 pub mod wallet_ffi;
 pub mod wallet_process;
+#[macro_use]
+pub mod polling;
 pub mod world;
 
+pub use polling::{DEFAULT_TIMEOUT, SHORT_TIMEOUT};
 pub use world::TariWorld;
 
 pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u64> {
@@ -64,21 +67,13 @@ pub fn get_base_dir() -> PathBuf {
 pub async fn wait_for_service(port: u64) {
     // The idea is that if the port is taken it means the service is running.
     // If the port is not taken the service hasn't come up yet
-    let max_tries = 4 * 60;
-    let mut attempts = 0;
-
-    loop {
-        if TcpListener::bind(("127.0.0.1", u16::try_from(port).unwrap())).is_err() {
-            return;
+    wait_for!(
+        timeout: Duration::from_secs(60),
+        description: format!("service on port {port} to start"),
+        condition: async {
+            Ok(TcpListener::bind(("127.0.0.1", u16::try_from(port).unwrap())).is_err())
         }
-
-        if attempts >= max_tries {
-            panic!("Service on port {port} never started");
-        }
-
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        attempts += 1;
-    }
+    );
 }
 
 pub async fn get_peer_addresses(world: &TariWorld, peers: &[String]) -> Vec<String> {
