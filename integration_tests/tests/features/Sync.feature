@@ -46,7 +46,6 @@ Feature: Block Sync
     When I have a base node NODE2 connected to all seed nodes
     Then all nodes are at height 25
 
-  @broken
   Scenario: Pruned mode simple sync
     Given I have 1 seed nodes
     When I have a SHA3 miner NODE1 connected to all seed nodes
@@ -57,7 +56,6 @@ Feature: Block Sync
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 20
 
-  @broken
   Scenario: Pruned node should handle burned output
     Given I have a seed node NODE
     When I have a base node NODE1 connected to all seed nodes
@@ -95,7 +93,7 @@ Feature: Block Sync
     Then all nodes are at height 23
 
 
-      @broken
+    @broken
   Scenario: Node should not sync from pruned node
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
@@ -150,7 +148,6 @@ Feature: Block Sync
       | 1000 | 50 |
       | 1001 | 50 |
 
-    @broken
   Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
@@ -160,12 +157,15 @@ Feature: Block Sync
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to PNODE1
     When I mine 1 blocks on PNODE1
+    Then all nodes are at height 4
     Then TX1 is in the MINED of all nodes
     When I stop node NODE1
     When I mine 16 blocks on PNODE1
     Then node PNODE2 is at height 20
     When I have a pruned node PNODE3 connected to node PNODE1 with pruning horizon set to 5
-    Then node PNODE3 is at height 20
+    When I mine 5 blocks on PNODE1
+    Then node PNODE2 is at height 25
+    Then node PNODE3 is at height 25
 
   Scenario Outline: Force sync many nodes against one peer
     Given I have a base node BASE

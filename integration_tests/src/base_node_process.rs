@@ -281,12 +281,21 @@ impl BaseNodeProcess {
             if TcpListener::bind(("127.0.0.1", self.port.try_into().unwrap())).is_ok() {
                 break;
             }
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
         loop {
             // lets wait till the port is cleared
             if TcpListener::bind(("127.0.0.1", self.grpc_port.try_into().unwrap())).is_ok() {
                 break;
             }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        loop {
+            // lets wait till the http port is cleared
+            if TcpListener::bind(("127.0.0.1", self.http_port.try_into().unwrap())).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
 }
