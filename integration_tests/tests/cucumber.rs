@@ -44,6 +44,12 @@ pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 
 fn main() {
+    // Set the network env var once at startup — safe because no other threads exist yet.
+    // This replaces the unsafe set_var calls that were scattered across spawn functions.
+    unsafe {
+        std::env::set_var("TARI_NETWORK", "localnet");
+    }
+
     initialize_logging(
         &PathBuf::from("log4rs/cucumber.yml"),
         &PathBuf::from("./"),
@@ -55,9 +61,9 @@ fn main() {
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
         let world = TariWorld::cucumber()
-        .repeat_failed()
+        // .repeat_failed() — removed: retrying hides flaky tests instead of surfacing them
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(5)
+        .max_concurrent_scenarios(10)
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
             Box::pin(async move {
                 match ev {

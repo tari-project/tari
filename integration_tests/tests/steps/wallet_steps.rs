@@ -188,7 +188,6 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 
 #[when(expr = "wallet {word} detects all transactions as {word}")]
 #[then(expr = "wallet {word} detects all transactions as {word}")]
-#[allow(clippy::too_many_lines)]
 async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_name: String, status: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
@@ -202,98 +201,23 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
         .unwrap()
         .into_inner();
 
-    let num_retries = 100;
-
+    // Collect all tx_ids first, then wait for each
+    let mut tx_ids = Vec::new();
     while let Some(tx_info) = completed_tx_stream.next().await {
         let tx_info = tx_info.unwrap();
-        let tx_id = tx_info.transaction.unwrap().tx_id;
+        tx_ids.push(tx_info.transaction.unwrap().tx_id);
+    }
 
+    for tx_id in tx_ids {
         cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be {status}"));
-        for retry in 0..=num_retries {
-            let request = GetTransactionInfoRequest {
-                transaction_ids: vec![tx_id],
-            };
-            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
-            let tx_info = tx_info.transactions.first().unwrap();
-
-            if retry == num_retries {
-                panic!(
-                    "Wallet {} failed to detect tx with tx_id = {} to be {}, current status is {:?}",
-                    wallet_name.as_str(),
-                    tx_id,
-                    status,
-                    tx_info.status()
-                );
-            }
-            match status.as_str() {
-                "Pending" => match tx_info.status() {
-                    grpc::TransactionStatus::Pending |
-                    grpc::TransactionStatus::Completed |
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed |
-                    grpc::TransactionStatus::CoinbaseUnconfirmed |
-                    grpc::TransactionStatus::CoinbaseConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Completed" => match tx_info.status() {
-                    grpc::TransactionStatus::Completed |
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed |
-                    grpc::TransactionStatus::CoinbaseUnconfirmed |
-                    grpc::TransactionStatus::CoinbaseConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Broadcast" => match tx_info.status() {
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed |
-                    grpc::TransactionStatus::CoinbaseUnconfirmed |
-                    grpc::TransactionStatus::CoinbaseConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Mined_or_OneSidedUnconfirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed |
-                    grpc::TransactionStatus::CoinbaseUnconfirmed |
-                    grpc::TransactionStatus::CoinbaseConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Mined_or_OneSidedConfirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed |
-                    grpc::TransactionStatus::CoinbaseConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Coinbase" => match tx_info.status() {
-                    grpc::TransactionStatus::CoinbaseConfirmed | grpc::TransactionStatus::CoinbaseUnconfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                _ => panic!("Unknown status {status}, don't know what to expect"),
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
+        tari_integration_tests::tx_event_stream::wait_for_tx_status(
+            &mut client,
+            tx_id,
+            &status,
+            DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
     }
 }
 
@@ -315,72 +239,16 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
         },
     };
 
-    let num_retries = 100;
-
     for tx_id in &tx_ids {
-        cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be pending"));
-        for retry in 0..=num_retries {
-            let request = GetTransactionInfoRequest {
-                transaction_ids: vec![*tx_id],
-            };
-            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
-            let tx_info = tx_info.transactions.first().unwrap();
-
-            if retry == num_retries {
-                panic!(
-                    "Wallet {} failed to detect tx with tx_id = {} to be at least {}",
-                    wallet_name.as_str(),
-                    tx_id,
-                    status
-                );
-            }
-            match status.as_str() {
-                "Pending" => match tx_info.status() {
-                    grpc::TransactionStatus::Pending |
-                    grpc::TransactionStatus::Completed |
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Completed" => match tx_info.status() {
-                    grpc::TransactionStatus::Completed |
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Broadcast" => match tx_info.status() {
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                "Mined_or_OneSidedUnconfirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
-                        break;
-                    },
-                    _ => (),
-                },
-                _ => panic!("Unknown status {status}, don't know what to expect"),
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
+        cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be at least {status}"));
+        tari_integration_tests::tx_event_stream::wait_for_tx_status(
+            &mut client,
+            *tx_id,
+            &status,
+            DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
     }
 }
 

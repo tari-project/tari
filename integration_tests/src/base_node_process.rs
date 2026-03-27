@@ -47,7 +47,7 @@ use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{TariWorld, get_peer_addresses, get_port, wait_for_service};
+use crate::{TariWorld, get_peer_addresses, wait_for_service};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
@@ -95,9 +95,6 @@ pub async fn spawn_base_node_with_config(
     peers: Vec<String>,
     mut base_node_config: BaseNodeConfig,
 ) {
-    unsafe {
-        std::env::set_var("TARI_NETWORK", "localnet");
-    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
     let port: u64;
@@ -115,10 +112,18 @@ pub async fn spawn_base_node_with_config(
 
         base_node_identity = node_ps.identity.clone();
     } else {
-        // each spawned base node will use different ports
-        port = get_port(world, 18000..18499).unwrap();
-        grpc_port = get_port(world, 18500..18999).unwrap();
-        http_port = get_port(world, 19000..19499).unwrap();
+        // Allocate ports from the global pool (pre-scanned at startup, much faster than
+        // random scanning per node)
+        let ports = crate::port_pool::global_port_pool()
+            .allocate_base_node_ports()
+            .expect("Port pool exhausted — too many concurrent base nodes");
+        port = u64::from(ports.p2p);
+        grpc_port = u64::from(ports.grpc);
+        http_port = u64::from(ports.http);
+        // Track in world for backwards compatibility
+        world.assigned_ports.insert(port, port);
+        world.assigned_ports.insert(grpc_port, grpc_port);
+        world.assigned_ports.insert(http_port, http_port);
         // create a new temporary directory
         temp_dir_path = world
             .current_base_dir
@@ -266,9 +271,11 @@ pub async fn spawn_base_node_with_config(
 
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://127.0.0.1:{}", self.grpc_port))?
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30));
         Ok(
-            BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port))
-                .await?
+            BaseNodeGrpcClient::new(endpoint.connect().await?)
                 .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
                 .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
         )

@@ -185,7 +185,11 @@ impl TariWorld {
         &self,
         name: &S,
     ) -> anyhow::Result<minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
-        self.get_node(name)?.get_grpc_client().await
+        let node_name = name.as_ref();
+        self.get_node(name)?
+            .get_grpc_client()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect gRPC client to base node '{node_name}': {e}"))
     }
 
     pub async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
@@ -205,19 +209,20 @@ impl TariWorld {
         if let Some(address) = self.wallet_addresses.get(name.as_ref()) {
             return Ok(address.clone());
         }
+        let wallet_name = name.as_ref();
         let address_bytes = match self.get_wallet_client(name).await {
-            Ok(wallet) => {
-                let mut wallet = wallet;
-
+            Ok(mut wallet) => {
                 wallet
                     .get_address(minotari_wallet_grpc_client::grpc::Empty {})
                     .await
-                    .unwrap()
+                    .map_err(|e| anyhow::anyhow!("Failed to get address for wallet '{wallet_name}': {e}"))?
                     .into_inner()
                     .interactive_address
             },
             Err(_) => {
-                let ffi_wallet = self.get_ffi_wallet(name).unwrap();
+                let ffi_wallet = self
+                    .get_ffi_wallet(name)
+                    .map_err(|e| anyhow::anyhow!("No wallet or FFI wallet found for '{wallet_name}': {e}"))?;
 
                 ffi_wallet.get_address().address().get_vec()
             },
@@ -227,19 +232,20 @@ impl TariWorld {
     }
 
     pub async fn get_wallet_one_sided_address<S: AsRef<str>>(&self, name: &S) -> anyhow::Result<String> {
+        let wallet_name = name.as_ref();
         let address_bytes = match self.get_wallet_client(name).await {
-            Ok(wallet) => {
-                let mut wallet = wallet;
-
+            Ok(mut wallet) => {
                 wallet
                     .get_address(minotari_wallet_grpc_client::grpc::Empty {})
                     .await
-                    .unwrap()
+                    .map_err(|e| anyhow::anyhow!("Failed to get one-sided address for wallet '{wallet_name}': {e}"))?
                     .into_inner()
                     .one_sided_address
             },
             Err(_) => {
-                let ffi_wallet = self.get_ffi_wallet(name).unwrap();
+                let ffi_wallet = self
+                    .get_ffi_wallet(name)
+                    .map_err(|e| anyhow::anyhow!("No wallet or FFI wallet found for '{wallet_name}': {e}"))?;
 
                 ffi_wallet.get_one_sided_address().address().get_vec()
             },
@@ -253,7 +259,11 @@ impl TariWorld {
         &self,
         name: &S,
     ) -> anyhow::Result<minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
-        self.get_wallet(name)?.get_grpc_client().await
+        let wallet_name = name.as_ref();
+        self.get_wallet(name)?
+            .get_grpc_client()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to connect gRPC client to wallet '{wallet_name}': {e}"))
     }
 
     pub fn get_node<S: AsRef<str>>(&self, node_name: &S) -> anyhow::Result<&BaseNodeProcess> {
@@ -319,14 +329,31 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
+        let pool = crate::port_pool::global_port_pool();
+
+        // Kill wallets first — they depend on base nodes
         for (name, mut p) in self.wallets.drain(..) {
             println!("Shutting down wallet {name}");
-            p.kill_signal.trigger();
+            let grpc_port = p.grpc_port as u16;
+            p.kill();
+            // Return wallet gRPC port to pool for reuse
+            pool.return_wallet_ports(crate::port_pool::WalletPorts {
+                grpc: grpc_port,
+                http: 0, // wallet doesn't own an http port
+            });
         }
+        // Then kill base nodes — kill() waits for ports to be released,
+        // preventing port conflicts with the next scenario
         for (name, mut p) in self.base_nodes.drain(..) {
             println!("Shutting down base node {name}");
-            // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
-            p.kill_signal.trigger();
+            let ports = crate::port_pool::BaseNodePorts {
+                p2p: p.port as u16,
+                grpc: p.grpc_port as u16,
+                http: p.http_port as u16,
+            };
+            p.kill();
+            // Return ports to pool for reuse by next scenario
+            pool.return_base_node_ports(ports);
         }
     }
 

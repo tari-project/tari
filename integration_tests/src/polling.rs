@@ -20,13 +20,35 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
 
 /// Convenience: 2-minute timeout (matches the old `TWO_MINUTES_WITH_HALF_SECOND_SLEEP` pattern).
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Convenience: shorter timeout for operations that should be fast.
 pub const SHORT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Returns the timeout multiplier, read from `INTEGRATION_TEST_TIMEOUT_MULTIPLIER` env var.
+///
+/// Defaults to 1.0. Set to e.g. 2.0 in CI to double all timeouts for slower environments,
+/// or 0.5 locally to fail faster during development.
+///
+/// The value is read once and cached for the lifetime of the process.
+pub fn timeout_multiplier() -> f64 {
+    static MULTIPLIER: OnceLock<f64> = OnceLock::new();
+    *MULTIPLIER.get_or_init(|| {
+        std::env::var("INTEGRATION_TEST_TIMEOUT_MULTIPLIER")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .map(|v| if v > 0.0 { v } else { 1.0 })
+            .unwrap_or(1.0)
+    })
+}
+
+/// Apply the timeout multiplier to a duration.
+pub fn scaled_timeout(base: Duration) -> Duration {
+    Duration::from_secs_f64(base.as_secs_f64() * timeout_multiplier())
+}
 
 /// Poll an async condition with exponential backoff until it succeeds or the timeout is reached.
 ///
@@ -36,6 +58,9 @@ pub const SHORT_TIMEOUT: Duration = Duration::from_secs(30);
 /// - `Err(msg)` — not yet met, record `msg` for the timeout panic message
 ///
 /// The polling interval starts at 250ms and grows by 1.5x each iteration, capped at 4s.
+///
+/// Timeouts are automatically scaled by `INTEGRATION_TEST_TIMEOUT_MULTIPLIER` env var
+/// (default 1.0). Set to 2.0 in CI for slower environments.
 ///
 /// # Usage
 /// ```ignore
@@ -57,7 +82,7 @@ macro_rules! wait_for {
         condition: async $body:block
     ) => {{
         let __start = ::tokio::time::Instant::now();
-        let __timeout: ::std::time::Duration = $timeout;
+        let __timeout: ::std::time::Duration = $crate::polling::scaled_timeout($timeout);
         let __desc = $desc;
         let mut __interval = ::std::time::Duration::from_millis(250);
         let __max_interval = ::std::time::Duration::from_secs(4);

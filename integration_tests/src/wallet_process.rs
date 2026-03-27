@@ -34,7 +34,7 @@ use tari_shutdown::Shutdown;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{TariWorld, get_peer_addresses, get_port, wait_for_service};
+use crate::{TariWorld, get_peer_addresses, wait_for_service};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -64,9 +64,6 @@ pub async fn spawn_wallet(
     routing_mechanism: Option<TransactionRoutingMechanism>,
     cli: Option<Cli>,
 ) {
-    unsafe {
-        std::env::set_var("TARI_NETWORK", "localnet");
-    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
     let grpc_port: u64;
@@ -81,8 +78,12 @@ pub async fn spawn_wallet(
         temp_dir_path = wallet_ps.temp_dir_path.clone();
         wallet_config = wallet_ps.config.clone();
     } else {
-        // each spawned wallet will use different ports
-        grpc_port = get_port(world, 18500..18999).unwrap();
+        // Allocate port from the global pool (pre-scanned at startup)
+        let wallet_ports = crate::port_pool::global_port_pool()
+            .allocate_wallet_ports()
+            .expect("Port pool exhausted — too many concurrent wallets");
+        grpc_port = u64::from(wallet_ports.grpc);
+        world.assigned_ports.insert(grpc_port, grpc_port);
 
         temp_dir_path = world
             .current_base_dir
@@ -223,19 +224,35 @@ pub fn get_default_cli() -> Cli {
 }
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
-    let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
+    let wallet_grpc_port = world
+        .wallets
+        .get(&wallet_name)
+        .ok_or_else(|| anyhow::anyhow!("Wallet process '{wallet_name}' not found in world"))?
+        .grpc_port;
     let wallet_addr = format!("http://127.0.0.1:{wallet_grpc_port}");
 
     eprintln!("Wallet GRPC at {wallet_addr}");
 
-    Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        WalletGrpcClient::connect(wallet_addr.as_str()),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Timed out connecting to wallet '{wallet_name}' gRPC at {wallet_addr}"))?
+    .map_err(|e| anyhow::anyhow!("Failed to connect to wallet '{wallet_name}' gRPC at {wallet_addr}: {e}"))
 }
 
 impl WalletProcess {
     #[allow(dead_code)]
     pub async fn get_grpc_client(&self) -> anyhow::Result<WalletGrpcClient<Channel>> {
         let wallet_addr = format!("http://127.0.0.1:{}", self.grpc_port);
-        Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            WalletGrpcClient::connect(wallet_addr.as_str()),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("Timed out connecting to wallet '{}' gRPC", self.name))?
+        .map_err(|e| anyhow::anyhow!("Failed to connect to wallet '{}' gRPC: {e}", self.name))
     }
 
     pub fn is_running(&self) -> bool {
@@ -244,6 +261,14 @@ impl WalletProcess {
 
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
-        self.is_running = !self.kill_signal.is_triggered();
+        self.is_running = false;
+        // Wait for the gRPC port to be released so the next scenario doesn't hit port conflicts
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            if std::net::TcpListener::bind(("127.0.0.1", self.grpc_port as u16)).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 }

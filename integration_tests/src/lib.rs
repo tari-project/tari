@@ -35,9 +35,11 @@ pub mod wallet_ffi;
 pub mod wallet_process;
 #[macro_use]
 pub mod polling;
+pub mod port_pool;
+pub mod tx_event_stream;
 pub mod world;
 
-pub use polling::{DEFAULT_TIMEOUT, SHORT_TIMEOUT};
+pub use polling::{DEFAULT_TIMEOUT, SHORT_TIMEOUT, scaled_timeout, timeout_multiplier};
 pub use world::TariWorld;
 
 pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u64> {
