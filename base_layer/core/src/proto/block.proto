@@ -15,7 +15,7 @@ message ProofOfWork {
     //   0 = Monero RandomX
     //   1 = Sha3X
     //   2 = Tari RandomX
-    //   3 = Cuckaroo
+    //   3 = TariVision
     uint64 pow_algo = 1;
     // Supplemental proof of work data. For example for Sha3x, this would be empty (only the block header is
     // required), but for Monero merge mining we need the Monero block header and RandomX seed hash.

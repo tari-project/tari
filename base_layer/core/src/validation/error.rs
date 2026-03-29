@@ -34,7 +34,7 @@ use thiserror::Error;
 
 use crate::{
     chain_storage::ChainStorageError,
-    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError, tarivision::TariVisionError},
 };
 
 #[derive(Debug, Error)]
@@ -140,6 +140,8 @@ pub enum ValidationError {
     AggregatedBodyValidationError(#[from] AggregatedBodyValidationError),
     #[error("Cuckaroo POW error: {0}")]
     CuckarooPowError(#[from] CuckarooVerificationError),
+    #[error("TariVision verification error: {0}")]
+    TariVisionError(#[from] TariVisionError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -196,6 +198,7 @@ impl ValidationError {
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
             err @ ValidationError::AggregatedBodyValidationError(_) |
             err @ ValidationError::CuckarooPowError(_) |
+            err @ ValidationError::TariVisionError(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

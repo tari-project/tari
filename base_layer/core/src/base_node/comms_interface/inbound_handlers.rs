@@ -61,7 +61,7 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::Mempool,
     proof_of_work::{
-        cuckaroo_pow::cuckaroo_difficulty,
+        tarivision_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -642,12 +642,7 @@ where B: BlockchainBackend + 'static
                     .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
             },
-            PowAlgorithm::Cuckaroo => {
-                let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-                let cuckaroo_cycle = constants.cuckaroo_cycle_length();
-                let edge_bits = constants.cuckaroo_edge_bits();
-                cuckaroo_difficulty(&new_block.header, cuckaroo_cycle, edge_bits)?
-            },
+            PowAlgorithm::TariVision => tarivision_difficulty(&new_block.header)?,
         };
         if achieved < min_difficulty {
             debug!(
@@ -1043,8 +1038,8 @@ where B: BlockchainBackend + 'static
                     metrics::target_difficulty_tari_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
-                PowAlgorithm::Cuckaroo => {
-                    metrics::target_difficulty_cuckaroo()
+                PowAlgorithm::TariVision => {
+                    metrics::target_difficulty_tarivision()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

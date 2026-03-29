@@ -48,7 +48,7 @@ impl From<LmdbRowBlockHeaderAccumulatedDataV1> for BlockHeaderAccumulatedData {
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,
             accumulated_tari_randomx_difficulty: data.accumulated_tari_randomx_difficulty,
             accumulated_sha3x_difficulty: data.accumulated_sha3x_difficulty,
-            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tarivision_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: data.target_difficulty,
         }
     }
@@ -78,7 +78,7 @@ pub struct LmdbRowBlockHeaderAccumulatedDataV2 {
     pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
     pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
     pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
-    pub accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
+    pub accumulated_tarivision_difficulty: AccumulatedDifficulty,
     pub target_difficulty: Difficulty,
 }
 
@@ -92,7 +92,7 @@ impl From<LmdbRowBlockHeaderAccumulatedDataV2> for BlockHeaderAccumulatedData {
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,
             accumulated_tari_randomx_difficulty: data.accumulated_tari_randomx_difficulty,
             accumulated_sha3x_difficulty: data.accumulated_sha3x_difficulty,
-            accumulated_cuckaroo_difficulty: data.accumulated_cuckaroo_difficulty,
+            accumulated_tarivision_difficulty: data.accumulated_tarivision_difficulty,
             target_difficulty: data.target_difficulty,
         }
     }
@@ -108,7 +108,7 @@ impl From<&BlockHeaderAccumulatedData> for LmdbRowBlockHeaderAccumulatedDataV2 {
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,
             accumulated_tari_randomx_difficulty: data.accumulated_tari_randomx_difficulty,
             accumulated_sha3x_difficulty: data.accumulated_sha3x_difficulty,
-            accumulated_cuckaroo_difficulty: data.accumulated_cuckaroo_difficulty,
+            accumulated_tarivision_difficulty: data.accumulated_tarivision_difficulty,
             target_difficulty: data.target_difficulty,
         }
     }

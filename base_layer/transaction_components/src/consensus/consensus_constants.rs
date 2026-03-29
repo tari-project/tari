@@ -168,12 +168,8 @@ pub struct ConsensusConstants {
     vn_registration_max_vns_per_epoch: u32,
     /// Maximum number of validator nodes that can exit per epoch
     vn_registration_max_exits_per_epoch: u32,
-    /// Cuckaroo cycle length
-    cuckaroo_cycle_length: u8,
-    /// Cuckaroo edge bits
-    cuckaroo_edge_bits: u8,
-    /// Include c29 accumulated difficulty or not
-    include_c29_accumulated_difficulty_into_total: bool,
+    /// Include TariVision accumulated difficulty or not
+    include_tarivision_accumulated_difficulty_into_total: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -447,16 +443,8 @@ impl ConsensusConstants {
         self.proof_of_work.keys().copied().collect()
     }
 
-    pub fn cuckaroo_cycle_length(&self) -> u8 {
-        self.cuckaroo_cycle_length
-    }
-
-    pub fn cuckaroo_edge_bits(&self) -> u8 {
-        self.cuckaroo_edge_bits
-    }
-
-    pub fn include_c29_accumulated_difficulty_into_total(&self) -> bool {
-        self.include_c29_accumulated_difficulty_into_total
+    pub fn include_tarivision_accumulated_difficulty_into_total(&self) -> bool {
+        self.include_tarivision_accumulated_difficulty_into_total
     }
 
     pub fn localnet() -> Vec<Self> {
@@ -477,7 +465,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::min(),
             target_time: 360,
         });
-        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::TariVision, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 360,
@@ -518,9 +506,7 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
             vn_registration_max_exits_per_epoch: 5,
-            cuckaroo_cycle_length: 42,
-            cuckaroo_edge_bits: 29,
-            include_c29_accumulated_difficulty_into_total: true,
+            include_tarivision_accumulated_difficulty_into_total: true,
         }];
         consensus_constants
     }
@@ -588,9 +574,7 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
             vn_registration_max_exits_per_epoch: 5,
-            cuckaroo_cycle_length: 42,
-            cuckaroo_edge_bits: 29,
-            include_c29_accumulated_difficulty_into_total: true,
+            include_tarivision_accumulated_difficulty_into_total: true,
         }];
         consensus_constants
     }
@@ -651,9 +635,7 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
-            cuckaroo_cycle_length: 42,
-            cuckaroo_edge_bits: 29,
-            include_c29_accumulated_difficulty_into_total: false,
+            include_tarivision_accumulated_difficulty_into_total: false,
         };
 
         let mut con2 = consensus_constants1.clone();
@@ -695,7 +677,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 60,
         });
-        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::TariVision, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 60,
@@ -704,7 +686,7 @@ impl ConsensusConstants {
         con3.valid_blockchain_version_range = 2..=2;
         con3.proof_of_work = algos;
         let mut con4 = con3.clone();
-        con4.include_c29_accumulated_difficulty_into_total = true;
+        con4.include_tarivision_accumulated_difficulty_into_total = true;
         con4.effective_from_height = 181_000;
         let consensus_constants = vec![consensus_constants1, con2, con3, con4];
         consensus_constants
@@ -764,9 +746,7 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
-            cuckaroo_cycle_length: 42,
-            cuckaroo_edge_bits: 29,
-            include_c29_accumulated_difficulty_into_total: false,
+            include_tarivision_accumulated_difficulty_into_total: false,
         }];
         consensus_constants
     }
@@ -820,9 +800,7 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
-            cuckaroo_cycle_length: 42,
-            cuckaroo_edge_bits: 29,
-            include_c29_accumulated_difficulty_into_total: false,
+            include_tarivision_accumulated_difficulty_into_total: false,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -867,7 +845,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 360,
         });
-        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::TariVision, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 360,
@@ -876,7 +854,7 @@ impl ConsensusConstants {
         con_4.proof_of_work = algos;
 
         let mut con_5 = con_4.clone();
-        con_5.include_c29_accumulated_difficulty_into_total = true;
+        con_5.include_tarivision_accumulated_difficulty_into_total = true;
         con_5.effective_from_height = 5000;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5];
@@ -933,9 +911,7 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
-            cuckaroo_cycle_length: 42,
-            cuckaroo_edge_bits: 29,
-            include_c29_accumulated_difficulty_into_total: false,
+            include_tarivision_accumulated_difficulty_into_total: false,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
@@ -987,7 +963,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 480,
         });
-        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::TariVision, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 480,
@@ -995,7 +971,7 @@ impl ConsensusConstants {
         con_5.proof_of_work = algos;
 
         let mut con_6 = con_5.clone();
-        con_6.include_c29_accumulated_difficulty_into_total = true;
+        con_6.include_tarivision_accumulated_difficulty_into_total = true;
         con_6.effective_from_height = 126_000;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];

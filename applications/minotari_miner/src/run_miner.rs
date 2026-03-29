@@ -48,6 +48,7 @@ use minotari_app_utilities::parse_miner_input::{
 use tari_common::{
     DefaultConfigLoader,
     MAX_GRPC_MESSAGE_SIZE,
+    configuration::Network,
     exit_codes::{ExitCode, ExitError},
     load_configuration,
 };
@@ -94,6 +95,11 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     )?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
+
+    // Override wallet address for localnet testing
+    if config.network == Network::LocalNet && (config.wallet_payment_address.is_empty() || config.wallet_payment_address == TariAddress::default().to_base58()) {
+        config.wallet_payment_address = "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub".to_string();
+    }
 
     debug!(target: LOG_TARGET_FILE, "{config:?}");
     let key_manager = KeyManager::new_random().map_err(|err| {

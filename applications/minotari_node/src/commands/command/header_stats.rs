@@ -88,7 +88,7 @@ impl CommandContext {
         writeln!(
             buff,
             "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
-             Window,Acc.Monero,Acc.Sha3, Acc.Rxt, Acc.Cuckaroo"
+             Window,Acc.Monero,Acc.Sha3, Acc.Rxt, Acc.TariVision"
         )?;
         output.write_all(&buff).await?;
 
@@ -134,7 +134,7 @@ impl CommandContext {
             let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty();
             let acc_monero = header.accumulated_data().accumulated_monero_randomx_difficulty();
             let acc_tari_rx = header.accumulated_data().accumulated_tari_randomx_difficulty();
-            let acc_cuckaroo = header.accumulated_data().accumulated_cuckaroo_difficulty();
+            let acc_tarivision = header.accumulated_data().accumulated_tarivision_difficulty();
 
             buff.clear();
             writeln!(
@@ -156,7 +156,7 @@ impl CommandContext {
                 acc_monero,
                 acc_tari_rx,
                 acc_sha3,
-                acc_cuckaroo,
+                acc_tarivision,
             )?;
             output.write_all(&buff).await?;
 

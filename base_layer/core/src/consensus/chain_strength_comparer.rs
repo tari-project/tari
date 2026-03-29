@@ -78,13 +78,13 @@ impl ChainStrengthComparer for Sha3xDifficultyComparer {
     }
 }
 #[derive(Default, Debug)]
-pub struct CuckarooCycleDifficultyComparer {}
+pub struct TariVisionCycleDifficultyComparer {}
 
-impl ChainStrengthComparer for CuckarooCycleDifficultyComparer {
+impl ChainStrengthComparer for TariVisionCycleDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_cuckaroo_difficulty()
-            .cmp(&b.accumulated_data().accumulated_cuckaroo_difficulty())
+            .accumulated_tarivision_difficulty()
+            .cmp(&b.accumulated_data().accumulated_tarivision_difficulty())
     }
 }
 #[derive(Default, Debug)]
@@ -129,8 +129,8 @@ impl ChainStrengthComparerBuilder {
         self.add_comparer_as_then(Box::<Sha3xDifficultyComparer>::default())
     }
 
-    pub fn by_cuckaroo_cycle_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::<CuckarooCycleDifficultyComparer>::default())
+    pub fn by_tarivision_cycle_difficulty(self) -> Self {
+        self.add_comparer_as_then(Box::<TariVisionCycleDifficultyComparer>::default())
     }
 
     pub fn by_height(self) -> Self {

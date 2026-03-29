@@ -36,7 +36,7 @@ pub enum PowAlgorithm {
     RandomXM = 0,
     Sha3x = 1,
     RandomXT = 2,
-    Cuckaroo = 3,
+    TariVision = 3,
 }
 
 impl PowAlgorithm {
@@ -69,7 +69,7 @@ impl TryFrom<u64> for PowAlgorithm {
             0 => Ok(PowAlgorithm::RandomXM),
             1 => Ok(PowAlgorithm::Sha3x),
             2 => Ok(PowAlgorithm::RandomXT),
-            3 => Ok(PowAlgorithm::Cuckaroo),
+            3 => Ok(PowAlgorithm::TariVision),
             _ => Err("Invalid PoWAlgorithm".into()),
         }
     }
@@ -86,7 +86,7 @@ impl FromStr for PowAlgorithm {
             },
             "SHA" | "SHA3" | "SHA3X" => Ok(Self::Sha3x),
             "RANDOMXT" | "RANDOM_XT" | "TARI_RANDOM_X" | "RANDOMXTARI" => Ok(Self::RandomXT),
-            "CUCKAROO" | "CUCKAROO29" | "C29" => Ok(Self::Cuckaroo),
+            "TARIVISION" | "TARI_VISION" | "VISION" => Ok(Self::TariVision),
             _ => Err(anyhow::Error::msg(format!("Unknown pow algorithm type: {s}"))),
         }
     }
@@ -98,7 +98,7 @@ impl Display for PowAlgorithm {
             PowAlgorithm::RandomXM => "RandomXMonero",
             PowAlgorithm::Sha3x => "Sha3",
             PowAlgorithm::RandomXT => "RandomXTari",
-            PowAlgorithm::Cuckaroo => "Cuckaroo",
+            PowAlgorithm::TariVision => "TariVision",
         };
         fmt.write_str(algo)
     }

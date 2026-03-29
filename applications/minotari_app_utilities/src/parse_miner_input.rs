@@ -128,7 +128,7 @@ pub fn wallet_payment_address(
                     }
                 }
             }
-            if address.network() != network {
+            if address.network() != network && network != Network::LocalNet {
                 return Err(ParseInputError::WalletPaymentAddress(format!(
                     "Wallet payment address '{config_wallet_payment_address}' does not match miner network '{network}'"
                 )));

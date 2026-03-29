@@ -39,10 +39,10 @@ pub enum PowError {
     AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
     #[error("Invalid target difficulty (expected: {expected}, got: {got})")]
     InvalidTargetDifficulty { expected: Difficulty, got: Difficulty },
-    #[error("Cuckaroo proof of work data size mismatch (expected: {expected}, got: {actual})")]
-    CuckarooPowDataSizeMismatch { expected: usize, actual: usize },
-    #[error("Cuckaroo proof of work data has non-zero padding (padding: {padding})")]
-    CuckarooPowDataNonZeroPadding { padding: u8 },
+    #[error("TariVision proof of work data size mismatch (expected: {expected}, got: {actual})")]
+    TariVisionPowDataSizeMismatch { expected: usize, actual: usize },
+    #[error("TariVision proof of work data has non-zero padding (padding: {padding})")]
+    TariVisionPowDataNonZeroPadding { padding: u8 },
 }
 
 impl PowError {
@@ -53,8 +53,8 @@ impl PowError {
             err @ PowError::Sha3HeaderNonEmptyPowBytes |
             err @ PowError::RandomxTPowDataTooLong |
             err @ PowError::AchievedDifficultyTooLow { .. } |
-            err @ PowError::CuckarooPowDataSizeMismatch { .. } |
-            err @ PowError::CuckarooPowDataNonZeroPadding { .. } |
+            err @ PowError::TariVisionPowDataSizeMismatch { .. } |
+            err @ PowError::TariVisionPowDataNonZeroPadding { .. } |
             err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

@@ -120,7 +120,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             field: "Current achieved difficulty",
         })?;
 
-        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff, cuckaroo_diff) = match achieved_target.pow_algo() {
+        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff, tarivision_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::RandomXM => (
                 previous_accum
                     .accumulated_monero_randomx_difficulty
@@ -128,7 +128,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_tari_randomx_difficulty,
                 previous_accum.accumulated_sha3x_difficulty,
-                previous_accum.accumulated_cuckaroo_difficulty,
+                previous_accum.accumulated_tarivision_difficulty,
             ),
             PowAlgorithm::RandomXT => (
                 previous_accum.accumulated_monero_randomx_difficulty,
@@ -137,7 +137,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha3x_difficulty,
-                previous_accum.accumulated_cuckaroo_difficulty,
+                previous_accum.accumulated_tarivision_difficulty,
             ),
             PowAlgorithm::Sha3x => (
                 previous_accum.accumulated_monero_randomx_difficulty,
@@ -146,14 +146,14 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .accumulated_sha3x_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
-                previous_accum.accumulated_cuckaroo_difficulty,
+                previous_accum.accumulated_tarivision_difficulty,
             ),
-            PowAlgorithm::Cuckaroo => (
+            PowAlgorithm::TariVision => (
                 previous_accum.accumulated_monero_randomx_difficulty,
                 previous_accum.accumulated_tari_randomx_difficulty,
                 previous_accum.accumulated_sha3x_difficulty,
                 previous_accum
-                    .accumulated_cuckaroo_difficulty
+                    .accumulated_tarivision_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
@@ -169,8 +169,8 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             U512::from(tari_randomx_diff.as_u128()) *
             U512::from(sha3x_diff.as_u128());
 
-        if consensus_constants.include_c29_accumulated_difficulty_into_total() {
-            total_accumulated *= U512::from(cuckaroo_diff.as_u128());
+        if consensus_constants.include_tarivision_accumulated_difficulty_into_total() {
+            total_accumulated *= U512::from(tarivision_diff.as_u128());
         }
 
         let result = BlockHeaderAccumulatedData {
@@ -181,17 +181,17 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             accumulated_monero_randomx_difficulty: monero_randomx_diff,
             accumulated_tari_randomx_difficulty: tari_randomx_diff,
             accumulated_sha3x_difficulty: sha3x_diff,
-            accumulated_cuckaroo_difficulty: cuckaroo_diff,
+            accumulated_tarivision_difficulty: tarivision_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
             target: LOG_TARGET,
-            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}, Cuckaroo {}",
+            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}, TariVision {}",
             result.total_accumulated_difficulty,
             result.accumulated_monero_randomx_difficulty,
             result.accumulated_tari_randomx_difficulty,
             result.accumulated_sha3x_difficulty,
-            result.accumulated_cuckaroo_difficulty,
+            result.accumulated_tarivision_difficulty,
         );
         Ok(result)
     }

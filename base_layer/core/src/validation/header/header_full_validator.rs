@@ -203,20 +203,10 @@ fn check_allowed_algos(pow: &ProofOfWork, allowed_algos: &[PowAlgorithm]) -> Res
 fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     let allowed_algos = consensus_constants.current_permitted_pow_algos();
     check_allowed_algos(&block_header.pow, &allowed_algos)?;
-    check_pow_data_inner(
-        &block_header.pow,
-        block_header.nonce,
-        consensus_constants.cuckaroo_cycle_length(),
-        consensus_constants.cuckaroo_edge_bits(),
-    )
+    check_pow_data_inner(&block_header.pow, block_header.nonce)
 }
 
-fn check_pow_data_inner(
-    pow: &ProofOfWork,
-    nonce: u64,
-    cuckaroo_cycle_length: u8,
-    cuckaroo_edge_bits: u8,
-) -> Result<(), ValidationError> {
+fn check_pow_data_inner(pow: &ProofOfWork, nonce: u64) -> Result<(), ValidationError> {
     match pow.pow_algo {
         PowAlgorithm::RandomXM => {
             if nonce != 0 {
@@ -238,38 +228,14 @@ fn check_pow_data_inner(
             }
             Ok(())
         },
-        PowAlgorithm::Cuckaroo => {
-            let cycle_length = cuckaroo_cycle_length as usize;
-            let edge_bits = cuckaroo_edge_bits as usize;
-            let total_packed_size = cycle_length * edge_bits;
-            let remainder = total_packed_size % 8;
-            let total_bytes = if remainder != 0 {
-                total_packed_size / 8 + 1
-            } else {
-                total_packed_size / 8
-            };
-
-            if pow.pow_data.len() != total_bytes {
-                return Err(PowError::CuckarooPowDataSizeMismatch {
-                    expected: total_bytes,
+        PowAlgorithm::TariVision => {
+            // TariVision pow_data must contain exactly 32 bytes (the mix_hash)
+            if pow.pow_data.len() != 32 {
+                return Err(PowError::TariVisionPowDataSizeMismatch {
+                    expected: 32,
                     actual: pow.pow_data.len(),
                 }
                 .into());
-            }
-
-            if remainder != 0 {
-                // Ensure that the last byte is not padded with zeros
-                let last_byte = *pow.pow_data.get(total_bytes - 1).expect("Already checked");
-
-                let padding_mask = (1 << remainder) - 1;
-                let mask = 0xff ^ padding_mask; // Mask to check if the last byte is padded
-
-                if last_byte & mask != 0 {
-                    return Err(PowError::CuckarooPowDataNonZeroPadding {
-                        padding: last_byte & mask,
-                    }
-                    .into());
-                }
             }
             Ok(())
         },
@@ -296,88 +262,74 @@ mod test {
     #[test]
     fn test_check_pow_data_randomxm() {
         let pow = ProofOfWork::new(PowAlgorithm::RandomXM);
-        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_ok());
 
         let pow = ProofOfWork::new(PowAlgorithm::RandomXM);
-        let res = check_pow_data_inner(&pow, 1, 0, 0);
+        let res = check_pow_data_inner(&pow, 1);
         assert!(res.is_err());
     }
 
     #[test]
     fn test_check_pow_data_randomxt() {
         let pow = ProofOfWork::new(PowAlgorithm::RandomXT);
-        let res = check_pow_data_inner(&pow, 0, 0, 0);
-        assert!(res.is_ok());
-
-        let pow = ProofOfWork::new(PowAlgorithm::RandomXT);
-        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_ok());
 
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomXT,
             pow_data: vec![0; 33].try_into().unwrap(),
         };
-        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_err());
     }
 
     #[test]
     fn test_check_pow_data_sha3x() {
         let pow = ProofOfWork::new(PowAlgorithm::Sha3x);
-        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_ok());
 
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Sha3x,
             pow_data: vec![1].try_into().unwrap(),
         };
-        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_err());
     }
 
     #[test]
-    fn test_check_pow_data_cuckaroo_data_size_mismatch() {
+    fn test_check_pow_data_tarivision_valid() {
+        // TariVision requires exactly 32 bytes (mix_hash)
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Cuckaroo,
+            pow_algo: PowAlgorithm::TariVision,
+            pow_data: vec![0xABu8; 32].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_check_pow_data_tarivision_wrong_size() {
+        // Too short
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::TariVision,
             pow_data: vec![0u8; 10].try_into().unwrap(),
         };
-        // Check with multiple of 8
-        let res = check_pow_data_inner(&pow, 0, 10, 8);
-        assert!(res.is_ok());
-
-        // Check with non-multiple of 8
-        let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Cuckaroo,
-            pow_data: vec![0u8; 11].try_into().unwrap(),
-        };
-        let res = check_pow_data_inner(&pow, 0, 9, 9);
-        assert!(res.is_ok());
-
-        // Check now with invalid data.
-
-        let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Cuckaroo,
-            pow_data: vec![0u8; 11].try_into().unwrap(),
-        };
-        let res = check_pow_data_inner(&pow, 0, 10, 8);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_err());
 
+        // Too long
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Cuckaroo,
-            pow_data: vec![0u8; 12].try_into().unwrap(),
+            pow_algo: PowAlgorithm::TariVision,
+            pow_data: vec![0u8; 33].try_into().unwrap(),
         };
-        let res = check_pow_data_inner(&pow, 0, 9, 9);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_err());
-    }
 
-    #[test]
-    fn test_check_pow_data_cuckaroo_non_zero_padding() {
-        let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Cuckaroo,
-            pow_data: vec![128u8; 11].try_into().unwrap(),
-        };
-        let res = check_pow_data_inner(&pow, 0, 9, 9);
+        // Empty
+        let pow = ProofOfWork::new(PowAlgorithm::TariVision);
+        let res = check_pow_data_inner(&pow, 0);
         assert!(res.is_err());
     }
 }

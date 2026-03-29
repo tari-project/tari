@@ -24,7 +24,10 @@ use std::convert::TryInto;
 
 use minotari_app_grpc::tari_rpc::BlockHeader as grpc_header;
 use tari_common_types::types::FixedHash;
-use tari_core::proof_of_work::{randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty};
+use tari_core::proof_of_work::{
+    randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty,
+    tarivision::{get_epoch_context, tarivision_hash},
+};
 use tari_node_components::blocks::BlockHeader;
 use tari_utilities::epoch_time::EpochTime;
 
@@ -77,6 +80,26 @@ impl BlockHeaderSha3 {
     pub fn difficulty_sha3(&mut self) -> Result<Difficulty, MinerError> {
         self.hashes = self.hashes.saturating_add(1);
         Ok(sha3x_difficulty(&self.header)?.as_u64())
+    }
+
+    #[inline]
+    pub fn difficulty_tarivision(&mut self) -> Result<Difficulty, MinerError> {
+        self.hashes = self.hashes.saturating_add(1);
+
+        let mining_hash_vec = self.header.mining_hash();
+        let mut header_hash = [0u8; 32];
+        header_hash.copy_from_slice(&mining_hash_vec[..32]);
+
+        let block_number = self.header.height;
+        let context = get_epoch_context(block_number);
+        let (final_hash, mix_hash) = tarivision_hash(&context, &header_hash, self.header.nonce, block_number);
+
+        // Store the mix_hash in pow_data so the node can verify it
+        self.header.pow.pow_data = mix_hash.to_vec().try_into()
+            .map_err(|e: tari_max_size::MaxSizeBytesError| MinerError::Conversion(e.to_string()))?;
+
+        let difficulty = tari_transaction_components::tari_proof_of_work::Difficulty::big_endian_difficulty(&final_hash)?;
+        Ok(difficulty.as_u64())
     }
 
     #[inline]

@@ -47,3 +47,6 @@ pub mod randomx_factory;
 pub mod siphash;
 
 pub mod cuckaroo_pow;
+
+pub mod tarivision;
+pub use tarivision::tarivision_difficulty;

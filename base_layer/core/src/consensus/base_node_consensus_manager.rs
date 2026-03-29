@@ -307,7 +307,7 @@ impl BaseNodeConsensusManagerBuilder {
                     .then()
                     .by_sha3x_difficulty()
                     .then()
-                    .by_cuckaroo_cycle_difficulty()
+                    .by_tarivision_cycle_difficulty()
                     .build()
             }),
         };

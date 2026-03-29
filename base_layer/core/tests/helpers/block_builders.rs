@@ -203,7 +203,7 @@ pub fn create_genesis_block_with_coinbase_value(
             accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tarivision_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
         .unwrap(),
@@ -244,7 +244,7 @@ pub fn create_genesis_block_with_utxos(
             accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tarivision_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
         .unwrap(),

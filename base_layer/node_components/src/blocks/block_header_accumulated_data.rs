@@ -46,8 +46,8 @@ pub struct BlockHeaderAccumulatedData {
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
     pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
-    /// The total accumulated difficulty for Cuckaroo proof of work for all blocks since Genesis,
-    pub accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
+    /// The total accumulated difficulty for TariVision proof of work for all blocks since Genesis,
+    pub accumulated_tarivision_difficulty: AccumulatedDifficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
@@ -62,7 +62,7 @@ impl BlockHeaderAccumulatedData {
             accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tarivision_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         }
     }
@@ -79,8 +79,8 @@ impl BlockHeaderAccumulatedData {
         self.accumulated_sha3x_difficulty
     }
 
-    pub fn accumulated_cuckaroo_difficulty(&self) -> AccumulatedDifficulty {
-        self.accumulated_cuckaroo_difficulty
+    pub fn accumulated_tarivision_difficulty(&self) -> AccumulatedDifficulty {
+        self.accumulated_tarivision_difficulty
     }
 }
 
@@ -102,8 +102,8 @@ impl Display for BlockHeaderAccumulatedData {
         writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
         writeln!(
             f,
-            "Accumulated cuckaroo difficulty: {}",
-            self.accumulated_cuckaroo_difficulty
+            "Accumulated TariVision difficulty: {}",
+            self.accumulated_tarivision_difficulty
         )?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())

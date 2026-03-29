@@ -34,6 +34,7 @@ use log::*;
 use minotari_app_grpc::tari_rpc::BlockHeader;
 use tari_common_types::types::FixedHash;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use thread::JoinHandle;
 
 use super::difficulty::BlockHeaderSha3;
@@ -44,6 +45,7 @@ pub const LOG_TARGET: &str = "minotari::miner::standalone";
 // ~400_000 hashes per second
 const REPORTING_FREQUENCY_RX: u64 = 300;
 const REPORTING_FREQUENCY_SHA3: u64 = 3_000_000;
+const REPORTING_FREQUENCY_TARIVISION: u64 = 100;
 
 // Thread's stack size, ideally we would fit all thread's data in the CPU L1 cache
 const STACK_SIZE: usize = 320_000;
@@ -214,11 +216,15 @@ pub fn mining_task(
         },
     };
     hasher.random_nonce();
+    let is_tarivision = hasher.header.pow.pow_algo == PowAlgorithm::TariVision;
+    let mining_algorithm = if is_tarivision { "TariVision" } else { mining_algorithm };
     // We're mining over here!
     trace!(target: LOG_TARGET, "Mining thread {miner} started for {mining_algorithm}");
     // Mining work
     loop {
-        let hashed = if hasher.rx_factory.is_some() {
+        let hashed = if is_tarivision {
+            hasher.difficulty_tarivision()
+        } else if hasher.rx_factory.is_some() {
             hasher.difficulty_rx()
         } else {
             hasher.difficulty_sha3()
@@ -259,7 +265,9 @@ pub fn mining_task(
                 return;
             }
         }
-        let reporting_frequency = if hasher.rx_factory.is_some() {
+        let reporting_frequency = if is_tarivision {
+            REPORTING_FREQUENCY_TARIVISION
+        } else if hasher.rx_factory.is_some() {
             REPORTING_FREQUENCY_RX
         } else {
             REPORTING_FREQUENCY_SHA3

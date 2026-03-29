@@ -68,11 +68,7 @@ impl HashRateMovingAverage {
             self.hash_rates.pop_back();
         }
 
-        let additional_multiplier = match self.pow_algo {
-            // Cuckaroo is special as we need to multiply by the cycle length to get the hash rate
-            PowAlgorithm::Cuckaroo => u128::from(consensus_constants.cuckaroo_cycle_length()),
-            _ => 1,
-        };
+        let additional_multiplier: u128 = 1;
         // add the new hash rate to the list
         let nominator = if self.use_scaling {
             u128::from(difficulty.as_u64())
@@ -250,7 +246,7 @@ mod test {
         constants.set_pow_target_block_interval(PowAlgorithm::Sha3x, 100);
         constants.set_pow_target_block_interval(PowAlgorithm::RandomXM, 100);
         constants.set_pow_target_block_interval(PowAlgorithm::RandomXT, 100);
-        constants.set_pow_target_block_interval(PowAlgorithm::Cuckaroo, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::TariVision, 100);
         let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(constants)
             .build()
@@ -259,7 +255,7 @@ mod test {
         let mut sha_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::Sha3x, consensus_manager.clone(), false);
         let mut rxm_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::RandomXM, consensus_manager.clone(), false);
         let mut rxt_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::RandomXT, consensus_manager.clone(), true);
-        let mut c29_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, consensus_manager.clone(), true);
+        let mut tarivision_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::TariVision, consensus_manager.clone(), true);
 
         let start_height = 100_000;
         assert_eq!(consensus_manager.consensus_constants(start_height).pow_algo_count(), 4);
@@ -270,7 +266,7 @@ mod test {
             );
             rxm_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 10_000).unwrap());
             rxt_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 100).unwrap());
-            c29_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + i % 10).unwrap());
+            tarivision_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + i % 10).unwrap());
         }
 
         // Check integer and decimal output
@@ -286,8 +282,8 @@ mod test {
         assert_eq!(decimal.units, rxt_hash_rate_ma.average());
         assert_eq!(decimal.units, 5);
         assert_eq!(decimal.nanos, 176666666);
-        let decimal = c29_hash_rate_ma.u_decimal_average();
-        assert_eq!(decimal.units, c29_hash_rate_ma.average());
+        let decimal = tarivision_hash_rate_ma.u_decimal_average();
+        assert_eq!(decimal.units, tarivision_hash_rate_ma.average());
         assert_eq!(decimal.units, 2);
         assert_eq!(decimal.nanos, 590000000);
     }

@@ -129,8 +129,8 @@ impl MinerConfig {
             PowAlgorithm::RandomXT => Some(PowAlgo {
                 pow_algo: PowAlgos::Randomxt.into(),
             }),
-            PowAlgorithm::Cuckaroo => Some(PowAlgo {
-                pow_algo: PowAlgos::Cuckaroo.into(),
+            PowAlgorithm::TariVision => Some(PowAlgo {
+                pow_algo: PowAlgos::Tarivision.into(),
             }),
         };
         NewBlockTemplateRequest { algo, max_weight: 0 }

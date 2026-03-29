@@ -36,7 +36,7 @@ use thiserror::Error;
 use crate::{
     chain_storage::ChainStorageError,
     mempool::MempoolError,
-    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError, tarivision::TariVisionError},
 };
 
 #[derive(Debug, Error)]
@@ -83,6 +83,8 @@ pub enum CommsInterfaceError {
     TransactionError(#[from] TransactionError),
     #[error("Cuckaroo verification error: {0}")]
     CuckarooVerificationError(#[from] CuckarooVerificationError),
+    #[error("TariVision error: {0}")]
+    TariVisionError(#[from] TariVisionError),
 }
 
 impl CommsInterfaceError {
@@ -98,6 +100,7 @@ impl CommsInterfaceError {
             err @ CommsInterfaceError::InvalidBlockHeader(_) |
             err @ CommsInterfaceError::TransactionError(_) |
             err @ CommsInterfaceError::CuckarooVerificationError(_) |
+            err @ CommsInterfaceError::TariVisionError(_) |
             err @ CommsInterfaceError::InvalidFullBlock { .. } |
             err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
                 reason: err.to_string(),
