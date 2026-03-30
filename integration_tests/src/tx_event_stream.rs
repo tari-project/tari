@@ -45,27 +45,35 @@ pub async fn wait_for_tx_status(
     let timeout = scaled_timeout(timeout);
     let deadline = tokio::time::Instant::now() + timeout;
 
-    // Try event stream first — if it's available, we get instant notifications
-    let stream_result = client.stream_transaction_events(grpc::TransactionEventRequest {}).await;
+    // Try event stream first — if it's available, we get instant notifications.
+    // Timeout the stream open quickly so we don't waste time if the RPC isn't supported.
+    let stream_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        client.stream_transaction_events(grpc::TransactionEventRequest {}),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.ok());
 
-    if let Ok(response) = stream_result {
+    if let Some(response) = stream_result {
         let mut stream = response.into_inner();
 
         // First check current state in case it already matches
-        if check_tx_status_matches(client, tx_id, target_status).await? {
+        if check_tx_status_matches(client, tx_id, target_status).await.unwrap_or(false) {
             return Ok(());
         }
 
         // Listen for events until timeout
         loop {
-            let remaining = deadline.duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
                 return Err(format!(
                     "Timed out after {:.1}s waiting for tx {tx_id} to reach status '{target_status}' via event stream",
                     timeout.as_secs_f64()
                 ));
             }
 
+            let remaining = deadline.saturating_duration_since(now);
             match tokio::time::timeout(remaining, stream.message()).await {
                 Ok(Ok(Some(event_response))) => {
                     if let Some(event) = event_response.transaction {
@@ -99,23 +107,31 @@ pub async fn wait_for_tx_status(
 
     // Fallback: poll via GetTransactionInfo (same as before but with exponential backoff)
     let mut interval = Duration::from_millis(250);
-    let max_interval = Duration::from_secs(4);
+    let max_interval = Duration::from_secs(2);
+    let mut last_error: Option<String> = None;
 
     loop {
-        if check_tx_status_matches(client, tx_id, target_status).await? {
-            return Ok(());
+        match check_tx_status_matches(client, tx_id, target_status).await {
+            Ok(true) => return Ok(()),
+            Ok(false) => {},
+            Err(e) => {
+                // gRPC errors are transient — keep retrying
+                last_error = Some(e);
+            },
         }
 
         if tokio::time::Instant::now() >= deadline {
-            // Get current status for error message
             let current = get_current_tx_status(client, tx_id).await;
+            let extra = last_error
+                .map(|e| format!(", last error: {e}"))
+                .unwrap_or_default();
             return Err(format!(
-                "Timed out after {:.1}s waiting for tx {tx_id} to reach status '{target_status}' (current: {current})",
+                "Timed out after {:.1}s waiting for tx {tx_id} to reach status '{target_status}' (current: {current}{extra})",
                 timeout.as_secs_f64()
             ));
         }
 
-        let remaining = deadline.duration_since(tokio::time::Instant::now());
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         tokio::time::sleep(interval.min(remaining)).await;
         interval = Duration::from_secs_f64((interval.as_secs_f64() * 1.5).min(max_interval.as_secs_f64()));
     }
