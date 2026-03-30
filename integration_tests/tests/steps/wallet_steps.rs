@@ -123,8 +123,10 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
     let wallet_ps = world.wallets.get(&wallet).unwrap();
     let mut client = wallet_ps.get_grpc_client().await.unwrap();
 
+    // Wallet balance detection after mining requires blockchain scanning, which can be slow on CI.
+    // Original timeout was 100 retries × 2s = 200s.
     wait_for!(
-        timeout: DEFAULT_TIMEOUT,
+        timeout: Duration::from_secs(200),
         description: format!("wallet {wallet} to have at least {amount} uT"),
         condition: async {
             let _result = client.validate_all_transactions(ValidateRequest {}).await;
@@ -434,8 +436,9 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         _ => panic!("Invalid transaction status {transaction_status}"),
     };
 
+    // Original timeout was 100 retries × 2s = 200s.
     wait_for!(
-        timeout: DEFAULT_TIMEOUT,
+        timeout: Duration::from_secs(200),
         description: format!("wallet {wallet} to have at least {num_txs} txs with status {transaction_status}"),
         condition: async {
             let mut txs = client
@@ -514,8 +517,9 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     cucumber_steps_log(format!("Waiting for wallet {wallet} to have less than {amount} uT"));
 
+    // Original timeout was 100 retries × 2s = 200s.
     wait_for!(
-        timeout: DEFAULT_TIMEOUT,
+        timeout: Duration::from_secs(200),
         description: format!("wallet {wallet} to have less than {amount} uT"),
         condition: async {
             let _result = client.validate_all_transactions(ValidateRequest {}).await;
@@ -3168,8 +3172,9 @@ async fn wallet_has_balance(world: &mut TariWorld, wallet_name: String, balance_
 async fn wallet_has_num_coinbase_transactions(world: &mut TariWorld, wallet_name: String, expected: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
+    // Original timeout was 100 retries × 2s = 200s.
     wait_for!(
-        timeout: DEFAULT_TIMEOUT,
+        timeout: Duration::from_secs(200),
         description: format!("wallet {wallet_name} to have {expected} coinbase transactions"),
         condition: async {
             let mut txs = client
