@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, str::FromStr, thread};
+use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_console_wallet::{Cli, run_wallet_with_cli};
@@ -131,12 +131,30 @@ pub async fn spawn_wallet(
         wallet_app_config.wallet.db_file = PathBuf::from("console_wallet.db");
         wallet_app_config.wallet.http_server_url = format!("http://127.0.0.1:{http_port}");
         wallet_app_config.wallet.fallback_http_server_url = format!("http://127.0.0.1:{http_port}");
+        // Tune transaction service timing for faster test execution
+        let tx_cfg = &mut wallet_app_config.wallet.transaction_service_config;
+        tx_cfg.broadcast_monitoring_timeout = Duration::from_secs(5); // prod: 30s
+        tx_cfg.chain_monitoring_timeout = Duration::from_secs(10); // prod: 60s
+        tx_cfg.direct_send_timeout = Duration::from_secs(5); // prod: 20s
+        tx_cfg.broadcast_send_timeout = Duration::from_secs(10); // prod: 60s
+        tx_cfg.transaction_resend_period = Duration::from_secs(30); // prod: 600s
+        tx_cfg.resend_response_cooldown = Duration::from_secs(10); // prod: 300s
+        tx_cfg.transaction_mempool_resubmission_window = Duration::from_secs(30); // prod: 600s
+
         if let Some(mech) = routing_mechanism {
             wallet_app_config
                 .wallet
                 .transaction_service_config
                 .transaction_routing_mechanism = mech;
         }
+
+        // Tune wallet base node monitoring for faster chain detection
+        wallet_app_config.wallet.base_node_service_config.base_node_monitor_max_refresh_interval =
+            Duration::from_secs(5); // prod: 30s
+
+        // Tune balance/broadcast responsiveness
+        wallet_app_config.wallet.balance_enquiry_cooldown_period = Duration::from_secs(1); // prod: 5s
+        wallet_app_config.wallet.grpc_broadcast_confirmation = 1000; // 1s, prod: 5s
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 

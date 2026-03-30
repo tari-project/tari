@@ -241,11 +241,13 @@ pub async fn spawn_base_node_with_config(
             .blocks_behind_before_considered_lagging = 1;
         base_node_config.base_node.state_machine.time_before_considered_lagging = Duration::from_secs(3);
         base_node_config.base_node.state_machine.initial_sync_peer_count = 1;
-        base_node_config
-            .base_node
-            .state_machine
-            .blockchain_sync_config
-            .num_initial_sync_rounds_seed_bootstrap = 1;
+
+        // Tune blockchain sync for faster test execution
+        let sync_cfg = &mut base_node_config.base_node.state_machine.blockchain_sync_config;
+        sync_cfg.num_initial_sync_rounds_seed_bootstrap = 1;
+        sync_cfg.initial_max_sync_latency = Duration::from_secs(60); // prod: 240s — tests use local TCP, not tor
+        sync_cfg.rpc_deadline = Duration::from_secs(60); // prod: 240s
+        sync_cfg.short_ban_period = Duration::from_secs(30); // prod: 240s — faster retry after transient failures
 
         println!(
             "Initializing base node: name={name_cloned}; port={port}; grpc_port={grpc_port}; \
