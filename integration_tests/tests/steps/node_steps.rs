@@ -231,8 +231,12 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
     let mut client = world.get_node_client(&base_node).await.unwrap();
 
+    // Use a generous timeout — this step is used for reorg scenarios where peer discovery +
+    // chain sync can take significant time, especially on slow CI machines.
+    // Use 1s max poll interval to detect height changes promptly during sync.
     wait_for!(
-        timeout: DEFAULT_TIMEOUT,
+        timeout: Duration::from_secs(300),
+        max_interval: Duration::from_secs(1),
         description: format!("node {base_node} to reach height {height}"),
         condition: async {
             let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();

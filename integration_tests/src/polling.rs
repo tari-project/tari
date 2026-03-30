@@ -76,6 +76,50 @@ pub fn scaled_timeout(base: Duration) -> Duration {
 /// ```
 #[macro_export]
 macro_rules! wait_for {
+    // Variant with custom max_interval for poll-sensitive operations
+    (
+        timeout: $timeout:expr,
+        max_interval: $max_iv:expr,
+        description: $desc:expr,
+        condition: async $body:block
+    ) => {{
+        let __start = ::tokio::time::Instant::now();
+        let __timeout: ::std::time::Duration = $crate::polling::scaled_timeout($timeout);
+        let __desc = $desc;
+        let mut __interval = ::std::time::Duration::from_millis(250);
+        let __max_interval: ::std::time::Duration = $max_iv;
+        let mut __last_error: Option<String> = None;
+
+        loop {
+            let __result: Result<bool, String> = async $body .await;
+            match __result {
+                Ok(true) => break,
+                Ok(false) => {},
+                Err(e) => { __last_error = Some(e); },
+            }
+
+            if __start.elapsed() >= __timeout {
+                let mut __msg = format!(
+                    "Timed out after {:.1}s waiting for: {}",
+                    __start.elapsed().as_secs_f64(),
+                    __desc
+                );
+                if let Some(ref e) = __last_error {
+                    __msg.push_str(&format!(" (last state: {e})"));
+                }
+                panic!("{}", __msg);
+            }
+
+            let __remaining = __timeout.saturating_sub(__start.elapsed());
+            let __sleep_dur = __interval.min(__remaining);
+            ::tokio::time::sleep(__sleep_dur).await;
+
+            __interval = ::std::time::Duration::from_secs_f64(
+                (__interval.as_secs_f64() * 1.5).min(__max_interval.as_secs_f64())
+            );
+        }
+    }};
+    // Default variant — 4s max interval
     (
         timeout: $timeout:expr,
         description: $desc:expr,
