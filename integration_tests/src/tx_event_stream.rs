@@ -46,9 +46,7 @@ pub async fn wait_for_tx_status(
     let deadline = tokio::time::Instant::now() + timeout;
 
     // Try event stream first — if it's available, we get instant notifications
-    let stream_result = client
-        .stream_transaction_events(grpc::TransactionEventRequest {})
-        .await;
+    let stream_result = client.stream_transaction_events(grpc::TransactionEventRequest {}).await;
 
     if let Ok(response) = stream_result {
         let mut stream = response.into_inner();
@@ -228,16 +226,28 @@ fn status_matches_target(event_status: &str, target: &str) -> bool {
         "Completed" => !matches!(event_status, "Pending"),
         "Broadcast" => matches!(
             event_status,
-            "Broadcast" | "MinedUnconfirmed" | "MinedConfirmed" | "OneSidedUnconfirmed" | "OneSidedConfirmed" |
-                "CoinbaseUnconfirmed" | "CoinbaseConfirmed"
+            "Broadcast" |
+                "MinedUnconfirmed" |
+                "MinedConfirmed" |
+                "OneSidedUnconfirmed" |
+                "OneSidedConfirmed" |
+                "CoinbaseUnconfirmed" |
+                "CoinbaseConfirmed"
         ),
         "Mined_or_OneSidedUnconfirmed" => matches!(
             event_status,
-            "MinedUnconfirmed" | "MinedConfirmed" | "OneSidedUnconfirmed" | "OneSidedConfirmed" |
-                "CoinbaseUnconfirmed" | "CoinbaseConfirmed"
+            "MinedUnconfirmed" |
+                "MinedConfirmed" |
+                "OneSidedUnconfirmed" |
+                "OneSidedConfirmed" |
+                "CoinbaseUnconfirmed" |
+                "CoinbaseConfirmed"
         ),
         "Mined_or_OneSidedConfirmed" => {
-            matches!(event_status, "MinedConfirmed" | "OneSidedConfirmed" | "CoinbaseConfirmed")
+            matches!(
+                event_status,
+                "MinedConfirmed" | "OneSidedConfirmed" | "CoinbaseConfirmed"
+            )
         },
         "Coinbase" => matches!(event_status, "CoinbaseConfirmed" | "CoinbaseUnconfirmed"),
         _ => false,

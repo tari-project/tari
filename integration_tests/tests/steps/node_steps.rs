@@ -45,10 +45,12 @@ use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::Empty;
 use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
+    DEFAULT_TIMEOUT,
     TariWorld,
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
     miner::mine_block_before_submit,
+    wait_for,
 };
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
@@ -56,8 +58,6 @@ use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     weight::TransactionWeight,
 };
-
-use tari_integration_tests::{DEFAULT_TIMEOUT, wait_for};
 
 #[given(expr = "I have a seed node {word}")]
 #[when(expr = "I have a seed node {word}")]

@@ -276,11 +276,9 @@ impl BaseNodeProcess {
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://127.0.0.1:{}", self.grpc_port))?
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30));
-        Ok(
-            BaseNodeGrpcClient::new(endpoint.connect().await?)
-                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
-        )
+        Ok(BaseNodeGrpcClient::new(endpoint.connect().await?)
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE))
     }
 
     pub fn kill(&mut self) {

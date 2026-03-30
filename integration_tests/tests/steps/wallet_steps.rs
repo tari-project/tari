@@ -54,12 +54,15 @@ use tari_common_types::{
 };
 use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
+    DEFAULT_TIMEOUT,
+    SHORT_TIMEOUT,
     TariWorld,
     transaction::{
         build_transaction_with_output,
         build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
+    wait_for,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -79,13 +82,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::hex::Hex;
 
-use tari_integration_tests::{DEFAULT_TIMEOUT, SHORT_TIMEOUT, wait_for};
-
-use crate::steps::{
-    CONFIRMATION_PERIOD,
-    cucumber_steps_log,
-    mining_steps::create_miner,
-};
+use crate::steps::{CONFIRMATION_PERIOD, cucumber_steps_log, mining_steps::create_miner};
 
 pub const LOG_TARGET: &str = "cucumber::wallet_steps";
 
@@ -212,14 +209,9 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
 
     for tx_id in tx_ids {
         cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be {status}"));
-        tari_integration_tests::tx_event_stream::wait_for_tx_status(
-            &mut client,
-            tx_id,
-            &status,
-            DEFAULT_TIMEOUT,
-        )
-        .await
-        .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
+        tari_integration_tests::tx_event_stream::wait_for_tx_status(&mut client, tx_id, &status, DEFAULT_TIMEOUT)
+            .await
+            .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
     }
 }
 
@@ -243,14 +235,9 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
 
     for tx_id in &tx_ids {
         cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be at least {status}"));
-        tari_integration_tests::tx_event_stream::wait_for_tx_status(
-            &mut client,
-            *tx_id,
-            &status,
-            DEFAULT_TIMEOUT,
-        )
-        .await
-        .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
+        tari_integration_tests::tx_event_stream::wait_for_tx_status(&mut client, *tx_id, &status, DEFAULT_TIMEOUT)
+            .await
+            .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
     }
 }
 

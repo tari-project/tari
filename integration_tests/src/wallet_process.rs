@@ -149,8 +149,10 @@ pub async fn spawn_wallet(
         }
 
         // Tune wallet base node monitoring for faster chain detection
-        wallet_app_config.wallet.base_node_service_config.base_node_monitor_max_refresh_interval =
-            Duration::from_secs(5); // prod: 30s
+        wallet_app_config
+            .wallet
+            .base_node_service_config
+            .base_node_monitor_max_refresh_interval = Duration::from_secs(5); // prod: 30s
 
         // Tune balance/broadcast responsiveness
         wallet_app_config.wallet.balance_enquiry_cooldown_period = Duration::from_secs(1); // prod: 5s
