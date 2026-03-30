@@ -39,13 +39,13 @@ use crate::{TariWorld, get_peer_addresses, wait_for_service};
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
     pub config: WalletConfig,
-    pub grpc_port: u64,
+    pub grpc_port: u16,
     pub kill_signal: Shutdown,
     pub name: String,
     pub temp_dir_path: PathBuf,
     pub base_node_name: Option<String>,
     pub peer_seeds: Vec<String>,
-    pub http_port: u64,
+    pub http_port: u16,
     is_running: bool,
 }
 
@@ -66,7 +66,7 @@ pub async fn spawn_wallet(
 ) {
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
-    let grpc_port: u64;
+    let grpc_port: u16;
     let temp_dir_path: PathBuf;
     let mut wallet_config: WalletConfig;
 
@@ -82,7 +82,7 @@ pub async fn spawn_wallet(
         let wallet_ports = crate::port_pool::global_port_pool()
             .allocate_wallet_ports()
             .expect("Port pool exhausted — too many concurrent wallets");
-        grpc_port = u64::from(wallet_ports.grpc);
+        grpc_port = wallet_ports.grpc;
         world.assigned_ports.insert(grpc_port, grpc_port);
 
         temp_dir_path = world
@@ -285,7 +285,7 @@ impl WalletProcess {
         // Wait for the gRPC port to be released so the next scenario doesn't hit port conflicts
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while std::time::Instant::now() < deadline {
-            if std::net::TcpListener::bind(("127.0.0.1", self.grpc_port as u16)).is_ok() {
+            if std::net::TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));

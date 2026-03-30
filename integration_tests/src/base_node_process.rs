@@ -21,7 +21,6 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryInto,
     fmt::{Debug, Formatter},
     net::TcpListener,
     path::PathBuf,
@@ -52,9 +51,9 @@ use crate::{TariWorld, get_peer_addresses, wait_for_service};
 #[derive(Clone)]
 pub struct BaseNodeProcess {
     pub name: String,
-    pub port: u64,
-    pub grpc_port: u64,
-    pub http_port: u64,
+    pub port: u16,
+    pub grpc_port: u16,
+    pub http_port: u16,
     pub identity: NodeIdentity,
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
@@ -97,9 +96,9 @@ pub async fn spawn_base_node_with_config(
 ) {
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
-    let port: u64;
-    let grpc_port: u64;
-    let http_port: u64;
+    let port: u16;
+    let grpc_port: u16;
+    let http_port: u16;
     let temp_dir_path: PathBuf;
     let base_node_identity: NodeIdentity;
 
@@ -117,9 +116,9 @@ pub async fn spawn_base_node_with_config(
         let ports = crate::port_pool::global_port_pool()
             .allocate_base_node_ports()
             .expect("Port pool exhausted — too many concurrent base nodes");
-        port = u64::from(ports.p2p);
-        grpc_port = u64::from(ports.grpc);
-        http_port = u64::from(ports.http);
+        port = ports.p2p;
+        grpc_port = ports.grpc;
+        http_port = ports.http;
         // Track in world for backwards compatibility
         world.assigned_ports.insert(port, port);
         world.assigned_ports.insert(grpc_port, grpc_port);
@@ -179,7 +178,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{grpc_port}").parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
-        base_node_config.base_node.http_wallet_query_service.port = http_port.try_into().unwrap();
+        base_node_config.base_node.http_wallet_query_service.port = http_port;
         base_node_config.base_node.http_wallet_query_service.listen_ip = Some("127.0.0.1".to_string().parse().unwrap());
         base_node_config.base_node.http_wallet_query_service.external_address =
             Some(format!("http://127.0.0.1:{http_port}").parse().unwrap());
@@ -285,21 +284,21 @@ impl BaseNodeProcess {
         self.kill_signal.trigger();
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.grpc_port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         loop {
             // lets wait till the http port is cleared
-            if TcpListener::bind(("127.0.0.1", self.http_port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.http_port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));

@@ -105,7 +105,7 @@ pub struct TariWorld {
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
     pub consensus_manager: BaseNodeConsensusManager,
-    pub assigned_ports: IndexMap<u64, u64>,
+    pub assigned_ports: IndexMap<u16,u16>,
     /// Named benchmark timers, keyed by a label set in the feature file.
     /// Used by "I start benchmark timer {word}" / "I stop benchmark timer {word} and log elapsed time" steps.
     pub benchmark_timers: IndexMap<String, Instant>,
@@ -334,7 +334,7 @@ impl TariWorld {
         // Kill wallets first — they depend on base nodes
         for (name, mut p) in self.wallets.drain(..) {
             println!("Shutting down wallet {name}");
-            let grpc_port = p.grpc_port as u16;
+            let grpc_port = p.grpc_port;
             p.kill();
             // Return wallet gRPC port to pool for reuse
             pool.return_wallet_ports(crate::port_pool::WalletPorts {
@@ -347,9 +347,9 @@ impl TariWorld {
         for (name, mut p) in self.base_nodes.drain(..) {
             println!("Shutting down base node {name}");
             let ports = crate::port_pool::BaseNodePorts {
-                p2p: p.port as u16,
-                grpc: p.grpc_port as u16,
-                http: p.http_port as u16,
+                p2p: p.port,
+                grpc: p.grpc_port,
+                http: p.http_port,
             };
             p.kill();
             // Return ports to pool for reuse by next scenario

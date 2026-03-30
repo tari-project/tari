@@ -3131,7 +3131,7 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
 #[then(expr = "wallet {word} balance is {word}")]
 async fn wallet_has_balance(world: &mut TariWorld, wallet_name: String, balance_key: String) {
     let mut client = world.get_wallet_client(&wallet_name).await.unwrap();
-    let balance = world.balance.get(&balance_key).unwrap().clone();
+    let balance = *world.balance.get(&balance_key).unwrap();
 
     wait_for!(
         timeout: SHORT_TIMEOUT,

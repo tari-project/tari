@@ -70,11 +70,10 @@ pub async fn wait_for_tx_status(
                 Ok(Ok(Some(event_response))) => {
                     if let Some(event) = event_response.transaction {
                         // Check if this event is for our transaction
-                        if let Ok(event_tx_id) = event.tx_id.parse::<u64>() {
-                            if event_tx_id == tx_id && status_matches_target(&event.status, target_status) {
+                        if let Ok(event_tx_id) = event.tx_id.parse::<u64>() && event_tx_id == tx_id && status_matches_target(&event.status, target_status) {
                                 return Ok(());
                             }
-                        }
+
                     }
                 },
                 Ok(Ok(None)) => {

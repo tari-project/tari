@@ -40,7 +40,7 @@ pub struct MergeMiningProxyProcess {
     pub name: String,
     pub base_node_name: String,
     pub wallet_name: String,
-    pub port: u64,
+    pub port: u16,
     pub origin_submission: bool,
     id: u64,
 }
