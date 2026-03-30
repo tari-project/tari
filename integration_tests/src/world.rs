@@ -105,7 +105,7 @@ pub struct TariWorld {
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
     pub consensus_manager: BaseNodeConsensusManager,
-    pub assigned_ports: IndexMap<u16,u16>,
+    pub assigned_ports: IndexMap<u16, u16>,
     /// Named benchmark timers, keyed by a label set in the feature file.
     /// Used by "I start benchmark timer {word}" / "I stop benchmark timer {word} and log elapsed time" steps.
     pub benchmark_timers: IndexMap<String, Instant>,
