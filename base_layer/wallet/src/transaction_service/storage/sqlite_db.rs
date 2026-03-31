@@ -29,11 +29,14 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError};
 use log::*;
-use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
+use tari_common_sqlite::{
+    sqlite_connection_pool::PooledDbConnection,
+    util::{diesel_ext::ExpectedRowsExtension, retry::retry_db},
+};
 use tari_common_types::{
     burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
-    payment_reference::generate_payment_reference,
+    payment_reference::{PaymentReference, generate_payment_reference},
     tari_address::TariAddress,
     transaction::{
         LegacyTransactionStatus,
@@ -55,7 +58,14 @@ use zeroize::Zeroize;
 
 use crate::{
     schema,
-    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs, scanned_blocks},
+    schema::{
+        completed_transactions,
+        inbound_transactions,
+        outbound_transactions,
+        payref_history,
+        payrefs,
+        scanned_blocks,
+    },
     storage::{
         serializers,
         serializers::bincode_decode,
@@ -866,42 +876,44 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         must_be_confirmed: bool,
         status: LegacyTransactionStatus,
     ) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-        let status = if must_be_confirmed {
-            status.mined_confirm()
-        } else {
-            status.mined_unconfirm()
-        };
+        retry_db("update_mined_height", || {
+            let start = Instant::now();
+            let mut conn = self.database_connection.get_pooled_connection()?;
+            let acquire_lock = start.elapsed();
+            let status = if must_be_confirmed {
+                status.mined_confirm()
+            } else {
+                status.mined_unconfirm()
+            };
 
-        match CompletedTransactionSql::update_mined_height(
-            tx_id,
-            status,
-            mined_height,
-            mined_in_block,
-            mined_timestamp,
-            &mut conn,
-        ) {
-            Ok(_) => {},
-            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-                    tx_id,
-                )));
-            },
-            Err(e) => return Err(e),
-        }
+            match CompletedTransactionSql::update_mined_height(
+                tx_id,
+                status,
+                mined_height,
+                mined_in_block,
+                mined_timestamp,
+                &mut conn,
+            ) {
+                Ok(_) => {},
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                    return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                        tx_id,
+                    )));
+                },
+                Err(e) => return Err(e),
+            }
 
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - update_mined_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-        Ok(())
+            if start.elapsed().as_millis() > 0 {
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - update_mined_height: lock {} + db_op {} = {} ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
+            }
+            Ok::<_, TransactionStorageError>(())
+        }) // retry_db
     }
 
     fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
@@ -1266,6 +1278,50 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             Err(e) => return Err(e),
         };
         Ok(tx)
+    }
+
+    fn get_transaction_with_historical_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+
+        let history_entries = PayrefHistorySql::find_by_payref(&payref.to_vec(), &mut conn)?;
+        // Deduplicate by tx_id to avoid returning the same transaction multiple times
+        let mut seen_tx_ids = std::collections::HashSet::new();
+        let mut transactions = Vec::new();
+        for entry in history_entries {
+            if !seen_tx_ids.insert(entry.tx_id) {
+                continue;
+            }
+            let tx_id = (entry.tx_id as u64).into();
+            match CompletedTransactionSql::find(tx_id, &mut conn) {
+                Ok(c) => transactions.push(CompletedTransaction::try_from(c, &self.cipher)?),
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {},
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(transactions)
+    }
+
+    fn get_payref_history_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<(FixedHash, PaymentReference)>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let history = PayrefHistorySql::find_by_tx_id(tx_id, &mut conn)?;
+        history
+            .into_iter()
+            .map(|h| {
+                let output_hash = FixedHash::try_from(h.output_hash).map_err(|e| {
+                    TransactionStorageError::UnexpectedResult(format!("Invalid output_hash in payref_history: {e}"))
+                })?;
+                let payref = PaymentReference::try_from(h.payref).map_err(|e| {
+                    TransactionStorageError::UnexpectedResult(format!("Invalid payref in payref_history: {e}"))
+                })?;
+                Ok((output_hash, payref))
+            })
+            .collect()
     }
 
     fn find_completed_transactions_paginated(
@@ -2368,20 +2424,23 @@ impl CompletedTransactionSql {
     }
 
     pub fn set_as_unmined(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        // First, get the existing transaction
-        let existing_tx = completed_transactions::table
-            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-            .first::<CompletedTransactionSql>(conn)?;
+        conn.transaction::<_, TransactionStorageError, _>(|conn| {
+            // First, get the existing transaction
+            let existing_tx = completed_transactions::table
+                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+                .first::<CompletedTransactionSql>(conn)?;
 
-        let (current_status, current_mined_height) = *completed_transactions::table
-            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-            .select((completed_transactions::status, completed_transactions::mined_height))
-            .load::<(i32, Option<i64>)>(conn)?
-            .first()
-            .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
-        let current_status = LegacyTransactionStatus::try_from(current_status)
-            .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
-        diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
+            let (current_status, current_mined_height) = *completed_transactions::table
+                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+                .select((completed_transactions::status, completed_transactions::mined_height))
+                .load::<(i32, Option<i64>)>(conn)?
+                .first()
+                .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
+            let current_status = LegacyTransactionStatus::try_from(current_status)
+                .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
+            diesel::update(
+                completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)),
+            )
             .set(UpdateCompletedTransactionSql {
                 status: match current_status {
                     LegacyTransactionStatus::OneSidedConfirmed | LegacyTransactionStatus::OneSidedUnconfirmed => {
@@ -2412,29 +2471,37 @@ impl CompletedTransactionSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        let sent = match existing_tx.sent_output_hashes.as_ref() {
-            Some(bytes) => bytes_to_fixedhash_vec(bytes),
-            _ => vec![],
-        };
-        for output in sent {
-            PayrefSql::delete(output.as_ref(), conn)?;
-        }
-        let received = match existing_tx.received_output_hashes.as_ref() {
-            Some(bytes) => bytes_to_fixedhash_vec(bytes),
-            _ => vec![],
-        };
-        for output in received {
-            PayrefSql::delete(output.as_ref(), conn)?;
-        }
-        let change = match existing_tx.change_output_hashes.as_ref() {
-            Some(bytes) => bytes_to_fixedhash_vec(bytes),
-            _ => vec![],
-        };
-        for output in change {
-            PayrefSql::delete(output.as_ref(), conn)?;
-        }
+            // Archive existing payrefs to history before deleting, so that
+            // PayRefs from before a reorg can still be looked up.
+            let existing_payrefs = PayrefSql::find_all_by_tx_id(tx_id, conn)?;
+            for pr in &existing_payrefs {
+                PayrefHistorySql::archive_from_payref(pr, conn)?;
+            }
 
-        Ok(())
+            let sent = match existing_tx.sent_output_hashes.as_ref() {
+                Some(bytes) => bytes_to_fixedhash_vec(bytes),
+                _ => vec![],
+            };
+            for output in sent {
+                PayrefSql::delete(output.as_ref(), conn)?;
+            }
+            let received = match existing_tx.received_output_hashes.as_ref() {
+                Some(bytes) => bytes_to_fixedhash_vec(bytes),
+                _ => vec![],
+            };
+            for output in received {
+                PayrefSql::delete(output.as_ref(), conn)?;
+            }
+            let change = match existing_tx.change_output_hashes.as_ref() {
+                Some(bytes) => bytes_to_fixedhash_vec(bytes),
+                _ => vec![],
+            };
+            for output in change {
+                PayrefSql::delete(output.as_ref(), conn)?;
+            }
+
+            Ok(())
+        })
     }
 
     #[allow(dead_code)]
@@ -2765,6 +2832,69 @@ impl PayrefSql {
             .first::<PayrefSql>(conn)
             .optional()?;
         Ok(result)
+    }
+
+    pub fn find_all_by_tx_id(
+        tx_id: TxId,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<PayrefSql>, TransactionStorageError> {
+        let results = payrefs::table
+            .filter(payrefs::tx_id.eq(tx_id.as_u64() as i64))
+            .load::<PayrefSql>(conn)?;
+        Ok(results)
+    }
+}
+
+#[derive(Clone, Debug, Queryable, PartialEq)]
+#[diesel(table_name = payref_history)]
+pub struct PayrefHistorySql {
+    pub id: i32,
+    pub output_hash: Vec<u8>,
+    pub payref: Vec<u8>,
+    pub tx_id: i64,
+    pub superseded_at: NaiveDateTime,
+}
+
+#[derive(Clone, Debug, Insertable)]
+#[diesel(table_name = payref_history)]
+pub struct NewPayrefHistorySql {
+    pub output_hash: Vec<u8>,
+    pub payref: Vec<u8>,
+    pub tx_id: i64,
+}
+
+impl PayrefHistorySql {
+    pub fn archive_from_payref(
+        payref_sql: &PayrefSql,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), TransactionStorageError> {
+        let new = NewPayrefHistorySql {
+            output_hash: payref_sql.output_hash.clone(),
+            payref: payref_sql.payref.clone(),
+            tx_id: payref_sql.tx_id,
+        };
+        diesel::insert_into(payref_history::table).values(&new).execute(conn)?;
+        Ok(())
+    }
+
+    pub fn find_by_payref(
+        payref: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<PayrefHistorySql>, TransactionStorageError> {
+        let results = payref_history::table
+            .filter(payref_history::payref.eq(payref))
+            .load::<PayrefHistorySql>(conn)?;
+        Ok(results)
+    }
+
+    pub fn find_by_tx_id(
+        tx_id: TxId,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<PayrefHistorySql>, TransactionStorageError> {
+        let results = payref_history::table
+            .filter(payref_history::tx_id.eq(tx_id.as_u64() as i64))
+            .load::<PayrefHistorySql>(conn)?;
+        Ok(results)
     }
 }
 

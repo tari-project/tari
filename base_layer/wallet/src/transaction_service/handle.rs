@@ -32,6 +32,7 @@ use log::warn;
 use tari_common_types::{
     burn_proof::PartialBurnClaimProof,
     epoch::VnEpoch,
+    payment_reference::PaymentReference,
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
@@ -286,6 +287,10 @@ pub enum TransactionServiceRequest {
     },
     /// Get all transactions with their PayRefs (for listing/filtering)
     GetTransactionByPaymentReference(FixedHash),
+    /// Get historical (superseded) payrefs for a transaction
+    GetPayrefHistoryByTxId(TxId),
+    /// Get transactions that previously had this payref (before reorg)
+    GetTransactionByHistoricalPayref(FixedHash),
     PrepareDepositMultisigTransaction {
         request: CreateMultisigUtxo,
     },
@@ -543,6 +548,12 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetTransactionByPaymentReference(payref) => {
                 write!(f, "GetTransactionByPaymentReference({payref})")
             },
+            Self::GetPayrefHistoryByTxId(tx_id) => {
+                write!(f, "GetPayrefHistoryByTxId({tx_id})")
+            },
+            Self::GetTransactionByHistoricalPayref(payref) => {
+                write!(f, "GetTransactionByHistoricalPayref({payref})")
+            },
 
             Self::SubmitValidatorEvictionProof {
                 amount,
@@ -637,6 +648,10 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
+    /// Response containing historical payrefs for a transaction (output_hash, payment_reference)
+    PayrefHistory(Vec<(FixedHash, PaymentReference)>),
+    /// Response containing transactions found via historical payref
+    HistoricalPayrefTransactions(Vec<CompletedTransaction>),
     OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
     SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
     SignedOneSidedDepositMultisigTransaction(Box<SignedOneSidedDepositMultisigTransactionResult>),
@@ -1941,6 +1956,43 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::GetTransactionByPaymentReference".to_string(),
+            )),
+        }
+    }
+
+    /// Get historical (superseded) payrefs for a transaction
+    pub async fn get_payref_history_by_tx_id(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<Vec<(FixedHash, PaymentReference)>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetPayrefHistoryByTxId(tx_id))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetPayrefHistoryByTxId({e})"))??
+        {
+            TransactionServiceResponse::PayrefHistory(history) => Ok(history),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetPayrefHistoryByTxId".to_string(),
+            )),
+        }
+    }
+
+    /// Get transactions that previously had this payref (before reorg)
+    pub async fn get_transaction_by_historical_payref(
+        &mut self,
+        payref: FixedHash,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetTransactionByHistoricalPayref(payref))
+            .await
+            .inspect_err(
+                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::GetTransactionByHistoricalPayref({e})"),
+            )?? {
+            TransactionServiceResponse::HistoricalPayrefTransactions(txs) => Ok(txs),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::GetTransactionByHistoricalPayref".to_string(),
             )),
         }
     }

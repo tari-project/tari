@@ -2151,6 +2151,9 @@ message TransactionInfo {
   repeated bytes payment_references_sent = 17;
   repeated bytes payment_references_received = 18;
   repeated bytes payment_references_change = 19;
+  // The reason a transaction was rejected/cancelled, if applicable.
+  // Empty string if the transaction is not rejected.
+  string rejected_reason = 20;
 }
 
 enum TransactionDirection {
@@ -2497,6 +2500,16 @@ message GetTransactionPayRefsResponse {
   repeated bytes payment_references = 1 [deprecated = true];
   // List of input commitment info for the transaction - hash, commitment, payment reference, output category.
   repeated CommitmentInfo output_commitments_info = 2;
+  // Historical PayRefs that were superseded by reorgs (output_hash + previous payref pairs).
+  repeated HistoricalPayRef historical_payment_references = 3;
+}
+
+// A historical PayRef that was superseded due to a blockchain reorg.
+message HistoricalPayRef {
+  // The output hash this PayRef was generated for.
+  bytes output_hash = 1;
+  // The previous PayRef value (before the reorg changed the block hash).
+  bytes payment_reference = 2;
 }
 
 message CommitmentInfo {
@@ -2530,9 +2543,11 @@ message GetPaymentByReferenceRequest {
 
 // Response message containing transaction information for a payment reference
 message GetPaymentByReferenceResponse {
-  // The transaction information if PayRef is found (optional).
+  // The transaction information if PayRef is found via current PayRef (optional).
   // Returns full transaction details
   TransactionInfo transaction = 1;
+  // Transactions found via historical (superseded) PayRefs from reorgs.
+  repeated TransactionInfo historical_transactions = 2;
 }
 
 

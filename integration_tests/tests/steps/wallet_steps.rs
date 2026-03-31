@@ -34,6 +34,7 @@ use grpc::{
     GetCompletedTransactionsRequest,
     GetIdentityRequest,
     GetTransactionInfoRequest,
+    GetTransactionPayRefsRequest,
     ImportUtxosRequest,
     PaymentRecipient,
     ReplaceByFeeRequest,
@@ -3551,4 +3552,145 @@ async fn stop_benchmark_timer_and_log(world: &mut TariWorld, name: String) {
     );
     eprintln!("{msg}");
     cucumber_steps_log(&msg);
+}
+
+// ── PayRef History Steps ────────────────────────────────────────────────────
+
+#[then(expr = "wallet {word} has PayRefs for all mined transactions")]
+async fn wallet_has_payrefs_for_all_mined_transactions(world: &mut TariWorld, wallet_name: String) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).cloned().unwrap_or_default();
+
+    for tx_id in &tx_ids {
+        let num_retries = 60;
+        let mut found = false;
+        for retry in 0..num_retries {
+            let resp = client
+                .get_transaction_pay_refs(GetTransactionPayRefsRequest { transaction_id: *tx_id })
+                .await;
+
+            match resp {
+                Ok(resp) => {
+                    let resp = resp.into_inner();
+                    if !resp.output_commitments_info.is_empty() {
+                        cucumber_steps_log(format!(
+                            "Wallet {wallet_name} tx {tx_id} has {} PayRefs",
+                            resp.output_commitments_info.len()
+                        ));
+                        found = true;
+                        break;
+                    }
+                },
+                Err(e) => {
+                    if retry == num_retries - 1 {
+                        panic!("Failed to get PayRefs for tx {tx_id} in wallet {wallet_name}: {e}");
+                    }
+                },
+            }
+            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+        }
+        assert!(
+            found,
+            "No PayRefs found for mined transaction {tx_id} in wallet {wallet_name}"
+        );
+    }
+}
+
+#[then(expr = "wallet {word} has historical PayRefs from before the reorg")]
+async fn wallet_has_historical_payrefs(world: &mut TariWorld, wallet_name: String) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).cloned().unwrap_or_default();
+
+    assert!(
+        !tx_ids.is_empty(),
+        "No transaction IDs found for wallet {wallet_name} — cannot check historical PayRefs"
+    );
+
+    // After a reorg the wallet's UTXO scanner detects the missing scanned blocks
+    // and calls process_reorg which archives old PayRefs to the history table.
+    // We poll until the wallet has processed the reorg.
+    let mut found_any_history = false;
+    for tx_id in &tx_ids {
+        let num_retries = TWO_MINUTES_WITH_HALF_SECOND_SLEEP;
+        for retry in 0..num_retries {
+            let resp = client
+                .get_transaction_pay_refs(GetTransactionPayRefsRequest { transaction_id: *tx_id })
+                .await;
+
+            match resp {
+                Ok(resp) => {
+                    let resp = resp.into_inner();
+                    if !resp.historical_payment_references.is_empty() {
+                        cucumber_steps_log(format!(
+                            "Wallet {wallet_name} tx {tx_id} has {} historical PayRefs (found after {} retries)",
+                            resp.historical_payment_references.len(),
+                            retry
+                        ));
+                        found_any_history = true;
+                        break;
+                    } else if retry % 20 == 0 {
+                        cucumber_steps_log(format!(
+                            "Wallet {wallet_name} tx {tx_id}: waiting for historical PayRefs (retry {}/{})",
+                            retry, num_retries
+                        ));
+                    } else {
+                        // clippy
+                    }
+                },
+                Err(e) => {
+                    if retry % 20 == 0 {
+                        cucumber_steps_log(format!(
+                            "Wallet {wallet_name} tx {tx_id}: gRPC error on retry {}: {e}",
+                            retry
+                        ));
+                    }
+                },
+            }
+            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+        }
+        if found_any_history {
+            break;
+        }
+    }
+
+    assert!(
+        found_any_history,
+        "Expected at least one transaction in wallet {wallet_name} to have historical PayRefs after the reorg"
+    );
+}
+
+#[then(expr = "all mined transactions for wallet {word} have empty rejected_reason")]
+async fn all_mined_transactions_have_empty_rejected_reason(world: &mut TariWorld, wallet_name: String) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
+    let tx_ids = world.wallet_tx_ids.get(&wallet_address).cloned().unwrap_or_default();
+
+    for tx_id in &tx_ids {
+        let request = GetTransactionInfoRequest {
+            transaction_ids: vec![*tx_id],
+        };
+        let resp = client.get_transaction_info(request).await.unwrap().into_inner();
+        let tx_info = resp.transactions.first().unwrap();
+
+        // Mined transactions should not have a rejected reason
+        assert!(
+            tx_info.rejected_reason.is_empty(),
+            "Transaction {tx_id} in wallet {wallet_name} has unexpected rejected_reason: '{}'",
+            tx_info.rejected_reason
+        );
+        assert!(
+            !tx_info.is_cancelled,
+            "Transaction {tx_id} in wallet {wallet_name} should not be cancelled"
+        );
+
+        cucumber_steps_log(format!(
+            "Transaction {tx_id} in wallet {wallet_name}: is_cancelled={}, rejected_reason='{}'",
+            tx_info.is_cancelled, tx_info.rejected_reason
+        ));
+    }
 }

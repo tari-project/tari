@@ -147,6 +147,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    payref_history (id) {
+        id -> Integer,
+        output_hash -> Binary,
+        payref -> Binary,
+        tx_id -> BigInt,
+        superseded_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     scanned_blocks (header_hash) {
         header_hash -> Binary,
         height -> BigInt,
@@ -171,6 +181,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
+    payref_history,
     payrefs,
     scanned_blocks,
     wallet_settings,
