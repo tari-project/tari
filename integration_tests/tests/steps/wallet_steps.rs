@@ -209,9 +209,24 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
 
     for tx_id in tx_ids {
         cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be {status}"));
-        tari_integration_tests::tx_event_stream::wait_for_tx_status(&mut client, tx_id, &status, DEFAULT_TIMEOUT)
-            .await
-            .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
+        let status_clone = status.clone();
+        wait_for!(
+            timeout: Duration::from_secs(200),
+            max_interval: Duration::from_secs(2),
+            description: format!("wallet {wallet_name} tx {tx_id} to reach status {status}"),
+            condition: async {
+                let request = GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id],
+                };
+                let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+                let tx_info = tx_info.transactions.first().unwrap();
+                if tari_integration_tests::tx_event_stream::tx_status_matches(tx_info.status(), &status_clone) {
+                    Ok(true)
+                } else {
+                    Err(format!("current status: {:?}", tx_info.status()))
+                }
+            }
+        );
     }
 }
 
@@ -235,9 +250,25 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
 
     for tx_id in &tx_ids {
         cucumber_steps_log(format!("waiting for tx with tx_id = {tx_id} to be at least {status}"));
-        tari_integration_tests::tx_event_stream::wait_for_tx_status(&mut client, *tx_id, &status, DEFAULT_TIMEOUT)
-            .await
-            .unwrap_or_else(|e| panic!("Wallet {wallet_name}: {e}"));
+        let status_clone = status.clone();
+        let tx_id_val = *tx_id;
+        wait_for!(
+            timeout: Duration::from_secs(200),
+            max_interval: Duration::from_secs(2),
+            description: format!("wallet {wallet_name} tx {tx_id_val} to reach at least status {status}"),
+            condition: async {
+                let request = GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id_val],
+                };
+                let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+                let tx_info = tx_info.transactions.first().unwrap();
+                if tari_integration_tests::tx_event_stream::tx_status_matches(tx_info.status(), &status_clone) {
+                    Ok(true)
+                } else {
+                    Err(format!("current status: {:?}", tx_info.status()))
+                }
+            }
+        );
     }
 }
 

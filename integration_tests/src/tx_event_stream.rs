@@ -178,7 +178,7 @@ async fn get_current_tx_status(client: &mut WalletGrpcClient<Channel>, tx_id: u6
 }
 
 /// Check if a gRPC TransactionStatus enum matches the string-based target.
-fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool {
+pub fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool {
     match target {
         "Pending" => matches!(
             status,
