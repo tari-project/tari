@@ -1684,6 +1684,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1822,6 +1823,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                 });
             }
 
@@ -1983,6 +1985,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                     };
 
                     let response = GetCompletedTransactionsResponse {
@@ -2125,6 +2128,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
             });
         }
 
@@ -2647,8 +2651,52 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("payment_reference must be exactly 32 bytes".to_string()))?;
         let mut tms = self.get_transaction_service();
 
-        match tms.get_transaction_by_payref(payment_ref).await {
-            Ok(txn) => {
+        // Look up current payref
+        let current_tx = tms.get_transaction_by_payref(payment_ref).await.ok();
+
+        // Look up historical payrefs (from reorgs)
+        let historical_txs = tms
+            .get_transaction_by_historical_payref(payment_ref)
+            .await
+            .unwrap_or_else(|e| {
+                debug!(
+                    target: LOG_TARGET,
+                    "get_payment_by_reference: Error looking up historical PayRef: {e}"
+                );
+                vec![]
+            });
+
+        if current_tx.is_none() && historical_txs.is_empty() {
+            return Err(Status::not_found(format!("PayRef {} not found", payment_ref.to_hex())));
+        }
+
+        let transaction = current_tx.map(|txn| {
+            let output_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.commitment().as_bytes().to_vec())
+                .collect();
+            let input_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .inputs()
+                .iter()
+                .map(|i| match i.commitment() {
+                    Ok(c) => c.as_bytes().to_vec(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
+                        vec![]
+                    },
+                })
+                .collect();
+            completed_tx_to_transaction_info(&txn, output_commitments, input_commitments)
+        });
+
+        let historical_transactions = historical_txs
+            .iter()
+            .map(|txn| {
                 let output_commitments: Vec<Vec<u8>> = txn
                     .transaction
                     .body
@@ -2669,57 +2717,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         },
                     })
                     .collect();
-                let transaction_info = TransactionInfo {
-                    tx_id: txn.tx_id.into(),
-                    source_address: txn.source_address.to_vec(),
-                    dest_address: txn.destination_address.to_vec(),
-                    status: TransactionStatus::from(txn.status) as i32,
-                    amount: txn.amount.into(),
-                    is_cancelled: txn.cancelled.is_some(),
-                    direction: TransactionDirection::from(txn.direction) as i32,
-                    fee: txn.fee.into(),
-                    timestamp: txn.timestamp.timestamp() as u64,
-                    excess_sig: txn
-                        .transaction
-                        .first_kernel_excess_sig()
-                        .unwrap_or(&CompressedSignature::default())
-                        .get_signature()
-                        .to_vec(),
-                    raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.payment_id_as_bytes(),
-                    mined_in_block_height: txn.mined_height.unwrap_or(0),
-                    output_commitments,
-                    input_commitments,
-                    payment_references_sent: txn
-                        .calculate_sent_payment_references()
-                        .into_iter()
-                        .map(|pr| pr.to_vec())
-                        .collect(),
-                    payment_references_received: txn
-                        .calculate_received_payment_references()
-                        .into_iter()
-                        .map(|pr| pr.to_vec())
-                        .collect(),
-                    payment_references_change: txn
-                        .calculate_change_payment_references()
-                        .into_iter()
-                        .map(|pr| pr.to_vec())
-                        .collect(),
-                };
-                Ok(Response::new(GetPaymentByReferenceResponse {
-                    transaction: Some(transaction_info),
-                }))
-            },
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "get_transaction_by_payref: Error looking up PayRef {}: {}",
-                    payment_ref.to_hex(),
-                    e
-                );
-                Err(Status::internal(format!("Error looking up payment reference: {e}")))
-            },
-        }
+                completed_tx_to_transaction_info(txn, output_commitments, input_commitments)
+            })
+            .collect();
+
+        Ok(Response::new(GetPaymentByReferenceResponse {
+            transaction,
+            historical_transactions,
+        }))
     }
 
     async fn get_transaction_pay_refs(
@@ -2792,10 +2797,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }
         };
 
+        // Fetch historical payrefs for this transaction
+        let historical_payment_references = match transaction_service.get_payref_history_by_tx_id(tx_id).await {
+            Ok(history) => history
+                .into_iter()
+                .map(|(output_hash, payref)| tari_rpc::HistoricalPayRef {
+                    output_hash: output_hash.to_vec(),
+                    payment_reference: payref.to_vec(),
+                })
+                .collect(),
+            Err(e) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "get_transaction_pay_refs: Error fetching payref history for {}: {}", tx_id, e
+                );
+                vec![]
+            },
+        };
+
         Ok(Response::new(GetTransactionPayRefsResponse {
             #[allow(deprecated)]
             payment_references,
             output_commitments_info: get_transaction_output_commitments_info(&completed_tx),
+            historical_payment_references,
         }))
     }
 
@@ -3477,6 +3501,51 @@ async fn import_output_to_oms<KM: LegacyTransactionKeyManagerInterface>(
     Ok(found_outputs.first().expect("already checked for empty").1.clone())
 }
 
+fn completed_tx_to_transaction_info(
+    txn: &CompletedTransaction,
+    output_commitments: Vec<Vec<u8>>,
+    input_commitments: Vec<Vec<u8>>,
+) -> TransactionInfo {
+    TransactionInfo {
+        tx_id: txn.tx_id.into(),
+        source_address: txn.source_address.to_vec(),
+        dest_address: txn.destination_address.to_vec(),
+        status: TransactionStatus::from(txn.status) as i32,
+        amount: txn.amount.into(),
+        is_cancelled: txn.cancelled.is_some(),
+        direction: TransactionDirection::from(txn.direction) as i32,
+        fee: txn.fee.into(),
+        timestamp: txn.timestamp.timestamp() as u64,
+        excess_sig: txn
+            .transaction
+            .first_kernel_excess_sig()
+            .unwrap_or(&CompressedSignature::default())
+            .get_signature()
+            .to_vec(),
+        raw_payment_id: txn.payment_id.to_bytes(),
+        user_payment_id: txn.payment_id.payment_id_as_bytes(),
+        mined_in_block_height: txn.mined_height.unwrap_or(0),
+        output_commitments,
+        input_commitments,
+        payment_references_sent: txn
+            .calculate_sent_payment_references()
+            .into_iter()
+            .map(|pr| pr.to_vec())
+            .collect(),
+        payment_references_received: txn
+            .calculate_received_payment_references()
+            .into_iter()
+            .map(|pr| pr.to_vec())
+            .collect(),
+        payment_references_change: txn
+            .calculate_change_payment_references()
+            .into_iter()
+            .map(|pr| pr.to_vec())
+            .collect(),
+        rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 fn convert_wallet_transaction_into_transaction_info(
     tx: models::WalletTransaction,
@@ -3508,6 +3577,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_sent: vec![],
                 payment_references_received: vec![],
                 payment_references_change: vec![],
+                rejected_reason: String::new(),
             }
         },
         PendingOutbound(tx) => {
@@ -3544,6 +3614,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_sent: vec![],
                 payment_references_received: vec![],
                 payment_references_change: vec![],
+                rejected_reason: String::new(),
             }
         },
         Completed(tx) => {
@@ -3602,6 +3673,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                rejected_reason: tx.cancelled.map(|r| r.to_string()).unwrap_or_default(),
             }
         },
     }

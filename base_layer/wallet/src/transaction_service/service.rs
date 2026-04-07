@@ -1451,6 +1451,22 @@ where
                 .await
             },
 
+            TransactionServiceRequest::GetPayrefHistoryByTxId(tx_id) => {
+                async {
+                    let history = self.db.get_payref_history_by_tx_id(tx_id)?;
+                    Ok(TransactionServiceResponse::PayrefHistory(history))
+                }
+                .await
+            },
+
+            TransactionServiceRequest::GetTransactionByHistoricalPayref(payref) => {
+                async {
+                    let txs = self.db.get_transaction_with_historical_payref(&payref)?;
+                    Ok(TransactionServiceResponse::HistoricalPayrefTransactions(txs))
+                }
+                .await
+            },
+
             TransactionServiceRequest::CreateMultisigUtxo { request } => {
                 async {
                     let fee_per_gram = MicroMinotari::from(1);

@@ -30,6 +30,7 @@ use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
     burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
+    payment_reference::PaymentReference,
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
@@ -182,6 +183,14 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         payref: &FixedHash,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
+    fn get_transaction_with_historical_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn get_payref_history_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<(FixedHash, PaymentReference)>, TransactionStorageError>;
 
     fn find_completed_transactions_paginated(
         &self,
@@ -901,6 +910,20 @@ where T: TransactionBackend + 'static
         payref: &FixedHash,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.get_transaction_with_payref(payref)
+    }
+
+    pub fn get_transaction_with_historical_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db.get_transaction_with_historical_payref(payref)
+    }
+
+    pub fn get_payref_history_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<(FixedHash, PaymentReference)>, TransactionStorageError> {
+        self.db.get_payref_history_by_tx_id(tx_id)
     }
 
     pub fn get_completed_transactions_paginated(

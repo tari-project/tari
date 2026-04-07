@@ -4,7 +4,7 @@
 @wallet-performance @long-running
 Feature: Wallet Performance
 
-  @pie
+
   Scenario: Wallet performance test with 500 transactions after 1000 mined blocks
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes
