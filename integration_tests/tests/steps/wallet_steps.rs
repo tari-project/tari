@@ -3449,7 +3449,7 @@ async fn wallet_has_payrefs_for_all_mined_transactions(world: &mut TariWorld, wa
                     }
                 },
             }
-            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
         assert!(
             found,
@@ -3475,7 +3475,7 @@ async fn wallet_has_historical_payrefs(world: &mut TariWorld, wallet_name: Strin
     // We poll until the wallet has processed the reorg.
     let mut found_any_history = false;
     for tx_id in &tx_ids {
-        let num_retries = TWO_MINUTES_WITH_HALF_SECOND_SLEEP;
+        let num_retries = 240;
         for retry in 0..num_retries {
             let resp = client
                 .get_transaction_pay_refs(GetTransactionPayRefsRequest { transaction_id: *tx_id })
@@ -3510,7 +3510,7 @@ async fn wallet_has_historical_payrefs(world: &mut TariWorld, wallet_name: Strin
                     }
                 },
             }
-            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
         if found_any_history {
             break;
