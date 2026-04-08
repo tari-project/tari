@@ -116,6 +116,8 @@ use crate::{
         Reorg,
         TargetDifficulties,
         consts::{
+            BACKGROUND_PRUNING_CHUNK_SIZE,
+            BACKGROUND_PRUNING_THRESHOLD,
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
@@ -248,6 +250,7 @@ pub struct BlockchainDatabase<B> {
     consensus_manager: BaseNodeConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
     disable_add_block_flag: Arc<AtomicBool>,
+    is_background_pruning: Arc<AtomicBool>,
 }
 
 #[allow(clippy::ptr_arg)]
@@ -270,6 +273,7 @@ where B: BlockchainBackend
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
+            is_background_pruning: Arc::new(AtomicBool::new(false)),
         };
         Ok(blockchain_db)
     }
@@ -288,6 +292,7 @@ where B: BlockchainBackend
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
+            is_background_pruning: Arc::new(AtomicBool::new(false)),
         };
         blockchain_db.start()?;
         Ok(blockchain_db)
@@ -389,6 +394,113 @@ where B: BlockchainBackend
         self.rebuild_payref_indexes_background_task()?;
         self.rebuild_accumulated_data_background_task()?;
         self.initialize_blockchain_check_tasks()?;
+        self.prune_database_background_task()?;
+
+        Ok(())
+    }
+
+    /// If there are more than `BACKGROUND_PRUNING_THRESHOLD` blocks to prune, this spawns a background task that
+    /// prunes in chunks of `BACKGROUND_PRUNING_CHUNK_SIZE` blocks. Each chunk acquires and releases the write lock
+    /// independently, allowing normal node operations to proceed between chunks. Only one background pruning task
+    /// can run at a time, controlled by the `is_background_pruning` flag.
+    pub fn prune_database_background_task(&self) -> Result<(), ChainStorageError> {
+        let metadata = {
+            let db = self.db_read_access()?;
+            db.fetch_chain_metadata()?
+        };
+
+        if !metadata.is_pruned_node() {
+            return Ok(());
+        }
+
+        let pruning_horizon = self.config.pruning_horizon;
+        let prune_to_height_target = metadata.best_block_height().saturating_sub(pruning_horizon);
+        let blocks_to_prune = prune_to_height_target.saturating_sub(metadata.pruned_height());
+
+        if blocks_to_prune <= BACKGROUND_PRUNING_THRESHOLD {
+            return Ok(());
+        }
+
+        // Use compare_exchange to ensure only one background pruning task runs at a time
+        if self
+            .is_background_pruning
+            .compare_exchange(false, true, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst)
+            .is_err()
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Background pruning task is already running, skipping."
+            );
+            return Ok(());
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "Starting background database pruning: {} blocks to prune (from height {} to {})",
+            blocks_to_prune,
+            metadata.pruned_height(),
+            prune_to_height_target,
+        );
+
+        let db_rw_lock = self.db.clone();
+        let is_pruning_flag = self.is_background_pruning.clone();
+
+        tokio::task::spawn(async move {
+            loop {
+                // Allow other tasks to breathe between chunks
+                tokio::time::sleep(Duration::from_millis(BREATHING_TIME_MS_MIN)).await;
+
+                let db = db_rw_lock.clone();
+                // Use a single write lock for both the metadata check and the prune operation to
+                // avoid TOCTOU issues where state changes between a read lock and write lock.
+                let res = tokio::task::spawn_blocking(move || -> Result<bool, ChainStorageError> {
+                    let mut db = db.write().map_err(|e| {
+                        ChainStorageError::AccessError(format!("Write lock on blockchain backend failed: {e:?}"))
+                    })?;
+                    let metadata = db.fetch_chain_metadata()?;
+                    let target = metadata.best_block_height().saturating_sub(pruning_horizon);
+                    let blocks_remaining = target.saturating_sub(metadata.pruned_height());
+                    if blocks_remaining <= BACKGROUND_PRUNING_THRESHOLD {
+                        return Ok(true);
+                    }
+                    let chunk_end = (metadata.pruned_height() + BACKGROUND_PRUNING_CHUNK_SIZE).min(target);
+                    prune_to_height(&mut *db, chunk_end)?;
+                    info!(
+                        target: LOG_TARGET,
+                        "Background pruning: completed chunk up to height {} (target: {})",
+                        chunk_end, target,
+                    );
+                    Ok(false)
+                })
+                .await;
+
+                match res {
+                    Ok(Ok(true)) => {
+                        break;
+                    },
+                    Ok(Ok(false)) => {
+                        // Continue to next chunk
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Background pruning failed: {e}",
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Background pruning task panicked: {e}",
+                        );
+                        break;
+                    },
+                }
+            }
+
+            is_pruning_flag.store(false, atomic::Ordering::SeqCst);
+            info!(target: LOG_TARGET, "Background pruning task completed.");
+        });
 
         Ok(())
     }
@@ -1821,8 +1933,15 @@ where B: BlockchainBackend
                 "Best chain is now at height: {}",
                 db.fetch_chain_metadata()?.best_block_height()
             );
-            // If blocks were added and the node is in pruned mode, perform pruning
-            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
+            // Skip inline pruning if background pruning is already handling it
+            if self.is_background_pruning.load(atomic::Ordering::SeqCst) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Background pruning is active, skipping inline prune_database_if_needed."
+                );
+            } else {
+                prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
+            }
         }
 
         // Clean up orphan pool
@@ -3581,6 +3700,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),
+            is_background_pruning: self.is_background_pruning.clone(),
         }
     }
 }
