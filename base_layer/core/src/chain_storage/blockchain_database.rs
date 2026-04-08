@@ -463,8 +463,7 @@ where B: BlockchainBackend
                     if blocks_remaining <= BACKGROUND_PRUNING_THRESHOLD {
                         return Ok(true);
                     }
-                    let chunk_end =
-                        (metadata.pruned_height() + BACKGROUND_PRUNING_CHUNK_SIZE).min(target);
+                    let chunk_end = (metadata.pruned_height() + BACKGROUND_PRUNING_CHUNK_SIZE).min(target);
                     prune_to_height(&mut *db, chunk_end)?;
                     info!(
                         target: LOG_TARGET,

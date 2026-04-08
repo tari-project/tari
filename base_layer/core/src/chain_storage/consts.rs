@@ -29,4 +29,4 @@ pub const BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL: u64 = 50;
 /// If the number of blocks to prune exceeds this threshold, pruning is performed in the background.
 pub const BACKGROUND_PRUNING_THRESHOLD: u64 = 25_000;
 /// The number of blocks to prune per chunk during background pruning.
-pub const BACKGROUND_PRUNING_CHUNK_SIZE: u64 = 10_000;
+pub const BACKGROUND_PRUNING_CHUNK_SIZE: u64 = 5000;
