@@ -608,6 +608,55 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         })
     }
 
+    async fn get_utxos_deleted_info_v1(
+        &self,
+        request: models::GetUtxosDeletedInfoRequest,
+    ) -> Result<models::GetUtxosDeletedInfoResponseV1, Self::Error> {
+        request.validate()?;
+
+        let mut utxos = Vec::with_capacity(request.hashes.len());
+
+        let must_include_header = request.must_include_header.clone().try_into()?;
+        if self
+            .db()
+            .fetch_header_by_block_hash(must_include_header)
+            .await?
+            .is_none()
+        {
+            return Err(Error::HeaderHashNotFound);
+        }
+
+        let tip_header = self.db().fetch_tip_header().await?;
+        for hash in request.hashes {
+            let hash = hash.try_into()?;
+            let output = self.db().fetch_output(hash).await?;
+
+            let utxo_info = if let Some(output) = output {
+                let input = self.db().fetch_input(hash).await?;
+                models::DeletedUtxoInfoV1 {
+                    utxo_hash: hash.to_vec(),
+                    found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
+                    spent_in_header: input.as_ref().map(|i| (i.spent_height, i.header_hash.to_vec())),
+                    spent_timestamp: input.as_ref().map(|i| i.spent_timestamp),
+                }
+            } else {
+                models::DeletedUtxoInfoV1 {
+                    utxo_hash: hash.to_vec(),
+                    found_in_header: None,
+                    spent_in_header: None,
+                    spent_timestamp: None,
+                }
+            };
+            utxos.push(utxo_info);
+        }
+
+        Ok(models::GetUtxosDeletedInfoResponseV1 {
+            utxos,
+            best_block_hash: tip_header.hash().to_vec(),
+            best_block_height: tip_header.height(),
+        })
+    }
+
     async fn generate_kernel_merkle_proof(
         &self,
         excess_sig: types::CompressedSignature,
