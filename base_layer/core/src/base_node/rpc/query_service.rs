@@ -614,7 +614,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     ) -> Result<models::GetUtxosDeletedInfoResponseV1, Self::Error> {
         request.validate()?;
 
-        let mut utxos = vec![];
+        let mut utxos = Vec::with_capacity(request.hashes.len());
 
         let must_include_header = request.must_include_header.clone().try_into()?;
         if self
@@ -631,31 +631,23 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             let hash = hash.try_into()?;
             let output = self.db().fetch_output(hash).await?;
 
-            if let Some(output) = output {
+            let utxo_info = if let Some(output) = output {
                 let input = self.db().fetch_input(hash).await?;
-                if let Some(i) = input {
-                    utxos.push(models::DeletedUtxoInfoV1 {
-                        utxo_hash: hash.to_vec(),
-                        found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
-                        spent_in_header: Some((i.spent_height, i.header_hash.to_vec())),
-                        spent_timestamp: Some(i.spent_timestamp),
-                    });
-                } else {
-                    utxos.push(models::DeletedUtxoInfoV1 {
-                        utxo_hash: hash.to_vec(),
-                        found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
-                        spent_in_header: None,
-                        spent_timestamp: None,
-                    });
+                models::DeletedUtxoInfoV1 {
+                    utxo_hash: hash.to_vec(),
+                    found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
+                    spent_in_header: input.as_ref().map(|i| (i.spent_height, i.header_hash.to_vec())),
+                    spent_timestamp: input.as_ref().map(|i| i.spent_timestamp),
                 }
             } else {
-                utxos.push(models::DeletedUtxoInfoV1 {
+                models::DeletedUtxoInfoV1 {
                     utxo_hash: hash.to_vec(),
                     found_in_header: None,
                     spent_in_header: None,
                     spent_timestamp: None,
-                });
-            }
+                }
+            };
+            utxos.push(utxo_info);
         }
 
         Ok(models::GetUtxosDeletedInfoResponseV1 {
