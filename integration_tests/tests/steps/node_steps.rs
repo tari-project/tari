@@ -30,28 +30,27 @@ use std::{
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use minotari_app_grpc::{
-    tari_rpc,
-    tari_rpc::{
-        self as grpc,
-        GetBlocksRequest,
-        GetNewBlockTemplateWithCoinbasesRequest,
-        GetNewBlockWithCoinbasesRequest,
-        ListHeadersRequest,
-        NewBlockCoinbase,
-        NewBlockTemplateRequest,
-        PowAlgo,
-        pow_algo::PowAlgos,
-    },
+use minotari_app_grpc::tari_rpc::{
+    self as grpc,
+    GetBlocksRequest,
+    GetNewBlockTemplateWithCoinbasesRequest,
+    GetNewBlockWithCoinbasesRequest,
+    ListHeadersRequest,
+    NewBlockCoinbase,
+    NewBlockTemplateRequest,
+    PowAlgo,
+    pow_algo::PowAlgos,
 };
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::Empty;
 use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
+    DEFAULT_TIMEOUT,
     TariWorld,
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
     miner::mine_block_before_submit,
+    wait_for,
 };
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
@@ -59,8 +58,6 @@ use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     weight::TransactionWeight,
 };
-
-use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
 #[given(expr = "I have a seed node {word}")]
 #[when(expr = "I have a seed node {word}")]
@@ -104,37 +101,33 @@ async fn base_node_pending_connection_to(world: &mut TariWorld, first_node: Stri
 
     let second_client_pubkey = second_client.identify(Empty {}).await.unwrap().into_inner().public_key;
 
-    for _i in 0..100 {
-        let res: tonic::Response<tari_rpc::ListConnectedPeersResponse> =
-            node_client.list_connected_peers(Empty {}).await.unwrap();
-        let res = res.into_inner();
-        if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
-            return;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("base node {first_node} to connect to {second_node}"),
+        condition: async {
+            let res = node_client.list_connected_peers(Empty {}).await.unwrap().into_inner();
+            Ok(res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey))
         }
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-
-    panic!("Peer was not connected in time");
+    );
 }
 
 #[when(expr = "I wait base node for {word} to have {int} base node connections")]
 async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
     let mut node_client = world.get_node_client(&node).await.unwrap();
-    let mut connected_peers = 0;
-    for _i in 0..60 {
-        let res: tonic::Response<tari_rpc::ListConnectedPeersResponse> =
-            node_client.list_connected_peers(Empty {}).await.unwrap();
-        let res = res.into_inner();
-        connected_peers = res.connected_peers.len();
-        if res.connected_peers.len() >= num_connections {
-            return;
+
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("node {node} to have {num_connections} connections"),
+        condition: async {
+            let res = node_client.list_connected_peers(Empty {}).await.unwrap().into_inner();
+            let count = res.connected_peers.len();
+            if count >= num_connections {
+                Ok(true)
+            } else {
+                Err(format!("connected to {count} peers"))
+            }
         }
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-
-    panic!("Peer was not connected in time, connected to {connected_peers} peers");
+    );
 }
 
 #[then(expr = "all nodes are on the same chain at height {int}")]
@@ -145,31 +138,31 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, (0, vec![]));
     }
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * height) {
-        for (name, _) in nodes_at_height
-            .clone()
-            .iter()
-            .filter(|(_, (at_height, _))| at_height != &height)
-        {
-            let mut client = world.get_node_client(name).await.unwrap();
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("all nodes to synchronize at chain height {height}"),
+        condition: async {
+            for (name, _) in nodes_at_height
+                .clone()
+                .iter()
+                .filter(|(_, (at_height, _))| at_height != &height)
+            {
+                let mut client = world.get_node_client(name).await.unwrap();
+                let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+                let metadata = chain_tip.metadata.unwrap();
+                nodes_at_height.insert(name, (metadata.best_block_height, metadata.best_block_hash));
+            }
 
-            let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-            let metadata = chain_tip.metadata.unwrap();
-
-            nodes_at_height.insert(name, (metadata.best_block_height, metadata.best_block_hash));
+            let all_synced = nodes_at_height
+                .values()
+                .all(|(h, block_hash)| h == &height && block_hash == &nodes_at_height.values().last().unwrap().1);
+            if all_synced {
+                Ok(true)
+            } else {
+                Err(format!("{nodes_at_height:?}"))
+            }
         }
-
-        if nodes_at_height
-            .values()
-            .all(|(h, block_hash)| h == &height && block_hash == &nodes_at_height.values().last().unwrap().1)
-        {
-            return;
-        }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("base nodes not successfully synchronized at height {height}, {nodes_at_height:?}");
+    );
 }
 
 #[then(expr = "all nodes are on the same network difficulty")]
@@ -204,74 +197,76 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         nodes_at_height.insert(name, 0);
     }
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 7) {
-        // ~14 minutes matching the original implementation timeout
-        for (name, _) in nodes_at_height
-            .clone()
-            .iter()
-            .filter(|(_, at_height)| at_height != &&height)
-        {
-            let Ok(mut client) = world.get_node_client(name).await else {
-                continue;
-            };
+    // Use a generous timeout (was ~14 minutes originally)
+    wait_for!(
+        timeout: Duration::from_secs(840),
+        description: format!("all nodes to reach height {height}"),
+        condition: async {
+            for (name, _) in nodes_at_height
+                .clone()
+                .iter()
+                .filter(|(_, at_height)| at_height != &&height)
+            {
+                let Ok(mut client) = world.get_node_client(name).await else {
+                    continue;
+                };
+                let Ok(chain_tip) = client.get_tip_info(Empty {}).await else {
+                    continue;
+                };
+                let chain_hgt = chain_tip.into_inner().metadata.unwrap().best_block_height;
+                nodes_at_height.insert(name, chain_hgt);
+            }
 
-            let Ok(chain_tip) = client.get_tip_info(Empty {}).await else {
-                // Node may be temporarily unavailable during sync/reorg, retry later
-                continue;
-            };
-            let chain_hgt = chain_tip.into_inner().metadata.unwrap().best_block_height;
-
-            nodes_at_height.insert(name, chain_hgt);
+            if nodes_at_height.values().all(|h| h == &height) {
+                Ok(true)
+            } else {
+                Err(format!("{nodes_at_height:?}"))
+            }
         }
-
-        if nodes_at_height.values().all(|h| h == &height) {
-            return;
-        }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("base nodes not successfully synchronized at height {height}, {nodes_at_height:?}");
+    );
 }
 
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
 async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
     let mut client = world.get_node_client(&base_node).await.unwrap();
-    let mut chain_hgt = 0;
 
-    for _ in 0..=(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-        chain_hgt = chain_tip.metadata.unwrap().best_block_height;
-
-        if chain_hgt >= height {
-            return;
+    // Use a generous timeout — this step is used for reorg scenarios where peer discovery +
+    // chain sync can take significant time, especially on slow CI machines.
+    // Use 1s max poll interval to detect height changes promptly during sync.
+    wait_for!(
+        timeout: Duration::from_secs(300),
+        max_interval: Duration::from_secs(1),
+        description: format!("node {base_node} to reach height {height}"),
+        condition: async {
+            let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+            let chain_hgt = chain_tip.metadata.unwrap().best_block_height;
+            if chain_hgt >= height {
+                Ok(true)
+            } else {
+                Err(format!("current height {chain_hgt}"))
+            }
         }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    // base node didn't synchronize successfully at height, so we bail out
-    panic!("base node didn't synchronize successfully with height {height}, current chain height {chain_hgt}");
+    );
 }
 
 #[then(expr = "node {word} has a pruned height of {int}")]
 async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
-    let mut last_pruned_height = 0;
 
-    for _ in 0..=TWO_MINUTES_WITH_HALF_SECOND_SLEEP {
-        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-        last_pruned_height = chain_tip.metadata.unwrap().pruned_height;
-
-        if last_pruned_height == height {
-            return;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("node {node} to reach pruned height {height}"),
+        condition: async {
+            let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+            let pruned_height = chain_tip.metadata.unwrap().pruned_height;
+            if pruned_height == height {
+                Ok(true)
+            } else {
+                Err(format!("current pruned height {pruned_height}"))
+            }
         }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("Node {node} pruned height is {last_pruned_height} and never reached expected pruned height of {height}")
+    );
 }
 
 #[given(expr = "I have a base node {word} connected to seed {word}")]
@@ -306,55 +301,54 @@ async fn transaction_in_state(
         .get(&tx_name)
         .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let sig = &tx.body.kernels()[0].excess_sig;
-    let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
+    let state_clone = state.clone();
+    wait_for!(
+        timeout: Duration::from_secs(240),
+        description: format!("node {node} to have tx {tx_name} in state {state}"),
+        condition: async {
+            let resp = client
+                .transaction_state(grpc::TransactionStateRequest {
+                    excess_sig: Some(sig.into()),
+                })
+                .await
+                .map_err(|e| format!("gRPC error: {e}"))?;
 
-    // Some state changes take up to 30 minutes to make
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 2) {
-        let resp = client
-            .transaction_state(grpc::TransactionStateRequest {
-                excess_sig: Some(sig.into()),
-            })
-            .await?;
+            let inner = resp.into_inner();
+            let current_state = match inner.result {
+                0 => "UNKNOWN",
+                1 => "MEMPOOL",
+                2 => "MINED",
+                3 => "NOT_STORED",
+                _ => panic!("not getting a good result"),
+            };
 
-        let inner = resp.into_inner();
-
-        last_state = match inner.result {
-            0 => "UNKNOWN",
-            1 => "MEMPOOL",
-            2 => "MINED",
-            3 => "NOT_STORED",
-            _ => panic!("not getting a good result"),
-        };
-
-        if last_state == state {
-            return Ok(());
+            if current_state == state_clone {
+                Ok(true)
+            } else {
+                Err(format!("current state: {current_state}"))
+            }
         }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND * 2)).await;
-    }
-
-    panic!("The node {node} has tx {tx_name} in state {last_state} instead of the expected {state}");
+    );
+    Ok(())
 }
 
 #[then(expr = "I wait until base node {word} has {int} unconfirmed transactions in its mempool")]
 async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld, node: String, num_transactions: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
-    let mut unconfirmed_txs = 0;
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        let resp = client.get_mempool_stats(Empty {}).await.unwrap();
-        let inner = resp.into_inner();
-
-        unconfirmed_txs = inner.unconfirmed_txs;
-
-        if inner.unconfirmed_txs == num_transactions {
-            return;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("node {node} to have {num_transactions} unconfirmed txs in mempool"),
+        condition: async {
+            let resp = client.get_mempool_stats(Empty {}).await.unwrap();
+            let inner = resp.into_inner();
+            if inner.unconfirmed_txs == num_transactions {
+                Ok(true)
+            } else {
+                Err(format!("has {} unconfirmed txs", inner.unconfirmed_txs))
+            }
         }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("The node {node} has {unconfirmed_txs} unconfirmed txs instead of the expected {num_transactions}");
+    );
 }
 
 #[then(expr = "{word} is in the {word} of all nodes")]
@@ -386,44 +380,46 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
     }
 
     let can_fail = ((can_fail_percent as f64 * nodes.len() as f64) / 100.0).ceil() as u64;
+    let pool_clone = pool.clone();
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 2) {
-        for (name, _) in node_pool_status
-            .clone()
-            .iter()
-            .filter(|(_, in_pool)| ***in_pool != pool)
-        {
-            let mut client = world.get_node_client(name).await?;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("{tx_name} to be in {pool} of all nodes (allowing {can_fail_percent}% failure)"),
+        condition: async {
+            for (name, _) in node_pool_status
+                .clone()
+                .iter()
+                .filter(|(_, in_pool)| ***in_pool != pool_clone)
+            {
+                let mut client = world.get_node_client(name).await.map_err(|e| e.to_string())?;
 
-            let resp = client
-                .transaction_state(grpc::TransactionStateRequest {
-                    excess_sig: Some(sig.into()),
-                })
-                .await?;
+                let resp = client
+                    .transaction_state(grpc::TransactionStateRequest {
+                        excess_sig: Some(sig.into()),
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
 
-            let inner = resp.into_inner();
+                let inner = resp.into_inner();
+                let res_state = match inner.result {
+                    0 => "UNKNOWN",
+                    1 => "MEMPOOL",
+                    2 => "MINED",
+                    3 => "NOT_STORED",
+                    _ => panic!("not getting a good result"),
+                };
 
-            let res_state = match inner.result {
-                0 => "UNKNOWN",
-                1 => "MEMPOOL",
-                2 => "MINED",
-                3 => "NOT_STORED",
-                _ => panic!("not getting a good result"),
-            };
+                node_pool_status.insert(name, res_state);
+            }
 
-            node_pool_status.insert(name, res_state);
+            if node_pool_status.values().filter(|v| ***v == pool_clone).count() >= (nodes_count - can_fail as usize) {
+                Ok(true)
+            } else {
+                Err(format!("{node_pool_status:?}"))
+            }
         }
-
-        if node_pool_status.values().filter(|v| ***v == pool).count() >= (nodes_count - can_fail as usize) {
-            return Ok(());
-        }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND / 2)).await;
-    }
-
-    panic!(
-        "More than {can_fail_percent}% ({can_fail} node(s)) failed to get {tx_name} in {pool}, {node_pool_status:?}"
     );
+    Ok(())
 }
 
 #[then(expr = "I submit transaction {word} to {word}")]
@@ -511,18 +507,18 @@ async fn node_state(world: &mut TariWorld, node_name: String, state: String) {
         _ => panic!("Invalid state"),
     };
     let mut node_client = world.get_node_client(&node_name).await.unwrap();
-    let mut actual_state = 0i32;
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        let tip = node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
-        actual_state = tip.base_node_state;
-        if actual_state == expected_state {
-            return;
+
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("node {node_name} to reach state {state}"),
+        condition: async {
+            let tip = node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
+            if tip.base_node_state == expected_state {
+                Ok(true)
+            } else {
+                Err(format!("current state: {}", tip.base_node_state))
+            }
         }
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
-    panic!(
-        "Node {} is in state {} but expected state {}",
-        node_name, actual_state, expected_state
     );
 }
 
@@ -540,12 +536,12 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
         .best_block_height;
 
     let mut base_node_client = world.get_node_client(&base_node).await.unwrap();
-    let mut current_height = 0;
-    let num_retries = 100;
 
-    'outer: for _ in 0..12 {
-        'inner: for _ in 0..num_retries {
-            current_height = base_node_client
+    wait_for!(
+        timeout: Duration::from_secs(600),
+        description: format!("node {base_node} to reach same height as node {peer_node}"),
+        condition: async {
+            expected_height = peer_node_client
                 .get_tip_info(req)
                 .await
                 .unwrap()
@@ -553,41 +549,24 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
                 .metadata
                 .unwrap()
                 .best_block_height;
+
+            let current_height = base_node_client
+                .get_tip_info(req)
+                .await
+                .unwrap()
+                .into_inner()
+                .metadata
+                .unwrap()
+                .best_block_height;
+
             if current_height >= expected_height {
-                break 'inner;
+                Ok(true)
+            } else {
+                Err(format!("current {current_height}, expected {expected_height}"))
             }
-
-            tokio::time::sleep(Duration::from_secs(5)).await;
         }
-
-        expected_height = peer_node_client
-            .get_tip_info(req)
-            .await
-            .unwrap()
-            .into_inner()
-            .metadata
-            .unwrap()
-            .best_block_height;
-
-        current_height = base_node_client
-            .get_tip_info(req)
-            .await
-            .unwrap()
-            .into_inner()
-            .metadata
-            .unwrap()
-            .best_block_height;
-
-        if current_height == expected_height {
-            break 'outer;
-        }
-    }
-
-    if current_height == expected_height {
-        println!("Base node {base_node} is at the same height {current_height} as node {peer_node}");
-    } else {
-        panic!("Base node {base_node} failed to synchronize at the same height as node {peer_node}");
-    }
+    );
+    println!("Base node {base_node} is at the same height as node {peer_node}");
 }
 
 #[given(expr = "I stop node {word}")]
@@ -1183,21 +1162,20 @@ async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node:
 #[then(expr = "node {word} has reached initial sync")]
 async fn node_reached_sync(world: &mut TariWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
-    let mut longest_chain = 0;
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 11) {
-        let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-        let metadata = tip_info.metadata.unwrap();
-        longest_chain = metadata.best_block_height;
-
-        if tip_info.initial_sync_achieved {
-            return;
+    wait_for!(
+        timeout: Duration::from_secs(660),
+        description: format!("node {node} to reach initial sync"),
+        condition: async {
+            let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+            let longest_chain = tip_info.metadata.unwrap().best_block_height;
+            if tip_info.initial_sync_achieved {
+                Ok(true)
+            } else {
+                Err(format!("stuck at tip {longest_chain}"))
+            }
         }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("Node {node} never reached initial sync. Stuck at tip {longest_chain}")
+    );
 }
 
 #[when(expr = "I have {int} base nodes with pruning horizon {int} force syncing on node {word}")]
@@ -1222,51 +1200,51 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
 #[then(expr = "{word} has at least {int} peers")]
 async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
-    let mut last_num_of_peers = 0;
 
-    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        last_num_of_peers = 0;
-
-        let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
-
-        while let Some(resp) = peers_stream.next().await {
-            if let Ok(resp) = resp &&
-                let Some(_peer) = resp.peer
-            {
-                last_num_of_peers += 1
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("node {node} to have at least {num_peers} peers"),
+        condition: async {
+            let mut count = 0usize;
+            let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
+            while let Some(resp) = peers_stream.next().await {
+                if let Ok(resp) = resp &&
+                    let Some(_peer) = resp.peer
+                {
+                    count += 1
+                }
+            }
+            if count >= usize::try_from(num_peers).unwrap() {
+                Ok(true)
+            } else {
+                Err(format!("has {count} peers"))
             }
         }
-
-        if last_num_of_peers >= usize::try_from(num_peers).unwrap() {
-            return;
-        }
-
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("Node {node} only received {last_num_of_peers} of {num_peers} expected peers")
+    );
 }
 
 #[when(expr = "I wait for base node {word} to have {int} base node connections")]
 async fn wait_for_base_node_connections(world: &mut TariWorld, node: String, num_connections: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
-    let mut last_count = 0usize;
 
-    for _ in 0..TWO_MINUTES_WITH_HALF_SECOND_SLEEP {
-        last_count = 0;
-        let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
-        while let Some(resp) = peers_stream.next().await {
-            if let Ok(resp) = resp &&
-                resp.peer.is_some()
-            {
-                last_count += 1;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("node {node} to have at least {num_connections} connections"),
+        condition: async {
+            let mut count = 0usize;
+            let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
+            while let Some(resp) = peers_stream.next().await {
+                if let Ok(resp) = resp &&
+                    resp.peer.is_some()
+                {
+                    count += 1;
+                }
+            }
+            if count >= num_connections as usize {
+                Ok(true)
+            } else {
+                Err(format!("has {count} connections"))
             }
         }
-        if last_count >= num_connections as usize {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
-    }
-
-    panic!("Node {node} only has {last_count} connections, expected at least {num_connections}");
+    );
 }

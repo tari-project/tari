@@ -40,7 +40,7 @@ pub struct MergeMiningProxyProcess {
     pub name: String,
     pub base_node_name: String,
     pub wallet_name: String,
-    pub port: u64,
+    pub port: u16,
     pub origin_submission: bool,
     id: u64,
 }
@@ -69,9 +69,6 @@ pub async fn register_merge_mining_proxy_process(
 
 impl MergeMiningProxyProcess {
     pub async fn start(&self, world: &mut TariWorld) {
-        unsafe {
-            std::env::set_var("TARI_NETWORK", "localnet");
-        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
 
         let temp_dir = tempdir().unwrap();

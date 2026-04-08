@@ -94,9 +94,6 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
-        unsafe {
-            std::env::set_var("TARI_NETWORK", "localnet");
-        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
         let pow_algo = match self.pow_algo {
             PowAlgorithm::RandomXM => {

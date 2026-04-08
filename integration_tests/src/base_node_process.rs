@@ -21,7 +21,6 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryInto,
     fmt::{Debug, Formatter},
     net::TcpListener,
     path::PathBuf,
@@ -47,14 +46,14 @@ use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{TariWorld, get_peer_addresses, get_port, wait_for_service};
+use crate::{TariWorld, get_peer_addresses, wait_for_service};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
     pub name: String,
-    pub port: u64,
-    pub grpc_port: u64,
-    pub http_port: u64,
+    pub port: u16,
+    pub grpc_port: u16,
+    pub http_port: u16,
     pub identity: NodeIdentity,
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
@@ -95,14 +94,11 @@ pub async fn spawn_base_node_with_config(
     peers: Vec<String>,
     mut base_node_config: BaseNodeConfig,
 ) {
-    unsafe {
-        std::env::set_var("TARI_NETWORK", "localnet");
-    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
-    let port: u64;
-    let grpc_port: u64;
-    let http_port: u64;
+    let port: u16;
+    let grpc_port: u16;
+    let http_port: u16;
     let temp_dir_path: PathBuf;
     let base_node_identity: NodeIdentity;
 
@@ -115,10 +111,18 @@ pub async fn spawn_base_node_with_config(
 
         base_node_identity = node_ps.identity.clone();
     } else {
-        // each spawned base node will use different ports
-        port = get_port(world, 18000..18499).unwrap();
-        grpc_port = get_port(world, 18500..18999).unwrap();
-        http_port = get_port(world, 19000..19499).unwrap();
+        // Allocate ports from the global pool (pre-scanned at startup, much faster than
+        // random scanning per node)
+        let ports = crate::port_pool::global_port_pool()
+            .allocate_base_node_ports()
+            .expect("Port pool exhausted — too many concurrent base nodes");
+        port = ports.p2p;
+        grpc_port = ports.grpc;
+        http_port = ports.http;
+        // Track in world for backwards compatibility
+        world.assigned_ports.insert(port, port);
+        world.assigned_ports.insert(grpc_port, grpc_port);
+        world.assigned_ports.insert(http_port, http_port);
         // create a new temporary directory
         temp_dir_path = world
             .current_base_dir
@@ -174,7 +178,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{grpc_port}").parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
-        base_node_config.base_node.http_wallet_query_service.port = http_port.try_into().unwrap();
+        base_node_config.base_node.http_wallet_query_service.port = http_port;
         base_node_config.base_node.http_wallet_query_service.listen_ip = Some("127.0.0.1".to_string().parse().unwrap());
         base_node_config.base_node.http_wallet_query_service.external_address =
             Some(format!("http://127.0.0.1:{http_port}").parse().unwrap());
@@ -236,11 +240,13 @@ pub async fn spawn_base_node_with_config(
             .blocks_behind_before_considered_lagging = 1;
         base_node_config.base_node.state_machine.time_before_considered_lagging = Duration::from_secs(3);
         base_node_config.base_node.state_machine.initial_sync_peer_count = 1;
-        base_node_config
-            .base_node
-            .state_machine
-            .blockchain_sync_config
-            .num_initial_sync_rounds_seed_bootstrap = 1;
+
+        // Tune blockchain sync for faster test execution
+        let sync_cfg = &mut base_node_config.base_node.state_machine.blockchain_sync_config;
+        sync_cfg.num_initial_sync_rounds_seed_bootstrap = 1;
+        sync_cfg.initial_max_sync_latency = Duration::from_secs(60); // prod: 240s — tests use local TCP, not tor
+        sync_cfg.rpc_deadline = Duration::from_secs(60); // prod: 240s
+        sync_cfg.short_ban_period = Duration::from_secs(30); // prod: 240s — faster retry after transient failures
 
         println!(
             "Initializing base node: name={name_cloned}; port={port}; grpc_port={grpc_port}; \
@@ -266,33 +272,33 @@ pub async fn spawn_base_node_with_config(
 
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
-        Ok(
-            BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port))
-                .await?
-                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
-        )
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://127.0.0.1:{}", self.grpc_port))?
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30));
+        Ok(BaseNodeGrpcClient::new(endpoint.connect().await?)
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE))
     }
 
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.grpc_port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         loop {
             // lets wait till the http port is cleared
-            if TcpListener::bind(("127.0.0.1", self.http_port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.http_port)).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
