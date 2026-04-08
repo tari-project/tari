@@ -59,7 +59,10 @@ pub async fn wait_for_tx_status(
         let mut stream = response.into_inner();
 
         // First check current state in case it already matches
-        if check_tx_status_matches(client, tx_id, target_status).await.unwrap_or(false) {
+        if check_tx_status_matches(client, tx_id, target_status)
+            .await
+            .unwrap_or(false)
+        {
             return Ok(());
         }
 
@@ -122,11 +125,10 @@ pub async fn wait_for_tx_status(
 
         if tokio::time::Instant::now() >= deadline {
             let current = get_current_tx_status(client, tx_id).await;
-            let extra = last_error
-                .map(|e| format!(", last error: {e}"))
-                .unwrap_or_default();
+            let extra = last_error.map(|e| format!(", last error: {e}")).unwrap_or_default();
             return Err(format!(
-                "Timed out after {:.1}s waiting for tx {tx_id} to reach status '{target_status}' (current: {current}{extra})",
+                "Timed out after {:.1}s waiting for tx {tx_id} to reach status '{target_status}' (current: \
+                 {current}{extra})",
                 timeout.as_secs_f64()
             ));
         }
