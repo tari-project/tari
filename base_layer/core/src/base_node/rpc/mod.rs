@@ -89,6 +89,11 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
         request: models::GetUtxosDeletedInfoRequest,
     ) -> Result<models::GetUtxosDeletedInfoResponse, Self::Error>;
 
+    async fn get_utxos_deleted_info_v1(
+        &self,
+        request: models::GetUtxosDeletedInfoRequest,
+    ) -> Result<models::GetUtxosDeletedInfoResponseV1, Self::Error>;
+
     async fn generate_kernel_merkle_proof(
         &self,
         excess_sig: CompressedSignature,

@@ -17,7 +17,11 @@ use tari_core::{
     base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
 };
-use tari_transaction_components::rpc::models::{GetUtxosDeletedInfoRequest, GetUtxosDeletedInfoResponse};
+use tari_transaction_components::rpc::models::{
+    GetUtxosDeletedInfoRequest,
+    GetUtxosDeletedInfoResponse,
+    GetUtxosDeletedInfoResponseV1,
+};
 use tari_utilities::hex::Hex;
 use tonic::service::AxumBody;
 
@@ -42,6 +46,8 @@ pub struct GetUtxosDeletedInfoParams {
     pub hashes: Vec<Vec<u8>>,
     #[serde(deserialize_with = "from_hex")]
     pub must_include_header: Vec<u8>,
+    #[serde(default)]
+    pub version: u8,
 }
 
 impl From<GetUtxosDeletedInfoParams> for GetUtxosDeletedInfoRequest {
@@ -59,7 +65,8 @@ impl From<GetUtxosDeletedInfoParams> for GetUtxosDeletedInfoRequest {
     params(GetUtxosDeletedInfoParams),
     path = "/get_utxos_deleted_info",
     responses(
-        (status = 200, description = "UTXOs Deleted Info", body = GetUtxosDeletedInfoResponse),
+        (status = 200, description = "UTXOs Deleted Info (v0)", body = GetUtxosDeletedInfoResponse),
+        (status = 200, description = "UTXOs Deleted Info (v1, includes spent_timestamp)", body = GetUtxosDeletedInfoResponseV1),
     ),
 )]
 pub async fn handle<B: BlockchainBackend + 'static>(
@@ -68,15 +75,25 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
 ) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received get_utxos_deleted_info request: {params}");
+    let version = params.version;
     let request = params.into();
 
-    let response = query_service
-        .get_utxos_deleted_info(request)
-        .await
-        .map_err(error_handler_with_message)?;
-
-    let body = Json(response);
-    let mut response = body.into_response();
+    let mut response = match version {
+        0 => {
+            let result = query_service
+                .get_utxos_deleted_info(request)
+                .await
+                .map_err(error_handler_with_message)?;
+            Json(result).into_response()
+        },
+        _ => {
+            let result = query_service
+                .get_utxos_deleted_info_v1(request)
+                .await
+                .map_err(error_handler_with_message)?;
+            Json(result).into_response()
+        },
+    };
     apply_cache_control(response.headers_mut(), &cache_cfg, RouteKey::GetUtxosDeletedInfo, 0, 0);
     Ok(response)
 }
@@ -85,14 +102,15 @@ impl Display for GetUtxosDeletedInfoParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "GetUtxosDeletedInfoParams {{ must_include_header: {}, hashes: {:?} }}",
+            "GetUtxosDeletedInfoParams {{ must_include_header: {}, hashes: {:?}, version: {} }}",
             HashOutput::try_from(self.must_include_header.as_slice())
                 .unwrap_or_default()
                 .to_hex(),
             self.hashes
                 .iter()
                 .map(|h| HashOutput::try_from(h.as_slice()).unwrap_or_default().to_hex())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
+            self.version
         )
     }
 }
