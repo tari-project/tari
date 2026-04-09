@@ -99,6 +99,9 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
+    // Used for offline signing integration test — stores prepared and signed transaction JSON between steps.
+    pub offline_signing_prepared: Option<String>,
+    pub offline_signing_signed: Option<String>,
     pub key_manager: KeyManager,
     // This will be used for all one-sided coinbase payments
     pub wallet_private_key: PrivateKey,
@@ -172,6 +175,8 @@ impl TariWorld {
             errors: Default::default(),
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
+            offline_signing_prepared: None,
+            offline_signing_signed: None,
             key_manager: KeyManager::new_random().unwrap(),
             wallet_private_key,
             default_payment_address,
