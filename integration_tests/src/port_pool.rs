@@ -42,6 +42,8 @@ struct PortPoolInner {
     wallet_grpc_ports: VecDeque<u16>,
     /// Pre-validated available ports for wallet HTTP (20000-20499)
     wallet_http_ports: VecDeque<u16>,
+    /// Pre-validated available ports for merge mining proxy (20500-20999)
+    merge_mining_proxy_ports: VecDeque<u16>,
 }
 
 /// A set of ports allocated for a single base node.
@@ -70,14 +72,17 @@ impl PortPool {
         let http_ports = scan_available_ports(19000, 19499, capacity);
         let wallet_grpc_ports = scan_available_ports(19500, 19999, capacity);
         let wallet_http_ports = scan_available_ports(20000, 20499, capacity);
+        let merge_mining_proxy_ports = scan_available_ports(20500, 20999, capacity);
 
         println!(
-            "PortPool initialized: {} p2p, {} grpc, {} http, {} wallet_grpc, {} wallet_http ports available",
+            "PortPool initialized: {} p2p, {} grpc, {} http, {} wallet_grpc, {} wallet_http, {} merge_mining_proxy \
+             ports available",
             p2p_ports.len(),
             grpc_ports.len(),
             http_ports.len(),
             wallet_grpc_ports.len(),
             wallet_http_ports.len(),
+            merge_mining_proxy_ports.len(),
         );
 
         Self {
@@ -87,6 +92,7 @@ impl PortPool {
                 http_ports,
                 wallet_grpc_ports,
                 wallet_http_ports,
+                merge_mining_proxy_ports,
             }),
         }
     }
@@ -123,6 +129,18 @@ impl PortPool {
         let mut inner = self.pools.lock().unwrap();
         inner.wallet_grpc_ports.push_back(ports.grpc);
         inner.wallet_http_ports.push_back(ports.http);
+    }
+
+    /// Allocate a port for a merge mining proxy.
+    pub fn allocate_merge_mining_proxy_port(&self) -> Option<u16> {
+        let mut inner = self.pools.lock().unwrap();
+        inner.merge_mining_proxy_ports.pop_front()
+    }
+
+    /// Return a merge mining proxy port to the pool.
+    pub fn return_merge_mining_proxy_port(&self, port: u16) {
+        let mut inner = self.pools.lock().unwrap();
+        inner.merge_mining_proxy_ports.push_back(port);
     }
 }
 
