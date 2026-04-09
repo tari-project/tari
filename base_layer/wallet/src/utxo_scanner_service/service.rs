@@ -44,7 +44,7 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-// Cache 1 days worth of headers.
+// Keep all blocks within the most recent window (approximately 1 day of blocks).
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
 pub struct UtxoScannerService<

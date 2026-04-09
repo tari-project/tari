@@ -63,6 +63,11 @@ pub trait WalletBackend: Send + Sync + Clone {
         exclude_recovered: bool,
     ) -> Result<(), WalletStorageError>;
 
+    /// Apply a sparse storage schedule to scanned blocks, keeping all recent blocks
+    /// and progressively sparser checkpoints for older blocks. Blocks containing
+    /// recovered outputs are always preserved.
+    fn apply_sparse_scanned_blocks_schedule(&self, tip_height: u64) -> Result<(), WalletStorageError>;
+
     /// Change the passphrase used to encrypt the database
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
 
@@ -334,6 +339,11 @@ where T: WalletBackend + 'static
         exclude_recovered: bool,
     ) -> Result<(), WalletStorageError> {
         self.db.clear_scanned_blocks_before_height(height, exclude_recovered)?;
+        Ok(())
+    }
+
+    pub fn apply_sparse_scanned_blocks_schedule(&self, tip_height: u64) -> Result<(), WalletStorageError> {
+        self.db.apply_sparse_scanned_blocks_schedule(tip_height)?;
         Ok(())
     }
 

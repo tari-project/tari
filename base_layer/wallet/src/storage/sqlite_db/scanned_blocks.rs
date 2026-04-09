@@ -107,6 +107,42 @@ impl ScannedBlockSql {
         query.execute(conn)?;
         Ok(())
     }
+
+    /// Apply a sparse storage schedule to scanned blocks, keeping:
+    /// - All blocks within `tip - 720` to `tip`
+    /// - Every 100th block from `tip - 10,000` to `tip - 720`
+    /// - Every 1,000th block from `tip - 100,000` to `tip - 10,000`
+    /// - Every 5,000th block from genesis to `tip - 100,000`
+    /// Blocks containing recovered outputs (num_outputs > 0) are always preserved.
+    pub fn apply_sparse_schedule(tip_height: u64, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
+        let blocks = Self::index(conn)?;
+        for block in blocks {
+            let height = block.height as u64;
+            if let Some(outputs) = block.num_outputs {
+                if outputs > 0 {
+                    continue;
+                }
+            }
+            if !Self::should_keep_at_height(height, tip_height) {
+                diesel::delete(scanned_blocks::table.filter(scanned_blocks::height.eq(block.height))).execute(conn)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Determine whether a block at `height` should be kept given the current `tip`.
+    fn should_keep_at_height(height: u64, tip: u64) -> bool {
+        let depth = tip.saturating_sub(height);
+        if depth <= 720 {
+            true
+        } else if depth <= 10_000 {
+            height % 100 == 0
+        } else if depth <= 100_000 {
+            height % 1_000 == 0
+        } else {
+            height % 5_000 == 0
+        }
+    }
 }
 
 impl From<ScannedBlock> for ScannedBlockSql {
