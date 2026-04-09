@@ -925,7 +925,7 @@ impl ConsensusConstants {
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
-            vn_epoch_length: 10,
+            vn_epoch_length: 60,
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
