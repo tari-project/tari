@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.5](https://github.com/tari-project/tari/compare/v5.3.0-pre.4...v5.3.0-pre.5) (2026-04-09)
+
+
+### Features
+
+* add background database pruning for large prune operations ([#7739](https://github.com/tari-project/tari/issues/7739)) ([0e5f9ca](https://github.com/tari-project/tari/commit/0e5f9ca0d29adf1b13dc15361d91a950065e1288))
+* payref tracking ([#7734](https://github.com/tari-project/tari/issues/7734)) ([f247880](https://github.com/tari-project/tari/commit/f247880339a520bd68c623cc1f67a27e989a5218))
+* update the api for deleted block info ([#7735](https://github.com/tari-project/tari/issues/7735)) ([5eeca3a](https://github.com/tari-project/tari/commit/5eeca3a4ca1ec440a6547fa130d95d681f8f9b20))
+
 ## [5.3.0-pre.4](https://github.com/tari-project/tari/compare/v5.3.0-pre.3...v5.3.0-pre.4) (2026-03-24)
 
 
