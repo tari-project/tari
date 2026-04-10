@@ -82,8 +82,6 @@ struct TestChain {
     /// Canonical chain blocks in height order, starting from genesis (index 0).
     /// After the reorg this is: [genesis, B1..B5, F6'..F15'].
     canonical_blocks: Vec<Arc<Block>>,
-    /// Coinbase wallet outputs for canonical chain blocks (index 0 = genesis coinbase, etc.).
-    canonical_outputs: Vec<WalletOutput>,
     /// The original main-chain blocks that were removed during the reorg (B6..B10).
     reorged_blocks: Vec<Arc<Block>>,
 }
@@ -159,7 +157,7 @@ fn build_test_chain() -> TestChain {
 
     let genesis = Arc::new(db.fetch_block(0, true).unwrap().into_block());
 
-    let (main_blocks, main_outputs) = add_chained_blocks(10, &db, &key_manager);
+    let (main_blocks, _main_outputs) = add_chained_blocks(10, &db, &key_manager);
 
     // Collect blocks 1..5 (indices 0..4 in main_blocks) which will stay in the canonical chain
     // after the reorg, and blocks 6..10 (indices 5..9) which will be reorged out.
@@ -178,7 +176,7 @@ fn build_test_chain() -> TestChain {
     }
 
     // Create 10 fork blocks on top of block 5.
-    let (fork_blocks, fork_outputs) = add_chained_blocks(10, &fork_db, &fork_key_manager);
+    let (fork_blocks, _fork_outputs) = add_chained_blocks(10, &fork_db, &fork_key_manager);
 
     // --- Trigger the reorg by adding fork blocks to the main database --------------------------
     // Fork blocks 1-5 extend from block 5 (which is already in the main db). Because the fork
@@ -204,16 +202,9 @@ fn build_test_chain() -> TestChain {
     canonical_blocks.extend(shared_blocks);
     canonical_blocks.extend(fork_blocks.clone());
 
-    // Canonical outputs: we don't have the real genesis WalletOutput, so we store main_outputs
-    // for the shared blocks and fork_outputs for the fork blocks.
-    let mut canonical_outputs = Vec::new();
-    canonical_outputs.extend(main_outputs[..5].to_vec());
-    canonical_outputs.extend(fork_outputs);
-
     TestChain {
         db,
         canonical_blocks,
-        canonical_outputs,
         reorged_blocks,
     }
 }
