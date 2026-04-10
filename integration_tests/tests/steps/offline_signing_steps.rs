@@ -20,25 +20,17 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc as grpc;
-use grpc::PaymentRecipient;
-use tari_common::configuration::Network;
-use tari_common_types::types::PrivateKey;
-use tari_integration_tests::{TariWorld, wallet_process::create_wallet_client};
-use tari_transaction_components::{
-    consensus::ConsensusManager,
-    key_manager::{
-        KeyManager,
-        wallet_types::{SpendWallet, WalletType},
-    },
-    offline_signing::{
-        models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult, TransactionResult},
-        sign_locked_transaction,
-    },
-    transaction_components::memo_field::{MemoField, TxType},
+use grpc::{PaymentRecipient, payment_recipient::PaymentType};
+use minotari_console_wallet::{CliCommands, SignOneSidedTransactionArgs};
+use tari_integration_tests::{
+    TariWorld,
+    wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
-use tari_utilities::hex::Hex;
+use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 
 #[when(expr = "I prepare an offline one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn prepare_offline_transaction(
@@ -61,7 +53,7 @@ async fn prepare_offline_transaction(
         address: receiver_wallet_address,
         amount,
         fee_per_gram: fee,
-        payment_type: 2, // ONE_SIDED_TO_STEALTH_ADDRESS
+        payment_type: PaymentType::OneSidedToStealthAddress as i32,
         raw_payment_id: payment_id.to_bytes(),
         user_payment_id: None,
     };
@@ -87,60 +79,77 @@ async fn prepare_offline_transaction(
     world.offline_signing_prepared = Some(response.result);
 }
 
-#[then(expr = "I sign the prepared transaction offline using keys {word}")]
-async fn sign_prepared_transaction_offline(world: &mut TariWorld, keys_name: String) {
+#[then(expr = "I sign the prepared transaction using wallet {word}")]
+async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_name: String) {
     let prepared_json = world
         .offline_signing_prepared
         .as_ref()
         .expect("No prepared transaction found — run the prepare step first")
         .clone();
 
-    // Read the exported keys file
-    let keys_file = world
-        .view_and_spend_keys
-        .get(&keys_name)
-        .unwrap_or_else(|| panic!("Keys '{}' not found — export them first", keys_name));
+    // Materialise the prepared transaction as a file under the signing
+    // wallet's temp dir. The console wallet CLI's `SignOneSidedTransaction`
+    // subcommand reads the request from `input_file` and writes the signed
+    // result to `output_file`.
+    let (input_file, output_file, base_node_name, peer_seeds) = {
+        let wallet_ps = world
+            .wallets
+            .get_mut(&wallet_name)
+            .unwrap_or_else(|| panic!("Wallet '{wallet_name}' not found"));
+        let input = wallet_ps.temp_dir_path.join("offline_signing_input.json");
+        let output = wallet_ps.temp_dir_path.join("offline_signing_output.json");
+        // Ensure any stale output from a previous run doesn't cause a false-
+        // positive read below.
+        let _ = std::fs::remove_file(&output);
+        std::fs::write(&input, &prepared_json).expect("Failed to write prepared transaction file");
 
-    let keys_content = std::fs::read_to_string(keys_file)
-        .unwrap_or_else(|e| panic!("Failed to read keys file: {e}"));
-    let keys_json: serde_json::Value =
-        serde_json::from_str(&keys_content).unwrap_or_else(|e| panic!("Failed to parse keys JSON: {e}"));
+        wallet_ps.kill();
+        (
+            input,
+            output,
+            wallet_ps.base_node_name.clone(),
+            wallet_ps.peer_seeds.clone(),
+        )
+    };
 
-    let spend_key_hex = keys_json["spend_key"]
-        .as_str()
-        .expect("Missing spend_key in keys file");
-    let view_key_hex = keys_json["view_key"]
-        .as_str()
-        .expect("Missing view_key in keys file");
+    // Give the killed wallet a moment to fully release its db/port lock.
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let spend_key =
-        PrivateKey::from_hex(spend_key_hex).expect("Invalid spend_key hex");
-    let view_key =
-        PrivateKey::from_hex(view_key_hex).expect("Invalid view_key hex");
+    // Respawn the spend wallet with `SignOneSidedTransaction` as the boot-time
+    // command so the CLI signs the prepared transaction using the wallet's
+    // own in-database spend key — exercising the full offline signing cycle
+    // through the real wallet binary rather than reconstructing a key manager
+    // from file-exported keys in-process.
+    let mut cli = get_default_cli();
+    cli.command2 = Some(CliCommands::SignOneSidedTransaction(SignOneSidedTransactionArgs {
+        input_file: input_file.clone(),
+        output_file: output_file.clone(),
+    }));
 
-    // Create an offline key manager with the full spend wallet
-    let spend_wallet = SpendWallet::new(spend_key, view_key, None);
-    let wallet_type = WalletType::SpendWallet(spend_wallet);
-    let key_manager =
-        KeyManager::new(wallet_type).expect("Failed to create key manager for offline signing");
+    spawn_wallet(world, wallet_name.clone(), base_node_name, peer_seeds, None, Some(cli)).await;
 
-    // Parse the prepared transaction
-    let request = PrepareOneSidedTransactionForSigningResult::from_json(&prepared_json)
-        .expect("Failed to parse prepared transaction JSON");
+    // Poll for the signed output file to appear. The CLI writes it once the
+    // command has finished, which happens after wallet startup + unlock.
+    let poll_interval = Duration::from_millis(500);
+    let timeout = Duration::from_secs(60);
+    let mut waited = Duration::ZERO;
+    while waited < timeout && !output_file.exists() {
+        tokio::time::sleep(poll_interval).await;
+        waited += poll_interval;
+    }
+    assert!(
+        output_file.exists(),
+        "Signed transaction file never appeared at {output_file:?} within {timeout:?}"
+    );
 
-    // Get consensus constants for LocalNet
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
-    let consensus_constants = consensus_manager.consensus_constants(0).clone();
+    let signed_json = std::fs::read_to_string(&output_file)
+        .unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
+    assert!(!signed_json.is_empty(), "Signed transaction file is empty");
 
-    // Sign the transaction offline
-    let signed_result = sign_locked_transaction(&key_manager, consensus_constants, Network::LocalNet, request)
-        .expect("Offline signing failed");
-
-    let signed_json = signed_result
-        .to_json()
-        .expect("Failed to serialize signed transaction");
-
-    println!("Transaction signed offline: {} bytes of JSON", signed_json.len());
+    println!(
+        "Transaction signed via wallet CLI: {} bytes of JSON",
+        signed_json.len()
+    );
     world.offline_signing_signed = Some(signed_json);
 }
 

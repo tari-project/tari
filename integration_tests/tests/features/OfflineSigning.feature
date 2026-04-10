@@ -23,8 +23,8 @@ Feature: Offline One-Sided Transaction Signing
     When I wait for wallet VIEW_WALLET to have at least 1002000 uT
     # Step 1: View-only wallet prepares transaction for offline signing via gRPC
     When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20
-    # Step 2: Sign the prepared transaction offline using the exported spend key
-    Then I sign the prepared transaction offline using keys SENDER_KEYS
+    # Step 2: Sign the prepared transaction using the full spend wallet via its CLI
+    Then I sign the prepared transaction using wallet WALLET_SENDER
     # Step 3: Broadcast the signed transaction back via the view-only wallet
     When I broadcast the signed transaction via wallet VIEW_WALLET
     # Mine blocks to confirm

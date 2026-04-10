@@ -44,6 +44,7 @@ pub use cli::{
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,
+    SignOneSidedTransactionArgs,
     WhoisArgs,
 };
 use init::{WalletBoot, change_password, init_wallet, start_wallet, tari_splash_screen};

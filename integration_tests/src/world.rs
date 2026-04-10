@@ -134,6 +134,8 @@ impl Debug for TariWorld {
             .field("errors", &self.errors)
             .field("last_imported_tx_ids", &self.last_imported_tx_ids)
             .field("last_merge_miner_response", &self.last_merge_miner_response)
+            .field("offline_signing_prepared", &self.offline_signing_prepared)
+            .field("offline_signing_signed", &self.offline_signing_signed)
             .finish()
     }
 }
