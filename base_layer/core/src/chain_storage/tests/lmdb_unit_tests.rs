@@ -49,16 +49,15 @@
 #![allow(clippy::indexing_slicing)]
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     types::{CompressedSignature, FixedHash},
 };
-use tari_node_components::blocks::{Block, BlockHeader};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     key_manager::{KeyManager, TariKeyId},
-    transaction_components::{Transaction, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
+    transaction_components::{Transaction, WalletOutput},
 };
 
 use crate::{
@@ -70,43 +69,6 @@ use crate::{
         default_coinbase_entities,
     },
 };
-
-// ---------------------------------------------------------------------------
-// JSON serialization types
-// ---------------------------------------------------------------------------
-
-/// Holds all the serializable data about the test chain, making it possible to snapshot the chain
-/// state to a JSON file for reproducibility and offline inspection.
-#[derive(Debug, Serialize, Deserialize)]
-struct TestChainSnapshot {
-    /// Blocks on the canonical chain after the reorg (genesis through fork tip).
-    canonical_blocks: Vec<SerializableBlock>,
-    /// The original main-chain blocks that were removed by the reorg (B6..B10).
-    reorged_blocks: Vec<SerializableBlock>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SerializableBlock {
-    height: u64,
-    hash: FixedHash,
-    header: BlockHeader,
-    outputs: Vec<TransactionOutput>,
-    inputs: Vec<TransactionInput>,
-    kernels: Vec<TransactionKernel>,
-}
-
-impl SerializableBlock {
-    fn from_block(block: &Block) -> Self {
-        Self {
-            height: block.header.height,
-            hash: block.hash(),
-            header: block.header.clone(),
-            outputs: block.body.outputs().clone(),
-            inputs: block.body.inputs().clone(),
-            kernels: block.body.kernels().clone(),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Test chain builder helpers
@@ -130,6 +92,7 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
@@ -255,16 +218,6 @@ fn build_test_chain() -> TestChain {
     }
 }
 
-/// Serialize the test chain data to a JSON string. This can be written to a file for
-/// debugging or snapshot testing.
-fn serialize_chain_to_json(chain: &TestChain) -> String {
-    let snapshot = TestChainSnapshot {
-        canonical_blocks: chain.canonical_blocks.iter().map(|b| SerializableBlock::from_block(b)).collect(),
-        reorged_blocks: chain.reorged_blocks.iter().map(|b| SerializableBlock::from_block(b)).collect(),
-    };
-    serde_json::to_string_pretty(&snapshot).expect("Failed to serialize chain snapshot to JSON")
-}
-
 // ---------------------------------------------------------------------------
 // Write / chain-construction tests
 // ---------------------------------------------------------------------------
@@ -272,55 +225,98 @@ fn serialize_chain_to_json(chain: &TestChain) -> String {
 mod write_tests {
     use super::*;
 
+    /// Verify that, after the reorg, the on-disk LMDB state matches the expected topology:
+    ///   * the canonical chain is the shared prefix + fork blocks (heights 0..=15),
+    ///   * each canonical block at height `h` is retrievable by height and by hash,
+    ///   * the old main-chain blocks (B6..B10) are no longer on the canonical chain,
+    ///     and they can be found in the orphan store instead.
+    ///
+    /// All assertions query the database directly so that they exercise lmdb rather than
+    /// any in-memory bookkeeping maintained by the test harness.
     #[test]
     fn test_chain_builds_and_reorgs_correctly() {
         let chain = build_test_chain();
 
-        // The canonical chain should have 16 blocks: genesis + 5 shared + 10 fork.
-        assert_eq!(chain.canonical_blocks.len(), 16);
-
-        // The reorged blocks should be the 5 original blocks that were replaced.
-        assert_eq!(chain.reorged_blocks.len(), 5);
-
-        // Verify heights of canonical blocks.
-        for (i, block) in chain.canonical_blocks.iter().enumerate() {
-            assert_eq!(
-                block.header.height, i as u64,
-                "Canonical block at index {} should have height {}",
-                i, i
-            );
-        }
-
-        // Verify reorged blocks had heights 6..10.
-        for (i, block) in chain.reorged_blocks.iter().enumerate() {
-            assert_eq!(
-                block.header.height,
-                (i + 6) as u64,
-                "Reorged block at index {} should have height {}",
-                i,
-                i + 6
-            );
-        }
-
-        // Verify the tip header matches the last canonical block.
+        // Tip must be at height 15 per the post-reorg topology.
         let tip = chain.db.fetch_tip_header().unwrap();
-        assert_eq!(tip.height(), 15);
+        assert_eq!(tip.height(), 15, "tip should be at fork height 15 after reorg");
         assert_eq!(
             *tip.hash(),
             chain.canonical_blocks[15].hash(),
-            "Tip hash should match the last canonical (fork) block"
+            "tip hash should match the last fork block"
         );
-    }
 
-    #[test]
-    fn test_chain_serializes_to_json() {
-        let chain = build_test_chain();
-        let json = serialize_chain_to_json(&chain);
+        // Every canonical block must be retrievable from lmdb at its height, and the hash
+        // of the fetched block must match the expected canonical hash.
+        for (i, expected_block) in chain.canonical_blocks.iter().enumerate() {
+            let height = i as u64;
+            let fetched = chain
+                .db
+                .fetch_block(height, true)
+                .unwrap_or_else(|e| panic!("fetch_block({height}) failed: {e}"));
+            assert_eq!(
+                fetched.header().height,
+                height,
+                "fetched block header height does not match requested height {height}",
+            );
+            assert_eq!(
+                *fetched.hash(),
+                expected_block.hash(),
+                "canonical block at height {height} does not match expected hash",
+            );
 
-        // Basic sanity: the JSON should be parseable and contain the expected number of blocks.
-        let snapshot: TestChainSnapshot = serde_json::from_str(&json).expect("Failed to parse chain JSON");
-        assert_eq!(snapshot.canonical_blocks.len(), 16);
-        assert_eq!(snapshot.reorged_blocks.len(), 5);
+            // fetch_header_by_block_hash should resolve the same block on the main chain.
+            let header = chain
+                .db
+                .fetch_header_by_block_hash(expected_block.hash())
+                .unwrap()
+                .unwrap_or_else(|| {
+                    panic!("fetch_header_by_block_hash returned None for canonical block at height {height}")
+                });
+            assert_eq!(header.height, height);
+        }
+
+        // The 5 original main-chain blocks B6..B10 must no longer be on the main chain,
+        // but must still be retrievable as orphans.
+        for reorged in chain.reorged_blocks.iter() {
+            let reorged_hash = reorged.hash();
+
+            // Must not be resolvable as a main-chain header any more.
+            let header = chain.db.fetch_header_by_block_hash(reorged_hash).unwrap();
+            assert!(
+                header.is_none(),
+                "reorged block at height {} should not be on the main chain",
+                reorged.header.height
+            );
+
+            // fetch_block_by_hash should return None for the reorged block.
+            let maybe_block = chain.db.fetch_block_by_hash(reorged_hash, true).unwrap();
+            assert!(
+                maybe_block.is_none(),
+                "fetch_block_by_hash should return None for reorged block at height {}",
+                reorged.header.height
+            );
+
+            // The reorged block should be stored in the orphan pool.
+            let orphan = chain
+                .db
+                .fetch_orphan(reorged_hash)
+                .unwrap_or_else(|e| panic!("fetch_orphan failed for reorged block {reorged_hash}: {e}"));
+            assert_eq!(
+                orphan.header.height, reorged.header.height,
+                "orphan height should match reorged block height",
+            );
+            assert_eq!(
+                orphan.hash(),
+                reorged_hash,
+                "orphan hash should match reorged block hash",
+            );
+        }
+
+        // And the fetched block at height 5 must be the last block shared between the two
+        // chains - i.e. the parent of both B6 and F6'.
+        let shared = chain.db.fetch_block(5, true).unwrap();
+        assert_eq!(*shared.hash(), chain.canonical_blocks[5].hash());
     }
 }
 
@@ -445,11 +441,12 @@ mod read_tests {
             let chain = build_test_chain();
 
             // For each canonical block's outputs (skipping genesis which may have special handling),
-            // verify the commitment-based lookup returns the correct output hash.
+            // verify the commitment-based lookup always returns the correct output hash. In this
+            // test chain no coinbase has been spent yet, so every lookup must succeed.
             for block in chain.canonical_blocks.iter().skip(1) {
                 for output in block.body.outputs().iter() {
                     let commitment = output.commitment().clone();
-                    let result = chain
+                    let found_hash = chain
                         .db
                         .fetch_unspent_output_hash_by_commitment(commitment.clone())
                         .unwrap_or_else(|e| {
@@ -457,19 +454,20 @@ mod read_tests {
                                 "Failed to fetch by commitment for output in block {}: {}",
                                 block.header.height, e
                             )
+                        })
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Commitment lookup returned None for unspent output in block {}",
+                                block.header.height
+                            )
                         });
 
-                    // Coinbase outputs that haven't been spent should be findable.
-                    // Some outputs may have been spent if they were inputs to later blocks,
-                    // so we only assert that unspent ones return the correct hash.
-                    if let Some(found_hash) = result {
-                        assert_eq!(
-                            found_hash,
-                            output.hash(),
-                            "Commitment lookup returned wrong output hash for block {}",
-                            block.header.height
-                        );
-                    }
+                    assert_eq!(
+                        found_hash,
+                        output.hash(),
+                        "Commitment lookup returned wrong output hash for block {}",
+                        block.header.height
+                    );
                 }
             }
         }
@@ -503,7 +501,9 @@ mod read_tests {
         fn fetch_outputs_in_block_with_spend_state_no_spend_header() {
             let chain = build_test_chain();
 
-            // When spend_status_at_header is None, we should still get outputs back.
+            // When spend_status_at_header is None, we should still get outputs back, and -
+            // since no spend-status header was provided - every returned output must be reported
+            // as unspent.
             let block = &chain.canonical_blocks[3];
             let header_hash = block.hash();
             let outputs_with_state = chain
@@ -517,6 +517,14 @@ mod read_tests {
                 "Should return all outputs from block at height {}",
                 block.header.height
             );
+            for (output, is_spent) in &outputs_with_state {
+                assert!(
+                    !is_spent,
+                    "Output {} in block at height {} should be reported unspent when no spend header is supplied",
+                    output.hash(),
+                    block.header.height
+                );
+            }
         }
     }
 
