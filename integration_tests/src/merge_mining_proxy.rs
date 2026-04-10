@@ -32,8 +32,7 @@ use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use super::get_port;
-use crate::{TariWorld, wait_for_service};
+use crate::{TariWorld, port_pool, wait_for_service};
 
 #[derive(Clone, Debug)]
 pub struct MergeMiningProxyProcess {
@@ -52,11 +51,14 @@ pub async fn register_merge_mining_proxy_process(
     wallet_name: String,
     origin_submission: bool,
 ) {
+    let proxy_port = port_pool::global_port_pool()
+        .allocate_merge_mining_proxy_port()
+        .expect("Port pool exhausted — too many concurrent merge mining proxies");
     let merge_mining_proxy = MergeMiningProxyProcess {
         name: merge_mining_proxy_name.clone(),
         base_node_name,
         wallet_name,
-        port: get_port(world, 18000..18499).unwrap(),
+        port: proxy_port,
         origin_submission,
         id: 0,
     };

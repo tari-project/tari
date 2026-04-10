@@ -282,26 +282,20 @@ impl BaseNodeProcess {
 
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
-        loop {
-            // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.port)).is_ok() {
-                break;
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        for (label, port) in [("p2p", self.port), ("grpc", self.grpc_port), ("http", self.http_port)] {
+            while std::time::Instant::now() < deadline {
+                if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
             }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        loop {
-            // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
-                break;
+            if TcpListener::bind(("127.0.0.1", port)).is_err() {
+                eprintln!(
+                    "WARNING: base node '{}' {} port {} was not released within 30s timeout",
+                    self.name, label, port
+                );
             }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        loop {
-            // lets wait till the http port is cleared
-            if TcpListener::bind(("127.0.0.1", self.http_port)).is_ok() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
 }
