@@ -349,10 +349,9 @@ impl TariWorld {
             });
         }
 
-        // Shut down merge mining proxies and return ports to the pool
-        for (name, proxy) in self.merge_mining_proxies.drain(..) {
+        // Clear merge mining proxies (they are lightweight HTTP clients, no ports to return)
+        for (name, _proxy) in self.merge_mining_proxies.drain(..) {
             println!("Shutting down merge mining proxy {name}");
-            pool.return_merge_mining_proxy_port(proxy.port);
         }
 
         // Drop miners (they don't own ports or long-lived resources, but clear them
@@ -369,6 +368,7 @@ impl TariWorld {
                 p2p: p.port,
                 grpc: p.grpc_port,
                 http: p.http_port,
+                xmrig_proxy: p.xmrig_proxy_port,
             };
             p.kill();
             // Return ports to pool for reuse by next scenario

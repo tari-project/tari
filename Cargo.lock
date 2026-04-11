@@ -7647,7 +7647,6 @@ dependencies = [
  "minotari_app_grpc",
  "minotari_app_utilities",
  "minotari_console_wallet",
- "minotari_merge_mining_proxy",
  "minotari_miner",
  "minotari_node",
  "minotari_node_grpc_client",
