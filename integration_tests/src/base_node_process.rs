@@ -193,8 +193,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.xmrig_proxy_enabled = true;
         base_node_config.base_node.xmrig_proxy_address =
             format!("/ip4/127.0.0.1/tcp/{xmrig_proxy_port}").parse().unwrap();
-        base_node_config.base_node.xmrig_proxy_wallet_payment_address =
-            world_default_payment_address.clone();
+        base_node_config.base_node.xmrig_proxy_wallet_payment_address = world_default_payment_address.clone();
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");

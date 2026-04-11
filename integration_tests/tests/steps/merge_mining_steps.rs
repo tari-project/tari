@@ -49,10 +49,7 @@ async fn merge_mining_response_height(world: &mut TariWorld) {
         world.last_merge_miner_response
     );
     let result = count.unwrap();
-    assert!(
-        result.get("count").is_some(),
-        "Result has no `count` {result}"
-    );
+    assert!(result.get("count").is_some(), "Result has no `count` {result}");
     assert!(
         result.get("count").unwrap().as_u64().is_some(),
         "Count is invalid {result}"
@@ -78,10 +75,7 @@ async fn merge_mining_response_block_template_is_valid(world: &mut TariWorld) {
         result.get("blocktemplate_blob").is_some(),
         "Result has no `blocktemplate_blob` {result}"
     );
-    assert!(
-        result.get("seed_hash").is_some(),
-        "Result has no `seed_hash` {result}"
-    );
+    assert!(result.get("seed_hash").is_some(), "Result has no `seed_hash` {result}");
     assert!(
         result.get("difficulty").is_some(),
         "Result has no `difficulty` {result}"
