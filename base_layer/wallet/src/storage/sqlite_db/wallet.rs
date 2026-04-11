@@ -551,6 +551,11 @@ impl WalletBackend for WalletSqliteDatabase {
         ScannedBlockSql::clear_before_height(height, exclude_recovered, &mut conn)
     }
 
+    fn prune_scanned_blocks_sparse(&self, tip_height: u64, exclude_recovered: bool) -> Result<usize, WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::prune_sparse(tip_height, exclude_recovered, &mut conn)
+    }
+
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 

@@ -63,6 +63,9 @@ pub trait WalletBackend: Send + Sync + Clone {
         exclude_recovered: bool,
     ) -> Result<(), WalletStorageError>;
 
+    /// Prune scanned blocks using tiered sparse retention based on distance from tip
+    fn prune_scanned_blocks_sparse(&self, tip_height: u64, exclude_recovered: bool) -> Result<usize, WalletStorageError>;
+
     /// Change the passphrase used to encrypt the database
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError>;
 
@@ -335,6 +338,10 @@ where T: WalletBackend + 'static
     ) -> Result<(), WalletStorageError> {
         self.db.clear_scanned_blocks_before_height(height, exclude_recovered)?;
         Ok(())
+    }
+
+    pub fn prune_scanned_blocks_sparse(&self, tip_height: u64, exclude_recovered: bool) -> Result<usize, WalletStorageError> {
+        self.db.prune_scanned_blocks_sparse(tip_height, exclude_recovered)
     }
 
     pub fn get_all_burn_proofs(&self) -> Result<Vec<DbBurnProof>, WalletStorageError> {

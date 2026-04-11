@@ -34,6 +34,19 @@ use crate::{
     utxo_scanner_service::service::ScannedBlock,
 };
 
+/// Number of recent blocks to keep without any pruning (i.e. the "hot" cache window).
+const SCANNED_BLOCK_CACHE_SIZE: i64 = 720;
+/// Boundary for the second tier: blocks between `tip - TIER2_BOUNDARY` and `tip - CACHE_SIZE`.
+const TIER2_BOUNDARY: i64 = 10_000;
+/// Boundary for the third tier: blocks between `tip - TIER3_BOUNDARY` and `tip - TIER2_BOUNDARY`.
+const TIER3_BOUNDARY: i64 = 100_000;
+/// Sparse interval for tier 2: keep 1 per TIER2_INTERVAL blocks.
+const TIER2_INTERVAL: i64 = 100;
+/// Sparse interval for tier 3: keep 1 per TIER3_INTERVAL blocks.
+const TIER3_INTERVAL: i64 = 1_000;
+/// Sparse interval for tier 4 (oldest blocks): keep 1 per TIER4_INTERVAL blocks.
+const TIER4_INTERVAL: i64 = 5_000;
+
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[diesel(table_name = scanned_blocks)]
 pub struct ScannedBlockSql {
@@ -106,6 +119,67 @@ impl ScannedBlockSql {
 
         query.execute(conn)?;
         Ok(())
+    }
+
+    /// Prune scanned blocks using tiered sparse retention.
+    ///
+    /// Retention tiers relative to `tip_height`:
+    /// - `tip - SCANNED_BLOCK_CACHE_SIZE` to `tip`: keep all headers
+    /// - `tip - TIER2_BOUNDARY` to `tip - SCANNED_BLOCK_CACHE_SIZE`: keep 1 per `TIER2_INTERVAL` blocks
+    /// - `tip - TIER3_BOUNDARY` to `tip - TIER2_BOUNDARY`: keep 1 per `TIER3_INTERVAL` blocks
+    /// - below `tip - TIER3_BOUNDARY`: keep 1 per `TIER4_INTERVAL` blocks
+    ///
+    /// Blocks with recovered outputs (`num_outputs > 0`) are always preserved.
+    /// Each block is deleted in its own transaction to avoid size-limit issues.
+    pub fn prune_sparse(
+        tip_height: u64,
+        exclude_recovered: bool,
+        conn: &mut SqliteConnection,
+    ) -> Result<usize, WalletStorageError> {
+        let tip = tip_height as i64;
+        let tier1_boundary = tip.saturating_sub(SCANNED_BLOCK_CACHE_SIZE);
+        let tier2_boundary = tip.saturating_sub(TIER2_BOUNDARY);
+        let tier3_boundary = tip.saturating_sub(TIER3_BOUNDARY);
+
+        // Collect heights eligible for pruning.
+        let candidates: Vec<i64> = scanned_blocks::table
+            .select(scanned_blocks::height)
+            .filter(scanned_blocks::height.lt(tier1_boundary))
+            .order(scanned_blocks::height.asc())
+            .load::<i64>(conn)?;
+
+        let mut deleted = 0usize;
+        for h in candidates {
+            let interval = if h >= tier2_boundary {
+                TIER2_INTERVAL
+            } else if h >= tier3_boundary {
+                TIER3_INTERVAL
+            } else {
+                TIER4_INTERVAL
+            };
+
+            // Keep blocks that land on the sparse interval boundary.
+            if h % interval == 0 {
+                continue;
+            }
+
+            // Process each deletion in a separate statement to avoid large transaction issues.
+            let mut query = diesel::delete(scanned_blocks::table)
+                .into_boxed()
+                .filter(scanned_blocks::height.eq(h));
+
+            if exclude_recovered {
+                query = query.filter(
+                    scanned_blocks::num_outputs
+                        .is_null()
+                        .or(scanned_blocks::num_outputs.eq(0)),
+                );
+            }
+
+            deleted += query.execute(conn)?;
+        }
+
+        Ok(deleted)
     }
 }
 

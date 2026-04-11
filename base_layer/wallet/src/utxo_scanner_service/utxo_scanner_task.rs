@@ -66,7 +66,7 @@ use crate::{
     utxo_scanner_service::{
         RECOVERY_KEY,
         handle::UtxoScannerEvent,
-        service::{SCANNED_BLOCK_CACHE_SIZE, ScannedBlock, UtxoScannerResources},
+        service::{ScannedBlock, UtxoScannerResources},
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
@@ -576,10 +576,7 @@ where
             }
             // We need to update the last one
             if let Some(scanned_block) = prev_scanned_block.clone() {
-                self.resources.db.clear_scanned_blocks_before_height(
-                    scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
-                    true,
-                )?;
+                self.resources.db.prune_scanned_blocks_sparse(scanned_block.height, true)?;
                 if last_saved_hash != Some(scanned_block.header_hash) {
                     self.resources.db.save_scanned_block(scanned_block)?;
                 }
