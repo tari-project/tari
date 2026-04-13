@@ -211,6 +211,10 @@ pub struct CompletedTransaction {
     pub received_output_hashes: Vec<FixedHash>,
     /// Hashes of change outputs (for reference)
     pub change_output_hashes: Vec<FixedHash>,
+    /// The highest lock height among all outputs (max of maturity and script_lock_height).
+    /// For outbound transactions this is 0 (change only), for inbound it reflects
+    /// when the received outputs become spendable.
+    pub lock_height: u64,
 }
 
 impl CompletedTransaction {
@@ -227,6 +231,7 @@ impl CompletedTransaction {
         mined_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         payment_id: MemoField,
+        lock_height: u64,
     ) -> Result<Self, TransactionStorageError> {
         if status == LegacyTransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
@@ -257,7 +262,19 @@ impl CompletedTransaction {
             sent_output_hashes: Vec::new(),
             received_output_hashes: Vec::new(),
             change_output_hashes: Vec::new(),
+            lock_height,
         })
+    }
+
+    /// Calculate the lock height for a transaction by finding the maximum maturity across all outputs
+    pub fn calculate_lock_height(transaction: &Transaction) -> u64 {
+        transaction
+            .body
+            .outputs()
+            .iter()
+            .map(|output| output.features.maturity)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Helper function to calculate fee_per_gram from total fee and original transaction. The resulting fee_per_gram is
@@ -401,6 +418,7 @@ impl CompletedTransaction {
         sent_output_hashes: Vec<FixedHash>,
         received_output_hashes: Vec<FixedHash>,
         change_output_hashes: Vec<FixedHash>,
+        lock_height: u64,
     ) -> Result<Self, TransactionStorageError> {
         if status == LegacyTransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
@@ -431,6 +449,7 @@ impl CompletedTransaction {
             sent_output_hashes,
             received_output_hashes,
             change_output_hashes,
+            lock_height,
         })
     }
 
@@ -515,6 +534,7 @@ impl CompletedTransaction {
             sent_output_hashes: tx.sent_output_hashes,
             received_output_hashes: Vec::new(),
             change_output_hashes,
+            lock_height: 0,
         }
     }
 }
@@ -616,6 +636,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             sent_output_hashes: Vec::new(),
             received_output_hashes: tx.received_output_hashes,
             change_output_hashes: Vec::new(),
+            lock_height: 0,
         }
     }
 }
@@ -843,6 +864,7 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
+            lock_height: 0,
         }
     }
 

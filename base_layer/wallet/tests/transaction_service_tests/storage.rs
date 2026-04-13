@@ -308,6 +308,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             sent_output_hashes: vec![],
             change_output_hashes: vec![],
             received_output_hashes: vec![],
+            lock_height: 0,
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -356,6 +357,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0,
         true,
         completed_txs[0].status,
+        10,
     )
     .unwrap();
 
@@ -453,6 +455,7 @@ async fn import_tx_and_read_it_from_db() {
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
         MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+        0,
     )
     .unwrap();
 
@@ -482,6 +485,7 @@ async fn import_tx_and_read_it_from_db() {
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
         MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+        0,
     )
     .unwrap();
 
@@ -511,6 +515,7 @@ async fn import_tx_and_read_it_from_db() {
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
         MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+        0,
     )
     .unwrap();
 

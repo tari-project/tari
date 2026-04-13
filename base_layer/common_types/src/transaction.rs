@@ -45,6 +45,15 @@ pub enum LegacyTransactionStatus {
     /// This transaction import status is used when a coinbase transaction has been scanned but the outputs are not
     /// currently confirmed on the blockchain via the output manager
     CoinbaseNotInBlockChain = 13,
+    /// This transaction is mined and confirmed but the outputs are still locked (maturity/script_lock_height not
+    /// reached)
+    MinedConfirmedLocked = 14,
+    /// This transaction import status is used when a one-sided transaction has been scanned, confirmed, but outputs
+    /// are still locked
+    OneSidedConfirmedLocked = 15,
+    /// This transaction import status is used when a coinbase transaction has been scanned, confirmed, but outputs
+    /// are still locked
+    CoinbaseConfirmedLocked = 16,
 }
 
 impl LegacyTransactionStatus {
@@ -53,7 +62,8 @@ impl LegacyTransactionStatus {
             self,
             LegacyTransactionStatus::Imported |
                 LegacyTransactionStatus::OneSidedUnconfirmed |
-                LegacyTransactionStatus::OneSidedConfirmed
+                LegacyTransactionStatus::OneSidedConfirmed |
+                LegacyTransactionStatus::OneSidedConfirmedLocked
         )
     }
 
@@ -62,7 +72,8 @@ impl LegacyTransactionStatus {
             self,
             LegacyTransactionStatus::CoinbaseUnconfirmed |
                 LegacyTransactionStatus::CoinbaseConfirmed |
-                LegacyTransactionStatus::CoinbaseNotInBlockChain
+                LegacyTransactionStatus::CoinbaseNotInBlockChain |
+                LegacyTransactionStatus::CoinbaseConfirmedLocked
         )
     }
 
@@ -79,7 +90,19 @@ impl LegacyTransactionStatus {
             self,
             LegacyTransactionStatus::OneSidedConfirmed |
                 LegacyTransactionStatus::CoinbaseConfirmed |
-                LegacyTransactionStatus::MinedConfirmed
+                LegacyTransactionStatus::MinedConfirmed |
+                LegacyTransactionStatus::MinedConfirmedLocked |
+                LegacyTransactionStatus::OneSidedConfirmedLocked |
+                LegacyTransactionStatus::CoinbaseConfirmedLocked
+        )
+    }
+
+    pub fn is_locked(&self) -> bool {
+        matches!(
+            self,
+            LegacyTransactionStatus::MinedConfirmedLocked |
+                LegacyTransactionStatus::OneSidedConfirmedLocked |
+                LegacyTransactionStatus::CoinbaseConfirmedLocked
         )
     }
 
@@ -91,7 +114,10 @@ impl LegacyTransactionStatus {
                 LegacyTransactionStatus::CoinbaseConfirmed |
                 LegacyTransactionStatus::CoinbaseUnconfirmed |
                 LegacyTransactionStatus::OneSidedConfirmed |
-                LegacyTransactionStatus::OneSidedUnconfirmed
+                LegacyTransactionStatus::OneSidedUnconfirmed |
+                LegacyTransactionStatus::MinedConfirmedLocked |
+                LegacyTransactionStatus::OneSidedConfirmedLocked |
+                LegacyTransactionStatus::CoinbaseConfirmedLocked
         )
     }
 
@@ -104,13 +130,39 @@ impl LegacyTransactionStatus {
             LegacyTransactionStatus::Rejected |
             LegacyTransactionStatus::Queued |
             LegacyTransactionStatus::MinedUnconfirmed |
-            LegacyTransactionStatus::MinedConfirmed => LegacyTransactionStatus::MinedConfirmed,
+            LegacyTransactionStatus::MinedConfirmed |
+            LegacyTransactionStatus::MinedConfirmedLocked => LegacyTransactionStatus::MinedConfirmed,
             LegacyTransactionStatus::Imported |
             LegacyTransactionStatus::OneSidedUnconfirmed |
-            LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::OneSidedConfirmed,
+            LegacyTransactionStatus::OneSidedConfirmed |
+            LegacyTransactionStatus::OneSidedConfirmedLocked => LegacyTransactionStatus::OneSidedConfirmed,
             LegacyTransactionStatus::CoinbaseNotInBlockChain |
             LegacyTransactionStatus::CoinbaseConfirmed |
-            LegacyTransactionStatus::CoinbaseUnconfirmed => LegacyTransactionStatus::CoinbaseConfirmed,
+            LegacyTransactionStatus::CoinbaseUnconfirmed |
+            LegacyTransactionStatus::CoinbaseConfirmedLocked => LegacyTransactionStatus::CoinbaseConfirmed,
+        }
+    }
+
+    /// Transition to the locked-confirmed state (confirmed but outputs still locked by maturity)
+    pub fn mined_confirm_locked(&self) -> Self {
+        match self {
+            LegacyTransactionStatus::Completed |
+            LegacyTransactionStatus::Broadcast |
+            LegacyTransactionStatus::Pending |
+            LegacyTransactionStatus::Coinbase |
+            LegacyTransactionStatus::Rejected |
+            LegacyTransactionStatus::Queued |
+            LegacyTransactionStatus::MinedUnconfirmed |
+            LegacyTransactionStatus::MinedConfirmed |
+            LegacyTransactionStatus::MinedConfirmedLocked => LegacyTransactionStatus::MinedConfirmedLocked,
+            LegacyTransactionStatus::Imported |
+            LegacyTransactionStatus::OneSidedUnconfirmed |
+            LegacyTransactionStatus::OneSidedConfirmed |
+            LegacyTransactionStatus::OneSidedConfirmedLocked => LegacyTransactionStatus::OneSidedConfirmedLocked,
+            LegacyTransactionStatus::CoinbaseNotInBlockChain |
+            LegacyTransactionStatus::CoinbaseConfirmed |
+            LegacyTransactionStatus::CoinbaseUnconfirmed |
+            LegacyTransactionStatus::CoinbaseConfirmedLocked => LegacyTransactionStatus::CoinbaseConfirmedLocked,
         }
     }
 
@@ -123,13 +175,16 @@ impl LegacyTransactionStatus {
             LegacyTransactionStatus::Rejected |
             LegacyTransactionStatus::Queued |
             LegacyTransactionStatus::MinedUnconfirmed |
-            LegacyTransactionStatus::MinedConfirmed => LegacyTransactionStatus::MinedUnconfirmed,
+            LegacyTransactionStatus::MinedConfirmed |
+            LegacyTransactionStatus::MinedConfirmedLocked => LegacyTransactionStatus::MinedUnconfirmed,
             LegacyTransactionStatus::Imported |
             LegacyTransactionStatus::OneSidedUnconfirmed |
-            LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::OneSidedUnconfirmed,
+            LegacyTransactionStatus::OneSidedConfirmed |
+            LegacyTransactionStatus::OneSidedConfirmedLocked => LegacyTransactionStatus::OneSidedUnconfirmed,
             LegacyTransactionStatus::CoinbaseConfirmed |
             LegacyTransactionStatus::CoinbaseUnconfirmed |
-            LegacyTransactionStatus::CoinbaseNotInBlockChain => LegacyTransactionStatus::CoinbaseUnconfirmed,
+            LegacyTransactionStatus::CoinbaseNotInBlockChain |
+            LegacyTransactionStatus::CoinbaseConfirmedLocked => LegacyTransactionStatus::CoinbaseUnconfirmed,
         }
     }
 }
@@ -159,6 +214,9 @@ impl TryFrom<i32> for LegacyTransactionStatus {
             11 => Ok(LegacyTransactionStatus::CoinbaseUnconfirmed),
             12 => Ok(LegacyTransactionStatus::CoinbaseConfirmed),
             13 => Ok(LegacyTransactionStatus::CoinbaseNotInBlockChain),
+            14 => Ok(LegacyTransactionStatus::MinedConfirmedLocked),
+            15 => Ok(LegacyTransactionStatus::OneSidedConfirmedLocked),
+            16 => Ok(LegacyTransactionStatus::CoinbaseConfirmedLocked),
             code => Err(TransactionConversionError { code }),
         }
     }
@@ -182,6 +240,9 @@ impl Display for LegacyTransactionStatus {
             LegacyTransactionStatus::CoinbaseConfirmed => write!(f, "Coinbase Confirmed"),
             LegacyTransactionStatus::CoinbaseNotInBlockChain => write!(f, "Coinbase not mined"),
             LegacyTransactionStatus::Queued => write!(f, "Queued"),
+            LegacyTransactionStatus::MinedConfirmedLocked => write!(f, "Mined Confirmed Locked"),
+            LegacyTransactionStatus::OneSidedConfirmedLocked => write!(f, "One-Sided Confirmed Locked"),
+            LegacyTransactionStatus::CoinbaseConfirmedLocked => write!(f, "Coinbase Confirmed Locked"),
         }
     }
 }
@@ -200,18 +261,29 @@ pub enum TransactionStatus {
     MinedConfirmed = 3,
     /// This transaction was Rejected by the mempool
     Rejected = 4,
+    /// This transaction is mined and confirmed but outputs are still locked (maturity not yet reached)
+    MinedConfirmedLocked = 5,
 }
 
 impl TransactionStatus {
     pub fn is_confirmed(&self) -> bool {
-        matches!(self, TransactionStatus::MinedConfirmed)
+        matches!(
+            self,
+            TransactionStatus::MinedConfirmed | TransactionStatus::MinedConfirmedLocked
+        )
     }
 
     pub fn is_mined(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::MinedUnconfirmed | TransactionStatus::MinedConfirmed
+            TransactionStatus::MinedUnconfirmed |
+                TransactionStatus::MinedConfirmed |
+                TransactionStatus::MinedConfirmedLocked
         )
+    }
+
+    pub fn is_locked(&self) -> bool {
+        matches!(self, TransactionStatus::MinedConfirmedLocked)
     }
 }
 
@@ -225,6 +297,7 @@ impl TryFrom<i32> for TransactionStatus {
             2 => Ok(TransactionStatus::MinedUnconfirmed),
             3 => Ok(TransactionStatus::MinedConfirmed),
             4 => Ok(TransactionStatus::Rejected),
+            5 => Ok(TransactionStatus::MinedConfirmedLocked),
             code => Err(TransactionConversionError { code }),
         }
     }
@@ -239,6 +312,7 @@ impl Display for TransactionStatus {
             TransactionStatus::MinedUnconfirmed => write!(f, "Mined Unconfirmed"),
             TransactionStatus::MinedConfirmed => write!(f, "Mined Confirmed"),
             TransactionStatus::Rejected => write!(f, "Rejected"),
+            TransactionStatus::MinedConfirmedLocked => write!(f, "Mined Confirmed Locked"),
         }
     }
 }
