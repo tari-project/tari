@@ -26,8 +26,11 @@ use cucumber::{given, then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
+    DEFAULT_TIMEOUT,
     FfiConnectivityStatus,
+    SHORT_TIMEOUT,
     TariWorld,
+    wait_for,
     wallet_ffi::{create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
 };
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
@@ -94,85 +97,79 @@ async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
 #[then(expr = "I wait for ffi wallet {word} to have connectivity")]
 async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    for _ in 0..30 {
-        let status = ffi_wallet.get_connectivity_status();
-        if status.0 == FfiConnectivityStatus::Online || status.0 == FfiConnectivityStatus::Degraded {
-            return;
+    wait_for!(
+        timeout: SHORT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to have connectivity"),
+        condition: async {
+            let status = ffi_wallet.get_connectivity_status();
+            if status.0 == FfiConnectivityStatus::Online || status.0 == FfiConnectivityStatus::Degraded {
+                Ok(true)
+            } else {
+                Err(format!("status: {:?}", status.0))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    panic!("Wallet not connected");
+    );
 }
 
 #[then(expr = "I wait for ffi wallet {word} to have at least {int} uT")]
 #[when(expr = "I wait for ffi wallet {word} to have at least {int} uT")]
 async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, amount: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let mut ffi_balance = ffi_wallet.get_balance();
-    let mut cnt = 0;
-    while ffi_balance.get_available() < amount && cnt < 10 {
-        if cnt % 3 == 0 {
-            cucumber_steps_log(format!(
-                "wallet {}:{}, needs available {}, has balance: available {} incoming {} time locked {}",
-                ffi_wallet.name,
-                ffi_wallet.id,
-                amount,
-                ffi_balance.get_available(),
-                ffi_balance.get_pending_incoming(),
-                ffi_balance.get_time_locked()
-            ));
+    let wallet_name = ffi_wallet.name.clone();
+    let wallet_id = ffi_wallet.id.clone();
+    wait_for!(
+        timeout: SHORT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to have at least {amount} uT available"),
+        condition: async {
+            let ffi_balance = ffi_wallet.get_balance();
+            if ffi_balance.get_available() >= amount {
+                Ok(true)
+            } else {
+                Err(format!(
+                    "wallet {}:{}, needs available {}, has balance: available {} incoming {} time locked {}",
+                    wallet_name,
+                    wallet_id,
+                    amount,
+                    ffi_balance.get_available(),
+                    ffi_balance.get_pending_incoming(),
+                    ffi_balance.get_time_locked()
+                ))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        ffi_balance = ffi_wallet.get_balance();
-        cnt += 1;
-    }
-    assert!(
-        ffi_balance.get_available() >= amount,
-        "Wallet {}:{} doesn't have enough available funds: available {} incoming {} time locked {}",
-        ffi_wallet.name,
-        ffi_wallet.id,
-        ffi_balance.get_available(),
-        ffi_balance.get_pending_incoming(),
-        ffi_balance.get_time_locked()
     );
 }
 
 #[then(expr = "ffi wallet {word} balance is {word}")]
 async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let balance = world.balance.get(&balance_key).unwrap();
-    let num_retries = 15;
-    let mut ffi_wallet_balance = GetBalanceResponse::default();
-
-    for i in 0..num_retries {
-        ffi_wallet.start_txo_validation();
-        let ffi_balance = ffi_wallet.get_balance();
-        ffi_wallet_balance = GetBalanceResponse {
-            available_balance: ffi_balance.get_available(),
-            pending_incoming_balance: ffi_balance.get_pending_incoming(),
-            timelocked_balance: ffi_balance.get_time_locked(),
-            pending_outgoing_balance: ffi_balance.get_pending_outgoing(),
-        };
-        if &ffi_wallet_balance == balance {
-            cucumber_steps_log(format!(
-                "Wallet {}:{} waiting for balance to be {:?} (DONE), current {:?}",
-                ffi_wallet.name, ffi_wallet.id, balance, ffi_wallet_balance
-            ));
-            return;
-        } else if i % 3 == 0 {
-            cucumber_steps_log(format!(
-                "Wallet {}:{} waiting for balance to be {:?}, current {:?}",
-                ffi_wallet.name, ffi_wallet.id, balance, ffi_wallet_balance
-            ))
-        } else {
-            // Nothing here
+    let balance = world.balance.get(&balance_key).unwrap().clone();
+    let wallet_name = ffi_wallet.name.clone();
+    let wallet_id = ffi_wallet.id.clone();
+    wait_for!(
+        timeout: SHORT_TIMEOUT,
+        description: format!("FFI wallet {wallet} balance to match {balance_key}"),
+        condition: async {
+            ffi_wallet.start_txo_validation();
+            let ffi_balance = ffi_wallet.get_balance();
+            let ffi_wallet_balance = GetBalanceResponse {
+                available_balance: ffi_balance.get_available(),
+                pending_incoming_balance: ffi_balance.get_pending_incoming(),
+                timelocked_balance: ffi_balance.get_time_locked(),
+                pending_outgoing_balance: ffi_balance.get_pending_outgoing(),
+            };
+            if ffi_wallet_balance == balance {
+                cucumber_steps_log(format!(
+                    "Wallet {}:{} waiting for balance to be {:?} (DONE), current {:?}",
+                    wallet_name, wallet_id, balance, ffi_wallet_balance
+                ));
+                Ok(true)
+            } else {
+                Err(format!(
+                    "Wallet {}:{} waiting for balance to be {:?}, current {:?}",
+                    wallet_name, wallet_id, balance, ffi_wallet_balance
+                ))
+            }
         }
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-    panic!(
-        "Wallet {}:{} doesn't have the correct balance: expected {:?} current {:?}",
-        ffi_wallet.name, ffi_wallet.id, balance, ffi_wallet_balance
     );
 }
 
@@ -228,17 +225,19 @@ async fn ffi_check_number_of_transactions(world: &mut TariWorld, received: u32, 
 #[then(expr = "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)")]
 async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet: String, cnt: u32) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let mut found_cnt = 0;
-    let num_retries = 120;
-    for _ in 0..num_retries {
-        let pending_outbound_transactions = ffi_wallet.get_pending_outbound_transactions();
-        found_cnt = pending_outbound_transactions.get_length();
-        if found_cnt >= cnt {
-            break;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to have {cnt} pending outbound transaction(s)"),
+        condition: async {
+            let pending_outbound_transactions = ffi_wallet.get_pending_outbound_transactions();
+            let found_cnt = pending_outbound_transactions.get_length();
+            if found_cnt >= cnt {
+                Ok(true)
+            } else {
+                Err(format!("found {found_cnt} pending outbound transactions, expected {cnt}"))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(found_cnt >= cnt, "The number of pending outbound transaction is lower.");
+    );
 }
 
 #[then(expr = "I want to view the transaction information for completed transactions in ffi wallet {word}")]
@@ -313,46 +312,52 @@ async fn ffi_cancel_outbound_transactions(world: &mut TariWorld, wallet: String,
 #[then(expr = "I wait for ffi wallet {word} to receive {int} transaction")]
 async fn ffi_wait_for_transaction_received(world: &mut TariWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let num_retries = 120;
-    let mut found_cnt = 0;
-    for _ in 0..num_retries {
-        found_cnt = ffi_wallet.get_counters().get_transaction_received();
-        if found_cnt >= cnt {
-            break;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to receive {cnt} transaction(s)"),
+        condition: async {
+            let found_cnt = ffi_wallet.get_counters().get_transaction_received();
+            if found_cnt >= cnt {
+                Ok(true)
+            } else {
+                Err(format!("received {found_cnt}, expected {cnt}"))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(found_cnt >= cnt, "Expected {cnt}, but got only {found_cnt}");
+    );
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} finalization")]
 async fn ffi_wait_for_transaction_finalized(world: &mut TariWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let num_retries = 120;
-    let mut found_cnt = 0;
-    for _ in 0..num_retries {
-        found_cnt = ffi_wallet.get_counters().get_transaction_finalized();
-        if found_cnt >= cnt {
-            break;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to receive {cnt} finalization(s)"),
+        condition: async {
+            let found_cnt = ffi_wallet.get_counters().get_transaction_finalized();
+            if found_cnt >= cnt {
+                Ok(true)
+            } else {
+                Err(format!("finalized {found_cnt}, expected {cnt}"))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(found_cnt >= cnt, "Expected {cnt}, but got only {found_cnt}");
+    );
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} broadcast")]
 async fn ffi_wait_for_transaction_broadcast(world: &mut TariWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let num_retries = 120;
-    let mut found_cnt = 0;
-    for _ in 0..num_retries {
-        found_cnt = ffi_wallet.get_counters().get_transaction_broadcast();
-        if found_cnt >= cnt {
-            break;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to receive {cnt} broadcast(s)"),
+        condition: async {
+            let found_cnt = ffi_wallet.get_counters().get_transaction_broadcast();
+            if found_cnt >= cnt {
+                Ok(true)
+            } else {
+                Err(format!("broadcast {found_cnt}, expected {cnt}"))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(found_cnt >= cnt, "Expected {cnt}, but got only {found_cnt}");
+    );
 }
 
 #[then(expr = "I start TXO validation on ffi wallet {word}")]
@@ -361,39 +366,41 @@ async fn ffi_start_txo_validation(world: &mut TariWorld, wallet: String) {
     // Reset flags before triggering validation so we don't pick up a stale result
     ffi_wallet.get_counters().reset_txo_validation();
     ffi_wallet.start_txo_validation();
-    let num_retries = 240;
-    let mut validation_success = false;
-    for _ in 0..num_retries {
-        if ffi_wallet.get_counters().get_txo_validation_complete() {
-            if ffi_wallet.get_counters().get_txo_validation_result() == 0 {
-                // result=0 means success; validation ran to completion
-                validation_success = true;
-                break;
+    wait_for!(
+        timeout: Duration::from_secs(240),
+        description: format!("TXO validation on FFI wallet {wallet} to complete"),
+        condition: async {
+            if ffi_wallet.get_counters().get_txo_validation_complete() {
+                if ffi_wallet.get_counters().get_txo_validation_result() == 0 {
+                    // result=0 means success; validation ran to completion
+                    Ok(true)
+                } else {
+                    // result=1 means AlreadyBusy (another validation is running), result>=2 means failure.
+                    // Reset and wait for the in-flight validation to complete and fire its own callback.
+                    ffi_wallet.get_counters().reset_txo_validation();
+                    Err(format!("TXO validation result was {}, resetting", ffi_wallet.get_counters().get_txo_validation_result()))
+                }
+            } else {
+                Err("TXO validation not yet complete".to_string())
             }
-            // result=1 means AlreadyBusy (another validation is running), result>=2 means failure.
-            // Reset and wait for the in-flight validation to complete and fire its own callback.
-            ffi_wallet.get_counters().reset_txo_validation();
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(validation_success, "TXO validation did not complete successfully");
+    );
 }
 
 #[when(expr = "I wait for ffi wallet {word} to have scanned to height {int}")]
 async fn wait_for_ffi_wallet_scanned_height(world: &mut TariWorld, wallet: String, height: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let num_retries = 240;
-    for _ in 0..num_retries {
-        if ffi_wallet.get_counters().get_scanned_height() >= height {
-            return;
+    wait_for!(
+        timeout: Duration::from_secs(240),
+        description: format!("FFI wallet {wallet} to scan to height {height}"),
+        condition: async {
+            let scanned = ffi_wallet.get_counters().get_scanned_height();
+            if scanned >= height {
+                Ok(true)
+            } else {
+                Err(format!("scanned to {scanned}, expected {height}"))
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    panic!(
-        "FFI wallet {} did not scan to height {} (scanned to {})",
-        wallet,
-        height,
-        ffi_wallet.get_counters().get_scanned_height()
     );
 }
 
@@ -401,16 +408,17 @@ async fn wait_for_ffi_wallet_scanned_height(world: &mut TariWorld, wallet: Strin
 async fn ffi_start_tx_validation(world: &mut TariWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.start_transaction_validation();
-    let num_retries = 120;
-    let mut validation_complete = false;
-    for _ in 0..num_retries {
-        validation_complete = ffi_wallet.get_counters().get_tx_validation_complete();
-        if validation_complete {
-            break;
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("TX validation on FFI wallet {wallet} to complete"),
+        condition: async {
+            if ffi_wallet.get_counters().get_tx_validation_complete() {
+                Ok(true)
+            } else {
+                Err("TX validation not yet complete".to_string())
+            }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(validation_complete);
+    );
 }
 
 #[then(expr = "ffi wallet {word} detects {word} {int} ffi transactions to be {word}")]
@@ -435,62 +443,59 @@ async fn ffi_detects_transaction(
     cucumber_steps_log(format!(
         "Waiting for {wallet} to have detected {comparison} {count} {status} transaction(s)"
     ));
-    let mut found_count = 0;
-    for i in 0..120 {
-        if i % 5 == 0 {
-            cucumber_steps_log(format!(
-                "Waiting for {wallet} to have detected {comparison} {count} {status} transaction(s), current count: \
-                 {found_count}"
-            ));
+    let status_clone = status.clone();
+    let comparison_clone = comparison.clone();
+    wait_for!(
+        timeout: Duration::from_secs(600),
+        description: format!("FFI wallet {wallet} to detect {comparison} {count} {status} transaction(s)"),
+        condition: async {
+            let found_count = match status_clone.as_str() {
+                "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
+                "TRANSACTION_STATUS_MINED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_mined_unconfirmed(),
+                "TRANSACTION_STATUS_MINED" => ffi_wallet.get_counters().get_transaction_mined(),
+                "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED" => {
+                    let mut c = ffi_wallet.get_counters().get_transaction_faux_unconfirmed();
+                    c += ffi_wallet.get_counters().get_transaction_mined_unconfirmed();
+                    c
+                },
+                "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED" => {
+                    let mut c = ffi_wallet.get_counters().get_transaction_faux_confirmed();
+                    c += ffi_wallet.get_counters().get_transaction_mined();
+                    c
+                },
+                _ => unreachable!(),
+            };
+            let met = match comparison_clone.as_str() {
+                "AT_LEAST" => found_count >= count,
+                "EXACTLY" => found_count == count,
+                _ => panic!("Unknown comparison method {}", comparison_clone),
+            };
+            if met {
+                cucumber_steps_log(format!("Counters {:?}", ffi_wallet.get_counters()));
+                Ok(true)
+            } else {
+                Err(format!("found_count: {found_count}, expected {comparison_clone} {count}"))
+            }
         }
-        found_count = match status.as_str() {
-            "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
-            "TRANSACTION_STATUS_MINED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_mined_unconfirmed(),
-            "TRANSACTION_STATUS_MINED" => ffi_wallet.get_counters().get_transaction_mined(),
-            "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED" => {
-                let mut count = ffi_wallet.get_counters().get_transaction_faux_unconfirmed();
-                count += ffi_wallet.get_counters().get_transaction_mined_unconfirmed();
-                count
-            },
-            "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED" => {
-                let mut count = ffi_wallet.get_counters().get_transaction_faux_confirmed();
-                count += ffi_wallet.get_counters().get_transaction_mined();
-                count
-            },
-            _ => unreachable!(),
-        };
-        if found_count >= count {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-    cucumber_steps_log(format!("Counters {:?}", ffi_wallet.get_counters()));
-    match comparison.as_str() {
-        "AT_LEAST" => assert!(found_count >= count, "Counter not adequate! Counter is {found_count}."),
-        "EXACTLY" => assert!(found_count == count, "Counter not adequate! Counter is {found_count}."),
-        _ => panic!("Unknown comparison method {comparison}"),
-    };
+    );
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} mined")]
 async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, count: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     cucumber_steps_log(format!("Waiting for {wallet} to receive {count} transaction(s) mined"));
-
-    let mut found_cnt = 0;
-    for i in 0..120 {
-        if i % 5 == 0 {
-            cucumber_steps_log(format!(
-                "Waiting for {wallet} to receive {count} transaction(s) mined, current count: {found_cnt}"
-            ));
+    wait_for!(
+        timeout: DEFAULT_TIMEOUT,
+        description: format!("FFI wallet {wallet} to receive {count} mined transaction(s)"),
+        condition: async {
+            let found_cnt = ffi_wallet.get_counters().get_transaction_mined();
+            if found_cnt >= count {
+                Ok(true)
+            } else {
+                Err(format!("mined {found_cnt}, expected {count}"))
+            }
         }
-        found_cnt = ffi_wallet.get_counters().get_transaction_mined();
-        if found_cnt >= count {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(found_cnt >= count);
+    );
 }
 
 #[then(expr = "I recover wallet {word} into ffi wallet {word} from seed words on node {word}")]

@@ -58,8 +58,6 @@ async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
     let mut cli = get_default_cli();
 
     cli.command2 = Some(CliCommands::GetBalance);
@@ -85,8 +83,6 @@ async fn make_it_rain(
 ) {
     let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
     wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
     let wallet_b_address = wallet_b_client
@@ -124,8 +120,6 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
     let mut cli = get_default_cli();
 
     let args = CoinSplitArgs {
@@ -148,8 +142,6 @@ async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
     let mut cli = get_default_cli();
 
     cli.command2 = Some(CliCommands::CountUtxos);
@@ -164,8 +156,6 @@ async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
 async fn export_utxos(world: &mut TariWorld, wallet: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_a_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
 
@@ -192,8 +182,6 @@ async fn whois(world: &mut TariWorld, node: String, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
     let mut cli = get_default_cli();
 
     let mut node_client = world.get_node_client(&node).await.unwrap();
@@ -219,7 +207,6 @@ async fn recover_wallet_via_cli(
 ) {
     if let Some(wallet_ps) = world.wallets.get_mut(&target_wallet_name) {
         wallet_ps.kill();
-        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     let mut cli = get_default_cli();
@@ -252,7 +239,6 @@ async fn export_wallet_view_and_spend_keys_via_cli(
 ) {
     let wallet_ps = if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
         wallet_ps.kill();
-        tokio::time::sleep(Duration::from_secs(5)).await;
         wallet_ps.clone()
     } else {
         panic!("Wallet '{wallet_name}' not found");
@@ -288,7 +274,6 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
 ) {
     if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
         wallet_ps.kill();
-        tokio::time::sleep(Duration::from_secs(5)).await;
         world.wallets.remove(&wallet_name);
     }
 
@@ -325,7 +310,6 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
 async fn change_base_node_via_cli(world: &mut TariWorld, wallet: String, base_node: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
-    tokio::time::sleep(Duration::from_secs(2)).await;
     let seed_nodes = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
 }
@@ -334,7 +318,6 @@ async fn change_base_node_via_cli(world: &mut TariWorld, wallet: String, base_no
 async fn set_custom_base_node_via_cli(world: &mut TariWorld, wallet: String, base_node: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
-    tokio::time::sleep(Duration::from_secs(2)).await;
     let seed_nodes = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
 }
@@ -346,7 +329,6 @@ async fn clear_custom_base_node_via_cli(world: &mut TariWorld, wallet: String) {
         wallet_ps.kill();
         (wallet_ps.base_node_name.clone(), wallet_ps.peer_seeds.clone())
     };
-    tokio::time::sleep(Duration::from_secs(2)).await;
     spawn_wallet(world, wallet, base_node_name, peer_seeds, None, None).await;
 }
 
@@ -396,7 +378,6 @@ async fn recover_wallet_into_wallet_connected_to_all_seed_nodes(
 ) {
     if let Some(wallet_ps) = world.wallets.get_mut(&target_wallet_name) {
         wallet_ps.kill();
-        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     let mut cli = get_default_cli();
@@ -423,7 +404,6 @@ async fn recover_all_wallets_connected_to_all_seed_nodes(world: &mut TariWorld) 
         if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
             wallet_ps.kill();
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
 
         // Delete the wallet data directory so recovery can start fresh (boot() rejects recovery if db exists)
         if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
