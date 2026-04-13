@@ -162,6 +162,33 @@ pub fn create_test_db() -> TempDatabase {
     TempDatabase::new()
 }
 
+/// Open an existing LMDB database at the given path and wrap it in a `BlockchainDatabase`.
+///
+/// This uses mock validators and disables orphan/bad-block cleanup at startup so that the
+/// database contents are preserved exactly as-is. Useful for opening pre-built test fixtures.
+pub fn open_blockchain_db_from_path<P: AsRef<Path>>(path: P) -> BlockchainDatabase<TempDatabase> {
+    let rules = create_consensus_rules();
+    let backend = TempDatabase::from_path(path);
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let config = BlockchainDatabaseConfig {
+        cleanup_orphans_at_startup: false,
+        clear_bad_blocks_at_startup: false,
+        ..Default::default()
+    };
+    BlockchainDatabase::start_new(
+        backend,
+        rules.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(rules, Default::default()),
+    )
+    .unwrap()
+}
+
 pub struct TempDatabase {
     path: PathBuf,
     db: Option<LMDBDatabase>,
@@ -196,6 +223,11 @@ impl TempDatabase {
 
     pub fn db(&self) -> &LMDBDatabase {
         self.db.as_ref().unwrap()
+    }
+
+    /// Returns the filesystem path to the underlying LMDB database directory.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 
