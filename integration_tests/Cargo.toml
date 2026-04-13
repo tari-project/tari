@@ -26,7 +26,6 @@ minotari_console_wallet = { path = "../applications/minotari_console_wallet", fe
     "grpc",
 ] }
 tari_core = { path = "../base_layer/core" }
-minotari_merge_mining_proxy = { path = "../applications/minotari_merge_mining_proxy" }
 minotari_miner = { path = "../applications/minotari_miner" }
 tari_p2p = { path = "../base_layer/p2p" }
 tari_script = { path = "../infrastructure/tari_script" }

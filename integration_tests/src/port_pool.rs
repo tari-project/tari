@@ -42,8 +42,8 @@ struct PortPoolInner {
     wallet_grpc_ports: VecDeque<u16>,
     /// Pre-validated available ports for wallet HTTP (20000-20499)
     wallet_http_ports: VecDeque<u16>,
-    /// Pre-validated available ports for merge mining proxy (20500-20999)
-    merge_mining_proxy_ports: VecDeque<u16>,
+    /// Pre-validated available ports for xmrig proxy (20500-20999)
+    xmrig_proxy_ports: VecDeque<u16>,
 }
 
 /// A set of ports allocated for a single base node.
@@ -52,6 +52,7 @@ pub struct BaseNodePorts {
     pub p2p: u16,
     pub grpc: u16,
     pub http: u16,
+    pub xmrig_proxy: u16,
 }
 
 /// A set of ports allocated for a single wallet.
@@ -72,7 +73,7 @@ impl PortPool {
         let http_ports = scan_available_ports(19000, 19499, capacity);
         let wallet_grpc_ports = scan_available_ports(19500, 19999, capacity);
         let wallet_http_ports = scan_available_ports(20000, 20499, capacity);
-        let merge_mining_proxy_ports = scan_available_ports(20500, 20999, capacity);
+        let xmrig_proxy_ports = scan_available_ports(20500, 20999, capacity);
 
         println!(
             "PortPool initialized: {} p2p, {} grpc, {} http, {} wallet_grpc, {} wallet_http, {} merge_mining_proxy \
@@ -82,7 +83,7 @@ impl PortPool {
             http_ports.len(),
             wallet_grpc_ports.len(),
             wallet_http_ports.len(),
-            merge_mining_proxy_ports.len(),
+            xmrig_proxy_ports.len(),
         );
 
         Self {
@@ -92,7 +93,7 @@ impl PortPool {
                 http_ports,
                 wallet_grpc_ports,
                 wallet_http_ports,
-                merge_mining_proxy_ports,
+                xmrig_proxy_ports,
             }),
         }
     }
@@ -105,7 +106,13 @@ impl PortPool {
         let p2p = inner.p2p_ports.pop_front()?;
         let grpc = inner.grpc_ports.pop_front()?;
         let http = inner.http_ports.pop_front()?;
-        Some(BaseNodePorts { p2p, grpc, http })
+        let xmrig_proxy = inner.xmrig_proxy_ports.pop_front()?;
+        Some(BaseNodePorts {
+            p2p,
+            grpc,
+            http,
+            xmrig_proxy,
+        })
     }
 
     /// Allocate a set of ports for a wallet.
@@ -122,6 +129,7 @@ impl PortPool {
         inner.p2p_ports.push_back(ports.p2p);
         inner.grpc_ports.push_back(ports.grpc);
         inner.http_ports.push_back(ports.http);
+        inner.xmrig_proxy_ports.push_back(ports.xmrig_proxy);
     }
 
     /// Return wallet ports to the pool.
@@ -131,17 +139,6 @@ impl PortPool {
         inner.wallet_http_ports.push_back(ports.http);
     }
 
-    /// Allocate a port for a merge mining proxy.
-    pub fn allocate_merge_mining_proxy_port(&self) -> Option<u16> {
-        let mut inner = self.pools.lock().unwrap();
-        inner.merge_mining_proxy_ports.pop_front()
-    }
-
-    /// Return a merge mining proxy port to the pool.
-    pub fn return_merge_mining_proxy_port(&self, port: u16) {
-        let mut inner = self.pools.lock().unwrap();
-        inner.merge_mining_proxy_ports.push_back(port);
-    }
 }
 
 /// Scan a port range and return up to `capacity` ports that are currently available.
