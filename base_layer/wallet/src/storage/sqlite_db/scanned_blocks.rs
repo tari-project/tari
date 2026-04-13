@@ -28,10 +28,12 @@ use tari_common_types::types::FixedHash;
 use tari_utilities::ByteArray;
 
 use crate::{
-    diesel::{BoolExpressionMethods, OptionalExtension},
+    diesel::OptionalExtension,
     error::WalletStorageError,
     schema::scanned_blocks,
-    utxo_scanner_service::service::ScannedBlock,
+    utxo_scanner_service::service::{
+        ScannedBlock, SCANNED_BLOCK_CACHE_SIZE, SCANNED_BLOCK_CACHE_SIZE_MEDIUM, SCANNED_BLOCK_CACHE_SIZE_SPARSE,
+    },
 };
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
@@ -88,23 +90,8 @@ impl ScannedBlockSql {
         Ok(())
     }
 
-    pub fn clear_before_height(
-        height: u64,
-        exclude_recovered: bool,
-        conn: &mut SqliteConnection,
-    ) -> Result<(), WalletStorageError> {
-        let mut query = diesel::delete(scanned_blocks::table)
-            .into_boxed()
-            .filter(scanned_blocks::height.lt(height as i64));
-        if exclude_recovered {
-            query = query.filter(
-                scanned_blocks::num_outputs
-                    .is_null()
-                    .or(scanned_blocks::num_outputs.eq(0)),
-            );
-        }
-
-        query.execute(conn)?;
+    pub fn clear_before_height(height: u64, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
+        diesel::delete(scanned_blocks::table.filter(scanned_blocks::height.lt(height as i64))).execute(conn)?;
         Ok(())
     }
 
@@ -122,9 +109,9 @@ impl ScannedBlockSql {
         // `saturating_sub` keeps the query well-defined at low tip heights
         // (e.g. immediately after a fresh scan or in unit tests).
         let tip = i64::try_from(tip_height).unwrap_or(i64::MAX);
-        let recent_boundary = tip.saturating_sub(720);
-        let medium_boundary = tip.saturating_sub(10_000);
-        let sparse_boundary = tip.saturating_sub(100_000);
+        let recent_boundary = tip.saturating_sub(SCANNED_BLOCK_CACHE_SIZE as i64);
+        let medium_boundary = tip.saturating_sub(SCANNED_BLOCK_CACHE_SIZE_MEDIUM as i64);
+        let sparse_boundary = tip.saturating_sub(SCANNED_BLOCK_CACHE_SIZE_SPARSE as i64);
 
         // Boundary semantics match the original Rust logic:
         //   keep                depth ∈ [0, 720]            → height >= recent_boundary

@@ -55,13 +55,8 @@ pub trait WalletBackend: Send + Sync + Clone {
     fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError>;
     /// Clear scanned blocks from the givne height and higher
     fn clear_scanned_blocks_from_and_higher(&self, height: u64) -> Result<(), WalletStorageError>;
-    /// Clear scanned block history from before the specified height. Choice to exclude blocks that contained recovered
-    /// outputs
-    fn clear_scanned_blocks_before_height(
-        &self,
-        height: u64,
-        exclude_recovered: bool,
-    ) -> Result<(), WalletStorageError>;
+    /// Clear scanned block history from before the specified height.
+    fn clear_scanned_blocks_before_height(&self, height: u64) -> Result<(), WalletStorageError>;
 
     /// Apply a sparse storage schedule to scanned blocks, keeping all recent blocks
     /// and progressively sparser checkpoints for older blocks. Blocks containing
@@ -333,12 +328,8 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn clear_scanned_blocks_before_height(
-        &self,
-        height: u64,
-        exclude_recovered: bool,
-    ) -> Result<(), WalletStorageError> {
-        self.db.clear_scanned_blocks_before_height(height, exclude_recovered)?;
+    pub fn clear_scanned_blocks_before_height(&self, height: u64) -> Result<(), WalletStorageError> {
+        self.db.clear_scanned_blocks_before_height(height)?;
         Ok(())
     }
 
