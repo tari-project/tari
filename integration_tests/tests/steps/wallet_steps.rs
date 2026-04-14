@@ -1631,11 +1631,11 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
 async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
 
+    let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
     wait_for!(
         timeout: DEFAULT_TIMEOUT,
         description: format!("wallet {wallet} to have at least {amount}T"),
         condition: async {
-            let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
             let balance_res = wallet_client
                 .get_balance(GetBalanceRequest { payment_id: None })
                 .await
@@ -1703,11 +1703,11 @@ async fn wallet_with_tari_connected_to_base_node(
 
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
 
+    let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
     wait_for!(
         timeout: DEFAULT_TIMEOUT,
         description: format!("wallet {wallet} to have at least {amount}T"),
         condition: async {
-            let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
             let balance_res = wallet_client
                 .get_balance(GetBalanceRequest { payment_id: None })
                 .await

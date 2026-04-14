@@ -57,6 +57,11 @@ async fn password_is(world: &mut TariWorld, wallet: String, _password: String) {
 async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
+    tari_integration_tests::wait_for!(
+        timeout: Duration::from_secs(10),
+        description: "wallet to shut down",
+        condition: async { Ok(!wallet_ps.is_running()) }
+    );
 
     let mut cli = get_default_cli();
 

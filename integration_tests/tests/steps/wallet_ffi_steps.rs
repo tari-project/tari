@@ -145,11 +145,11 @@ async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: Str
     let balance = world.balance.get(&balance_key).unwrap().clone();
     let wallet_name = ffi_wallet.name.clone();
     let wallet_id = ffi_wallet.id.clone();
+    ffi_wallet.start_txo_validation();
     wait_for!(
         timeout: SHORT_TIMEOUT,
         description: format!("FFI wallet {wallet} balance to match {balance_key}"),
         condition: async {
-            ffi_wallet.start_txo_validation();
             let ffi_balance = ffi_wallet.get_balance();
             let ffi_wallet_balance = GetBalanceResponse {
                 available_balance: ffi_balance.get_available(),
