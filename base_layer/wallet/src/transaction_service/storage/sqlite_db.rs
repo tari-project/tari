@@ -875,13 +875,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_timestamp: u64,
         must_be_confirmed: bool,
         status: LegacyTransactionStatus,
+        tip_height: u64,
     ) -> Result<(), TransactionStorageError> {
         retry_db("update_mined_height", || {
             let start = Instant::now();
             let mut conn = self.database_connection.get_pooled_connection()?;
             let acquire_lock = start.elapsed();
             let status = if must_be_confirmed {
-                status.mined_confirm()
+                // Check if the transaction has a lock_height that hasn't been reached yet
+                let lock_height = completed_transactions::table
+                    .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+                    .select(completed_transactions::lock_height)
+                    .first::<i64>(&mut conn)
+                    .unwrap_or(0) as u64;
+                if lock_height > 0 && tip_height < lock_height {
+                    status.mined_confirm_locked()
+                } else {
+                    status.mined_confirm()
+                }
             } else {
                 status.mined_unconfirm()
             };
@@ -1159,6 +1170,20 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             results.insert(tx.tx_id, tx);
         }
 
+        let one_sided_locked = CompletedTransactionSql::index_by_status_and_cancelled(
+            LegacyTransactionStatus::OneSidedConfirmedLocked,
+            false,
+            &mut conn,
+        )?
+        .into_iter()
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        for tx in one_sided_locked {
+            results.insert(tx.tx_id, tx);
+        }
+
         let coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
             LegacyTransactionStatus::CoinbaseUnconfirmed,
             false,
@@ -1170,6 +1195,20 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         for tx in coinbases {
+            results.insert(tx.tx_id, tx);
+        }
+
+        let coinbases_locked = CompletedTransactionSql::index_by_status_and_cancelled(
+            LegacyTransactionStatus::CoinbaseConfirmedLocked,
+            false,
+            &mut conn,
+        )?
+        .into_iter()
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        for tx in coinbases_locked {
             results.insert(tx.tx_id, tx);
         }
 
@@ -2113,6 +2152,7 @@ pub struct CompletedTransactionSql {
     pub received_output_hashes: Option<Vec<u8>>,
     pub change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
+    lock_height: i64,
 }
 
 impl CompletedTransactionSql {
@@ -2443,12 +2483,15 @@ impl CompletedTransactionSql {
             )
             .set(UpdateCompletedTransactionSql {
                 status: match current_status {
-                    LegacyTransactionStatus::OneSidedConfirmed | LegacyTransactionStatus::OneSidedUnconfirmed => {
+                    LegacyTransactionStatus::OneSidedConfirmed |
+                    LegacyTransactionStatus::OneSidedUnconfirmed |
+                    LegacyTransactionStatus::OneSidedConfirmedLocked => {
                         Some(LegacyTransactionStatus::OneSidedUnconfirmed as i32)
                     },
                     LegacyTransactionStatus::CoinbaseUnconfirmed |
                     LegacyTransactionStatus::CoinbaseConfirmed |
-                    LegacyTransactionStatus::CoinbaseNotInBlockChain => {
+                    LegacyTransactionStatus::CoinbaseNotInBlockChain |
+                    LegacyTransactionStatus::CoinbaseConfirmedLocked => {
                         Some(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32)
                     },
                     LegacyTransactionStatus::Imported => Some(LegacyTransactionStatus::Imported as i32),
@@ -2550,6 +2593,7 @@ impl CompletedTransactionSql {
             sent_output_hashes: Some(fixedhash_vec_to_bytes(&c.sent_output_hashes)),
             received_output_hashes: Some(fixedhash_vec_to_bytes(&c.received_output_hashes)),
             change_output_hashes: Some(fixedhash_vec_to_bytes(&c.change_output_hashes)),
+            lock_height: c.lock_height as i64,
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2660,6 +2704,7 @@ impl CompletedTransaction {
             sent_output_hashes: bytes_to_fixedhash_vec(&c.sent_output_hashes.unwrap_or_default()),
             received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
             change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
+            lock_height: c.lock_height as u64,
         };
 
         // zeroize sensitive data
@@ -3201,6 +3246,7 @@ mod test {
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+            lock_height: 0,
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -3238,6 +3284,7 @@ mod test {
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+            lock_height: 0,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -3490,6 +3537,7 @@ mod test {
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+            lock_height: 0,
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -3627,6 +3675,7 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+                lock_height: 0,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3771,6 +3820,7 @@ mod test {
                 mined_in_block: None,
                 mined_timestamp: None,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+                lock_height: 0,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

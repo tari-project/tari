@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use std::{
-    cmp::Ordering,
+    cmp::{Ordering, max},
     default::Default,
     fmt::{Debug, Formatter},
     sync::OnceLock,
@@ -555,6 +555,10 @@ impl WalletOutput {
     /// helper function to determine if this is a coinbase or not
     pub fn is_coinbase(&self) -> bool {
         matches!(self.features.output_type, OutputType::Coinbase)
+    }
+
+    pub fn max_lock_height(&self) -> u64 {
+        max(self.script_lock_height, self.features.maturity)
     }
 
     pub fn change_encrypted_data<KM: TransactionKeyManagerInterface>(

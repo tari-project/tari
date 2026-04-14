@@ -1749,6 +1749,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         change_output_hashes: vec![],
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
+        lock_height: 0,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1885,6 +1886,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_1.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("blah", TxType::PaymentToOther).unwrap(),
             None,
+            0,
         )
         .await
         .unwrap();
@@ -1899,6 +1901,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_2.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("one-sided 1", TxType::PaymentToOther).unwrap(),
             None,
+            0,
         )
         .await
         .unwrap();
@@ -1913,6 +1916,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_3.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("one-sided 2", TxType::PaymentToOther).unwrap(),
             None,
+            0,
         )
         .await
         .unwrap();
@@ -2071,6 +2075,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_1.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("coinbase_confirmed", TxType::PaymentToOther).unwrap(),
             None,
+            0,
         )
         .await
         .unwrap();
@@ -2085,6 +2090,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_2.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther).unwrap(),
             None,
+            0,
         )
         .await
         .unwrap();
@@ -2099,6 +2105,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_3.to_transaction_output().unwrap(),
             MemoField::new_open_from_string("Coinbase_not_mined", TxType::PaymentToOther).unwrap(),
             None,
+            0,
         )
         .await
         .unwrap();
@@ -2259,6 +2266,7 @@ fn create_mock_completed_transaction(
         change_output_hashes: vec![],
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
+        lock_height: 0,
     }
 }
 
@@ -2518,6 +2526,7 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
         None,
         None,
         MemoField::new_empty(),
+        0,
     )
     .unwrap();
 

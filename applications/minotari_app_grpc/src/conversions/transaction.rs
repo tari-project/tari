@@ -106,6 +106,9 @@ impl From<LegacyTransactionStatus> for grpc::TransactionStatus {
             CoinbaseConfirmed => grpc::TransactionStatus::CoinbaseConfirmed,
             CoinbaseNotInBlockChain => grpc::TransactionStatus::CoinbaseNotInBlockChain,
             Queued => grpc::TransactionStatus::Queued,
+            MinedConfirmedLocked => grpc::TransactionStatus::MinedConfirmedLocked,
+            OneSidedConfirmedLocked => grpc::TransactionStatus::OneSidedConfirmedLocked,
+            CoinbaseConfirmedLocked => grpc::TransactionStatus::CoinbaseConfirmedLocked,
         }
     }
 }
@@ -120,6 +123,7 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
             MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
             Rejected => grpc::TransactionStatus::Rejected,
+            MinedConfirmedLocked => grpc::TransactionStatus::MinedConfirmedLocked,
         }
     }
 }

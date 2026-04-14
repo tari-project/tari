@@ -192,7 +192,10 @@ pub fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool 
                 grpc::TransactionStatus::OneSidedUnconfirmed |
                 grpc::TransactionStatus::OneSidedConfirmed |
                 grpc::TransactionStatus::CoinbaseUnconfirmed |
-                grpc::TransactionStatus::CoinbaseConfirmed
+                grpc::TransactionStatus::CoinbaseConfirmed |
+                grpc::TransactionStatus::MinedConfirmedLocked |
+                grpc::TransactionStatus::OneSidedConfirmedLocked |
+                grpc::TransactionStatus::CoinbaseConfirmedLocked
         ),
         "Completed" => matches!(
             status,
@@ -203,7 +206,10 @@ pub fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool 
                 grpc::TransactionStatus::OneSidedUnconfirmed |
                 grpc::TransactionStatus::OneSidedConfirmed |
                 grpc::TransactionStatus::CoinbaseUnconfirmed |
-                grpc::TransactionStatus::CoinbaseConfirmed
+                grpc::TransactionStatus::CoinbaseConfirmed |
+                grpc::TransactionStatus::MinedConfirmedLocked |
+                grpc::TransactionStatus::OneSidedConfirmedLocked |
+                grpc::TransactionStatus::CoinbaseConfirmedLocked
         ),
         "Broadcast" => matches!(
             status,
@@ -213,7 +219,10 @@ pub fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool 
                 grpc::TransactionStatus::OneSidedUnconfirmed |
                 grpc::TransactionStatus::OneSidedConfirmed |
                 grpc::TransactionStatus::CoinbaseUnconfirmed |
-                grpc::TransactionStatus::CoinbaseConfirmed
+                grpc::TransactionStatus::CoinbaseConfirmed |
+                grpc::TransactionStatus::MinedConfirmedLocked |
+                grpc::TransactionStatus::OneSidedConfirmedLocked |
+                grpc::TransactionStatus::CoinbaseConfirmedLocked
         ),
         "Mined_or_OneSidedUnconfirmed" => matches!(
             status,
@@ -222,7 +231,19 @@ pub fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool 
                 grpc::TransactionStatus::OneSidedUnconfirmed |
                 grpc::TransactionStatus::OneSidedConfirmed |
                 grpc::TransactionStatus::CoinbaseUnconfirmed |
-                grpc::TransactionStatus::CoinbaseConfirmed
+                grpc::TransactionStatus::CoinbaseConfirmed |
+                grpc::TransactionStatus::MinedConfirmedLocked |
+                grpc::TransactionStatus::OneSidedConfirmedLocked |
+                grpc::TransactionStatus::CoinbaseConfirmedLocked
+        ),
+        "Mined_or_OneSidedConfirmedLocked" => matches!(
+            status,
+            grpc::TransactionStatus::MinedConfirmed |
+                grpc::TransactionStatus::OneSidedConfirmed |
+                grpc::TransactionStatus::CoinbaseConfirmed |
+                grpc::TransactionStatus::MinedConfirmedLocked |
+                grpc::TransactionStatus::OneSidedConfirmedLocked |
+                grpc::TransactionStatus::CoinbaseConfirmedLocked
         ),
         "Mined_or_OneSidedConfirmed" => matches!(
             status,
@@ -232,7 +253,9 @@ pub fn tx_status_matches(status: grpc::TransactionStatus, target: &str) -> bool 
         ),
         "Coinbase" => matches!(
             status,
-            grpc::TransactionStatus::CoinbaseConfirmed | grpc::TransactionStatus::CoinbaseUnconfirmed
+            grpc::TransactionStatus::CoinbaseConfirmed |
+                grpc::TransactionStatus::CoinbaseUnconfirmed |
+                grpc::TransactionStatus::CoinbaseConfirmedLocked
         ),
         _ => false,
     }
@@ -251,7 +274,10 @@ fn status_matches_target(event_status: &str, target: &str) -> bool {
                 "OneSidedUnconfirmed" |
                 "OneSidedConfirmed" |
                 "CoinbaseUnconfirmed" |
-                "CoinbaseConfirmed"
+                "CoinbaseConfirmed" |
+                "MinedConfirmedLocked" |
+                "OneSidedConfirmedLocked" |
+                "CoinbaseConfirmedLocked"
         ),
         "Mined_or_OneSidedUnconfirmed" => matches!(
             event_status,
@@ -260,15 +286,32 @@ fn status_matches_target(event_status: &str, target: &str) -> bool {
                 "OneSidedUnconfirmed" |
                 "OneSidedConfirmed" |
                 "CoinbaseUnconfirmed" |
-                "CoinbaseConfirmed"
+                "CoinbaseConfirmed" |
+                "MinedConfirmedLocked" |
+                "OneSidedConfirmedLocked" |
+                "CoinbaseConfirmedLocked"
         ),
+        "Mined_or_OneSidedConfirmedLocked" => {
+            matches!(
+                event_status,
+                "MinedConfirmed" |
+                    "OneSidedConfirmed" |
+                    "CoinbaseConfirmed" |
+                    "MinedConfirmedLocked" |
+                    "OneSidedConfirmedLocked" |
+                    "CoinbaseConfirmedLocked"
+            )
+        },
         "Mined_or_OneSidedConfirmed" => {
             matches!(
                 event_status,
                 "MinedConfirmed" | "OneSidedConfirmed" | "CoinbaseConfirmed"
             )
         },
-        "Coinbase" => matches!(event_status, "CoinbaseConfirmed" | "CoinbaseUnconfirmed"),
+        "Coinbase" => matches!(
+            event_status,
+            "CoinbaseConfirmed" | "CoinbaseUnconfirmed" | "CoinbaseConfirmedLocked"
+        ),
         _ => false,
     }
 }

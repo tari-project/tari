@@ -331,6 +331,7 @@ mod test {
             None,
             None,
             MemoField::new_open_from_string("2", TxType::PaymentToOther).unwrap(),
+            0,
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -405,6 +406,7 @@ mod test {
             Some(2),
             Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
             MemoField::new_open_from_string("6", TxType::PaymentToOther).unwrap(),
+            0,
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -441,6 +443,7 @@ mod test {
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),
             MemoField::new_open_from_string("7", TxType::PaymentToOther).unwrap(),
+            0,
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())

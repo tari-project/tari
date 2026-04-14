@@ -180,6 +180,7 @@ where
                     mined_height,
                     num_confirmations,
                     mined_timestamp,
+                    tip,
                 )?;
                 state_changed = true;
             }
@@ -400,6 +401,7 @@ where
         mined_height: u64,
         num_confirmations: u64,
         mined_timestamp: u64,
+        tip_height: u64,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_mined_height(
@@ -409,6 +411,7 @@ where
                 mined_timestamp,
                 num_confirmations >= self.config.num_confirmations_required,
                 status,
+                tip_height,
             )
             .for_protocol(self.operation_id)?;
 

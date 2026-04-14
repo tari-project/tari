@@ -857,13 +857,7 @@ impl CompletedTransactionInfo {
             amount: tx.amount,
             fee: tx.fee,
             excess_signature,
-            maturity: tx
-                .transaction
-                .body
-                .outputs()
-                .first()
-                .map(|o| o.features.maturity)
-                .unwrap_or(0),
+            maturity: tx.lock_height,
             status: tx.status,
             timestamp: tx.timestamp.naive_utc(),
             mined_timestamp: tx.mined_timestamp.map(|t| t.naive_utc()),

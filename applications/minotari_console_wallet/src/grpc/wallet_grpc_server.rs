@@ -1337,7 +1337,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 LegacyTransactionStatus::MinedUnconfirmed |
                                 LegacyTransactionStatus::MinedConfirmed |
                                 LegacyTransactionStatus::OneSidedUnconfirmed |
-                                LegacyTransactionStatus::OneSidedConfirmed => break Ok(tx),
+                                LegacyTransactionStatus::OneSidedConfirmed |
+                                LegacyTransactionStatus::MinedConfirmedLocked |
+                                LegacyTransactionStatus::OneSidedConfirmedLocked |
+                                LegacyTransactionStatus::CoinbaseConfirmedLocked => break Ok(tx),
                                 LegacyTransactionStatus::Rejected => {
                                     let error = if let Some(reason) = tx.cancelled_reason() {
                                         TransactionServiceError::MempoolRejection {
@@ -1685,6 +1688,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .map(|pr| pr.to_vec())
                             .collect(),
                         rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+                        lock_height: txn.lock_height,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1824,6 +1828,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .map(|pr| pr.to_vec())
                         .collect(),
                     rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+                    lock_height: txn.lock_height,
                 });
             }
 
@@ -1986,6 +1991,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .map(|pr| pr.to_vec())
                             .collect(),
                         rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+                        lock_height: txn.lock_height,
                     };
 
                     let response = GetCompletedTransactionsResponse {
@@ -2129,6 +2135,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(|pr| pr.to_vec())
                     .collect(),
                 rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+                lock_height: txn.lock_height,
             });
         }
 
@@ -3343,6 +3350,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         output,
                         wallet_output.payment_id().clone(),
                         tx_id.map(TxId::from),
+                        wallet_output.max_lock_height(),
                     )
                     .await
                 {
@@ -3543,6 +3551,7 @@ fn completed_tx_to_transaction_info(
             .map(|pr| pr.to_vec())
             .collect(),
         rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+        lock_height: txn.lock_height,
     }
 }
 
@@ -3578,6 +3587,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_received: vec![],
                 payment_references_change: vec![],
                 rejected_reason: String::new(),
+                lock_height: 0,
             }
         },
         PendingOutbound(tx) => {
@@ -3615,6 +3625,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_received: vec![],
                 payment_references_change: vec![],
                 rejected_reason: String::new(),
+                lock_height: 0,
             }
         },
         Completed(tx) => {
@@ -3674,6 +3685,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     .map(|pr| pr.to_vec())
                     .collect(),
                 rejected_reason: tx.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+                lock_height: tx.lock_height,
             }
         },
     }
