@@ -707,8 +707,8 @@ impl Iterator for TariScript {
 }
 
 impl<'a> IntoIterator for &'a TariScript {
-    type Item = &'a Opcode;
     type IntoIter = std::slice::Iter<'a, Opcode>;
+    type Item = &'a Opcode;
 
     fn into_iter(self) -> Self::IntoIter {
         self.script.iter()

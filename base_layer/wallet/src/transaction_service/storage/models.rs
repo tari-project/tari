@@ -34,9 +34,7 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TransactionConversionError, TransactionDirection, TxId},
     types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_script::{
-    Opcode::{CheckHeight, CheckHeightVerify, },
-};
+use tari_script::Opcode::{CheckHeight, CheckHeightVerify};
 use tari_transaction_components::{
     MicroMinotari,
     consensus::ConsensusConstants,
