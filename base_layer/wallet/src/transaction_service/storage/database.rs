@@ -146,6 +146,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_timestamp: u64,
         must_be_confirmed: bool,
         status: LegacyTransactionStatus,
+        tip_height: u64,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -824,6 +825,7 @@ where T: TransactionBackend + 'static
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         direction: TransactionDirection,
+        lock_height: u64,
     ) -> Result<(), TransactionStorageError> {
         let hash = scanned_output.hash();
         let fee = payment_id.get_fee().unwrap_or_default();
@@ -850,6 +852,7 @@ where T: TransactionBackend + 'static
             sent_hashes,
             vec![hash],
             vec![],
+            lock_height,
         )?;
 
         self.db
@@ -884,6 +887,7 @@ where T: TransactionBackend + 'static
         mined_timestamp: u64,
         must_be_confirmed: bool,
         status: LegacyTransactionStatus,
+        tip_height: u64,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,
@@ -892,6 +896,7 @@ where T: TransactionBackend + 'static
             mined_timestamp,
             must_be_confirmed,
             status,
+            tip_height,
         )
     }
 

@@ -2142,6 +2142,24 @@ unsigned long long completed_transaction_get_mined_height(TariCompletedTransacti
                                                           int *error_out);
 
 /**
+ * Gets the lock height of a TariCompletedTransaction. This is the highest maturity / script_lock_height
+ * across all outputs. Outputs cannot be spent until this height is reached.
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Returns the lock height, note that it will be zero if transaction is null
+ *
+ * # Safety
+ * None
+ */
+unsigned long long completed_transaction_get_lock_height(TariCompletedTransaction *transaction,
+                                                         int *error_out);
+
+/**
  * Gets the mined in block hash of a TariCompletedTransaction
  *
  * ## Arguments
