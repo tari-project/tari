@@ -51,7 +51,6 @@ log = { workspace = true, features = ["std"] }
 rand = { workspace = true }
 reqwest = "0.12"
 serde_json = { workspace = true }
-tempfile = "3.3.0"
 thiserror = { workspace = true }
 time = "0.3.47"
 tokio = { workspace = true, features = [
