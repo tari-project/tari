@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.6](https://github.com/tari-project/tari/compare/v5.3.0-pre.5...v5.3.0-pre.6) (2026-04-14)
+
+
+### Features
+
+* better tx feedback ([#7754](https://github.com/tari-project/tari/issues/7754)) ([24011fd](https://github.com/tari-project/tari/commit/24011fd50210f3234529729c75d511f92a290867))
+
 ## [5.3.0-pre.5](https://github.com/tari-project/tari/compare/v5.3.0-pre.4...v5.3.0-pre.5) (2026-04-09)
 
 
