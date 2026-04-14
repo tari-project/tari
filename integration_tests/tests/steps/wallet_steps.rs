@@ -1366,7 +1366,8 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
             }
         );
         cucumber_steps_log(format!(
-            "Wallet {wallet} has found {comparison} {amount_of_coinbases} spendable coinbases (actual: {spendable_coinbase_count})"
+            "Wallet {wallet} has found {comparison} {amount_of_coinbases} spendable coinbases (actual: \
+             {spendable_coinbase_count})"
         ));
     }
 }
@@ -1833,7 +1834,8 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
         }
     );
     cucumber_steps_log(format!(
-        "Transaction from {sender} to {receiver1} and {receiver2} with amount {amount} at fee {fee_per_gram} broadcast (DONE)"
+        "Transaction from {sender} to {receiver1} and {receiver2} with amount {amount} at fee {fee_per_gram} \
+         broadcast (DONE)"
     ));
 
     // insert tx_id's to the corresponding world mapping
@@ -1988,7 +1990,8 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         }
     );
     cucumber_steps_log(format!(
-        "Atomic swap transaction from {sender} to {receiver} with amount {amount} at fee {fee_per_gram} broadcast (DONE)"
+        "Atomic swap transaction from {sender} to {receiver} with amount {amount} at fee {fee_per_gram} broadcast \
+         (DONE)"
     ));
 
     // insert tx_id's to the corresponding world mapping
@@ -2201,7 +2204,8 @@ async fn send_one_sided_stealth_transaction(
         }
     );
     cucumber_steps_log(format!(
-        "One sided stealth transaction from {sender} to {receiver} with amount {amount} at fee {fee_per_gram} broadcast (DONE)"
+        "One sided stealth transaction from {sender} to {receiver} with amount {amount} at fee {fee_per_gram} \
+         broadcast (DONE)"
     ));
 
     // insert tx_id's to the corresponding world mapping
