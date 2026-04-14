@@ -32,7 +32,10 @@ use crate::{
     error::WalletStorageError,
     schema::scanned_blocks,
     utxo_scanner_service::service::{
-        ScannedBlock, SCANNED_BLOCK_CACHE_SIZE, SCANNED_BLOCK_CACHE_SIZE_MEDIUM, SCANNED_BLOCK_CACHE_SIZE_SPARSE,
+        SCANNED_BLOCK_CACHE_SIZE,
+        SCANNED_BLOCK_CACHE_SIZE_MEDIUM,
+        SCANNED_BLOCK_CACHE_SIZE_SPARSE,
+        ScannedBlock,
     },
 };
 
@@ -123,13 +126,8 @@ impl ScannedBlockSql {
         // blocks from any deletion. Each inner branch deletes only the rows
         // whose height is NOT on the modulus appropriate for their band.
         diesel::sql_query(
-            "DELETE FROM scanned_blocks \
-             WHERE height < ? \
-               AND ( \
-                 (height >= ? AND (height % 100) != 0) OR \
-                 (height <  ? AND height >= ? AND (height % 1000) != 0) OR \
-                 (height <  ? AND (height % 5000) != 0) \
-               )",
+            "DELETE FROM scanned_blocks WHERE height < ? AND ( (height >= ? AND (height % 100) != 0) OR (height <  ? \
+             AND height >= ? AND (height % 1000) != 0) OR (height <  ? AND (height % 5000) != 0) )",
         )
         .bind::<diesel::sql_types::BigInt, _>(recent_boundary)
         .bind::<diesel::sql_types::BigInt, _>(medium_boundary)
@@ -181,7 +179,10 @@ mod test {
     }
 
     impl TestDb {
-        fn new() -> (Self, diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<SqliteConnection>>) {
+        fn new() -> (
+            Self,
+            diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<SqliteConnection>>,
+        ) {
             let conn = run_migration_and_create_sqlite_memory_connection().unwrap();
             let pooled = conn.get_pooled_connection().unwrap();
             (Self { _conn: conn }, pooled)
@@ -190,7 +191,9 @@ mod test {
 
     fn insert_heights(conn: &mut SqliteConnection, heights: &[i64]) {
         for &h in heights {
-            ScannedBlockSql::new(vec![(h & 0xff) as u8; 32], h).commit(conn).unwrap();
+            ScannedBlockSql::new(vec![(h & 0xff) as u8; 32], h)
+                .commit(conn)
+                .unwrap();
         }
     }
 
