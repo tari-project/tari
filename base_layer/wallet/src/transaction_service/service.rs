@@ -3231,7 +3231,7 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
-        let lock_height = CompletedTransaction::calculate_lock_height(&transaction);
+        let lock_height = 0;
         let mut final_payment_id = payment_id.clone();
         final_payment_id.set_fee(fee);
         self.submit_transaction(

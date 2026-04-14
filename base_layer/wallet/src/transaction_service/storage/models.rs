@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::max,
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
@@ -32,6 +33,9 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionConversionError, TransactionDirection, TxId},
     types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
+};
+use tari_script::{
+    Opcode::{CheckHeight, CheckHeightVerify, },
 };
 use tari_transaction_components::{
     MicroMinotari,
@@ -268,13 +272,27 @@ impl CompletedTransaction {
 
     /// Calculate the lock height for a transaction by finding the maximum maturity across all outputs
     pub fn calculate_lock_height(transaction: &Transaction) -> u64 {
-        transaction
+        let maturity = transaction
             .body
             .outputs()
             .iter()
             .map(|output| output.features.maturity)
             .max()
-            .unwrap_or(0)
+            .unwrap_or(0);
+        let mut script_height = 0;
+        for output in transaction.body.outputs() {
+            for opcode in &output.script {
+                let height = match opcode {
+                    CheckHeightVerify(height) => *height,
+                    CheckHeight(height) => *height,
+                    _ => 0,
+                };
+                if height > script_height {
+                    script_height = height;
+                }
+            }
+        }
+        max(maturity, script_height)
     }
 
     /// Helper function to calculate fee_per_gram from total fee and original transaction. The resulting fee_per_gram is

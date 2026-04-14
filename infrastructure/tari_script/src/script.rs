@@ -105,6 +105,10 @@ impl TariScript {
         Ok(TariScript { script })
     }
 
+    pub fn iter(&self) -> std::slice::Iter<'_, Opcode> {
+        self.script.iter()
+    }
+
     /// This pattern matches two scripts ensure they have the same instructions in the opcodes, but not the same values
     /// inside example:
     /// Script A = {PushPubKey(AA)}, Script B = {PushPubKey(BB)} will pattern match, but doing Script A == Script B will
@@ -695,12 +699,19 @@ impl TariScript {
 }
 
 impl Iterator for TariScript {
-    // Define the type of item returned by the iterator
     type Item = Opcode;
 
-    // Implement the next method
     fn next(&mut self) -> Option<Self::Item> {
-        self.script.iter().next().cloned()
+        self.script.next()
+    }
+}
+
+impl<'a> IntoIterator for &'a TariScript {
+    type Item = &'a Opcode;
+    type IntoIter = std::slice::Iter<'a, Opcode>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.script.iter()
     }
 }
 
