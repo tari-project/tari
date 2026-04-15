@@ -1549,6 +1549,67 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
+    fn check_lock_height_status(&self, tip_height: u64) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        // Find confirmed transactions where lock_height > 0 and tip hasn't passed lock_height yet
+        let confirmed_statuses = [
+            LegacyTransactionStatus::MinedConfirmed as i32,
+            LegacyTransactionStatus::OneSidedConfirmed as i32,
+            LegacyTransactionStatus::CoinbaseConfirmed as i32,
+        ];
+
+        let txs: Vec<CompletedTransactionSql> = completed_transactions::table
+            .filter(completed_transactions::status.eq_any(&confirmed_statuses))
+            .filter(completed_transactions::cancelled.is_null())
+            .filter(completed_transactions::lock_height.gt(Some(tip_height as i64)))
+            .load::<CompletedTransactionSql>(&mut conn)?;
+
+        if txs.is_empty() {
+            return Ok(());
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "check_lock_height_status: Found {} confirmed transactions with lock_height > tip ({}), updating to locked",
+            txs.len(),
+            tip_height
+        );
+
+        for tx in txs {
+            let status =
+                LegacyTransactionStatus::try_from(tx.status).unwrap_or(LegacyTransactionStatus::MinedConfirmed);
+            let locked_status = status.mined_confirm_locked();
+            info!(
+                target: LOG_TARGET,
+                "check_lock_height_status: tx {} lock_height={:?}, tip={}, status {:?} -> {:?}",
+                tx.tx_id,
+                tx.lock_height,
+                tip_height,
+                status,
+                locked_status
+            );
+            diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx.tx_id)))
+                .set(UpdateCompletedTransactionSql {
+                    status: Some(locked_status as i32),
+                    ..Default::default()
+                })
+                .execute(&mut conn)?;
+        }
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - check_lock_height_status: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -2697,14 +2758,12 @@ impl CompletedTransaction {
                 "Migrating lock_height for tx {}: calculated {}",
                 tx_id, calculated
             );
-            let _result = diesel::update(
-                completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)),
-            )
-            .set(UpdateCompletedTransactionSql {
-                lock_height: Some(Some(calculated as i64)),
-                ..Default::default()
-            })
-            .execute(conn);
+            let _result = diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)))
+                .set(UpdateCompletedTransactionSql {
+                    lock_height: Some(Some(calculated as i64)),
+                    ..Default::default()
+                })
+                .execute(conn);
             calculated
         } else {
             c.lock_height.unwrap_or(0) as u64

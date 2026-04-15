@@ -291,6 +291,13 @@ where
         let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
+
+        // On startup, check if any confirmed transactions should be locked based on the last known tip
+        let last_tip = self.db.get_last_scanned_height().unwrap_or(None).unwrap_or(0);
+        if let Err(e) = self.db.check_lock_height_status(last_tip) {
+            warn!(target: LOG_TARGET, "Failed to check lock height status on startup: {e}");
+        }
+
         loop {
             tokio::select! {
                 event = output_manager_event_stream.recv() => {
