@@ -144,6 +144,28 @@ pub fn create_store_with_consensus_and_validators_and_config(
     .unwrap()
 }
 
+/// Like `create_new_blockchain` but with a custom `LMDBConfig`. Useful for generating small
+/// reference fixtures without pre-allocating hundreds of MB of LMDB map space.
+pub fn create_new_blockchain_with_lmdb_config(lmdb_config: LMDBConfig) -> BlockchainDatabase<TempDatabase> {
+    let rules = create_consensus_rules();
+    let temp_path = tari_test_utils::paths::create_temporary_data_path();
+    let backend = TempDatabase::from_path_with_lmdb_config(&temp_path, lmdb_config);
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let config = BlockchainDatabaseConfig::default();
+    BlockchainDatabase::start_new(
+        backend,
+        rules.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(rules, Default::default()),
+    )
+    .unwrap()
+}
+
 pub fn create_store_with_consensus(rules: BaseNodeConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
@@ -211,6 +233,16 @@ impl TempDatabase {
         let rules = create_consensus_rules();
         Self {
             db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            path: temp_path.as_ref().to_path_buf(),
+            delete_on_drop: true,
+        }
+    }
+
+    /// Like `from_path` but with a custom `LMDBConfig` (e.g. a small map size for test fixtures).
+    pub fn from_path_with_lmdb_config<P: AsRef<Path>>(temp_path: P, lmdb_config: LMDBConfig) -> Self {
+        let rules = create_consensus_rules();
+        Self {
+            db: Some(create_lmdb_database(&temp_path, lmdb_config, rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }

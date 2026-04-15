@@ -70,6 +70,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, CompressedSignature, FixedHash};
 use tari_node_components::blocks::Block;
+use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::BlockchainDatabase,
@@ -126,6 +127,10 @@ fn json_fixture_path() -> PathBuf {
     fixtures_dir().join("test_chain_data.json")
 }
 
+fn reference_lmdb_dir() -> PathBuf {
+    fixtures_dir().join("reference_lmdb")
+}
+
 // ---------------------------------------------------------------------------
 // Load / build helpers
 // ---------------------------------------------------------------------------
@@ -135,24 +140,25 @@ fn load_test_chain_data() -> TestChainData {
     let json_path = json_fixture_path();
     assert!(
         json_path.exists(),
-        "Test fixture JSON not found at {}. Run the generate_fixtures test first: \
-         cargo test --package tari_core --features sqlite_bundled \
-         lmdb_unit_tests::generate_fixtures -- --ignored --nocapture",
+        "Test fixture JSON not found at {}. Run the generate_fixtures test first: cargo test --package tari_core \
+         --features sqlite_bundled lmdb_unit_tests::generate_fixtures -- --ignored --nocapture",
         json_path.display()
     );
-    let json_str = fs::read_to_string(&json_path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {}", json_path.display(), e));
-    serde_json::from_str(&json_str)
-        .unwrap_or_else(|e| panic!("Failed to parse {}: {}", json_path.display(), e))
+    let json_str =
+        fs::read_to_string(&json_path).unwrap_or_else(|e| panic!("Failed to read {}: {}", json_path.display(), e));
+    serde_json::from_str(&json_str).unwrap_or_else(|e| panic!("Failed to parse {}: {}", json_path.display(), e))
 }
 
 /// Build the test chain from JSON data into a fresh LMDB database, returning a
 /// `BlockchainDatabase` that can be queried. The LMDB is stored at a temporary path
 /// that is cleaned up when the returned database is dropped.
 fn build_chain_from_json(data: &TestChainData) -> BlockchainDatabase<TempDatabase> {
-    // create_new_blockchain() creates a fresh LMDB with genesis already inserted.
     let db = crate::test_helpers::blockchain::create_new_blockchain();
+    populate_chain(db, data)
+}
 
+/// Populate `db` with the blocks from `data`, performing the reorg, and return it.
+fn populate_chain(db: BlockchainDatabase<TempDatabase>, data: &TestChainData) -> BlockchainDatabase<TempDatabase> {
     // Add shared blocks B1..B5 (canonical indices 1..=5)
     for block in data.canonical_blocks[1..=5].iter() {
         db.add_block(Arc::new(block.clone())).unwrap().assert_added();
@@ -171,7 +177,10 @@ fn build_chain_from_json(data: &TestChainData) -> BlockchainDatabase<TempDatabas
             reorg_happened = true;
         }
     }
-    assert!(reorg_happened, "Expected a chain reorg when adding fork blocks from JSON");
+    assert!(
+        reorg_happened,
+        "Expected a chain reorg when adding fork blocks from JSON"
+    );
 
     db
 }
@@ -238,19 +247,13 @@ static SHARED_STATE: Lazy<SharedTestState> = Lazy::new(|| {
 #[test]
 #[ignore = "Run manually to regenerate test fixtures"]
 fn generate_fixtures() {
-    use tari_common_types::payment_reference::generate_payment_reference;
-    use tari_common_types::tari_address::TariAddress;
+    use tari_common_types::{payment_reference::generate_payment_reference, tari_address::TariAddress};
     use tari_transaction_components::{
         key_manager::{KeyManager, TariKeyId},
         transaction_components::{Transaction, WalletOutput},
     };
 
-    use crate::test_helpers::{
-        BlockSpec,
-        blockchain::create_new_blockchain,
-        create_block,
-        default_coinbase_entities,
-    };
+    use crate::test_helpers::{BlockSpec, blockchain::create_new_blockchain, create_block, default_coinbase_entities};
 
     fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
         let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
@@ -301,8 +304,14 @@ fn generate_fixtures() {
         let mut outputs = Vec::with_capacity(count);
         let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager);
         for _ in 0..count {
-            let (block, coinbase) =
-                create_next_block(db, &prev_block, vec![], key_manager, &script_key_id, &wallet_payment_address);
+            let (block, coinbase) = create_next_block(
+                db,
+                &prev_block,
+                vec![],
+                key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
             db.add_block(block.clone()).unwrap().assert_added();
             prev_block = block.clone();
             blocks.push(block);
@@ -392,6 +401,244 @@ fn generate_fixtures() {
 }
 
 // ---------------------------------------------------------------------------
+// Reference LMDB fixture generator (run with --ignored to regenerate)
+// ---------------------------------------------------------------------------
+
+/// Generates a reference LMDB binary fixture by building the test chain from the JSON fixture
+/// and copying the resulting `data.mdb` file into `tests/fixtures/reference_lmdb/`.
+///
+/// Run with:
+/// ```bash
+/// cargo test -p tari_core --lib -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture
+/// ```
+///
+/// After running, commit the generated file:
+/// ```bash
+/// git add base_layer/core/src/chain_storage/tests/fixtures/reference_lmdb/data.mdb
+/// git commit -S -m "test: regenerate reference LMDB fixture"
+/// ```
+///
+/// **IMPORTANT:** Re-running this generator after the JSON fixture has been regenerated requires
+/// updating the hardcoded expected constants in `reference_lmdb_constants` below.
+///
+/// **Platform note:** LMDB `data.mdb` uses a little-endian on-disk format that is
+/// architecture-neutral, but the fixture should be regenerated on each target platform to ensure
+/// correctness.
+#[test]
+#[ignore = "Run manually to regenerate the reference LMDB binary fixture"]
+fn generate_reference_lmdb_fixture() {
+    use tari_storage::lmdb_store::LMDBConfig;
+    use tari_utilities::hex::Hex;
+
+    let data = load_test_chain_data();
+    // Build genesis + blocks B1..B3 only. The JMT grows fast for each block, so we
+    // intentionally keep the chain short to keep the committed data.mdb small enough
+    // for git (< 50 MB).  The reference tests assert height, commitment, and kernel
+    // from the first non-genesis block, which is enough to prove we can read an
+    // existing LMDB — the goal of this fixture.
+    let db = {
+        use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
+        let db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(4, 4, 2, false));
+        // Add only B1..B3 — no orphans, no reorg
+        for block in data.canonical_blocks[1..=3].iter() {
+            db.add_block(Arc::new(block.clone())).unwrap().assert_added();
+        }
+        db
+    };
+
+    // Print a traceability summary before we drop the database
+    let tip = db.fetch_tip_header().unwrap();
+    println!("=== Reference LMDB fixture summary ===");
+    println!("  Tip height    : {}", tip.height());
+    println!("  Tip block hash: {}", tip.hash().to_hex());
+
+    let b1_exp = &data.expected[1];
+    println!("  Block-1 block_hash : {}", b1_exp.block_hash.to_hex());
+    if let Some(oh) = b1_exp.output_hashes.first() {
+        println!("  Block-1 output_hash: {}", oh.to_hex());
+    }
+    if let Some(c) = b1_exp.output_commitments.first() {
+        println!("  Block-1 commitment : {}", c.to_hex());
+    }
+    if let Some(sig) = b1_exp.kernel_excess_sigs.first() {
+        println!("  Block-1 kernel nonce: {}", sig.get_compressed_public_nonce().to_hex());
+        println!("  Block-1 kernel sig  : {}", sig.get_signature().to_hex());
+    }
+    println!("======================================");
+
+    // Copy data.mdb BEFORE dropping the database — TempDatabase::drop() deletes the temp dir
+    let db_path = db.db_read_access().unwrap().path().to_path_buf();
+
+    let dest = reference_lmdb_dir();
+    fs::create_dir_all(&dest).unwrap();
+
+    let src = db_path.join("data.mdb");
+    assert!(src.exists(), "data.mdb not found at {}", src.display());
+
+    let dst = dest.join("data.mdb");
+    fs::copy(&src, &dst).unwrap_or_else(|e| panic!("Failed to copy data.mdb: {e}"));
+
+    // Now drop the database (this deletes the temp dir, but we've already copied)
+    drop(db);
+
+    println!("Wrote reference LMDB fixture to {}", dst.display());
+}
+
+// ---------------------------------------------------------------------------
+// Reference LMDB tests: open the committed binary fixture and assert values
+// ---------------------------------------------------------------------------
+
+/// Hardcoded expected values derived from the committed `test_chain_data.json` fixture.
+///
+/// If the JSON fixture is regenerated (via `generate_fixtures`), both these constants AND the
+/// binary fixture (via `generate_reference_lmdb_fixture`) must be updated together.
+mod reference_lmdb_constants {
+    /// The canonical chain tip height of the reference fixture (genesis + B1..B3).
+    pub const EXPECTED_TIP_HEIGHT: u64 = 3;
+    /// Hex-encoded block hash of the chain tip (height 3).
+    pub const EXPECTED_TIP_HASH_HEX: &str = "56e5221fe25b28f98a94b033309f7708af5bb8e452fb635cccfecb4b47feafc4";
+    /// Hex-encoded Pedersen commitment of the first output in block 1.
+    pub const EXPECTED_BLOCK1_COMMITMENT_HEX: &str = "d28588acee522cc1e903e201501c9f0126e39abe335c41083a7ef652a2015f66";
+    /// Hex-encoded output hash of the first output in block 1.
+    pub const EXPECTED_BLOCK1_OUTPUT_HASH_HEX: &str =
+        "422e9933dce4257f5647de6a9a29b01e43fe02a15c156ddbcaef6e54c1517b5c";
+    /// Hex-encoded public nonce of the first kernel excess_sig in block 1.
+    pub const EXPECTED_BLOCK1_KERNEL_NONCE_HEX: &str =
+        "7e7b6ae78a92c6251a000c41d78937289376cbafb8a3471bfda5d5a39924f728";
+    /// Hex-encoded signature scalar of the first kernel excess_sig in block 1.
+    pub const EXPECTED_BLOCK1_KERNEL_SIG_HEX: &str = "cd1b1efd8df818dc04eccf91fae58fade54cf03924ae5c66501035b2f2409f0a";
+}
+
+/// Ensure the reference LMDB fixture exists, generating it if this is the first run.
+///
+/// The fixture lives at `tests/fixtures/reference_lmdb/data.mdb`. It is intentionally NOT
+/// committed to git (the file is large due to LMDB pre-allocation), but it IS deterministic:
+/// given the same `test_chain_data.json`, re-running always produces the same on-disk bytes.
+///
+/// The `OnceLock` guarantees that concurrent test threads only run the generator once, and that
+/// subsequent test runs that find the file already on disk skip generation entirely.
+fn ensure_reference_fixture_exists() {
+    use std::sync::OnceLock;
+
+    use tari_storage::lmdb_store::LMDBConfig;
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let fixture_dir = reference_lmdb_dir();
+        let data_mdb = fixture_dir.join("data.mdb");
+        if data_mdb.exists() {
+            return;
+        }
+        // First run: generate the fixture
+        let data = load_test_chain_data();
+        let db = {
+            use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
+            let empty_db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(4, 4, 2, false));
+            for block in data.canonical_blocks[1..=3].iter() {
+                empty_db.add_block(Arc::new(block.clone())).unwrap().assert_added();
+            }
+            empty_db
+        };
+        let db_path = db.db_read_access().unwrap().path().to_path_buf();
+        fs::create_dir_all(&fixture_dir).unwrap();
+        let src = db_path.join("data.mdb");
+        assert!(src.exists(), "data.mdb not found at {}", src.display());
+        fs::copy(&src, &data_mdb).unwrap_or_else(|e| panic!("Failed to copy data.mdb: {e}"));
+        drop(db);
+        println!("[reference_lmdb] Generated fixture at {}", data_mdb.display());
+    });
+}
+
+/// Open the reference LMDB fixture (auto-generating it on first run).
+///
+/// `open_blockchain_db_from_path` acquires a write lock, so we first copy the fixture to a
+/// temporary directory. The copy is deleted when the returned database is dropped; the
+/// original fixture on disk is never modified.
+fn open_reference_db() -> BlockchainDatabase<TempDatabase> {
+    ensure_reference_fixture_exists();
+    let tmp = tari_test_utils::paths::create_temporary_data_path();
+    copy_dir_recursive(&reference_lmdb_dir(), &tmp);
+    open_blockchain_db_from_path(&tmp)
+}
+
+mod reference_lmdb {
+    use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoSecretKey};
+    use tari_utilities::{ByteArray, hex::Hex};
+
+    use super::{reference_lmdb_constants::*, *};
+
+    /// Test 1 — tip header check.
+    ///
+    /// Opens the committed binary fixture and verifies the tip height and block hash, proving
+    /// that the LMDB on-disk serialisation format has not changed since the fixture was generated.
+    #[test]
+    fn test_reads_reference_lmdb_tip_header() {
+        let db = open_reference_db();
+        let tip = db.fetch_tip_header().unwrap();
+        assert_eq!(
+            tip.height(),
+            EXPECTED_TIP_HEIGHT,
+            "Tip height from reference LMDB does not match expected value"
+        );
+        assert_eq!(
+            tip.hash().to_hex(),
+            EXPECTED_TIP_HASH_HEX,
+            "Tip block hash from reference LMDB does not match expected value"
+        );
+    }
+
+    /// Test 2 — UTXO lookup by commitment.
+    ///
+    /// Verifies that the UTXO commitment index in the binary fixture is intact and returns the
+    /// correct output hash for a known commitment from block 1.
+    #[test]
+    fn test_reads_reference_lmdb_utxo_by_commitment() {
+        let db = open_reference_db();
+
+        let commitment_bytes = Vec::from_hex(EXPECTED_BLOCK1_COMMITMENT_HEX).expect("Invalid commitment hex constant");
+        let commitment =
+            CompressedCommitment::from_canonical_bytes(&commitment_bytes).expect("Invalid commitment bytes");
+
+        let found_hash = db
+            .fetch_unspent_output_hash_by_commitment(commitment)
+            .expect("fetch_unspent_output_hash_by_commitment failed on reference LMDB")
+            .expect("Block-1 UTXO commitment not found in reference LMDB");
+
+        assert_eq!(
+            found_hash.to_hex(),
+            EXPECTED_BLOCK1_OUTPUT_HASH_HEX,
+            "Commitment lookup returned unexpected output hash from reference LMDB"
+        );
+    }
+
+    /// Test 3 — kernel lookup by excess signature.
+    ///
+    /// Verifies that the kernel excess-sig index is intact and can locate the block-1 kernel,
+    /// which is the core backward-compatibility check for the LMDB serialisation format.
+    #[test]
+    fn test_reads_reference_lmdb_kernel_by_excess_sig() {
+        let db = open_reference_db();
+
+        let nonce_bytes = Vec::from_hex(EXPECTED_BLOCK1_KERNEL_NONCE_HEX).expect("Invalid nonce hex constant");
+        let sig_scalar_bytes = Vec::from_hex(EXPECTED_BLOCK1_KERNEL_SIG_HEX).expect("Invalid sig hex constant");
+
+        let excess_sig = CompressedSignature::new(
+            CompressedKey::new(&nonce_bytes),
+            RistrettoSecretKey::from_canonical_bytes(&sig_scalar_bytes).expect("Invalid sig scalar bytes"),
+        );
+
+        let (found_kernel, _block_hash) = db
+            .fetch_kernel_by_excess_sig(excess_sig.clone())
+            .expect("fetch_kernel_by_excess_sig failed on reference LMDB")
+            .expect("Block-1 kernel not found in reference LMDB");
+
+        assert_eq!(
+            found_kernel.excess_sig, excess_sig,
+            "Kernel excess_sig mismatch in reference LMDB"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Write test: create LMDB from JSON data, verify chain state
 // ---------------------------------------------------------------------------
 
@@ -415,7 +662,12 @@ mod write_tests {
             let fetched = db
                 .fetch_block(exp.height, true)
                 .unwrap_or_else(|e| panic!("fetch_block({}) failed: {}", exp.height, e));
-            assert_eq!(*fetched.hash(), exp.block_hash, "Hash mismatch at height {}", exp.height);
+            assert_eq!(
+                *fetched.hash(),
+                exp.block_hash,
+                "Hash mismatch at height {}",
+                exp.height
+            );
         }
     }
 
@@ -471,16 +723,19 @@ mod read_tests {
         fn all_canonical_headers_retrievable_by_height() {
             let state = &*SHARED_STATE;
             for exp in &state.data.expected {
-                let fetched = state.db
+                let fetched = state
+                    .db
                     .fetch_block(exp.height, true)
                     .unwrap_or_else(|e| panic!("fetch_block({}) failed: {}", exp.height, e));
                 assert_eq!(
-                    fetched.header().height, exp.height,
+                    fetched.header().height,
+                    exp.height,
                     "Header height mismatch at height {}",
                     exp.height
                 );
                 assert_eq!(
-                    *fetched.hash(), exp.block_hash,
+                    *fetched.hash(),
+                    exp.block_hash,
                     "Block hash mismatch at height {}",
                     exp.height
                 );
@@ -491,12 +746,11 @@ mod read_tests {
         fn canonical_headers_retrievable_by_hash() {
             let state = &*SHARED_STATE;
             for exp in &state.data.expected {
-                let header = state.db
+                let header = state
+                    .db
                     .fetch_header_by_block_hash(exp.block_hash)
                     .unwrap()
-                    .unwrap_or_else(|| {
-                        panic!("Header not found by hash for block at height {}", exp.height)
-                    });
+                    .unwrap_or_else(|| panic!("Header not found by hash for block at height {}", exp.height));
                 assert_eq!(header.height, exp.height);
             }
         }
@@ -520,7 +774,8 @@ mod read_tests {
             let state = &*SHARED_STATE;
             for reorged in &state.data.reorged_blocks {
                 let hash = reorged.hash();
-                let orphan = state.db
+                let orphan = state
+                    .db
                     .fetch_orphan(hash)
                     .unwrap_or_else(|e| panic!("fetch_orphan failed for height {}: {}", reorged.header.height, e));
                 assert_eq!(orphan.header.height, reorged.header.height);
@@ -533,7 +788,8 @@ mod read_tests {
             let state = &*SHARED_STATE;
             let genesis_kernel_count = state.data.expected[0].kernel_count as u64;
             if genesis_kernel_count > 0 {
-                let header = state.db
+                let header = state
+                    .db
                     .fetch_header_containing_kernel_mmr(0)
                     .expect("Should find header for MMR position 0");
                 assert_eq!(header.height(), 0, "MMR position 0 should be in genesis");
@@ -544,7 +800,8 @@ mod read_tests {
         fn fetch_header_containing_kernel_mmr_block_1() {
             let state = &*SHARED_STATE;
             let genesis_kernel_count = state.data.expected[0].kernel_count as u64;
-            let header = state.db
+            let header = state
+                .db
                 .fetch_header_containing_kernel_mmr(genesis_kernel_count)
                 .expect("Should find header for block 1 kernel MMR position");
             assert_eq!(header.height(), 1, "First kernel after genesis should be in block 1");
@@ -557,7 +814,8 @@ mod read_tests {
             for i in 0..=5 {
                 accumulated += state.data.expected[i].kernel_count as u64;
             }
-            let header = state.db
+            let header = state
+                .db
                 .fetch_header_containing_kernel_mmr(accumulated)
                 .expect("Should find header for fork block 6 kernel");
             assert_eq!(header.height(), 6);
@@ -580,7 +838,8 @@ mod read_tests {
         fn fetch_outputs_in_block_returns_expected_outputs() {
             let state = &*SHARED_STATE;
             for exp in &state.data.expected {
-                let db_outputs = state.db
+                let db_outputs = state
+                    .db
                     .fetch_outputs_in_block(exp.block_hash)
                     .unwrap_or_else(|e| panic!("fetch_outputs_in_block failed for height {}: {}", exp.height, e));
 
@@ -608,14 +867,16 @@ mod read_tests {
             let state = &*SHARED_STATE;
             for exp in state.data.expected.iter().skip(1) {
                 for output_hash in &exp.output_hashes {
-                    let mined_info = state.db
+                    let mined_info = state
+                        .db
                         .fetch_output(*output_hash)
                         .unwrap_or_else(|e| {
-                            panic!("fetch_output failed for {} at height {}: {}", output_hash, exp.height, e)
+                            panic!(
+                                "fetch_output failed for {} at height {}: {}",
+                                output_hash, exp.height, e
+                            )
                         })
-                        .unwrap_or_else(|| {
-                            panic!("Output {} at height {} not found", output_hash, exp.height)
-                        });
+                        .unwrap_or_else(|| panic!("Output {} at height {} not found", output_hash, exp.height));
 
                     assert_eq!(mined_info.output.hash(), *output_hash, "Output hash mismatch");
                     assert_eq!(
@@ -637,7 +898,8 @@ mod read_tests {
             let state = &*SHARED_STATE;
             for exp in state.data.expected.iter().skip(1) {
                 for (i, commitment) in exp.output_commitments.iter().enumerate() {
-                    let found_hash = state.db
+                    let found_hash = state
+                        .db
                         .fetch_unspent_output_hash_by_commitment(commitment.clone())
                         .unwrap_or_else(|e| {
                             panic!(
@@ -646,10 +908,7 @@ mod read_tests {
                             )
                         })
                         .unwrap_or_else(|| {
-                            panic!(
-                                "Commitment lookup returned None for output in block {}",
-                                exp.height
-                            )
+                            panic!("Commitment lookup returned None for output in block {}", exp.height)
                         });
 
                     assert_eq!(
@@ -673,7 +932,8 @@ mod read_tests {
         fn fetch_outputs_in_block_with_spend_state_tip_unspent() {
             let state = &*SHARED_STATE;
             let tip_exp = state.data.expected.last().unwrap();
-            let outputs_with_state = state.db
+            let outputs_with_state = state
+                .db
                 .fetch_outputs_in_block_with_spend_state(tip_exp.block_hash, Some(tip_exp.block_hash))
                 .expect("fetch_outputs_in_block_with_spend_state should succeed");
 
@@ -687,7 +947,8 @@ mod read_tests {
         fn fetch_outputs_in_block_with_spend_state_no_header() {
             let state = &*SHARED_STATE;
             let exp = &state.data.expected[3];
-            let outputs_with_state = state.db
+            let outputs_with_state = state
+                .db
                 .fetch_outputs_in_block_with_spend_state(exp.block_hash, None)
                 .expect("Should succeed with None spend header");
 
@@ -716,11 +977,10 @@ mod read_tests {
         fn fetch_inputs_in_block_matches_expected_count() {
             let state = &*SHARED_STATE;
             for exp in &state.data.expected {
-                let inputs = state.db
+                let inputs = state
+                    .db
                     .fetch_inputs_in_block(exp.block_hash)
-                    .unwrap_or_else(|e| {
-                        panic!("fetch_inputs_in_block failed at height {}: {}", exp.height, e)
-                    });
+                    .unwrap_or_else(|e| panic!("fetch_inputs_in_block failed at height {}: {}", exp.height, e));
 
                 assert_eq!(
                     inputs.len(),
@@ -757,11 +1017,10 @@ mod read_tests {
         fn fetch_kernels_in_block_matches_expected() {
             let state = &*SHARED_STATE;
             for exp in &state.data.expected {
-                let kernels = state.db
+                let kernels = state
+                    .db
                     .fetch_kernels_in_block(exp.block_hash)
-                    .unwrap_or_else(|e| {
-                        panic!("fetch_kernels_in_block failed at height {}: {}", exp.height, e)
-                    });
+                    .unwrap_or_else(|e| panic!("fetch_kernels_in_block failed at height {}: {}", exp.height, e));
 
                 assert_eq!(
                     kernels.len(),
@@ -785,19 +1044,12 @@ mod read_tests {
             let state = &*SHARED_STATE;
             for exp in state.data.expected.iter().skip(1) {
                 for excess_sig in &exp.kernel_excess_sigs {
-                    let (found_kernel, found_hash) = state.db
+                    let (found_kernel, found_hash) = state
+                        .db
                         .fetch_kernel_by_excess_sig(excess_sig.clone())
-                        .unwrap_or_else(|e| {
-                            panic!(
-                                "fetch_kernel_by_excess_sig failed at height {}: {}",
-                                exp.height, e
-                            )
-                        })
+                        .unwrap_or_else(|e| panic!("fetch_kernel_by_excess_sig failed at height {}: {}", exp.height, e))
                         .unwrap_or_else(|| {
-                            panic!(
-                                "Kernel with sig {:?} at height {} not found",
-                                excess_sig, exp.height
-                            )
+                            panic!("Kernel with sig {:?} at height {} not found", excess_sig, exp.height)
                         });
 
                     assert_eq!(found_kernel.excess_sig, *excess_sig, "Excess sig mismatch");
@@ -836,21 +1088,13 @@ mod read_tests {
             let state = &*SHARED_STATE;
             for exp in state.data.expected.iter().skip(1) {
                 for (i, payref) in exp.payrefs.iter().enumerate() {
-                    let mined_info = state.db
-                        .fetch_mined_info_by_payref(*payref)
-                        .unwrap_or_else(|e| {
-                            panic!("fetch_mined_info_by_payref failed at height {}: {}", exp.height, e)
-                        });
+                    let mined_info = state.db.fetch_mined_info_by_payref(*payref).unwrap_or_else(|e| {
+                        panic!("fetch_mined_info_by_payref failed at height {}: {}", exp.height, e)
+                    });
 
-                    let output_info = mined_info
-                        .output
-                        .as_ref()
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "MinedInfo.output should be Some for payref at height {}",
-                                exp.height
-                            )
-                        });
+                    let output_info = mined_info.output.as_ref().unwrap_or_else(|| {
+                        panic!("MinedInfo.output should be Some for payref at height {}", exp.height)
+                    });
 
                     assert_eq!(
                         output_info.output.hash(),
@@ -871,14 +1115,12 @@ mod read_tests {
             let state = &*SHARED_STATE;
             for exp in state.data.expected.iter().skip(6) {
                 for payref in &exp.payrefs {
-                    let mined_info = state.db
-                        .fetch_mined_info_by_payref(*payref)
-                        .unwrap_or_else(|e| {
-                            panic!(
-                                "fetch_mined_info_by_payref failed for fork block at height {}: {}",
-                                exp.height, e
-                            )
-                        });
+                    let mined_info = state.db.fetch_mined_info_by_payref(*payref).unwrap_or_else(|e| {
+                        panic!(
+                            "fetch_mined_info_by_payref failed for fork block at height {}: {}",
+                            exp.height, e
+                        )
+                    });
 
                     assert!(
                         mined_info.output.is_some(),
