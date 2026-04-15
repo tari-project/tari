@@ -36,11 +36,13 @@ use digest::Digest;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
     TransactionStage,
     WalletConfig,
     WalletKeyManager,
     WalletSqlite,
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         UtxoSelectionCriteria,
         handle::{OutputManagerEvent, OutputManagerHandle},
@@ -52,6 +54,7 @@ use minotari_wallet::{
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
+use tari_transaction_components::rpc::models::TxLocation;
 use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -2881,6 +2884,98 @@ pub async fn command_runner(
                     }
                 },
                 Err(e) => eprintln!("DebugTransaction error! Could not find completed transaction: {e}"),
+            },
+            ValidateTransaction(args) => {
+                let tx_id: TxId = args.tx_id.into();
+                match transaction_service.get_completed_transaction(tx_id).await {
+                    Ok(completed_tx) => {
+                        let has_signature =
+                            completed_tx.transaction_signature != CompressedSignature::default();
+                        println!("--- Validate Transaction {} ---", tx_id);
+                        if has_signature {
+                            println!("Transaction has a signature, validating via base node query...");
+                            let client = wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+                            match client.get_tip_info().await {
+                                Ok(tip_info) => {
+                                    let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+                                    println!("Current chain tip height: {}", tip);
+                                    let sig = &completed_tx.transaction_signature;
+                                    match client
+                                        .transaction_query(
+                                            sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                                            sig.get_signature().as_bytes().to_vec(),
+                                        )
+                                        .await
+                                    {
+                                        Ok(response) => {
+                                            if response.location == TxLocation::Mined {
+                                                if let Some(mined_height) = response.mined_height {
+                                                    let num_confirmations = tip.saturating_sub(mined_height);
+                                                    println!("Transaction is MINED at height {}", mined_height);
+                                                    println!("Confirmations: {}", num_confirmations);
+                                                    if let Some(hash) = response.mined_header_hash {
+                                                        println!("Mined in block: {}", hash.to_hex());
+                                                    }
+                                                    if let Some(ts) = response.mined_timestamp {
+                                                        println!("Mined timestamp: {}", ts);
+                                                    }
+                                                } else {
+                                                    println!(
+                                                        "Transaction is reported as mined but has no height"
+                                                    );
+                                                }
+                                            } else {
+                                                println!("Transaction is UNMINED (not found on chain)");
+                                            }
+                                        },
+                                        Err(e) => eprintln!("Error querying base node: {e}"),
+                                    }
+                                },
+                                Err(e) => eprintln!("Error getting tip info: {e}"),
+                            }
+                        } else {
+                            println!(
+                                "Transaction has no signature (detected/imported), validating via output \
+                                 manager..."
+                            );
+                            match output_service.get_output_info_for_tx_id(tx_id).await {
+                                Ok(output_info) => {
+                                    println!("Output info: {:?}", output_info);
+                                    if let (Some(mined_height), Some(block_hash)) =
+                                        (output_info.mined_height, output_info.block_hash)
+                                    {
+                                        let client = wallet
+                                            .wallet_connectivity
+                                            .obtain_base_node_wallet_rpc_client()
+                                            .await;
+                                        let tip = match client.get_tip_info().await {
+                                            Ok(tip_info) => {
+                                                tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0)
+                                            },
+                                            Err(e) => {
+                                                eprintln!("Error getting tip info: {e}");
+                                                0
+                                            },
+                                        };
+                                        let num_confirmations = tip.saturating_sub(mined_height);
+                                        println!("Transaction outputs MINED at height {}", mined_height);
+                                        println!("Mined in block: {}", block_hash.to_hex());
+                                        println!("Confirmations: {}", num_confirmations);
+                                        println!("Current tip: {}", tip);
+                                        let is_confirmed = num_confirmations >= 3;
+                                        println!("Confirmed: {}", is_confirmed);
+                                    } else {
+                                        println!(
+                                            "Transaction outputs are NOT mined (not detected on chain)"
+                                        );
+                                    }
+                                },
+                                Err(e) => eprintln!("Error getting output info: {e}"),
+                            }
+                        }
+                    },
+                    Err(e) => eprintln!("ValidateTransaction error! Could not find completed transaction: {e}"),
+                }
             },
         }
     }

@@ -1920,6 +1920,7 @@ service Wallet {
   rpc RescanWallet(RescanWalletRequest) returns (RescanWalletResponse);
   rpc ScanAndImportUtxos(ScanAndImportUtxosRequest) returns (ScanAndImportUtxosResponse);
   rpc DebugTransaction(DebugTransactionRequest) returns (DebugTransactionResponse);
+  rpc ValidateTransaction(ValidateTransactionRequest) returns (ValidateTransactionResponse);
 }
 
 
@@ -2746,4 +2747,12 @@ message DbWalletOutputInfo {
   string features_output_type = 17;
   bytes sender_offset_public_key = 18;
   uint64 script_lock_height = 19;
+}
+
+message ValidateTransactionRequest {
+  uint64 tx_id = 1;
+}
+
+message ValidateTransactionResponse {
+  repeated string debug_info = 1;
 }

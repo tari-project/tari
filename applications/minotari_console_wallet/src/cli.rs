@@ -212,6 +212,7 @@ pub enum CliCommands {
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
     DebugTransaction(DebugTransactionArgs),
+    ValidateTransaction(ValidateTransactionArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -691,6 +692,11 @@ pub struct CreateMultisigUtxoArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct DebugTransactionArgs {
+    pub tx_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ValidateTransactionArgs {
     pub tx_id: u64,
 }
 

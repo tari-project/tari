@@ -134,6 +134,8 @@ use minotari_app_grpc::tari_rpc::{
     UserPayForFeeResponse,
     ValidateRequest,
     ValidateResponse,
+    ValidateTransactionRequest,
+    ValidateTransactionResponse,
     payment_recipient::PaymentType,
     wallet_server,
 };
@@ -3442,6 +3444,190 @@ impl wallet_server::Wallet for WalletGrpcServer {
             inputs: input_outputs,
             outputs: output_outputs,
         }))
+    }
+
+    async fn validate_transaction(
+        &self,
+        request: Request<ValidateTransactionRequest>,
+    ) -> Result<Response<ValidateTransactionResponse>, Status> {
+        let message = request.into_inner();
+        let tx_id: TxId = message.tx_id.into();
+        debug!(
+            target: LOG_TARGET,
+            "validate_transaction: Incoming GRPC request for tx_id: {}", tx_id
+        );
+
+        let mut debug_info = Vec::new();
+
+        let mut transaction_service = self.get_transaction_service();
+        let completed_tx = transaction_service
+            .get_completed_transaction(tx_id)
+            .await
+            .map_err(|e| Status::not_found(format!("Completed transaction not found: {e}")))?;
+
+        let has_signature = completed_tx.transaction_signature != CompressedSignature::default();
+
+        if has_signature {
+            debug_info.push(format!(
+                "Transaction {} has a signature, validating via base node excess signature query",
+                tx_id
+            ));
+
+            let client = self.wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+
+            let tip_info = client
+                .get_tip_info()
+                .await
+                .map_err(|e| Status::internal(format!("Failed to get tip info: {e}")))?;
+            let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+            debug_info.push(format!("Current chain tip height: {}", tip));
+
+            let sig = &completed_tx.transaction_signature;
+            match client
+                .transaction_query(
+                    sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                    sig.get_signature().as_bytes().to_vec(),
+                )
+                .await
+            {
+                Ok(response) => {
+                    use tari_transaction_components::rpc::models::TxLocation;
+                    if response.location == TxLocation::Mined {
+                        match response.mined_height {
+                            Some(mined_height) => {
+                                let num_confirmations = tip.saturating_sub(mined_height);
+                                debug_info.push(format!(
+                                    "Transaction is MINED at height {}",
+                                    mined_height
+                                ));
+                                debug_info.push(format!("Confirmations: {}", num_confirmations));
+                                if let Some(hash) = &response.mined_header_hash {
+                                    debug_info
+                                        .push(format!("Mined in block: {}", hash.to_hex()));
+                                }
+                                if let Some(ts) = response.mined_timestamp {
+                                    debug_info.push(format!("Mined timestamp: {}", ts));
+                                }
+
+                                let num_confirmations_required = self
+                                    .wallet
+                                    .config
+                                    .transaction_service_config
+                                    .num_confirmations_required;
+                                let is_confirmed = num_confirmations >= num_confirmations_required;
+                                debug_info.push(format!("Confirmed: {}", is_confirmed));
+
+                                if completed_tx.mined_height != Some(mined_height) {
+                                    debug_info.push(format!(
+                                        "Wallet stored mined_height ({:?}) differs from chain ({})",
+                                        completed_tx.mined_height, mined_height
+                                    ));
+                                } else {
+                                    debug_info.push("Wallet mined_height matches chain".to_string());
+                                }
+                            },
+                            None => {
+                                debug_info.push(
+                                    "Transaction is reported as mined but has no height".to_string(),
+                                );
+                            },
+                        }
+                    } else {
+                        debug_info.push(format!(
+                            "Transaction is UNMINED (location: {:?})",
+                            response.location
+                        ));
+                        if completed_tx.mined_height.is_some() {
+                            debug_info.push(format!(
+                                "WARNING: Wallet has mined_height {:?} but chain says unmined",
+                                completed_tx.mined_height
+                            ));
+                        }
+                    }
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error querying base node for transaction: {}", e));
+                },
+            }
+        } else {
+            debug_info.push(format!(
+                "Transaction {} has no signature (detected/imported), validating via output manager",
+                tx_id
+            ));
+
+            let mut oms = self.get_output_manager_service();
+            match oms.get_output_info_for_tx_id(tx_id).await {
+                Ok(output_info) => {
+                    debug_info.push(format!("Output statuses: {:?}", output_info.statuses));
+
+                    if let (Some(mined_height), Some(block_hash)) =
+                        (output_info.mined_height, output_info.block_hash)
+                    {
+                        let client =
+                            self.wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+                        let tip = match client.get_tip_info().await {
+                            Ok(tip_info) => {
+                                let t = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+                                debug_info.push(format!("Current chain tip height: {}", t));
+                                t
+                            },
+                            Err(e) => {
+                                debug_info.push(format!("Error getting tip info: {}", e));
+                                0
+                            },
+                        };
+
+                        let num_confirmations = tip.saturating_sub(mined_height);
+                        debug_info.push(format!(
+                            "Transaction outputs MINED at height {}",
+                            mined_height
+                        ));
+                        debug_info
+                            .push(format!("Mined in block: {}", block_hash.to_hex()));
+                        debug_info.push(format!("Confirmations: {}", num_confirmations));
+
+                        let num_confirmations_required = self
+                            .wallet
+                            .config
+                            .transaction_service_config
+                            .num_confirmations_required;
+                        let is_confirmed = num_confirmations >= num_confirmations_required;
+                        debug_info.push(format!("Confirmed: {}", is_confirmed));
+
+                        if completed_tx.mined_height != Some(mined_height) {
+                            debug_info.push(format!(
+                                "Wallet stored mined_height ({:?}) differs from output manager ({})",
+                                completed_tx.mined_height, mined_height
+                            ));
+                        } else {
+                            debug_info.push("Wallet mined_height matches output manager".to_string());
+                        }
+                    } else {
+                        debug_info.push(
+                            "Transaction outputs are NOT mined (not detected on chain)".to_string(),
+                        );
+                        if completed_tx.mined_height.is_some() {
+                            debug_info.push(format!(
+                                "WARNING: Wallet has mined_height {:?} but output manager says unmined",
+                                completed_tx.mined_height
+                            ));
+                        }
+                    }
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error getting output info for tx_id: {}", e));
+                },
+            }
+        }
+
+        debug_info.push(format!("Transaction status: {:?}", completed_tx.status));
+        debug_info.push(format!("Transaction direction: {:?}", completed_tx.direction));
+
+        for info in &debug_info {
+            debug!(target: LOG_TARGET, "validate_transaction: {}", info);
+        }
+
+        Ok(Response::new(ValidateTransactionResponse { debug_info }))
     }
 }
 

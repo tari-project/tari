@@ -3296,8 +3296,8 @@ impl UtxoSelection {
 #[derive(Debug, Clone)]
 pub struct OutputInfoByTxId {
     pub statuses: Vec<OutputStatus>,
-    pub(crate) mined_height: Option<u64>,
-    pub(crate) block_hash: Option<BlockHash>,
+    pub mined_height: Option<u64>,
+    pub block_hash: Option<BlockHash>,
 }
 
 impl Display for OutputInfoByTxId {
