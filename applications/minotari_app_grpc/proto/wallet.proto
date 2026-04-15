@@ -1919,6 +1919,9 @@ service Wallet {
   rpc GetBurnClaimProof(GetBurnClaimProofRequest) returns (GetBurnClaimProofResponse);
   rpc RescanWallet(RescanWalletRequest) returns (RescanWalletResponse);
   rpc ScanAndImportUtxos(ScanAndImportUtxosRequest) returns (ScanAndImportUtxosResponse);
+  rpc DebugTransaction(DebugTransactionRequest) returns (DebugTransactionResponse);
+  rpc ValidateTransaction(ValidateTransactionRequest) returns (ValidateTransactionResponse);
+  rpc ValidateOutputs(ValidateOutputsRequest) returns (ValidateOutputsResponse);
 }
 
 
@@ -2713,4 +2716,58 @@ message ScanFeedback{
   bool is_found = 2;
   uint64 tx_id = 3;
   repeated string debug_info = 4;
+}
+
+message DebugTransactionRequest {
+  uint64 tx_id = 1;
+}
+
+message DebugTransactionResponse {
+  TransactionInfo transaction_info = 1;
+  repeated DbWalletOutputInfo inputs = 2;
+  repeated DbWalletOutputInfo outputs = 3;
+}
+
+message DbWalletOutputInfo {
+  bytes commitment = 1;
+  bytes hash = 2;
+  uint64 value = 3;
+  string status = 4;
+  uint64 mined_height = 5;
+  bytes mined_in_block = 6;
+  uint64 mined_timestamp = 7;
+  uint64 marked_deleted_at_height = 8;
+  bytes marked_deleted_in_block = 9;
+  string spending_priority = 10;
+  string source = 11;
+  uint64 received_in_tx_id = 12;
+  uint64 spent_in_tx_id = 13;
+  bytes payment_id = 14;
+  string script = 15;
+  uint64 maturity = 16;
+  string features_output_type = 17;
+  bytes sender_offset_public_key = 18;
+  uint64 script_lock_height = 19;
+}
+
+message ValidateTransactionRequest {
+  uint64 tx_id = 1;
+}
+
+message ValidateTransactionResponse {
+  repeated string debug_info = 1;
+}
+
+message ValidateOutputsRequest {
+  repeated string commitments = 1;
+}
+
+message ValidateOutputsResponse {
+  repeated OutputValidationFeedback feedback = 1;
+}
+
+message OutputValidationFeedback {
+  string commitment = 1;
+  string status = 2;
+  repeated string debug_info = 3;
 }
