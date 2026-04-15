@@ -191,9 +191,14 @@ mod test {
 
     fn insert_heights(conn: &mut SqliteConnection, heights: &[i64]) {
         for &h in heights {
-            ScannedBlockSql::new(vec![(h & 0xff) as u8; 32], h)
-                .commit(conn)
-                .unwrap();
+            // Encode the full i64 height into the first 8 bytes of the hash so
+            // every height gets a distinct primary key — `header_hash` is the PK
+            // of scanned_blocks and `replace_into` would silently overwrite
+            // earlier rows if they shared the same hash (which the old `(h & 0xff)`
+            // approach caused for heights 256 apart).
+            let mut hash = [0u8; 32];
+            hash[..8].copy_from_slice(&h.to_le_bytes());
+            ScannedBlockSql::new(hash.to_vec(), h).commit(conn).unwrap();
         }
     }
 
