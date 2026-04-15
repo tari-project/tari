@@ -2759,12 +2759,14 @@ impl CompletedTransaction {
                 "Migrating lock_height for tx {}: calculated {}",
                 tx_id, calculated
             );
-            if let Err(e) = diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)))
-                .set(UpdateCompletedTransactionSql {
-                    lock_height: Some(Some(calculated as i64)),
-                    ..Default::default()
-                })
-                .execute(conn){
+            if let Err(e) =
+                diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)))
+                    .set(UpdateCompletedTransactionSql {
+                        lock_height: Some(Some(calculated as i64)),
+                        ..Default::default()
+                    })
+                    .execute(conn)
+            {
                 warn!(target: LOG_TARGET, "Failed to persist calculated lock_height for tx {}: {}. This may cause repeated calculations.", tx_id, e);
             };
             calculated
