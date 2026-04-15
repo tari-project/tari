@@ -889,7 +889,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
                     .select(completed_transactions::lock_height)
                     .first::<Option<i64>>(&mut conn)
-                    .unwrap_or(None)
+                    .optional()?
+                    .flatten()
                     .unwrap_or(0) as u64;
                 if lock_height > 0 && tip_height < lock_height {
                     status.mined_confirm_locked()
@@ -2758,12 +2759,14 @@ impl CompletedTransaction {
                 "Migrating lock_height for tx {}: calculated {}",
                 tx_id, calculated
             );
-            let _result = diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)))
+            if let Err(e) = diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)))
                 .set(UpdateCompletedTransactionSql {
                     lock_height: Some(Some(calculated as i64)),
                     ..Default::default()
                 })
-                .execute(conn);
+                .execute(conn){
+                warn!(target: LOG_TARGET, "Failed to persist calculated lock_height for tx {}: {}. This may cause repeated calculations.", tx_id, e);
+            };
             calculated
         } else {
             c.lock_height.unwrap_or(0) as u64
