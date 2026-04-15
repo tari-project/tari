@@ -2978,7 +2978,11 @@ pub async fn command_runner(
                 }
             },
             ValidateOutputs(args) => {
-                println!("--- Validate Outputs ---");
+                use minotari_wallet::output_manager_service::storage::sqlite_db::{
+                    ReceivedOutputInfoForBatch, SpentOutputInfoForBatch,
+                };
+
+                println!("--- Validate and Fix Outputs ---");
                 let client = wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
 
                 let tip_info = match client.get_tip_info().await {
@@ -2993,6 +2997,11 @@ pub async fn command_runner(
 
                 let num_confirmations_required = config.transaction_service_config.num_confirmations_required;
 
+                let mut mined_updates = Vec::new();
+                let mut spent_updates = Vec::new();
+                let mut unmined_invalid = Vec::new();
+                let mut unspent_updates = Vec::new();
+
                 for hex in &args.commitments {
                     println!("\n--- Commitment: {} ---", hex);
 
@@ -3004,22 +3013,26 @@ pub async fn command_runner(
                         },
                     };
 
-                    // Look up output in wallet DB
-                    let db_output = match output_service.get_outputs_by_commitments(vec![commitment]).await {
-                        Ok(outputs) if !outputs.is_empty() => {
-                            let output = outputs.into_iter().next().expect("checked not empty");
-                            println!("Found in wallet DB - status: {}, hash: {}", output.status, output.hash.to_hex());
-                            output
-                        },
-                        Ok(_) => {
-                            println!("Output not found in wallet DB");
-                            continue;
-                        },
-                        Err(e) => {
-                            eprintln!("Error querying wallet DB: {}", e);
-                            continue;
-                        },
-                    };
+                    let db_output =
+                        match output_service.get_outputs_by_commitments(vec![commitment.clone()]).await {
+                            Ok(outputs) if !outputs.is_empty() => {
+                                let output = outputs.into_iter().next().expect("checked not empty");
+                                println!(
+                                    "Found in wallet DB - status: {}, hash: {}",
+                                    output.status,
+                                    output.hash.to_hex()
+                                );
+                                output
+                            },
+                            Ok(_) => {
+                                println!("Output not found in wallet DB");
+                                continue;
+                            },
+                            Err(e) => {
+                                eprintln!("Error querying wallet DB: {}", e);
+                                continue;
+                            },
+                        };
 
                     // Report wallet state
                     if let Some(mined_height) = db_output.mined_height {
@@ -3046,10 +3059,8 @@ pub async fn command_runner(
                     let output_hash = db_output.hash.to_vec();
                     match client.get_utxos_mined_info(vec![output_hash.clone()], 2).await {
                         Ok(response) => {
-                            let found_in_utxos = response
-                                .utxos
-                                .iter()
-                                .find(|u| u.utxo_hash == output_hash);
+                            let found_in_utxos =
+                                response.utxos.iter().find(|u| u.utxo_hash == output_hash);
                             let found_in_mempool =
                                 response.mempool_utxos.iter().any(|h| *h == output_hash);
 
@@ -3065,13 +3076,38 @@ pub async fn command_runner(
 
                                 match db_output.mined_height {
                                     Some(wallet_height) if wallet_height != mined_height => {
+                                        let block_hash = FixedHash::try_from(
+                                            mined_info.mined_in_hash.as_slice(),
+                                        )
+                                        .unwrap_or_default();
+                                        mined_updates.push(ReceivedOutputInfoForBatch {
+                                            commitment: commitment.clone(),
+                                            mined_height,
+                                            mined_in_block: block_hash,
+                                            confirmed,
+                                            mined_timestamp: mined_info.mined_in_timestamp,
+                                        });
                                         println!(
-                                            "WARNING: wallet mined_height ({}) differs from chain ({})",
+                                            "FIX: wallet mined_height ({}) differs from chain ({}), updating",
                                             wallet_height, mined_height
                                         );
                                     },
                                     None => {
-                                        println!("WARNING: wallet reports unmined but chain says mined");
+                                        let block_hash = FixedHash::try_from(
+                                            mined_info.mined_in_hash.as_slice(),
+                                        )
+                                        .unwrap_or_default();
+                                        mined_updates.push(ReceivedOutputInfoForBatch {
+                                            commitment: commitment.clone(),
+                                            mined_height,
+                                            mined_in_block: block_hash,
+                                            confirmed,
+                                            mined_timestamp: mined_info.mined_in_timestamp,
+                                        });
+                                        println!(
+                                            "FIX: wallet reports unmined but chain says mined at {}, updating",
+                                            mined_height
+                                        );
                                     },
                                     _ => {
                                         println!("OK: wallet mined_height matches chain");
@@ -3082,7 +3118,11 @@ pub async fn command_runner(
                             } else {
                                 println!("Chain: NOT FOUND in UTXO set or mempool");
                                 if db_output.mined_height.is_some() {
-                                    println!("WARNING: wallet reports mined but chain says not found - possible reorg");
+                                    unmined_invalid.push(db_output.hash);
+                                    println!(
+                                        "FIX: wallet reports mined but chain says not found, marking as unmined and \
+                                         invalid"
+                                    );
                                 }
                             }
                         },
@@ -3108,14 +3148,33 @@ pub async fn command_runner(
 
                                         match db_output.marked_deleted_at_height {
                                             Some(wallet_height) if wallet_height != *spent_height => {
+                                                let block_hash =
+                                                    FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
+                                                spent_updates.push(SpentOutputInfoForBatch {
+                                                    commitment: commitment.clone(),
+                                                    confirmed,
+                                                    mark_deleted_at_height: *spent_height,
+                                                    mark_deleted_in_block: block_hash,
+                                                });
                                                 println!(
-                                                    "WARNING: wallet deleted_at_height ({}) differs from chain ({})",
+                                                    "FIX: wallet deleted_at_height ({}) differs from chain ({}), \
+                                                     updating",
                                                     wallet_height, spent_height
                                                 );
                                             },
                                             None => {
+                                                let block_hash =
+                                                    FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
+                                                spent_updates.push(SpentOutputInfoForBatch {
+                                                    commitment: commitment.clone(),
+                                                    confirmed,
+                                                    mark_deleted_at_height: *spent_height,
+                                                    mark_deleted_in_block: block_hash,
+                                                });
                                                 println!(
-                                                    "WARNING: wallet reports not deleted but chain says spent"
+                                                    "FIX: wallet reports not deleted but chain says spent at {}, \
+                                                     updating",
+                                                    spent_height
                                                 );
                                             },
                                             _ => {
@@ -3129,7 +3188,17 @@ pub async fn command_runner(
                                             found_height
                                         );
                                         if db_output.marked_deleted_at_height.is_some() {
-                                            println!("WARNING: wallet reports deleted but chain says not spent");
+                                            let confirmed = db_output
+                                                .mined_height
+                                                .map(|h| {
+                                                    tip_height.saturating_sub(h) >= num_confirmations_required
+                                                })
+                                                .unwrap_or(false);
+                                            unspent_updates.push((db_output.hash, confirmed));
+                                            println!(
+                                                "FIX: wallet reports deleted but chain says not spent, marking as \
+                                                 unspent"
+                                            );
                                         }
                                     },
                                     (None, _) => {
@@ -3140,6 +3209,35 @@ pub async fn command_runner(
                         },
                         Err(e) => eprintln!("Error querying base node for deleted info: {e}"),
                     }
+                }
+
+                // Apply collected fixes
+                if !mined_updates.is_empty()
+                    || !spent_updates.is_empty()
+                    || !unmined_invalid.is_empty()
+                    || !unspent_updates.is_empty()
+                {
+                    println!(
+                        "\nApplying fixes: mined={}, spent={}, unmined_invalid={}, unspent={}",
+                        mined_updates.len(),
+                        spent_updates.len(),
+                        unmined_invalid.len(),
+                        unspent_updates.len()
+                    );
+                    match output_service
+                        .update_output_validation_state(
+                            mined_updates,
+                            spent_updates,
+                            unmined_invalid,
+                            unspent_updates,
+                        )
+                        .await
+                    {
+                        Ok(()) => println!("Fixes applied successfully"),
+                        Err(e) => eprintln!("Error applying fixes: {e}"),
+                    }
+                } else {
+                    println!("\nNo fixes needed - all outputs match chain state");
                 }
             },
         }

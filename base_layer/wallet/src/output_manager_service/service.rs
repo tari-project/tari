@@ -446,6 +446,30 @@ where
                 let outputs = self.fetch_outputs_by_commitments(&commitments)?;
                 Ok(OutputManagerResponse::Outputs(outputs))
             },
+            OutputManagerRequest::UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            } => {
+                if !mined_updates.is_empty() {
+                    self.resources
+                        .db
+                        .set_received_outputs_mined_height_and_statuses(mined_updates)?;
+                }
+                if !spent_updates.is_empty() {
+                    self.resources.db.mark_outputs_as_spent(spent_updates)?;
+                }
+                if !unmined_invalid.is_empty() {
+                    self.resources
+                        .db
+                        .set_outputs_to_unmined_and_invalid(unmined_invalid)?;
+                }
+                if !unspent_updates.is_empty() {
+                    self.resources.db.mark_outputs_as_unspent(unspent_updates)?;
+                }
+                Ok(OutputManagerResponse::OutputValidationStateUpdated)
+            },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
                     self.preview_coin_join_with_commitments(commitments, fee_per_gram)

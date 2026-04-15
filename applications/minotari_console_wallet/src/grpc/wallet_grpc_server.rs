@@ -3638,10 +3638,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ValidateOutputsRequest>,
     ) -> Result<Response<ValidateOutputsResponse>, Status> {
+        use minotari_wallet::output_manager_service::storage::sqlite_db::{
+            ReceivedOutputInfoForBatch, SpentOutputInfoForBatch,
+        };
+
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "validate_outputs: Incoming GRPC request to validate outputs by commitment",
+            "validate_outputs: Incoming GRPC request to validate and fix outputs by commitment",
         );
         let mut results = Vec::new();
         let mut oms = self.wallet.output_manager_service.clone();
@@ -3659,6 +3663,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .config
             .transaction_service_config
             .num_confirmations_required;
+
+        let mut mined_updates = Vec::new();
+        let mut spent_updates = Vec::new();
+        let mut unmined_invalid = Vec::new();
+        let mut unspent_updates = Vec::new();
 
         for hex in message.commitments {
             let commitment = match CompressedCommitment::from_hex(&hex) {
@@ -3736,7 +3745,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 debug_info.push(format!("Spent in tx_id: {}", tx_id));
             }
 
-            // Step 3: Validate against base node - check mined info (like TxoValidationTask::update_unconfirmed_outputs)
+            // Step 3: Validate against base node - check mined info
             let output_hash = db_output.hash.to_vec();
             match client
                 .get_utxos_mined_info(vec![output_hash.clone()], 2)
@@ -3745,10 +3754,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Ok(response) => {
                     debug_info.push(format!("Chain tip height: {}", tip_height));
 
-                    let found_in_utxos = response
-                        .utxos
-                        .iter()
-                        .find(|u| u.utxo_hash == output_hash);
+                    let found_in_utxos = response.utxos.iter().find(|u| u.utxo_hash == output_hash);
                     let found_in_mempool = response.mempool_utxos.iter().any(|h| *h == output_hash);
 
                     if let Some(mined_info) = found_in_utxos {
@@ -3759,23 +3765,38 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             "Base node: output is MINED at height {} (confirmations: {}, confirmed: {})",
                             mined_height, confirmations, confirmed
                         ));
-                        debug_info.push(format!(
-                            "Mined in block: {}",
-                            mined_info.mined_in_hash.to_hex()
-                        ));
+                        debug_info.push(format!("Mined in block: {}", mined_info.mined_in_hash.to_hex()));
 
-                        // Compare with wallet state
                         match db_output.mined_height {
                             Some(wallet_height) if wallet_height != mined_height => {
+                                let block_hash =
+                                    FixedHash::try_from(mined_info.mined_in_hash.as_slice()).unwrap_or_default();
+                                mined_updates.push(ReceivedOutputInfoForBatch {
+                                    commitment: commitment.clone(),
+                                    mined_height,
+                                    mined_in_block: block_hash,
+                                    confirmed,
+                                    mined_timestamp: mined_info.mined_in_timestamp,
+                                });
                                 debug_info.push(format!(
-                                    "WARNING: wallet mined_height ({}) differs from chain ({})",
+                                    "FIX: wallet mined_height ({}) differs from chain ({}), updating",
                                     wallet_height, mined_height
                                 ));
                             },
                             None => {
-                                debug_info.push(
-                                    "WARNING: wallet reports unmined but chain says mined".to_string(),
-                                );
+                                let block_hash =
+                                    FixedHash::try_from(mined_info.mined_in_hash.as_slice()).unwrap_or_default();
+                                mined_updates.push(ReceivedOutputInfoForBatch {
+                                    commitment: commitment.clone(),
+                                    mined_height,
+                                    mined_in_block: block_hash,
+                                    confirmed,
+                                    mined_timestamp: mined_info.mined_in_timestamp,
+                                });
+                                debug_info.push(format!(
+                                    "FIX: wallet reports unmined but chain says mined at {}, updating",
+                                    mined_height
+                                ));
                             },
                             _ => {
                                 debug_info.push("Wallet mined_height matches chain".to_string());
@@ -3786,8 +3807,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     } else {
                         debug_info.push("Base node: output is NOT FOUND in UTXO set or mempool".to_string());
                         if db_output.mined_height.is_some() {
+                            unmined_invalid.push(db_output.hash);
                             debug_info.push(
-                                "WARNING: wallet reports mined but chain says not found - possible reorg".to_string(),
+                                "FIX: wallet reports mined but chain says not found, marking as unmined and invalid"
+                                    .to_string(),
                             );
                         }
                     }
@@ -3797,11 +3820,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             }
 
-            // Step 4: Check if spent (like TxoValidationTask::update_spent_outputs)
-            match client
-                .query_deleted_utxos(vec![output_hash], vec![])
-                .await
-            {
+            // Step 4: Check if spent
+            match client.query_deleted_utxos(vec![output_hash], vec![]).await {
                 Ok(response) => {
                     if let Some(deleted_info) = response.utxos.first() {
                         match (&deleted_info.found_in_header, &deleted_info.spent_in_header) {
@@ -3822,18 +3842,34 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                     confirmed
                                 ));
 
-                                // Compare with wallet state
                                 match db_output.marked_deleted_at_height {
                                     Some(wallet_height) if wallet_height != *spent_height => {
+                                        let block_hash =
+                                            FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
+                                        spent_updates.push(SpentOutputInfoForBatch {
+                                            commitment: commitment.clone(),
+                                            confirmed,
+                                            mark_deleted_at_height: *spent_height,
+                                            mark_deleted_in_block: block_hash,
+                                        });
                                         debug_info.push(format!(
-                                            "WARNING: wallet deleted_at_height ({}) differs from chain ({})",
+                                            "FIX: wallet deleted_at_height ({}) differs from chain ({}), updating",
                                             wallet_height, spent_height
                                         ));
                                     },
                                     None => {
-                                        debug_info.push(
-                                            "WARNING: wallet reports not deleted but chain says spent".to_string(),
-                                        );
+                                        let block_hash =
+                                            FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
+                                        spent_updates.push(SpentOutputInfoForBatch {
+                                            commitment: commitment.clone(),
+                                            confirmed,
+                                            mark_deleted_at_height: *spent_height,
+                                            mark_deleted_in_block: block_hash,
+                                        });
+                                        debug_info.push(format!(
+                                            "FIX: wallet reports not deleted but chain says spent at {}, updating",
+                                            spent_height
+                                        ));
                                     },
                                     _ => {
                                         debug_info.push("Wallet spent state matches chain".to_string());
@@ -3846,8 +3882,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                     found_height
                                 ));
                                 if db_output.marked_deleted_at_height.is_some() {
+                                    let confirmed = db_output
+                                        .mined_height
+                                        .map(|h| tip_height.saturating_sub(h) >= num_confirmations_required)
+                                        .unwrap_or(false);
+                                    unspent_updates.push((db_output.hash, confirmed));
                                     debug_info.push(
-                                        "WARNING: wallet reports deleted but chain says not spent".to_string(),
+                                        "FIX: wallet reports deleted but chain says not spent, marking as unspent"
+                                            .to_string(),
                                     );
                                 }
                             },
@@ -3876,6 +3918,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 status: final_status,
                 debug_info,
             });
+        }
+
+        // Apply collected fixes
+        if !mined_updates.is_empty()
+            || !spent_updates.is_empty()
+            || !unmined_invalid.is_empty()
+            || !unspent_updates.is_empty()
+        {
+            debug!(
+                target: LOG_TARGET,
+                "validate_outputs: Applying fixes - mined: {}, spent: {}, unmined_invalid: {}, unspent: {}",
+                mined_updates.len(),
+                spent_updates.len(),
+                unmined_invalid.len(),
+                unspent_updates.len()
+            );
+            oms.update_output_validation_state(mined_updates, spent_updates, unmined_invalid, unspent_updates)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to apply fixes: {e}")))?;
         }
 
         Ok(Response::new(ValidateOutputsResponse { feedback: results }))

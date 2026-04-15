@@ -54,7 +54,7 @@ use crate::output_manager_service::{
     storage::{
         database::OutputBackendQuery,
         models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-        sqlite_db::CoinBucket,
+        sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
 };
 
@@ -169,6 +169,12 @@ pub enum OutputManagerRequest {
     FetchOutputsByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
     GetOutputsByCommitments(Vec<CompressedCommitment>),
+    UpdateOutputValidationState {
+        mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        spent_updates: Vec<SpentOutputInfoForBatch>,
+        unmined_invalid: Vec<FixedHash>,
+        unspent_updates: Vec<(FixedHash, bool)>,
+    },
     ClearShortTermEncumberances,
 }
 
@@ -303,6 +309,19 @@ impl fmt::Display for OutputManagerRequest {
             GetOutputsByCommitments(commitments) => {
                 write!(f, "GetOutputsByCommitments ({})", commitments.len())
             },
+            UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            } => write!(
+                f,
+                "UpdateOutputValidationState (mined: {}, spent: {}, unmined_invalid: {}, unspent: {})",
+                mined_updates.len(),
+                spent_updates.len(),
+                unmined_invalid.len(),
+                unspent_updates.len()
+            ),
         }
     }
 }
@@ -360,6 +379,7 @@ pub enum OutputManagerResponse<KM> {
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
     FetchUnspentOutputs(Vec<TransactionOutput>),
     ConfirmEncumberance,
+    OutputValidationStateUpdated,
     ClearShortTermEncumberances,
 }
 
@@ -777,6 +797,36 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::Outputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::GetOutputsByCommitments".to_string(),
+            )),
+        }
+    }
+
+    pub async fn update_output_validation_state(
+        &mut self,
+        mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        spent_updates: Vec<SpentOutputInfoForBatch>,
+        unmined_invalid: Vec<FixedHash>,
+        unspent_updates: Vec<(FixedHash, bool)>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            })
+            .await
+            .inspect_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "OutputManagerRequest::UpdateOutputValidationState({e})"
+                )
+            })??
+        {
+            OutputManagerResponse::OutputValidationStateUpdated => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::UpdateOutputValidationState".to_string(),
             )),
         }
     }
