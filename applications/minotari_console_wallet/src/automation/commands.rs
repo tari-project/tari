@@ -2853,14 +2853,9 @@ pub async fn command_runner(
 
                     match output_service.fetch_outputs_by_tx_id(args.tx_id.into()).await {
                         Ok(db_outputs) => {
-                            let input_outputs: Vec<_> = db_outputs
-                                .iter()
-                                .filter(|o| o.spent_in_tx_id == Some(args.tx_id.into()))
-                                .collect();
-                            let received_outputs: Vec<_> = db_outputs
-                                .iter()
-                                .filter(|o| o.received_in_tx_id == Some(args.tx_id.into()))
-                                .collect();
+                            let (input_outputs, received_outputs): (Vec<_>, Vec<_>) = db_outputs
+                                .into_iter()
+                                .partition(|o| o.spent_in_tx_id == Some(args.tx_id.into()));
 
                             println!(
                                 "\n--- Inputs ({} DbWalletOutputs spent in this tx) ---",

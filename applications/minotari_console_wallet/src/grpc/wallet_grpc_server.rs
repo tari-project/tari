@@ -3429,19 +3429,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("Failed to fetch outputs: {e}")))?;
 
-        let mut input_outputs = Vec::new();
-        let mut output_outputs = Vec::new();
-        for o in db_outputs {
-            let info = db_wallet_output_to_info(&o);
-            let is_input = o.spent_in_tx_id == Some(tx_id);
-            let is_output = o.received_in_tx_id == Some(tx_id);
-            if is_input {
-                input_outputs.push(info.clone());
-            }
-            if is_output {
-                output_outputs.push(info);
-            }
-        }
+        let (input_outputs, output_outputs): (Vec<_>, Vec<_>) = db_outputs
+            .into_iter()
+            .map(|o| db_wallet_output_to_info(&o))
+            .partition(|info| info.spent_in_tx_id == tx_id.as_u64());
 
         Ok(Response::new(DebugTransactionResponse {
             transaction_info: Some(transaction_info),
