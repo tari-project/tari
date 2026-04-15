@@ -153,7 +153,10 @@ impl OutputSql {
         let mut query = outputs::table
             .into_boxed()
             .filter(outputs::script_lock_height.le(q.tip_height))
-            .filter(outputs::maturity.le(q.tip_height));
+            .filter(outputs::maturity.le(q.tip_height))
+            // make sure we account for i64 wrap around to neg
+            .filter(outputs::script_lock_height.ge(0))
+            .filter(outputs::maturity.ge(0));
 
         if let Some((offset, limit)) = q.pagination {
             query = query.offset(offset).limit(limit);
@@ -233,7 +236,10 @@ impl OutputSql {
         if selection_criteria.mode == UtxoSelectionMode::Safe {
             query = query
                 .filter(outputs::script_lock_height.le(i64_tip_height))
-                .filter(outputs::maturity.le(i64_tip_height));
+                .filter(outputs::maturity.le(i64_tip_height))
+                // make sure we account for i64 wrap around to neg
+                .filter(outputs::script_lock_height.ge(0))
+                .filter(outputs::maturity.ge(0));
         };
 
         match &selection_criteria.filter {
@@ -282,6 +288,9 @@ impl OutputSql {
                     .filter(outputs::status.eq(OutputStatus::Unspent as i32))
                     .filter(outputs::script_lock_height.le(i64_tip_height))
                     .filter(outputs::maturity.le(i64_tip_height))
+                    // make sure we account for i64 wrap around to neg
+                    .filter(outputs::script_lock_height.ge(0))
+                    .filter(outputs::maturity.ge(0))
                     .order(outputs::value.desc())
                     .select(outputs::value)
                     .first(conn)
@@ -328,7 +337,10 @@ impl OutputSql {
         if selection_criteria.mode == UtxoSelectionMode::Safe {
             query = query
                 .filter(outputs::script_lock_height.le(i64_tip_height))
-                .filter(outputs::maturity.le(i64_tip_height));
+                .filter(outputs::maturity.le(i64_tip_height))
+                // make sure we account for i64 wrap around to neg
+                .filter(outputs::script_lock_height.ge(0))
+                .filter(outputs::maturity.ge(0));
         };
 
         for exclude in &selection_criteria.excluding {
@@ -379,7 +391,10 @@ impl OutputSql {
             if selection_criteria.mode == UtxoSelectionMode::Safe {
                 query = query
                     .filter(outputs::script_lock_height.le(i64_tip_height))
-                    .filter(outputs::maturity.le(i64_tip_height));
+                    .filter(outputs::maturity.le(i64_tip_height))
+                    // make sure we account for i64 wrap around to neg
+                    .filter(outputs::script_lock_height.ge(0))
+                    .filter(outputs::maturity.ge(0));
             }
 
             // Rust
@@ -426,7 +441,10 @@ impl OutputSql {
         if selection_criteria.mode == UtxoSelectionMode::Safe {
             query = query
                 .filter(outputs::script_lock_height.le(i64_tip_height))
-                .filter(outputs::maturity.le(i64_tip_height));
+                .filter(outputs::maturity.le(i64_tip_height))
+                // make sure we account for i64 wrap around to neg
+                .filter(outputs::script_lock_height.ge(0))
+                .filter(outputs::maturity.ge(0));
         }
 
         query = query.filter(
@@ -460,6 +478,9 @@ impl OutputSql {
                     .filter(outputs::status.eq(OutputStatus::Unspent as i32))
                     .filter(outputs::script_lock_height.le(i64_tip_height))
                     .filter(outputs::maturity.le(i64_tip_height))
+                    // make sure we account for i64 wrap around to neg
+                    .filter(outputs::script_lock_height.ge(0))
+                    .filter(outputs::maturity.ge(0))
                     .order(outputs::value.desc())
                     .select(outputs::value)
                     .first(conn)
@@ -482,7 +503,10 @@ impl OutputSql {
         if selection_criteria.mode == UtxoSelectionMode::Safe {
             must_include_query = must_include_query
                 .filter(outputs::script_lock_height.le(i64_tip_height))
-                .filter(outputs::maturity.le(i64_tip_height));
+                .filter(outputs::maturity.le(i64_tip_height))
+                // make sure we account for i64 wrap around to neg
+                .filter(outputs::script_lock_height.ge(0))
+                .filter(outputs::maturity.ge(0));
         }
 
         // Filter for the specific commitments
@@ -526,7 +550,13 @@ impl OutputSql {
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
-            .filter(outputs::maturity.gt(tip as i64))
+            .filter(
+                outputs::script_lock_height.gt(tip as i64)
+            .or(outputs::maturity.gt(tip as i64))
+            // make sure we account for i64 wrap around to neg
+            .or(outputs::script_lock_height.lt(0))
+            .or(outputs::maturity.lt(0)),
+            )
             .load(conn)?)
     }
 
@@ -681,10 +711,10 @@ impl OutputSql {
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
             sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? AND output_type != ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND maturity >= 0 AND script_lock_height <= ? AND script_lock_height >= 0 AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND (maturity > ? OR script_lock_height > ?) AND output_type != ? \
+                 FROM outputs WHERE status = ? AND (maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
                  FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
@@ -799,10 +829,10 @@ impl OutputSql {
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
             let balance_query = sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? AND user_payment_id = ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND maturity >= 0 AND script_lock_height <= ? AND script_lock_height >= 0 AND user_payment_id = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND ((maturity > ? OR script_lock_height > ?) AND user_payment_id = ?) \
+                 FROM outputs WHERE status = ? AND (maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND user_payment_id = ?) \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
                  FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND user_payment_id = ? \
