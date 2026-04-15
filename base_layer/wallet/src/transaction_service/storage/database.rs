@@ -219,6 +219,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
 
     fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError>;
+
+    /// Check confirmed transactions whose lock_height has not been reached yet and
+    /// transition their status to the locked variant.
+    fn check_lock_height_status(&self, tip_height: u64) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -967,6 +971,10 @@ where T: TransactionBackend + 'static
 
     pub fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {
         self.db.process_reorg(reorg_height)
+    }
+
+    pub fn check_lock_height_status(&self, tip_height: u64) -> Result<(), TransactionStorageError> {
+        self.db.check_lock_height_status(tip_height)
     }
 }
 

@@ -181,7 +181,7 @@ impl TransactionServiceSqliteDatabase {
                         Ok(v) => {
                             v.delete(conn)?;
                             Ok(Some(DbValue::CompletedTransaction(Box::new(
-                                CompletedTransaction::try_from(v, &self.cipher)?,
+                                CompletedTransaction::try_from(v, &self.cipher, conn)?,
                             ))))
                         },
                         Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -259,6 +259,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Ok(c) => Some(DbValue::CompletedTransaction(Box::new(CompletedTransaction::try_from(
                     c,
                     &self.cipher,
+                    &mut conn,
                 )?))),
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -285,7 +286,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 match CompletedTransactionSql::find(*t, &mut conn) {
                     Ok(c) => {
                         return Ok(Some(DbValue::WalletTransaction(Box::new(
-                            WalletTransaction::Completed(CompletedTransaction::try_from(c, &self.cipher)?),
+                            WalletTransaction::Completed(CompletedTransaction::try_from(c, &self.cipher, &mut conn)?),
                         ))));
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
@@ -313,7 +314,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false, *max_limit)? {
-                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher)?);
+                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher, &mut conn)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
@@ -337,7 +338,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CancelledCompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true, *max_limit)? {
-                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher)?);
+                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher, &mut conn)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
@@ -589,6 +590,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 return Ok(Some(WalletTransaction::Completed(CompletedTransaction::try_from(
                     c,
                     &self.cipher,
+                    &mut conn,
                 )?)));
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
@@ -886,7 +888,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let lock_height = completed_transactions::table
                     .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
                     .select(completed_transactions::lock_height)
-                    .first::<i64>(&mut conn)
+                    .first::<Option<i64>>(&mut conn)
+                    .optional()?
+                    .flatten()
                     .unwrap_or(0) as u64;
                 if lock_height > 0 && tip_height < lock_height {
                     status.mined_confirm_locked()
@@ -941,7 +945,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .first::<CompletedTransactionSql>(&mut conn)
             .optional()?;
         let result = match tx {
-            Some(tx) => Some(CompletedTransaction::try_from(tx, &self.cipher)?),
+            Some(tx) => Some(CompletedTransaction::try_from(tx, &self.cipher, &mut conn)?),
             None => None,
         };
         if start.elapsed().as_millis() > 0 {
@@ -1001,7 +1005,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut result = vec![];
         for tx in txs {
-            result.push(CompletedTransaction::try_from(tx, &self.cipher)?);
+            result.push(CompletedTransaction::try_from(tx, &self.cipher, &mut conn)?);
         }
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1146,7 +1150,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         CompletedTransactionSql::index_by_status_and_cancelled(LegacyTransactionStatus::Imported, false, &mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1163,7 +1167,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         for tx in one_sided {
@@ -1177,7 +1181,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         for tx in one_sided_locked {
@@ -1191,7 +1195,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         for tx in coinbases {
@@ -1205,7 +1209,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         for tx in coinbases_locked {
@@ -1215,7 +1219,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         for tx in not_validated {
@@ -1244,7 +1248,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1275,7 +1279,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1294,7 +1298,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         Ok(coinbases)
@@ -1312,7 +1316,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
         let tx_id = (payref.expect("Already checked").tx_id as u64).into();
         let tx = match CompletedTransactionSql::find(tx_id, &mut conn) {
-            Ok(c) => Some(CompletedTransaction::try_from(c, &self.cipher)?),
+            Ok(c) => Some(CompletedTransaction::try_from(c, &self.cipher, &mut conn)?),
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
             Err(e) => return Err(e),
         };
@@ -1335,7 +1339,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             }
             let tx_id = (entry.tx_id as u64).into();
             match CompletedTransactionSql::find(tx_id, &mut conn) {
-                Ok(c) => transactions.push(CompletedTransaction::try_from(c, &self.cipher)?),
+                Ok(c) => transactions.push(CompletedTransaction::try_from(c, &self.cipher, &mut conn)?),
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {},
                 Err(e) => return Err(e),
             }
@@ -1401,7 +1405,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
@@ -1420,7 +1424,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
@@ -1431,7 +1435,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         )?
         .into_iter()
         .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher).map_err(TransactionStorageError::from)
+            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut one_sided);
@@ -1538,6 +1542,68 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             trace!(
                 target: LOG_TARGET,
                 "sqlite profile - process_reorg: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
+
+    fn check_lock_height_status(&self, tip_height: u64) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        // Find confirmed transactions where lock_height > 0 and tip hasn't passed lock_height yet
+        let confirmed_statuses = [
+            LegacyTransactionStatus::MinedConfirmed as i32,
+            LegacyTransactionStatus::OneSidedConfirmed as i32,
+            LegacyTransactionStatus::CoinbaseConfirmed as i32,
+        ];
+
+        let txs: Vec<CompletedTransactionSql> = completed_transactions::table
+            .filter(completed_transactions::status.eq_any(&confirmed_statuses))
+            .filter(completed_transactions::cancelled.is_null())
+            .filter(completed_transactions::lock_height.gt(Some(tip_height as i64)))
+            .load::<CompletedTransactionSql>(&mut conn)?;
+
+        if txs.is_empty() {
+            return Ok(());
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "check_lock_height_status: Found {} confirmed transactions with lock_height > tip ({}), updating to locked",
+            txs.len(),
+            tip_height
+        );
+
+        for tx in txs {
+            let status =
+                LegacyTransactionStatus::try_from(tx.status).unwrap_or(LegacyTransactionStatus::MinedConfirmed);
+            let locked_status = status.mined_confirm_locked();
+            info!(
+                target: LOG_TARGET,
+                "check_lock_height_status: tx {} lock_height={:?}, tip={}, status {:?} -> {:?}",
+                tx.tx_id,
+                tx.lock_height,
+                tip_height,
+                status,
+                locked_status
+            );
+            diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx.tx_id)))
+                .set(UpdateCompletedTransactionSql {
+                    status: Some(locked_status as i32),
+                    ..Default::default()
+                })
+                .execute(&mut conn)?;
+        }
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - check_lock_height_status: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -2152,7 +2218,7 @@ pub struct CompletedTransactionSql {
     pub received_output_hashes: Option<Vec<u8>>,
     pub change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    lock_height: i64,
+    lock_height: Option<i64>,
 }
 
 impl CompletedTransactionSql {
@@ -2593,7 +2659,7 @@ impl CompletedTransactionSql {
             sent_output_hashes: Some(fixedhash_vec_to_bytes(&c.sent_output_hashes)),
             received_output_hashes: Some(fixedhash_vec_to_bytes(&c.received_output_hashes)),
             change_output_hashes: Some(fixedhash_vec_to_bytes(&c.change_output_hashes)),
-            lock_height: c.lock_height as i64,
+            lock_height: Some(c.lock_height as i64),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2663,7 +2729,10 @@ impl CompletedTransaction {
     fn try_from(
         c: CompletedTransactionSql,
         cipher: &XChaCha20Poly1305,
+        conn: &mut SqliteConnection,
     ) -> Result<Self, CompletedTransactionConversionError> {
+        let lock_height_was_null = c.lock_height.is_none();
+        let tx_id = c.tx_id;
         let mut c = c
             .decrypt(cipher)
             .map_err(CompletedTransactionConversionError::AeadError)?;
@@ -2679,6 +2748,32 @@ impl CompletedTransaction {
             None => None,
         };
 
+        let transaction: Transaction = bincode::deserialize(&c.transaction_protocol)
+            .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?;
+
+        // If lock_height was NULL, calculate it from the transaction outputs and persist it
+        let lock_height = if lock_height_was_null {
+            let calculated = CompletedTransaction::calculate_lock_height(&transaction);
+            trace!(
+                target: LOG_TARGET,
+                "Migrating lock_height for tx {}: calculated {}",
+                tx_id, calculated
+            );
+            if let Err(e) =
+                diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id)))
+                    .set(UpdateCompletedTransactionSql {
+                        lock_height: Some(Some(calculated as i64)),
+                        ..Default::default()
+                    })
+                    .execute(conn)
+            {
+                warn!(target: LOG_TARGET, "Failed to persist calculated lock_height for tx {}: {}. This may cause repeated calculations.", tx_id, e);
+            };
+            calculated
+        } else {
+            c.lock_height.unwrap_or(0) as u64
+        };
+
         let output = Self {
             tx_id: (c.tx_id as u64).into(),
             source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
@@ -2686,8 +2781,7 @@ impl CompletedTransaction {
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroMinotari::from(c.amount as u64),
             fee: MicroMinotari::from(c.fee as u64),
-            transaction: bincode::deserialize(&c.transaction_protocol)
-                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
+            transaction,
             status: LegacyTransactionStatus::try_from(c.status)?,
             timestamp: c.timestamp.and_utc(),
             cancelled: c
@@ -2704,7 +2798,7 @@ impl CompletedTransaction {
             sent_output_hashes: bytes_to_fixedhash_vec(&c.sent_output_hashes.unwrap_or_default()),
             received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
             change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
-            lock_height: c.lock_height as u64,
+            lock_height,
         };
 
         // zeroize sensitive data
@@ -2733,6 +2827,7 @@ pub struct UpdateCompletedTransactionSql {
     sent_output_hashes: Option<Option<Vec<u8>>>,
     received_output_hashes: Option<Option<Vec<u8>>>,
     change_output_hashes: Option<Option<Vec<u8>>>,
+    lock_height: Option<Option<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3309,6 +3404,7 @@ mod test {
         let returned_completed_tx = CompletedTransaction::try_from(
             CompletedTransactionSql::find_by_cancelled(2u64.into(), false, &mut conn).unwrap(),
             &cipher,
+            &mut conn,
         )
         .unwrap();
         assert_eq!(
@@ -3546,7 +3642,7 @@ mod test {
         completed_tx_sql.update_encryption(&mut conn).unwrap();
         let db_completed_tx = CompletedTransactionSql::find_by_cancelled(3u64.into(), false, &mut conn).unwrap();
         let db_completed_tx = db_completed_tx.decrypt(&cipher).unwrap();
-        let decrypted_completed_tx = CompletedTransaction::try_from(db_completed_tx, &cipher).unwrap();
+        let decrypted_completed_tx = CompletedTransaction::try_from(db_completed_tx, &cipher, &mut conn).unwrap();
         assert_eq!(completed_tx, decrypted_completed_tx);
     }
 
