@@ -442,6 +442,32 @@ where
                 let outputs = self.fetch_many_outputs(&outputs)?;
                 Ok(OutputManagerResponse::Outputs(outputs))
             },
+            OutputManagerRequest::GetOutputsByCommitments(commitments) => {
+                let outputs = self.fetch_outputs_by_commitments(&commitments)?;
+                Ok(OutputManagerResponse::Outputs(outputs))
+            },
+            OutputManagerRequest::UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            } => {
+                if !mined_updates.is_empty() {
+                    self.resources
+                        .db
+                        .set_received_outputs_mined_height_and_statuses(mined_updates)?;
+                }
+                if !spent_updates.is_empty() {
+                    self.resources.db.mark_outputs_as_spent(spent_updates)?;
+                }
+                if !unmined_invalid.is_empty() {
+                    self.resources.db.set_outputs_to_unmined_and_invalid(unmined_invalid)?;
+                }
+                if !unspent_updates.is_empty() {
+                    self.resources.db.mark_outputs_as_unspent(unspent_updates)?;
+                }
+                Ok(OutputManagerResponse::OutputValidationStateUpdated)
+            },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
                     self.preview_coin_join_with_commitments(commitments, fee_per_gram)
@@ -523,6 +549,13 @@ where
             OutputManagerRequest::GetOutputInfoByTxId(tx_id) => {
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
+            },
+            OutputManagerRequest::FetchOutputsByTxId(tx_id) => {
+                let outputs = self
+                    .resources
+                    .db
+                    .fetch_outputs_by_tx_id(tx_id, &self.resources.key_manager)?;
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
 
             OutputManagerRequest::FetchUnspentOutputs(hashes) => {
@@ -2090,6 +2123,25 @@ where
             .fetch_many_outputs(outputs, &self.resources.key_manager)?)
     }
 
+    pub fn fetch_outputs_by_commitments(
+        &self,
+        commitments: &[CompressedCommitment],
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        let mut results = Vec::new();
+        for commitment in commitments {
+            match self
+                .resources
+                .db
+                .fetch_by_commitment(commitment.clone(), &self.resources.key_manager)
+            {
+                Ok(output) => results.push(output),
+                Err(OutputManagerStorageError::ValueNotFound) => {},
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(results)
+    }
+
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
         Ok(self
             .resources
@@ -3289,8 +3341,8 @@ impl UtxoSelection {
 #[derive(Debug, Clone)]
 pub struct OutputInfoByTxId {
     pub statuses: Vec<OutputStatus>,
-    pub(crate) mined_height: Option<u64>,
-    pub(crate) block_hash: Option<BlockHash>,
+    pub mined_height: Option<u64>,
+    pub block_hash: Option<BlockHash>,
 }
 
 impl Display for OutputInfoByTxId {

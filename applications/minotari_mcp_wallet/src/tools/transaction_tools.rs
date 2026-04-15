@@ -125,6 +125,9 @@ impl McpTool for GetTransactionInfoTool {
                         7 => "REJECTED",
                         8 => "CANCELLED",
                         9 => "NOT_FOUND",
+                        15 => "MINED_CONFIRMED_LOCKED",
+                        16 => "ONE_SIDED_CONFIRMED_LOCKED",
+                        17 => "COINBASE_CONFIRMED_LOCKED",
                         _ => "UNKNOWN",
                     },
                     "direction": match tx.direction {
@@ -300,6 +303,9 @@ impl McpTool for GetCompletedTransactionsTool {
                         7 => "REJECTED",
                         8 => "CANCELLED",
                         9 => "NOT_FOUND",
+                        15 => "MINED_CONFIRMED_LOCKED",
+                        16 => "ONE_SIDED_CONFIRMED_LOCKED",
+                        17 => "COINBASE_CONFIRMED_LOCKED",
                         _ => "UNKNOWN",
                     },
                     "direction": match transaction.direction {

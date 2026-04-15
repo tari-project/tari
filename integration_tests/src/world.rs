@@ -331,7 +331,13 @@ impl TariWorld {
     pub async fn after(&mut self, _scenario: &Scenario) {
         let pool = crate::port_pool::global_port_pool();
 
-        // Kill wallets first — they depend on base nodes
+        // Destroy FFI wallets first — they hold native resources and open connections
+        for (name, mut ffi_wallet) in self.ffi_wallets.drain(..) {
+            println!("Destroying FFI wallet {name}");
+            ffi_wallet.destroy();
+        }
+
+        // Kill wallets — they depend on base nodes
         for (name, mut p) in self.wallets.drain(..) {
             println!("Shutting down wallet {name}");
             let grpc_port = p.grpc_port;
@@ -342,7 +348,20 @@ impl TariWorld {
                 http: 0, // wallet doesn't own an http port
             });
         }
-        // Then kill base nodes — kill() waits for ports to be released,
+
+        // Shut down merge mining proxies and return ports to the pool
+        for (name, proxy) in self.merge_mining_proxies.drain(..) {
+            println!("Shutting down merge mining proxy {name}");
+            pool.return_merge_mining_proxy_port(proxy.port);
+        }
+
+        // Drop miners (they don't own ports or long-lived resources, but clear them
+        // so they don't hold references to base nodes or wallets)
+        for (name, _miner) in self.miners.drain(..) {
+            println!("Dropping miner {name}");
+        }
+
+        // Kill base nodes last — kill() waits for ports to be released,
         // preventing port conflicts with the next scenario
         for (name, mut p) in self.base_nodes.drain(..) {
             println!("Shutting down base node {name}");

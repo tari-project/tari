@@ -211,6 +211,11 @@ pub enum CliCommands {
     SignScriptMessage(SignScriptMessageArgs),
     RescanWallet(RescanWalletArgs),
     ExportAudit(ExportAuditArgs),
+    DebugTransaction(DebugTransactionArgs),
+    ValidateTransaction(ValidateTransactionArgs),
+    ValidateOutputs(ValidateOutputsArgs),
+    RevalidateAllTransactions,
+    RevalidateAllOutputs,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -689,7 +694,24 @@ pub struct CreateMultisigUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
+pub struct DebugTransactionArgs {
+    pub tx_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ValidateTransactionArgs {
+    pub tx_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
 pub struct RescanWalletArgs {
     #[clap(short, long, default_value = "0")]
     pub from_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ValidateOutputsArgs {
+    /// Hex-encoded commitments of outputs to validate
+    #[clap(long, multiple = true, required = true)]
+    pub commitments: Vec<String>,
 }

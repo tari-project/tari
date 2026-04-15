@@ -260,6 +260,7 @@ pub enum TransactionServiceRequest {
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
+        lock_height: u64,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
     RestartBroadcastProtocols,
@@ -1622,6 +1623,7 @@ impl TransactionServiceHandle {
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
+        lock_height: u64,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1634,6 +1636,7 @@ impl TransactionServiceHandle {
                 scanned_output,
                 payment_id,
                 optional_tx_id,
+                lock_height,
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ImportUtxoWithStatus({e})"))??

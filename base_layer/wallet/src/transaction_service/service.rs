@@ -291,6 +291,13 @@ where
         let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
+
+        // On startup, check if any confirmed transactions should be locked based on the last known tip
+        let last_tip = self.db.get_last_scanned_height().unwrap_or(None).unwrap_or(0);
+        if let Err(e) = self.db.check_lock_height_status(last_tip) {
+            warn!(target: LOG_TARGET, "Failed to check lock height status on startup: {e}");
+        }
+
         loop {
             tokio::select! {
                 event = output_manager_event_stream.recv() => {
@@ -1322,6 +1329,7 @@ where
                 scanned_output,
                 payment_id,
                 optional_tx_id,
+                lock_height,
             } => {
                 async {
                     let res = self
@@ -1334,6 +1342,7 @@ where
                             scanned_output,
                             payment_id,
                             optional_tx_id,
+                            lock_height,
                         )
                         .await?;
                     Ok(TransactionServiceResponse::UtxoImported(res))
@@ -1533,6 +1542,7 @@ where
                             sent_hashes,
                             vec![],
                             change_hashes,
+                            0,
                         )?,
                     )
                     .await?;
@@ -1670,6 +1680,7 @@ where
                             sent_hashes,
                             vec![],
                             change_hashes,
+                            0,
                         )?,
                     )
                     .await?;
@@ -1897,6 +1908,7 @@ where
                     all_outputs,
                     vec![],
                     vec![],
+                    0,
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
@@ -1955,6 +1967,7 @@ where
                     all_outputs,
                     vec![],
                     vec![],
+                    0,
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
@@ -2285,6 +2298,7 @@ where
                 sent_hashes,
                 vec![],
                 change_hashes,
+                0,
             )?,
         )
         .await?;
@@ -2418,6 +2432,7 @@ where
                 sent_hashes,
                 vec![],
                 change_hashes,
+                0,
             )?,
         )
         .await?;
@@ -2573,6 +2588,7 @@ where
                 sent_hashes,
                 vec![],
                 change_hashes,
+                0,
             )?,
         )
         .await?;
@@ -2734,6 +2750,7 @@ where
                 vec![],
                 received_hashes,
                 change_hashes,
+                0,
             )?,
         )
         .await?;
@@ -2925,6 +2942,7 @@ where
                 vec![sent_hash],
                 vec![],
                 change_hashes.clone(),
+                0,
             )?;
             completed_txs.push(completed_tx);
         }
@@ -3104,6 +3122,7 @@ where
             finalized.sent_output_hashes,
             vec![],
             finalized.change_output_hashes,
+            0,
         )?;
 
         let burn_kernel = completed_transaction
@@ -3219,6 +3238,7 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
+        let lock_height = 0;
         let mut final_payment_id = payment_id.clone();
         final_payment_id.set_fee(fee);
         self.submit_transaction(
@@ -3239,6 +3259,7 @@ where
                 vec![],
                 all_outputs,
                 vec![],
+                lock_height,
             )?,
         )
         .await?;
@@ -3295,6 +3316,7 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
+        let lock_height = CompletedTransaction::calculate_lock_height(&transaction);
         let mut final_payment_id = payment_id.clone();
         final_payment_id.set_fee(fee);
         self.submit_transaction(
@@ -3315,6 +3337,7 @@ where
                 vec![],
                 all_outputs,
                 vec![],
+                lock_height,
             )?,
         )
         .await?;
@@ -3361,6 +3384,7 @@ where
             .iter()
             .map(|o| o.hash())
             .collect::<Vec<HashOutput>>();
+        let lock_height = CompletedTransaction::calculate_lock_height(&transaction);
         let mut final_payment_id = payment_id.clone();
         final_payment_id.set_fee(fee);
         self.submit_transaction(
@@ -3381,6 +3405,7 @@ where
                 vec![],
                 all_outputs,
                 vec![],
+                lock_height,
             )?,
         )
         .await?;
@@ -3981,6 +4006,7 @@ where
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
+        lock_height: u64,
     ) -> Result<TxId, TransactionServiceError> {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let (direction, amount, destination_address) =
@@ -4036,6 +4062,7 @@ where
             scanned_output,
             payment_id,
             direction,
+            lock_height,
         )?;
         let transaction_event = match import_status {
             LegacyImportStatus::Broadcast => TransactionEvent::TransactionBroadcast(tx_id),
@@ -4311,6 +4338,7 @@ where
         payment_id: MemoField,
     ) -> Result<(), TransactionServiceError> {
         let all_outputs = tx.body.outputs().iter().map(|o| o.hash()).collect::<Vec<HashOutput>>();
+        let lock_height = CompletedTransaction::calculate_lock_height(&tx);
         let mut final_payment_id = payment_id.clone();
         final_payment_id.set_fee(fee);
         self.submit_transaction(
@@ -4331,6 +4359,7 @@ where
                 vec![],
                 all_outputs,
                 vec![],
+                lock_height,
             )?,
         )
         .await?;
@@ -4523,6 +4552,7 @@ where
                 vec![sent_hash],
                 vec![],
                 request.signed_transaction.change_hashes.clone(),
+                0,
             )?;
             completed_txs.push(completed_tx);
         }

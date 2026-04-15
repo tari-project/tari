@@ -146,6 +146,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_timestamp: u64,
         must_be_confirmed: bool,
         status: LegacyTransactionStatus,
+        tip_height: u64,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -218,6 +219,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
 
     fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError>;
+
+    /// Check confirmed transactions whose lock_height has not been reached yet and
+    /// transition their status to the locked variant.
+    fn check_lock_height_status(&self, tip_height: u64) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -824,6 +829,7 @@ where T: TransactionBackend + 'static
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         direction: TransactionDirection,
+        lock_height: u64,
     ) -> Result<(), TransactionStorageError> {
         let hash = scanned_output.hash();
         let fee = payment_id.get_fee().unwrap_or_default();
@@ -850,6 +856,7 @@ where T: TransactionBackend + 'static
             sent_hashes,
             vec![hash],
             vec![],
+            lock_height,
         )?;
 
         self.db
@@ -884,6 +891,7 @@ where T: TransactionBackend + 'static
         mined_timestamp: u64,
         must_be_confirmed: bool,
         status: LegacyTransactionStatus,
+        tip_height: u64,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,
@@ -892,6 +900,7 @@ where T: TransactionBackend + 'static
             mined_timestamp,
             must_be_confirmed,
             status,
+            tip_height,
         )
     }
 
@@ -962,6 +971,10 @@ where T: TransactionBackend + 'static
 
     pub fn process_reorg(&self, reorg_height: u64) -> Result<(), TransactionStorageError> {
         self.db.process_reorg(reorg_height)
+    }
+
+    pub fn check_lock_height_status(&self, tip_height: u64) -> Result<(), TransactionStorageError> {
+        self.db.check_lock_height_status(tip_height)
     }
 }
 

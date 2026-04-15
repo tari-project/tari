@@ -1175,6 +1175,59 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
     }
 }
 
+#[then(expr = "wallet {word} has at least {int} coinbase transactions with lock_height greater than {int}")]
+async fn wallet_has_coinbase_with_lock_height_greater_than(
+    world: &mut TariWorld,
+    wallet_name: String,
+    min_count: u64,
+    min_lock_height: u64,
+) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let num_retries = 100;
+    for retry in 0..num_retries {
+        let mut completed_tx_res = client
+            .get_completed_transactions(GetCompletedTransactionsRequest {
+                payment_id: None,
+                block_hash: None,
+                block_height: None,
+            })
+            .await
+            .unwrap()
+            .into_inner();
+
+        let mut matching_count = 0u64;
+        while let Some(tx_info) = completed_tx_res.next().await {
+            let tx = tx_info.unwrap().transaction.unwrap();
+            let is_coinbase = matches!(
+                tx.status(),
+                grpc::TransactionStatus::CoinbaseConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseNotInBlockChain |
+                    grpc::TransactionStatus::CoinbaseConfirmedLocked
+            );
+            if is_coinbase && tx.lock_height > min_lock_height {
+                matching_count += 1;
+            }
+        }
+
+        if matching_count >= min_count {
+            cucumber_steps_log(format!(
+                "Wallet {wallet_name} has {matching_count} coinbase txs with lock_height > {min_lock_height}"
+            ));
+            return;
+        }
+
+        if retry < num_retries - 1 {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    }
+
+    panic!(
+        "Wallet {wallet_name} failed to detect at least {min_count} coinbase transactions with lock_height > \
+         {min_lock_height}"
+    );
+}
+
 #[then(expr = "wallet {word} detects only {int} transaction as unconfirmed")]
 async fn wallet_detects_only_transactions_as_unconfirmed(
     world: &mut TariWorld,

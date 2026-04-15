@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.8](https://github.com/tari-project/tari/compare/v5.3.0-pre.7...v5.3.0-pre.8) (2026-04-15)
+
+
+### Bug Fixes
+
+* db queries ([#7757](https://github.com/tari-project/tari/issues/7757)) ([e584d5f](https://github.com/tari-project/tari/commit/e584d5fedd65cb0273bdc7710f81f71fbeb3b29f))
+
+## [5.3.0-pre.7](https://github.com/tari-project/tari/compare/v5.3.0-pre.6...v5.3.0-pre.7) (2026-04-15)
+
+
+### Features
+
+* better wallet debugging tools ([#7755](https://github.com/tari-project/tari/issues/7755)) ([af60157](https://github.com/tari-project/tari/commit/af601575efe7a197a46dceb82c6f9e302249f610))
+
+
+### Bug Fixes
+
+* legacy transaction status ([#7756](https://github.com/tari-project/tari/issues/7756)) ([35768f1](https://github.com/tari-project/tari/commit/35768f19aa4c4a6f25a0419b592eeb507657592a))
+
+## [5.3.0-pre.6](https://github.com/tari-project/tari/compare/v5.3.0-pre.5...v5.3.0-pre.6) (2026-04-14)
+
+
+### Features
+
+* better tx feedback ([#7754](https://github.com/tari-project/tari/issues/7754)) ([24011fd](https://github.com/tari-project/tari/commit/24011fd50210f3234529729c75d511f92a290867))
+
 ## [5.3.0-pre.5](https://github.com/tari-project/tari/compare/v5.3.0-pre.4...v5.3.0-pre.5) (2026-04-09)
 
 

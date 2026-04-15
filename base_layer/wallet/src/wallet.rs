@@ -425,6 +425,7 @@ where
                 wallet_output.to_transaction_output()?,
                 payment_id,
                 None,
+                wallet_output.max_lock_height(),
             )
             .await?;
         // As non-rewindable

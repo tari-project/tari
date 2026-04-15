@@ -836,6 +836,7 @@ where
                 scanned_output,
                 wallet_output.payment_id().clone(),
                 None,
+                wallet_output.max_lock_height(),
             )
             .await?;
 

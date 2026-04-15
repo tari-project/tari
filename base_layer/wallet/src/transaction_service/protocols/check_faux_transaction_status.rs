@@ -190,6 +190,7 @@ pub async fn check_detected_transactions<
                     .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
                 must_be_confirmed,
                 tx.status,
+                tip_height,
             );
             if let Err(e) = result {
                 error!(
