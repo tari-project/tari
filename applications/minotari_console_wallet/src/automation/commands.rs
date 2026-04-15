@@ -2843,6 +2843,45 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ExportAudit error! {e}"),
                 }
             },
+            DebugTransaction(args) => match transaction_service.get_completed_transaction(args.tx_id.into()).await {
+                Ok(completed_tx) => {
+                    println!("--- Completed Transaction ---");
+                    println!("{:#?}", completed_tx);
+
+                    match output_service.fetch_outputs_by_tx_id(args.tx_id.into()).await {
+                        Ok(db_outputs) => {
+                            let input_outputs: Vec<_> = db_outputs
+                                .iter()
+                                .filter(|o| o.spent_in_tx_id == Some(args.tx_id.into()))
+                                .collect();
+                            let received_outputs: Vec<_> = db_outputs
+                                .iter()
+                                .filter(|o| o.received_in_tx_id == Some(args.tx_id.into()))
+                                .collect();
+
+                            println!(
+                                "\n--- Inputs ({} DbWalletOutputs spent in this tx) ---",
+                                input_outputs.len()
+                            );
+                            for (i, output) in input_outputs.iter().enumerate() {
+                                println!("\nInput #{}", i + 1);
+                                println!("{:#?}", output);
+                            }
+
+                            println!(
+                                "\n--- Outputs ({} DbWalletOutputs received in this tx) ---",
+                                received_outputs.len()
+                            );
+                            for (i, output) in received_outputs.iter().enumerate() {
+                                println!("\nOutput #{}", i + 1);
+                                println!("{:#?}", output);
+                            }
+                        },
+                        Err(e) => eprintln!("DebugTransaction error fetching outputs: {e}"),
+                    }
+                },
+                Err(e) => eprintln!("DebugTransaction error! Could not find completed transaction: {e}"),
+            },
         }
     }
 

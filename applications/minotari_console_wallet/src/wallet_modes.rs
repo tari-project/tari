@@ -515,6 +515,7 @@ mod test {
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
                 CliCommands::ImportPaperWallet(_) => {},
+                CliCommands::DebugTransaction(_) => {},
                 CliCommands::PrepareOneSidedTransactionForSigning(_) => {},
                 CliCommands::SignOneSidedTransaction(_) => {},
                 CliCommands::BroadcastSignedOneSidedTransaction(_) => {},

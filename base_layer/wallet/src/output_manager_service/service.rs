@@ -524,6 +524,13 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
+            OutputManagerRequest::FetchOutputsByTxId(tx_id) => {
+                let outputs = self
+                    .resources
+                    .db
+                    .fetch_outputs_by_tx_id(tx_id, &self.resources.key_manager)?;
+                Ok(OutputManagerResponse::Outputs(outputs))
+            },
 
             OutputManagerRequest::FetchUnspentOutputs(hashes) => {
                 let mut outputs = Vec::new();

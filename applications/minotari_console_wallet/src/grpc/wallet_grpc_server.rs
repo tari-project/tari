@@ -54,6 +54,9 @@ use minotari_app_grpc::tari_rpc::{
     CreateBurnTransactionResponse,
     CreateTemplateRegistrationRequest,
     CreateTemplateRegistrationResponse,
+    DbWalletOutputInfo,
+    DebugTransactionRequest,
+    DebugTransactionResponse,
     FeePerGramStat,
     GetAddressResponse,
     GetAllCompletedTransactionsRequest,
@@ -3386,6 +3389,85 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }
         }
         Ok(Response::new(ScanAndImportUtxosResponse { feedback: results }))
+    }
+
+    async fn debug_transaction(
+        &self,
+        request: Request<DebugTransactionRequest>,
+    ) -> Result<Response<DebugTransactionResponse>, Status> {
+        let message = request.into_inner();
+        let tx_id: TxId = message.tx_id.into();
+        debug!(
+            target: LOG_TARGET,
+            "debug_transaction: Incoming GRPC request for tx_id: {}", tx_id
+        );
+
+        let mut transaction_service = self.get_transaction_service();
+        let completed_tx = transaction_service
+            .get_completed_transaction(tx_id)
+            .await
+            .map_err(|e| Status::not_found(format!("Completed transaction not found: {e}")))?;
+
+        let wallet_address = self
+            .wallet
+            .get_wallet_interactive_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
+        let transaction_info = convert_wallet_transaction_into_transaction_info(
+            WalletTransaction::Completed(completed_tx),
+            &wallet_address,
+        );
+
+        let mut oms = self.wallet.output_manager_service.clone();
+        let db_outputs = oms
+            .fetch_outputs_by_tx_id(tx_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to fetch outputs: {e}")))?;
+
+        let mut input_outputs = Vec::new();
+        let mut output_outputs = Vec::new();
+        for o in db_outputs {
+            let info = db_wallet_output_to_info(&o);
+            let is_input = o.spent_in_tx_id == Some(tx_id);
+            let is_output = o.received_in_tx_id == Some(tx_id);
+            if is_input {
+                input_outputs.push(info.clone());
+            }
+            if is_output {
+                output_outputs.push(info);
+            }
+        }
+
+        Ok(Response::new(DebugTransactionResponse {
+            transaction_info: Some(transaction_info),
+            inputs: input_outputs,
+            outputs: output_outputs,
+        }))
+    }
+}
+
+fn db_wallet_output_to_info(
+    o: &minotari_wallet::output_manager_service::storage::models::DbWalletOutput,
+) -> DbWalletOutputInfo {
+    DbWalletOutputInfo {
+        commitment: o.commitment.as_bytes().to_vec(),
+        hash: o.hash.to_vec(),
+        value: o.wallet_output.value().into(),
+        status: format!("{}", o.status),
+        mined_height: o.mined_height.unwrap_or(0),
+        mined_in_block: o.mined_in_block.map(|b| b.to_vec()).unwrap_or_default(),
+        mined_timestamp: o.mined_timestamp.map(|t| t.timestamp() as u64).unwrap_or(0),
+        marked_deleted_at_height: o.marked_deleted_at_height.unwrap_or(0),
+        marked_deleted_in_block: o.marked_deleted_in_block.map(|b| b.to_vec()).unwrap_or_default(),
+        spending_priority: format!("{:?}", o.spending_priority),
+        source: format!("{}", o.source),
+        received_in_tx_id: o.received_in_tx_id.map(|t| t.into()).unwrap_or(0),
+        spent_in_tx_id: o.spent_in_tx_id.map(|t| t.into()).unwrap_or(0),
+        payment_id: o.payment_id.to_bytes(),
+        script: format!("{}", o.wallet_output.script()),
+        maturity: o.wallet_output.features().maturity,
+        features_output_type: format!("{}", o.wallet_output.features().output_type),
+        sender_offset_public_key: o.wallet_output.sender_offset_public_key().as_bytes().to_vec(),
+        script_lock_height: o.wallet_output.script_lock_height(),
     }
 }
 

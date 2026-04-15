@@ -166,6 +166,7 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    FetchOutputsByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
     ClearShortTermEncumberances,
 }
@@ -292,6 +293,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            FetchOutputsByTxId(t) => write!(f, "FetchOutputsByTxId: {}", t),
             FetchUnspentOutputs(hashes) => write!(f, "FetchUnspentOutputs: {:?}", hashes),
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
@@ -1196,6 +1198,20 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::ReinstateCancelledInboundTx".to_string(),
+            )),
+        }
+    }
+
+    pub async fn fetch_outputs_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::FetchOutputsByTxId(tx_id))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::FetchOutputsByTxId({e})"))??
+        {
+            OutputManagerResponse::Outputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::FetchOutputsByTxId".to_string(),
             )),
         }
     }
