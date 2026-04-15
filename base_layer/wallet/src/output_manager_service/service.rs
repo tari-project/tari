@@ -442,6 +442,10 @@ where
                 let outputs = self.fetch_many_outputs(&outputs)?;
                 Ok(OutputManagerResponse::Outputs(outputs))
             },
+            OutputManagerRequest::GetOutputsByCommitments(commitments) => {
+                let outputs = self.fetch_outputs_by_commitments(&commitments)?;
+                Ok(OutputManagerResponse::Outputs(outputs))
+            },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
                     self.preview_coin_join_with_commitments(commitments, fee_per_gram)
@@ -2095,6 +2099,25 @@ where
             .resources
             .db
             .fetch_many_outputs(outputs, &self.resources.key_manager)?)
+    }
+
+    pub fn fetch_outputs_by_commitments(
+        &self,
+        commitments: &[CompressedCommitment],
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        let mut results = Vec::new();
+        for commitment in commitments {
+            match self
+                .resources
+                .db
+                .fetch_by_commitment(commitment.clone(), &self.resources.key_manager)
+            {
+                Ok(output) => results.push(output),
+                Err(OutputManagerStorageError::ValueNotFound) => {},
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(results)
     }
 
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {

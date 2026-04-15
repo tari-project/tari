@@ -213,6 +213,7 @@ pub enum CliCommands {
     ExportAudit(ExportAuditArgs),
     DebugTransaction(DebugTransactionArgs),
     ValidateTransaction(ValidateTransactionArgs),
+    ValidateOutputs(ValidateOutputsArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -704,4 +705,11 @@ pub struct ValidateTransactionArgs {
 pub struct RescanWalletArgs {
     #[clap(short, long, default_value = "0")]
     pub from_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ValidateOutputsArgs {
+    /// Hex-encoded commitments of outputs to validate
+    #[clap(long, multiple = true, required = true)]
+    pub commitments: Vec<String>,
 }

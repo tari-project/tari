@@ -1921,6 +1921,7 @@ service Wallet {
   rpc ScanAndImportUtxos(ScanAndImportUtxosRequest) returns (ScanAndImportUtxosResponse);
   rpc DebugTransaction(DebugTransactionRequest) returns (DebugTransactionResponse);
   rpc ValidateTransaction(ValidateTransactionRequest) returns (ValidateTransactionResponse);
+  rpc ValidateOutputs(ValidateOutputsRequest) returns (ValidateOutputsResponse);
 }
 
 
@@ -2755,4 +2756,18 @@ message ValidateTransactionRequest {
 
 message ValidateTransactionResponse {
   repeated string debug_info = 1;
+}
+
+message ValidateOutputsRequest {
+  repeated string commitments = 1;
+}
+
+message ValidateOutputsResponse {
+  repeated OutputValidationFeedback feedback = 1;
+}
+
+message OutputValidationFeedback {
+  string commitment = 1;
+  string status = 2;
+  repeated string debug_info = 3;
 }

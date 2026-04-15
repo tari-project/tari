@@ -134,8 +134,11 @@ use minotari_app_grpc::tari_rpc::{
     UserPayForFeeResponse,
     ValidateRequest,
     ValidateResponse,
+    ValidateOutputsRequest,
+    ValidateOutputsResponse,
     ValidateTransactionRequest,
     ValidateTransactionResponse,
+    OutputValidationFeedback,
     payment_recipient::PaymentType,
     wallet_server,
 };
@@ -3628,6 +3631,254 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         Ok(Response::new(ValidateTransactionResponse { debug_info }))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn validate_outputs(
+        &self,
+        request: Request<ValidateOutputsRequest>,
+    ) -> Result<Response<ValidateOutputsResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "validate_outputs: Incoming GRPC request to validate outputs by commitment",
+        );
+        let mut results = Vec::new();
+        let mut oms = self.wallet.output_manager_service.clone();
+
+        let client = self.wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+
+        let tip_info = client
+            .get_tip_info()
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get tip info: {e}")))?;
+        let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+
+        let num_confirmations_required = self
+            .wallet
+            .config
+            .transaction_service_config
+            .num_confirmations_required;
+
+        for hex in message.commitments {
+            let commitment = match CompressedCommitment::from_hex(&hex) {
+                Ok(c) => c,
+                Err(e) => {
+                    results.push(OutputValidationFeedback {
+                        commitment: hex,
+                        status: "error".to_string(),
+                        debug_info: vec![format!("Invalid commitment hex format: {}", e)],
+                    });
+                    continue;
+                },
+            };
+
+            let mut debug_info = Vec::new();
+
+            // Step 1: Look up the output in the wallet DB by commitment
+            let db_output = match oms.get_outputs_by_commitments(vec![commitment.clone()]).await {
+                Ok(outputs) if !outputs.is_empty() => {
+                    let output = outputs.into_iter().next().expect("checked not empty");
+                    debug_info.push(format!(
+                        "Found output in wallet DB with status: {}, hash: {}",
+                        output.status,
+                        output.hash.to_hex()
+                    ));
+                    output
+                },
+                Ok(_) => {
+                    debug_info.push(format!(
+                        "Output with commitment {} not found in wallet DB",
+                        hex
+                    ));
+                    results.push(OutputValidationFeedback {
+                        commitment: hex,
+                        status: "not_found".to_string(),
+                        debug_info,
+                    });
+                    continue;
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error querying wallet DB: {}", e));
+                    results.push(OutputValidationFeedback {
+                        commitment: hex,
+                        status: "error".to_string(),
+                        debug_info,
+                    });
+                    continue;
+                },
+            };
+
+            // Step 2: Report wallet state
+            if let Some(mined_height) = db_output.mined_height {
+                debug_info.push(format!("Wallet reports output mined at height: {}", mined_height));
+                if let Some(block_hash) = db_output.mined_in_block {
+                    debug_info.push(format!("Mined in block: {}", block_hash.to_hex()));
+                }
+                if let Some(ts) = db_output.mined_timestamp {
+                    debug_info.push(format!("Mined timestamp: {}", ts));
+                }
+            } else {
+                debug_info.push("Wallet reports output as unmined".to_string());
+            }
+
+            if let Some(height) = db_output.marked_deleted_at_height {
+                debug_info.push(format!("Wallet reports output marked deleted at height: {}", height));
+                if let Some(block_hash) = db_output.marked_deleted_in_block {
+                    debug_info.push(format!("Deleted in block: {}", block_hash.to_hex()));
+                }
+            }
+
+            if let Some(tx_id) = db_output.received_in_tx_id {
+                debug_info.push(format!("Received in tx_id: {}", tx_id));
+            }
+            if let Some(tx_id) = db_output.spent_in_tx_id {
+                debug_info.push(format!("Spent in tx_id: {}", tx_id));
+            }
+
+            // Step 3: Validate against base node - check mined info (like TxoValidationTask::update_unconfirmed_outputs)
+            let output_hash = db_output.hash.to_vec();
+            match client
+                .get_utxos_mined_info(vec![output_hash.clone()], 2)
+                .await
+            {
+                Ok(response) => {
+                    debug_info.push(format!("Chain tip height: {}", tip_height));
+
+                    let found_in_utxos = response
+                        .utxos
+                        .iter()
+                        .find(|u| u.utxo_hash == output_hash);
+                    let found_in_mempool = response.mempool_utxos.iter().any(|h| *h == output_hash);
+
+                    if let Some(mined_info) = found_in_utxos {
+                        let mined_height = mined_info.mined_in_height;
+                        let confirmations = tip_height.saturating_sub(mined_height);
+                        let confirmed = confirmations >= num_confirmations_required;
+                        debug_info.push(format!(
+                            "Base node: output is MINED at height {} (confirmations: {}, confirmed: {})",
+                            mined_height, confirmations, confirmed
+                        ));
+                        debug_info.push(format!(
+                            "Mined in block: {}",
+                            mined_info.mined_in_hash.to_hex()
+                        ));
+
+                        // Compare with wallet state
+                        match db_output.mined_height {
+                            Some(wallet_height) if wallet_height != mined_height => {
+                                debug_info.push(format!(
+                                    "WARNING: wallet mined_height ({}) differs from chain ({})",
+                                    wallet_height, mined_height
+                                ));
+                            },
+                            None => {
+                                debug_info.push(
+                                    "WARNING: wallet reports unmined but chain says mined".to_string(),
+                                );
+                            },
+                            _ => {
+                                debug_info.push("Wallet mined_height matches chain".to_string());
+                            },
+                        }
+                    } else if found_in_mempool {
+                        debug_info.push("Base node: output is IN MEMPOOL (not yet mined)".to_string());
+                    } else {
+                        debug_info.push("Base node: output is NOT FOUND in UTXO set or mempool".to_string());
+                        if db_output.mined_height.is_some() {
+                            debug_info.push(
+                                "WARNING: wallet reports mined but chain says not found - possible reorg".to_string(),
+                            );
+                        }
+                    }
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error querying base node for mined info: {}", e));
+                },
+            }
+
+            // Step 4: Check if spent (like TxoValidationTask::update_spent_outputs)
+            match client
+                .query_deleted_utxos(vec![output_hash], vec![])
+                .await
+            {
+                Ok(response) => {
+                    if let Some(deleted_info) = response.utxos.first() {
+                        match (&deleted_info.found_in_header, &deleted_info.spent_in_header) {
+                            (Some((found_height, found_hash)), Some((spent_height, spent_hash))) => {
+                                let confirmations = tip_height.saturating_sub(*spent_height);
+                                let confirmed = confirmations >= num_confirmations_required;
+                                debug_info.push(format!(
+                                    "Base node: output found at height {} in block {}",
+                                    found_height,
+                                    found_hash.to_hex()
+                                ));
+                                debug_info.push(format!(
+                                    "Base node: output SPENT at height {} in block {} (confirmations: {}, confirmed: \
+                                     {})",
+                                    spent_height,
+                                    spent_hash.to_hex(),
+                                    confirmations,
+                                    confirmed
+                                ));
+
+                                // Compare with wallet state
+                                match db_output.marked_deleted_at_height {
+                                    Some(wallet_height) if wallet_height != *spent_height => {
+                                        debug_info.push(format!(
+                                            "WARNING: wallet deleted_at_height ({}) differs from chain ({})",
+                                            wallet_height, spent_height
+                                        ));
+                                    },
+                                    None => {
+                                        debug_info.push(
+                                            "WARNING: wallet reports not deleted but chain says spent".to_string(),
+                                        );
+                                    },
+                                    _ => {
+                                        debug_info.push("Wallet spent state matches chain".to_string());
+                                    },
+                                }
+                            },
+                            (Some((found_height, _)), None) => {
+                                debug_info.push(format!(
+                                    "Base node: output found at height {} and NOT spent",
+                                    found_height
+                                ));
+                                if db_output.marked_deleted_at_height.is_some() {
+                                    debug_info.push(
+                                        "WARNING: wallet reports deleted but chain says not spent".to_string(),
+                                    );
+                                }
+                            },
+                            (None, _) => {
+                                debug_info
+                                    .push("Base node: output NOT FOUND in deleted UTXO query".to_string());
+                            },
+                        }
+                    } else {
+                        debug_info.push("Base node: no deletion info returned for output".to_string());
+                    }
+                },
+                Err(e) => {
+                    debug_info.push(format!("Error querying base node for deleted info: {}", e));
+                },
+            }
+
+            let final_status = format!("{}", db_output.status);
+
+            for info in &debug_info {
+                debug!(target: LOG_TARGET, "validate_outputs [{}]: {}", hex, info);
+            }
+
+            results.push(OutputValidationFeedback {
+                commitment: hex,
+                status: final_status,
+                debug_info,
+            });
+        }
+
+        Ok(Response::new(ValidateOutputsResponse { feedback: results }))
     }
 }
 

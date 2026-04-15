@@ -168,6 +168,7 @@ pub enum OutputManagerRequest {
     GetOutputInfoByTxId(TxId),
     FetchOutputsByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
+    GetOutputsByCommitments(Vec<CompressedCommitment>),
     ClearShortTermEncumberances,
 }
 
@@ -299,6 +300,9 @@ impl fmt::Display for OutputManagerRequest {
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
             ScanOutputsForMultisig(_) => write!(f, "ScanOutputsForMultisig"),
             GetManyOutputs { outputs } => write!(f, "GetManyOutputs ({})", outputs.len()),
+            GetOutputsByCommitments(commitments) => {
+                write!(f, "GetOutputsByCommitments ({})", commitments.len())
+            },
         }
     }
 }
@@ -756,6 +760,23 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::Outputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::GetManyOutputs".to_string(),
+            )),
+        }
+    }
+
+    pub async fn get_outputs_by_commitments(
+        &mut self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputsByCommitments(commitments))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetOutputsByCommitments({e})"))??
+        {
+            OutputManagerResponse::Outputs(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::GetOutputsByCommitments".to_string(),
             )),
         }
     }

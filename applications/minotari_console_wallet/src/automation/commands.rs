@@ -2977,6 +2977,171 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ValidateTransaction error! Could not find completed transaction: {e}"),
                 }
             },
+            ValidateOutputs(args) => {
+                println!("--- Validate Outputs ---");
+                let client = wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+
+                let tip_info = match client.get_tip_info().await {
+                    Ok(info) => info,
+                    Err(e) => {
+                        eprintln!("Error getting tip info: {e}");
+                        continue;
+                    },
+                };
+                let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+                println!("Chain tip height: {}", tip_height);
+
+                let num_confirmations_required = config.transaction_service_config.num_confirmations_required;
+
+                for hex in &args.commitments {
+                    println!("\n--- Commitment: {} ---", hex);
+
+                    let commitment = match CompressedCommitment::from_hex(hex) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("Invalid commitment hex format: {}", e);
+                            continue;
+                        },
+                    };
+
+                    // Look up output in wallet DB
+                    let db_output = match output_service.get_outputs_by_commitments(vec![commitment]).await {
+                        Ok(outputs) if !outputs.is_empty() => {
+                            let output = outputs.into_iter().next().expect("checked not empty");
+                            println!("Found in wallet DB - status: {}, hash: {}", output.status, output.hash.to_hex());
+                            output
+                        },
+                        Ok(_) => {
+                            println!("Output not found in wallet DB");
+                            continue;
+                        },
+                        Err(e) => {
+                            eprintln!("Error querying wallet DB: {}", e);
+                            continue;
+                        },
+                    };
+
+                    // Report wallet state
+                    if let Some(mined_height) = db_output.mined_height {
+                        println!("Wallet: mined at height {}", mined_height);
+                        if let Some(block_hash) = db_output.mined_in_block {
+                            println!("Wallet: mined in block {}", block_hash.to_hex());
+                        }
+                    } else {
+                        println!("Wallet: unmined");
+                    }
+
+                    if let Some(height) = db_output.marked_deleted_at_height {
+                        println!("Wallet: marked deleted at height {}", height);
+                    }
+
+                    if let Some(tx_id) = db_output.received_in_tx_id {
+                        println!("Wallet: received in tx_id {}", tx_id);
+                    }
+                    if let Some(tx_id) = db_output.spent_in_tx_id {
+                        println!("Wallet: spent in tx_id {}", tx_id);
+                    }
+
+                    // Validate against base node - mined info
+                    let output_hash = db_output.hash.to_vec();
+                    match client.get_utxos_mined_info(vec![output_hash.clone()], 2).await {
+                        Ok(response) => {
+                            let found_in_utxos = response
+                                .utxos
+                                .iter()
+                                .find(|u| u.utxo_hash == output_hash);
+                            let found_in_mempool =
+                                response.mempool_utxos.iter().any(|h| *h == output_hash);
+
+                            if let Some(mined_info) = found_in_utxos {
+                                let mined_height = mined_info.mined_in_height;
+                                let confirmations = tip_height.saturating_sub(mined_height);
+                                let confirmed = confirmations >= num_confirmations_required;
+                                println!(
+                                    "Chain: MINED at height {} (confirmations: {}, confirmed: {})",
+                                    mined_height, confirmations, confirmed
+                                );
+                                println!("Chain: mined in block {}", mined_info.mined_in_hash.to_hex());
+
+                                match db_output.mined_height {
+                                    Some(wallet_height) if wallet_height != mined_height => {
+                                        println!(
+                                            "WARNING: wallet mined_height ({}) differs from chain ({})",
+                                            wallet_height, mined_height
+                                        );
+                                    },
+                                    None => {
+                                        println!("WARNING: wallet reports unmined but chain says mined");
+                                    },
+                                    _ => {
+                                        println!("OK: wallet mined_height matches chain");
+                                    },
+                                }
+                            } else if found_in_mempool {
+                                println!("Chain: IN MEMPOOL (not yet mined)");
+                            } else {
+                                println!("Chain: NOT FOUND in UTXO set or mempool");
+                                if db_output.mined_height.is_some() {
+                                    println!("WARNING: wallet reports mined but chain says not found - possible reorg");
+                                }
+                            }
+                        },
+                        Err(e) => eprintln!("Error querying base node for mined info: {e}"),
+                    }
+
+                    // Check if spent
+                    match client.query_deleted_utxos(vec![output_hash], vec![]).await {
+                        Ok(response) => {
+                            if let Some(deleted_info) = response.utxos.first() {
+                                match (&deleted_info.found_in_header, &deleted_info.spent_in_header) {
+                                    (Some((found_height, _)), Some((spent_height, spent_hash))) => {
+                                        let confirmations = tip_height.saturating_sub(*spent_height);
+                                        let confirmed = confirmations >= num_confirmations_required;
+                                        println!("Chain: output found at height {}", found_height);
+                                        println!(
+                                            "Chain: SPENT at height {} in block {} (confirmations: {}, confirmed: {})",
+                                            spent_height,
+                                            spent_hash.to_hex(),
+                                            confirmations,
+                                            confirmed
+                                        );
+
+                                        match db_output.marked_deleted_at_height {
+                                            Some(wallet_height) if wallet_height != *spent_height => {
+                                                println!(
+                                                    "WARNING: wallet deleted_at_height ({}) differs from chain ({})",
+                                                    wallet_height, spent_height
+                                                );
+                                            },
+                                            None => {
+                                                println!(
+                                                    "WARNING: wallet reports not deleted but chain says spent"
+                                                );
+                                            },
+                                            _ => {
+                                                println!("OK: wallet spent state matches chain");
+                                            },
+                                        }
+                                    },
+                                    (Some((found_height, _)), None) => {
+                                        println!(
+                                            "Chain: output found at height {} and NOT spent",
+                                            found_height
+                                        );
+                                        if db_output.marked_deleted_at_height.is_some() {
+                                            println!("WARNING: wallet reports deleted but chain says not spent");
+                                        }
+                                    },
+                                    (None, _) => {
+                                        println!("Chain: output NOT FOUND in deleted UTXO query");
+                                    },
+                                }
+                            }
+                        },
+                        Err(e) => eprintln!("Error querying base node for deleted info: {e}"),
+                    }
+                }
+            },
         }
     }
 
