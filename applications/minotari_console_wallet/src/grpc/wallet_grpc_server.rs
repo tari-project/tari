@@ -93,6 +93,7 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    OutputValidationFeedback,
     OutputValidationMode,
     PrepareDepositMultisigTransactionRequest,
     PrepareDepositMultisigTransactionResponse,
@@ -132,13 +133,12 @@ use minotari_app_grpc::tari_rpc::{
     TransferResult,
     UserPayForFeeRequest,
     UserPayForFeeResponse,
-    ValidateRequest,
-    ValidateResponse,
     ValidateOutputsRequest,
     ValidateOutputsResponse,
+    ValidateRequest,
+    ValidateResponse,
     ValidateTransactionRequest,
     ValidateTransactionResponse,
-    OutputValidationFeedback,
     payment_recipient::PaymentType,
     wallet_server,
 };
@@ -3396,6 +3396,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(ScanAndImportUtxosResponse { feedback: results }))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn debug_transaction(
         &self,
         request: Request<DebugTransactionRequest>,
@@ -3449,6 +3450,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn validate_transaction(
         &self,
         request: Request<ValidateTransactionRequest>,
@@ -3476,7 +3478,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 tx_id
             ));
 
-            let client = self.wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+            let client = self
+                .wallet
+                .wallet_connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await;
 
             let tip_info = client
                 .get_tip_info()
@@ -3499,47 +3505,35 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         match response.mined_height {
                             Some(mined_height) => {
                                 let num_confirmations = tip.saturating_sub(mined_height);
-                                debug_info.push(format!(
-                                    "Transaction is MINED at height {}",
-                                    mined_height
-                                ));
+                                debug_info.push(format!("Transaction is MINED at height {}", mined_height));
                                 debug_info.push(format!("Confirmations: {}", num_confirmations));
                                 if let Some(hash) = &response.mined_header_hash {
-                                    debug_info
-                                        .push(format!("Mined in block: {}", hash.to_hex()));
+                                    debug_info.push(format!("Mined in block: {}", hash.to_hex()));
                                 }
                                 if let Some(ts) = response.mined_timestamp {
                                     debug_info.push(format!("Mined timestamp: {}", ts));
                                 }
 
-                                let num_confirmations_required = self
-                                    .wallet
-                                    .config
-                                    .transaction_service_config
-                                    .num_confirmations_required;
+                                let num_confirmations_required =
+                                    self.wallet.config.transaction_service_config.num_confirmations_required;
                                 let is_confirmed = num_confirmations >= num_confirmations_required;
                                 debug_info.push(format!("Confirmed: {}", is_confirmed));
 
-                                if completed_tx.mined_height != Some(mined_height) {
+                                if completed_tx.mined_height == Some(mined_height) {
+                                    debug_info.push("Wallet mined_height matches chain".to_string());
+                                } else {
                                     debug_info.push(format!(
                                         "Wallet stored mined_height ({:?}) differs from chain ({})",
                                         completed_tx.mined_height, mined_height
                                     ));
-                                } else {
-                                    debug_info.push("Wallet mined_height matches chain".to_string());
                                 }
                             },
                             None => {
-                                debug_info.push(
-                                    "Transaction is reported as mined but has no height".to_string(),
-                                );
+                                debug_info.push("Transaction is reported as mined but has no height".to_string());
                             },
                         }
                     } else {
-                        debug_info.push(format!(
-                            "Transaction is UNMINED (location: {:?})",
-                            response.location
-                        ));
+                        debug_info.push(format!("Transaction is UNMINED (location: {:?})", response.location));
                         if completed_tx.mined_height.is_some() {
                             debug_info.push(format!(
                                 "WARNING: Wallet has mined_height {:?} but chain says unmined",
@@ -3563,11 +3557,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Ok(output_info) => {
                     debug_info.push(format!("Output statuses: {:?}", output_info.statuses));
 
-                    if let (Some(mined_height), Some(block_hash)) =
-                        (output_info.mined_height, output_info.block_hash)
-                    {
-                        let client =
-                            self.wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+                    if let (Some(mined_height), Some(block_hash)) = (output_info.mined_height, output_info.block_hash) {
+                        let client = self
+                            .wallet
+                            .wallet_connectivity
+                            .obtain_base_node_wallet_rpc_client()
+                            .await;
                         let tip = match client.get_tip_info().await {
                             Ok(tip_info) => {
                                 let t = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
@@ -3581,34 +3576,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         };
 
                         let num_confirmations = tip.saturating_sub(mined_height);
-                        debug_info.push(format!(
-                            "Transaction outputs MINED at height {}",
-                            mined_height
-                        ));
-                        debug_info
-                            .push(format!("Mined in block: {}", block_hash.to_hex()));
+                        debug_info.push(format!("Transaction outputs MINED at height {}", mined_height));
+                        debug_info.push(format!("Mined in block: {}", block_hash.to_hex()));
                         debug_info.push(format!("Confirmations: {}", num_confirmations));
 
-                        let num_confirmations_required = self
-                            .wallet
-                            .config
-                            .transaction_service_config
-                            .num_confirmations_required;
+                        let num_confirmations_required =
+                            self.wallet.config.transaction_service_config.num_confirmations_required;
                         let is_confirmed = num_confirmations >= num_confirmations_required;
                         debug_info.push(format!("Confirmed: {}", is_confirmed));
 
-                        if completed_tx.mined_height != Some(mined_height) {
+                        if completed_tx.mined_height == Some(mined_height) {
+                            debug_info.push("Wallet mined_height matches output manager".to_string());
+                        } else {
                             debug_info.push(format!(
                                 "Wallet stored mined_height ({:?}) differs from output manager ({})",
                                 completed_tx.mined_height, mined_height
                             ));
-                        } else {
-                            debug_info.push("Wallet mined_height matches output manager".to_string());
                         }
                     } else {
-                        debug_info.push(
-                            "Transaction outputs are NOT mined (not detected on chain)".to_string(),
-                        );
+                        debug_info.push("Transaction outputs are NOT mined (not detected on chain)".to_string());
                         if completed_tx.mined_height.is_some() {
                             debug_info.push(format!(
                                 "WARNING: Wallet has mined_height {:?} but output manager says unmined",
@@ -3639,7 +3625,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<ValidateOutputsRequest>,
     ) -> Result<Response<ValidateOutputsResponse>, Status> {
         use minotari_wallet::output_manager_service::storage::sqlite_db::{
-            ReceivedOutputInfoForBatch, SpentOutputInfoForBatch,
+            ReceivedOutputInfoForBatch,
+            SpentOutputInfoForBatch,
         };
 
         let message = request.into_inner();
@@ -3650,7 +3637,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut results = Vec::new();
         let mut oms = self.wallet.output_manager_service.clone();
 
-        let client = self.wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+        let client = self
+            .wallet
+            .wallet_connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await;
 
         let tip_info = client
             .get_tip_info()
@@ -3658,11 +3649,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(format!("Failed to get tip info: {e}")))?;
         let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
 
-        let num_confirmations_required = self
-            .wallet
-            .config
-            .transaction_service_config
-            .num_confirmations_required;
+        let num_confirmations_required = self.wallet.config.transaction_service_config.num_confirmations_required;
 
         let mut mined_updates = Vec::new();
         let mut spent_updates = Vec::new();
@@ -3696,10 +3683,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     output
                 },
                 Ok(_) => {
-                    debug_info.push(format!(
-                        "Output with commitment {} not found in wallet DB",
-                        hex
-                    ));
+                    debug_info.push(format!("Output with commitment {} not found in wallet DB", hex));
                     results.push(OutputValidationFeedback {
                         commitment: hex,
                         status: "not_found".to_string(),
@@ -3747,15 +3731,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
             // Step 3: Validate against base node - check mined info
             let output_hash = db_output.hash.to_vec();
-            match client
-                .get_utxos_mined_info(vec![output_hash.clone()], 2)
-                .await
-            {
+            match client.get_utxos_mined_info(vec![output_hash.clone()], 2).await {
                 Ok(response) => {
                     debug_info.push(format!("Chain tip height: {}", tip_height));
 
                     let found_in_utxos = response.utxos.iter().find(|u| u.utxo_hash == output_hash);
-                    let found_in_mempool = response.mempool_utxos.iter().any(|h| *h == output_hash);
+                    let found_in_mempool = response.mempool_utxos.contains(&output_hash);
 
                     if let Some(mined_info) = found_in_utxos {
                         let mined_height = mined_info.mined_in_height;
@@ -3844,8 +3825,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
                                 match db_output.marked_deleted_at_height {
                                     Some(wallet_height) if wallet_height != *spent_height => {
-                                        let block_hash =
-                                            FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
+                                        let block_hash = FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
                                         spent_updates.push(SpentOutputInfoForBatch {
                                             commitment: commitment.clone(),
                                             confirmed,
@@ -3858,8 +3838,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                         ));
                                     },
                                     None => {
-                                        let block_hash =
-                                            FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
+                                        let block_hash = FixedHash::try_from(spent_hash.as_slice()).unwrap_or_default();
                                         spent_updates.push(SpentOutputInfoForBatch {
                                             commitment: commitment.clone(),
                                             confirmed,
@@ -3894,8 +3873,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 }
                             },
                             (None, _) => {
-                                debug_info
-                                    .push("Base node: output NOT FOUND in deleted UTXO query".to_string());
+                                debug_info.push("Base node: output NOT FOUND in deleted UTXO query".to_string());
                             },
                         }
                     } else {
@@ -3921,10 +3899,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         // Apply collected fixes
-        if !mined_updates.is_empty()
-            || !spent_updates.is_empty()
-            || !unmined_invalid.is_empty()
-            || !unspent_updates.is_empty()
+        if !mined_updates.is_empty() ||
+            !spent_updates.is_empty() ||
+            !unmined_invalid.is_empty() ||
+            !unspent_updates.is_empty()
         {
             debug!(
                 target: LOG_TARGET,

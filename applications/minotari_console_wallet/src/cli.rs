@@ -214,6 +214,8 @@ pub enum CliCommands {
     DebugTransaction(DebugTransactionArgs),
     ValidateTransaction(ValidateTransactionArgs),
     ValidateOutputs(ValidateOutputsArgs),
+    RevalidateAllTransactions,
+    RevalidateAllOutputs,
 }
 
 #[derive(Debug, Args, Clone)]

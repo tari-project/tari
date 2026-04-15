@@ -54,7 +54,6 @@ use minotari_wallet::{
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
-use tari_transaction_components::rpc::models::TxLocation;
 use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -89,6 +88,7 @@ use tari_transaction_components::{
         SignedOneSidedTransactionResult,
         TransactionResult,
     },
+    rpc::models::TxLocation,
     tari_amount::{MicroMinotari, Minotari, uT},
     transaction_components::{
         EncryptedData,
@@ -2889,8 +2889,7 @@ pub async fn command_runner(
                 let tx_id: TxId = args.tx_id.into();
                 match transaction_service.get_completed_transaction(tx_id).await {
                     Ok(completed_tx) => {
-                        let has_signature =
-                            completed_tx.transaction_signature != CompressedSignature::default();
+                        let has_signature = completed_tx.transaction_signature != CompressedSignature::default();
                         println!("--- Validate Transaction {} ---", tx_id);
                         if has_signature {
                             println!("Transaction has a signature, validating via base node query...");
@@ -2920,9 +2919,7 @@ pub async fn command_runner(
                                                         println!("Mined timestamp: {}", ts);
                                                     }
                                                 } else {
-                                                    println!(
-                                                        "Transaction is reported as mined but has no height"
-                                                    );
+                                                    println!("Transaction is reported as mined but has no height");
                                                 }
                                             } else {
                                                 println!("Transaction is UNMINED (not found on chain)");
@@ -2935,8 +2932,7 @@ pub async fn command_runner(
                             }
                         } else {
                             println!(
-                                "Transaction has no signature (detected/imported), validating via output \
-                                 manager..."
+                                "Transaction has no signature (detected/imported), validating via output manager..."
                             );
                             match output_service.get_output_info_for_tx_id(tx_id).await {
                                 Ok(output_info) => {
@@ -2944,10 +2940,8 @@ pub async fn command_runner(
                                     if let (Some(mined_height), Some(block_hash)) =
                                         (output_info.mined_height, output_info.block_hash)
                                     {
-                                        let client = wallet
-                                            .wallet_connectivity
-                                            .obtain_base_node_wallet_rpc_client()
-                                            .await;
+                                        let client =
+                                            wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
                                         let tip = match client.get_tip_info().await {
                                             Ok(tip_info) => {
                                                 tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0)
@@ -2965,9 +2959,7 @@ pub async fn command_runner(
                                         let is_confirmed = num_confirmations >= 3;
                                         println!("Confirmed: {}", is_confirmed);
                                     } else {
-                                        println!(
-                                            "Transaction outputs are NOT mined (not detected on chain)"
-                                        );
+                                        println!("Transaction outputs are NOT mined (not detected on chain)");
                                     }
                                 },
                                 Err(e) => eprintln!("Error getting output info: {e}"),
@@ -2979,7 +2971,8 @@ pub async fn command_runner(
             },
             ValidateOutputs(args) => {
                 use minotari_wallet::output_manager_service::storage::sqlite_db::{
-                    ReceivedOutputInfoForBatch, SpentOutputInfoForBatch,
+                    ReceivedOutputInfoForBatch,
+                    SpentOutputInfoForBatch,
                 };
 
                 println!("--- Validate and Fix Outputs ---");
@@ -3013,26 +3006,28 @@ pub async fn command_runner(
                         },
                     };
 
-                    let db_output =
-                        match output_service.get_outputs_by_commitments(vec![commitment.clone()]).await {
-                            Ok(outputs) if !outputs.is_empty() => {
-                                let output = outputs.into_iter().next().expect("checked not empty");
-                                println!(
-                                    "Found in wallet DB - status: {}, hash: {}",
-                                    output.status,
-                                    output.hash.to_hex()
-                                );
-                                output
-                            },
-                            Ok(_) => {
-                                println!("Output not found in wallet DB");
-                                continue;
-                            },
-                            Err(e) => {
-                                eprintln!("Error querying wallet DB: {}", e);
-                                continue;
-                            },
-                        };
+                    let db_output = match output_service
+                        .get_outputs_by_commitments(vec![commitment.clone()])
+                        .await
+                    {
+                        Ok(outputs) if !outputs.is_empty() => {
+                            let output = outputs.into_iter().next().expect("checked not empty");
+                            println!(
+                                "Found in wallet DB - status: {}, hash: {}",
+                                output.status,
+                                output.hash.to_hex()
+                            );
+                            output
+                        },
+                        Ok(_) => {
+                            println!("Output not found in wallet DB");
+                            continue;
+                        },
+                        Err(e) => {
+                            eprintln!("Error querying wallet DB: {}", e);
+                            continue;
+                        },
+                    };
 
                     // Report wallet state
                     if let Some(mined_height) = db_output.mined_height {
@@ -3059,10 +3054,8 @@ pub async fn command_runner(
                     let output_hash = db_output.hash.to_vec();
                     match client.get_utxos_mined_info(vec![output_hash.clone()], 2).await {
                         Ok(response) => {
-                            let found_in_utxos =
-                                response.utxos.iter().find(|u| u.utxo_hash == output_hash);
-                            let found_in_mempool =
-                                response.mempool_utxos.iter().any(|h| *h == output_hash);
+                            let found_in_utxos = response.utxos.iter().find(|u| u.utxo_hash == output_hash);
+                            let found_in_mempool = response.mempool_utxos.contains(&output_hash);
 
                             if let Some(mined_info) = found_in_utxos {
                                 let mined_height = mined_info.mined_in_height;
@@ -3076,10 +3069,8 @@ pub async fn command_runner(
 
                                 match db_output.mined_height {
                                     Some(wallet_height) if wallet_height != mined_height => {
-                                        let block_hash = FixedHash::try_from(
-                                            mined_info.mined_in_hash.as_slice(),
-                                        )
-                                        .unwrap_or_default();
+                                        let block_hash = FixedHash::try_from(mined_info.mined_in_hash.as_slice())
+                                            .unwrap_or_default();
                                         mined_updates.push(ReceivedOutputInfoForBatch {
                                             commitment: commitment.clone(),
                                             mined_height,
@@ -3093,10 +3084,8 @@ pub async fn command_runner(
                                         );
                                     },
                                     None => {
-                                        let block_hash = FixedHash::try_from(
-                                            mined_info.mined_in_hash.as_slice(),
-                                        )
-                                        .unwrap_or_default();
+                                        let block_hash = FixedHash::try_from(mined_info.mined_in_hash.as_slice())
+                                            .unwrap_or_default();
                                         mined_updates.push(ReceivedOutputInfoForBatch {
                                             commitment: commitment.clone(),
                                             mined_height,
@@ -3183,16 +3172,11 @@ pub async fn command_runner(
                                         }
                                     },
                                     (Some((found_height, _)), None) => {
-                                        println!(
-                                            "Chain: output found at height {} and NOT spent",
-                                            found_height
-                                        );
+                                        println!("Chain: output found at height {} and NOT spent", found_height);
                                         if db_output.marked_deleted_at_height.is_some() {
                                             let confirmed = db_output
                                                 .mined_height
-                                                .map(|h| {
-                                                    tip_height.saturating_sub(h) >= num_confirmations_required
-                                                })
+                                                .map(|h| tip_height.saturating_sub(h) >= num_confirmations_required)
                                                 .unwrap_or(false);
                                             unspent_updates.push((db_output.hash, confirmed));
                                             println!(
@@ -3212,10 +3196,10 @@ pub async fn command_runner(
                 }
 
                 // Apply collected fixes
-                if !mined_updates.is_empty()
-                    || !spent_updates.is_empty()
-                    || !unmined_invalid.is_empty()
-                    || !unspent_updates.is_empty()
+                if !mined_updates.is_empty() ||
+                    !spent_updates.is_empty() ||
+                    !unmined_invalid.is_empty() ||
+                    !unspent_updates.is_empty()
                 {
                     println!(
                         "\nApplying fixes: mined={}, spent={}, unmined_invalid={}, unspent={}",
@@ -3225,12 +3209,7 @@ pub async fn command_runner(
                         unspent_updates.len()
                     );
                     match output_service
-                        .update_output_validation_state(
-                            mined_updates,
-                            spent_updates,
-                            unmined_invalid,
-                            unspent_updates,
-                        )
+                        .update_output_validation_state(mined_updates, spent_updates, unmined_invalid, unspent_updates)
                         .await
                     {
                         Ok(()) => println!("Fixes applied successfully"),
@@ -3238,6 +3217,25 @@ pub async fn command_runner(
                     }
                 } else {
                     println!("\nNo fixes needed - all outputs match chain state");
+                }
+            },
+            RevalidateAllTransactions => {
+                println!("--- Revalidate All Transactions ---");
+                match transaction_service.revalidate_all_transactions().await {
+                    Ok(()) => println!("Transaction revalidation started successfully"),
+                    Err(e) => eprintln!("RevalidateAllTransactions error: {e}"),
+                }
+            },
+            RevalidateAllOutputs => {
+                println!("--- Revalidate All Outputs ---");
+                match output_service.revalidate_all_outputs().await {
+                    Ok(request_key) => {
+                        println!(
+                            "Output revalidation started successfully (request key: {})",
+                            request_key
+                        )
+                    },
+                    Err(e) => eprintln!("RevalidateAllOutputs error: {e}"),
                 }
             },
         }

@@ -461,9 +461,7 @@ where
                     self.resources.db.mark_outputs_as_spent(spent_updates)?;
                 }
                 if !unmined_invalid.is_empty() {
-                    self.resources
-                        .db
-                        .set_outputs_to_unmined_and_invalid(unmined_invalid)?;
+                    self.resources.db.set_outputs_to_unmined_and_invalid(unmined_invalid)?;
                 }
                 if !unspent_updates.is_empty() {
                     self.resources.db.mark_outputs_as_unspent(unspent_updates)?;

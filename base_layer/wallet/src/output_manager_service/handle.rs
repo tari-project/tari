@@ -822,8 +822,7 @@ where KM: LegacyTransactionKeyManagerInterface
                     target: LOG_TARGET,
                     "OutputManagerRequest::UpdateOutputValidationState({e})"
                 )
-            })??
-        {
+            })?? {
             OutputManagerResponse::OutputValidationStateUpdated => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::UpdateOutputValidationState".to_string(),
