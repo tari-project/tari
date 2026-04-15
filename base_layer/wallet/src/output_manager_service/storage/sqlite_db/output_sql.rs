@@ -832,7 +832,7 @@ impl OutputSql {
                  FROM outputs WHERE status = ? AND maturity <= ? AND maturity >= 0 AND script_lock_height <= ? AND script_lock_height >= 0 AND user_payment_id = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND (maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND user_payment_id = ?) \
+                 FROM outputs WHERE status = ? AND ((maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND user_payment_id = ?) \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
                  FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND user_payment_id = ? \
