@@ -88,6 +88,9 @@ pub struct TariWorld {
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
     pub utxos: IndexMap<String, WalletOutput>,
+    // For offline signing tests
+    pub offline_wallet_name: Option<String>,
+    pub signed_transactions: IndexMap<String, String>,
     pub output_hash: Option<String>,
     pub pre_image: Option<String>,
     pub wallet_connected_to_base_node: IndexMap<String, String>, // wallet -> base node,
@@ -164,6 +167,8 @@ impl TariWorld {
             transactions: Default::default(),
             wallet_addresses: Default::default(),
             utxos: Default::default(),
+            offline_wallet_name: None,
+            signed_transactions: Default::default(),
             output_hash: None,
             pre_image: None,
             wallet_connected_to_base_node: Default::default(),
