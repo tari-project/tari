@@ -84,6 +84,37 @@ impl<'a> LmdbTreeWriter<'a> {
         lmdb_insert(self.txn, &self.node_db, &lmdb_key, node, "jmt_node_table")?;
         Ok(())
     }
+
+    /// Deletes all JMT node data for versions strictly less than `before_version`.
+    /// This is the primary optimization for reducing `jmt_node_data` storage.
+    ///
+    /// Returns the number of node entries deleted.
+    pub fn prune_stale_jmt_versions(&self, before_version: u64) -> anyhow::Result<usize> {
+        if before_version == 0 {
+            return Ok(0);
+        }
+        let mut total_deleted = 0usize;
+        for version in 0..before_version {
+            let version_key = version.to_be_bytes();
+            let deleted =
+                lmdb_delete_keys_starting_with::<jmt::storage::Node>(self.txn, &self.node_db, &version_key)?;
+            if !deleted.is_empty() {
+                trace!(target: LOG_TARGET, "Pruned {} JMT nodes for version {}", deleted.len(), version);
+            }
+            total_deleted += deleted.len();
+        }
+        // Also clean up stale value data for old versions
+        for version in 0..before_version {
+            let version_key = version.to_be_bytes();
+            let deleted =
+                lmdb_delete_keys_starting_with::<Vec<u8>>(self.txn, &self.value_db, &version_key)?;
+            if !deleted.is_empty() {
+                trace!(target: LOG_TARGET, "Pruned {} JMT values for version {}", deleted.len(), version);
+            }
+            total_deleted += deleted.len();
+        }
+        Ok(total_deleted)
+    }
 }
 
 impl TreeWriter for LmdbTreeWriter<'_> {
@@ -273,5 +304,134 @@ mod test {
         txn.commit().unwrap();
 
         assert_eq!(root1, root1_v2);
+    }
+
+    #[test]
+    fn test_prune_stale_jmt_versions_basic() {
+        let db = TempDatabase::new();
+
+        // Create JMT data for versions 0-4
+        let mut roots = vec![];
+        for version in 0..5u64 {
+            let txn = db.db().create_write_txn();
+            let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+            let reader = db.db().create_smt_reader().unwrap();
+            let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+
+            let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+            let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+            let value = format!("value_{}", version).as_bytes().to_vec();
+            let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], version).unwrap();
+            roots.push(root);
+            tree_writer.write_node_batch(&updates.node_batch).unwrap();
+            txn.commit().unwrap();
+        }
+
+        // Prune versions 0-2 (keep 3 and 4)
+        let deleted = db.db().prune_jmt_nodes_before_version(3).unwrap();
+        assert!(deleted > 0, "Should have deleted some JMT nodes for 3 versions");
+
+        // Verify root hash at version 4 still works after pruning
+        let reader = db.db().create_smt_reader().unwrap();
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let root_after = jmt.get_root_hash(4).unwrap();
+        assert_eq!(roots[4], root_after, "Root hash at version 4 should be unchanged after pruning");
+
+        // Verify root hash at version 3 still works
+        let root3_after = jmt.get_root_hash(3).unwrap();
+        assert_eq!(roots[3], root3_after, "Root hash at version 3 should be unchanged after pruning");
+
+        // Verify pruned versions' roots are no longer available
+        // (get_root_hash should fail for version 0 since its nodes are gone)
+        let root0_result = jmt.get_root_hash(0);
+        assert!(root0_result.is_err(), "Root hash at version 0 should be unavailable after pruning");
+    }
+
+    #[test]
+    fn test_prune_stale_jmt_versions_empty_range() {
+        let db = TempDatabase::new();
+
+        // Create some JMT data
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+        let value = b"test_value".to_vec();
+        let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], 0).unwrap();
+        tree_writer.write_node_batch(&updates.node_batch).unwrap();
+        txn.commit().unwrap();
+
+        // Pruning before_version=0 should delete nothing
+        let deleted = db.db().prune_jmt_nodes_before_version(0).unwrap();
+        assert_eq!(deleted, 0, "Should not delete anything when before_version is 0");
+
+        // Verify data still intact
+        let reader = db.db().create_smt_reader().unwrap();
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let root = jmt.get_root_hash(0).unwrap();
+        assert_ne!(root.0, [0u8; 32], "Root hash should still exist");
+    }
+
+    #[test]
+    fn test_prune_stale_jmt_versions_multiple_keys() {
+        let db = TempDatabase::new();
+
+        // Create JMT data with multiple keys across versions
+        for version in 0..3u64 {
+            let txn = db.db().create_write_txn();
+            let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+            let reader = db.db().create_smt_reader().unwrap();
+            let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+
+            let mut batch = vec![];
+            for i in 0..3 {
+                let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+                let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+                let value = format!("key{}_v{}", i, version).as_bytes().to_vec();
+                batch.push((smt_key, Some(value)));
+            }
+            let (_root, updates) = jmt.put_value_set(batch, version).unwrap();
+            tree_writer.write_node_batch(&updates.node_batch).unwrap();
+            txn.commit().unwrap();
+        }
+
+        // Prune versions 0-1
+        let deleted = db.db().prune_jmt_nodes_before_version(2).unwrap();
+        assert!(deleted > 0, "Should have deleted JMT nodes for 2 versions with 3 keys each");
+
+        // Version 2 root should still work
+        let reader = db.db().create_smt_reader().unwrap();
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let root = jmt.get_root_hash(2).unwrap();
+        assert_ne!(root.0, [0u8; 32], "Root hash at version 2 should still exist");
+    }
+
+    #[test]
+    fn test_prune_stale_jmt_versions_idempotent() {
+        let db = TempDatabase::new();
+
+        // Create JMT data for versions 0-1
+        for version in 0..2u64 {
+            let txn = db.db().create_write_txn();
+            let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+            let reader = db.db().create_smt_reader().unwrap();
+            let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+            let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+            let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+            let value = b"test".to_vec();
+            let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], version).unwrap();
+            tree_writer.write_node_batch(&updates.node_batch).unwrap();
+            txn.commit().unwrap();
+        }
+
+        // First prune
+        let deleted1 = db.db().prune_jmt_nodes_before_version(1).unwrap();
+        assert!(deleted1 > 0);
+
+        // Second prune (should be idempotent — nothing left to delete)
+        let deleted2 = db.db().prune_jmt_nodes_before_version(1).unwrap();
+        assert_eq!(deleted2, 0, "Second prune should find nothing to delete");
     }
 }

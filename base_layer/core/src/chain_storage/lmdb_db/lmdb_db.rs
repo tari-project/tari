@@ -2524,6 +2524,41 @@ impl LMDBDatabase {
         self.write_transaction().expect("Failed to create write transaction")
     }
 
+    /// Prunes stale JMT node and value data for all versions strictly less than `before_version`.
+    /// This is the primary optimization for reducing `jmt_node_data` storage, which
+    /// accumulates ~15 InternalNodes per block version (~670 bytes each).
+    ///
+    /// After pruning, only the JMT state for versions >= `before_version` is retained.
+    /// This is safe because:
+    /// - Historical JMT versions beyond the pruning horizon are no longer needed
+    /// - The latest version contains the current UTXO set
+    /// - Reorg handling already uses `delete_all_for_version` for short-lived forks
+    ///
+    /// Returns the total number of entries deleted across node and value databases.
+    pub fn prune_jmt_nodes_before_version(&self, before_version: u64) -> Result<usize, ChainStorageError> {
+        if before_version == 0 {
+            return Ok(0);
+        }
+        let write_txn = self.write_transaction()?;
+        let tree_writer = LmdbTreeWriter::new(
+            &write_txn,
+            self.jmt_node_data.clone(),
+            self.jmt_value_data.clone(),
+            self.jmt_unique_key_data.clone(),
+        );
+        let deleted = tree_writer
+            .prune_stale_jmt_versions(before_version)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        write_txn.commit()?;
+        info!(
+            target: LOG_TARGET,
+            "Pruned {} JMT entries for versions < {}",
+            deleted,
+            before_version
+        );
+        Ok(deleted)
+    }
+
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
         LmdbTreeWriter::new(

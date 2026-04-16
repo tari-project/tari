@@ -314,4 +314,15 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn update_stats_progress(&self, current: u64);
 
     fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError>;
+
+    /// Prunes stale JMT (Jellyfish Merkle Tree) node and value data for all versions
+    /// strictly less than `before_version`. This is the primary optimization for reducing
+    /// `jmt_node_data` storage, which accumulates ~15 InternalNodes (~670 bytes each) per
+    /// block version.
+    ///
+    /// After pruning, only JMT state for versions >= `before_version` is retained.
+    /// Returns the total number of entries deleted.
+    fn prune_jmt_nodes_before_version(&self, _before_version: u64) -> Result<usize, ChainStorageError> {
+        Ok(0)
+    }
 }

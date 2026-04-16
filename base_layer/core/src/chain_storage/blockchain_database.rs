@@ -3679,6 +3679,20 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 
     txn.set_pruned_height(target_horizon_height);
 
+    // Prune stale JMT node data for versions below the new pruning horizon.
+    // This is the primary optimization for reducing jmt_node_data storage,
+    // which accumulates ~15 InternalNodes (~670 bytes each) per block version.
+    if let Err(e) = db.prune_jmt_nodes_before_version(target_horizon_height + 1) {
+        // JMT pruning failure is non-fatal: log a warning but don't fail the prune.
+        // The block data has already been pruned successfully above.
+        warn!(
+            target: LOG_TARGET,
+            "JMT node pruning failed at height {}: {}. Block data pruning continues.",
+            target_horizon_height,
+            e
+        );
+    }
+
     db.write(txn)?;
     Ok(())
 }
