@@ -31,7 +31,7 @@ use crate::{
     diesel::{BoolExpressionMethods, OptionalExtension},
     error::WalletStorageError,
     schema::scanned_blocks,
-    utxo_scanner_service::service::ScannedBlock,
+    utxo_scanner_service::service::{ScannedBlock, SCANNED_BLOCK_CACHE_SIZE},
 };
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
@@ -48,6 +48,7 @@ impl ScannedBlockSql {
     pub fn index(conn: &mut SqliteConnection) -> Result<Vec<ScannedBlockSql>, WalletStorageError> {
         Ok(scanned_blocks::table
             .order(scanned_blocks::height.desc())
+            .limit(SCANNED_BLOCK_CACHE_SIZE as i64)
             .load::<ScannedBlockSql>(conn)?)
     }
 

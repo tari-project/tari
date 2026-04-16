@@ -72,7 +72,7 @@ use crate::{
         },
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
-    utxo_scanner_service::service::ScannedBlock,
+    utxo_scanner_service::service::{ScannedBlock, SCANNED_BLOCK_CACHE_SIZE},
 };
 
 const LOG_TARGET: &str = "wallet::storage::wallet";
@@ -529,7 +529,38 @@ impl WalletBackend for WalletSqliteDatabase {
 
     fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
-        ScannedBlockSql::from(scanned_block).commit(&mut conn)
+        
+        // Get the last saved height to implement sparse storage strategy
+        let last_height = ScannedBlockSql::last_height(&mut conn)?;
+        let should_save = match last_height {
+            Some(h) => {
+                let diff = scanned_block.height.saturating_sub(h as u64);
+                // Always save if within the last 720 blocks
+                if diff <= SCANNED_BLOCK_CACHE_SIZE {
+                    true
+                // For blocks beyond 100,000, save every 5000
+                } else if scanned_block.height < 100_000 {
+                    false
+                } else if diff % 5000 == 0 {
+                    true
+                // For blocks between 10,000 and 100,000, save every 1000
+                } else if diff % 1000 == 0 {
+                    true
+                // For blocks between 720 and 10,000, save every 100
+                } else if diff % 100 == 0 {
+                    true
+                } else {
+                    false
+                }
+            },
+            None => true, // No previous blocks, save this one
+        };
+        
+        if should_save {
+            ScannedBlockSql::from(scanned_block).commit(&mut conn)
+        } else {
+            Ok(())
+        }
     }
 
     fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError> {
