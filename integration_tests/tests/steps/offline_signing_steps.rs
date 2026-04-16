@@ -75,7 +75,8 @@ async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String
 #[then(expr = "the receiving wallet confirms the transaction")]
 async fn verify_receiving_wallet_confirms(world: &mut TariWorld) {
     // Verify that the transaction was confirmed in the receiving wallet
-    let wallet = world.wallets.get("receiver").unwrap();
+    let wallet_name = world.offline_wallet_name.as_ref().expect("No offline wallet name set");
+    let wallet = world.wallets.get(wallet_name).unwrap();
     let balance = wallet.get_balance().await.unwrap();
     assert!(balance.available > 0);
 }

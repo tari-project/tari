@@ -530,26 +530,17 @@ impl WalletBackend for WalletSqliteDatabase {
     fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         
-        // Get the last saved height to implement sparse storage strategy
-        let last_height = ScannedBlockSql::last_height(&mut conn)?;
-        let should_save = match last_height {
-            Some(h) => {
-                let diff = scanned_block.height.saturating_sub(h as u64);
-                // Always save if within the last 720 blocks
-                if diff <= SCANNED_BLOCK_CACHE_SIZE {
-                    true
-                // For blocks between 720 and 10,000, save every 100
-                } else if scanned_block.height < 10_000 && diff % 100 == 0 {
-                    true
-                // For blocks between 10,000 and 100,000, save every 1000
-                } else if scanned_block.height < 100_000 && diff % 1000 == 0 {
-                    true
-                // For blocks beyond 100,000, save every 5000
-                } else {
-                    diff % 5000 == 0
-                }
-            },
-            None => true, // No previous blocks, save this one
+        // Implement sparse storage strategy based on absolute block height.
+        // This avoids the sequential scan bug where relative distance (diff) is always 1,
+        // which would cause every block to be saved.
+        let should_save = if scanned_block.height <= SCANNED_BLOCK_CACHE_SIZE {
+            true
+        } else if scanned_block.height < 10_000 {
+            scanned_block.height % 100 == 0
+        } else if scanned_block.height < 100_000 {
+            scanned_block.height % 1000 == 0
+        } else {
+            scanned_block.height % 5000 == 0
         };
         
         if should_save {
