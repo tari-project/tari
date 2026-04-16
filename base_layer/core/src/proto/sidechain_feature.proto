@@ -125,6 +125,7 @@ message SidechainBlockHeader {
   Signature signature = 10;
   bytes metadata_hash = 11;
   ShardGroupAccumulatedData accumulated_data = 12;
+  bytes epoch_hash = 13;
 }
 
 message EvictAtom {
