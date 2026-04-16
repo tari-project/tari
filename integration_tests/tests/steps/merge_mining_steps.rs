@@ -90,9 +90,7 @@ async fn merge_mining_submit_block(world: &mut TariWorld, mining_proxy_name: Str
     );
     let block_template_blob = block_template_blob.unwrap().clone();
     let merge_miner = world.get_mut_merge_miner(&mining_proxy_name).unwrap();
-    println!("block_template {block_template_blob:?}");
     world.last_merge_miner_response = merge_miner.submit_block(&block_template_blob).await;
-    println!("last_merge_miner_response {:?}", world.last_merge_miner_response);
 }
 
 #[then(expr = "Proxy response block submission is valid")]
