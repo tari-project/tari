@@ -538,19 +538,15 @@ impl WalletBackend for WalletSqliteDatabase {
                 // Always save if within the last 720 blocks
                 if diff <= SCANNED_BLOCK_CACHE_SIZE {
                     true
-                // For blocks beyond 100,000, save every 5000
-                } else if scanned_block.height < 100_000 {
-                    false
-                } else if diff % 5000 == 0 {
+                // For blocks between 720 and 10,000, save every 100
+                } else if scanned_block.height < 10_000 && diff % 100 == 0 {
                     true
                 // For blocks between 10,000 and 100,000, save every 1000
-                } else if diff % 1000 == 0 {
+                } else if scanned_block.height < 100_000 && diff % 1000 == 0 {
                     true
-                // For blocks between 720 and 10,000, save every 100
-                } else if diff % 100 == 0 {
-                    true
+                // For blocks beyond 100,000, save every 5000
                 } else {
-                    false
+                    diff % 5000 == 0
                 }
             },
             None => true, // No previous blocks, save this one
