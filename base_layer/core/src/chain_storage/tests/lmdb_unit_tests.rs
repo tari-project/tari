@@ -70,7 +70,6 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, CompressedSignature, FixedHash};
 use tari_node_components::blocks::Block;
-use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::BlockchainDatabase,
