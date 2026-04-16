@@ -3682,6 +3682,29 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
     // Prune stale JMT node data for versions below the new pruning horizon.
     // This is the primary optimization for reducing jmt_node_data storage,
     // which accumulates ~15 InternalNodes (~670 bytes each) per block version.
+    //
+    // ## Why `target_horizon_height + 1` is correct (not an off-by-one):
+    //
+    // `prune_to_height(target_horizon_height)` prunes all blocks at heights
+    // (last_pruned+1)..=target_horizon_height, inclusive. After pruning, the
+    // chain retains blocks from height (target_horizon_height + 1) onward.
+    //
+    // In Tari's JMT, block at height H produces JMT version H. We need
+    // JMT versions >= (target_horizon_height + 1) to reconstruct the state
+    // of the first retained block. Therefore we pass `before_version =
+    // target_horizon_height + 1`, which deletes versions 0..target_horizon_height
+    // (strictly less than the argument), leaving version
+    // target_horizon_height + 1 intact.
+    //
+    // ## Why this pruning is safe:
+    //
+    // JMT node keys in LMDB are prefixed with the version number:
+    //   key = version(8 bytes) || nibble_path
+    // This means the same logical tree position at different versions creates
+    // *different* LMDB keys. Only the latest version's keys are needed for the
+    // current tree state, so deleting older version keys cannot corrupt the
+    // remaining state. This is the same pattern used by `delete_all_for_version`
+    // during chain reorgs.
     if let Err(e) = db.prune_jmt_nodes_before_version(target_horizon_height + 1) {
         // JMT pruning failure is non-fatal: log a warning but don't fail the prune.
         // The block data has already been pruned successfully above.

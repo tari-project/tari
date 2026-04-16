@@ -27,7 +27,10 @@ use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
 use super::lmdb::lmdb_insert;
-use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with, lmdb_fetch_matching_after};
+use crate::chain_storage::lmdb_db::lmdb::{
+    lmdb_count_and_delete_keys_starting_with, lmdb_delete, lmdb_delete_keys_starting_with,
+    lmdb_fetch_matching_after,
+};
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {
@@ -88,6 +91,9 @@ impl<'a> LmdbTreeWriter<'a> {
     /// Deletes all JMT node data for versions strictly less than `before_version`.
     /// This is the primary optimization for reducing `jmt_node_data` storage.
     ///
+    /// Uses `lmdb_count_and_delete_keys_starting_with` to avoid materializing deleted
+    /// values into memory (only the count is needed), preventing OOM on large version ranges.
+    ///
     /// Returns the number of node entries deleted.
     pub fn prune_stale_jmt_versions(&self, before_version: u64) -> anyhow::Result<usize> {
         if before_version == 0 {
@@ -96,22 +102,20 @@ impl<'a> LmdbTreeWriter<'a> {
         let mut total_deleted = 0usize;
         for version in 0..before_version {
             let version_key = version.to_be_bytes();
-            let deleted =
-                lmdb_delete_keys_starting_with::<jmt::storage::Node>(self.txn, &self.node_db, &version_key)?;
-            if !deleted.is_empty() {
-                trace!(target: LOG_TARGET, "Pruned {} JMT nodes for version {}", deleted.len(), version);
+            let count = lmdb_count_and_delete_keys_starting_with(self.txn, &self.node_db, &version_key)?;
+            if count > 0 {
+                trace!(target: LOG_TARGET, "Pruned {} JMT nodes for version {}", count, version);
             }
-            total_deleted += deleted.len();
+            total_deleted += count;
         }
         // Also clean up stale value data for old versions
         for version in 0..before_version {
             let version_key = version.to_be_bytes();
-            let deleted =
-                lmdb_delete_keys_starting_with::<Vec<u8>>(self.txn, &self.value_db, &version_key)?;
-            if !deleted.is_empty() {
-                trace!(target: LOG_TARGET, "Pruned {} JMT values for version {}", deleted.len(), version);
+            let count = lmdb_count_and_delete_keys_starting_with(self.txn, &self.value_db, &version_key)?;
+            if count > 0 {
+                trace!(target: LOG_TARGET, "Pruned {} JMT values for version {}", count, version);
             }
-            total_deleted += deleted.len();
+            total_deleted += count;
         }
         Ok(total_deleted)
     }

@@ -250,6 +250,39 @@ where
     Ok(result)
 }
 
+/// Deletes all keys matching the given prefix and returns only the count of deleted entries.
+///
+/// This is a memory-efficient alternative to `lmdb_delete_keys_starting_with` for cases where
+/// only the deletion count is needed (e.g., pruning). Unlike the full version, this does NOT
+/// deserialize or collect the deleted values into a Vec, avoiding OOM risk when pruning large
+/// version ranges.
+pub fn lmdb_count_and_delete_keys_starting_with(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &[u8],
+) -> Result<usize, ChainStorageError> {
+    let mut access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+
+    let mut row = match cursor.seek_range_k::<[u8], [u8]>(&access, key) {
+        Ok(r) => r,
+        Err(_) => return Ok(0),
+    };
+    let mut count = 0usize;
+    while row.0.get(..key.len()).expect("Cannot expect") == key {
+        cursor.del(&mut access, del::NODUPDATA)?;
+        count += 1;
+        row = match cursor.next(&access).to_opt()? {
+            Some(r) => r,
+            None => break,
+        };
+    }
+    Ok(count)
+}
+
 pub fn lmdb_get_typed<K, V>(
     txn: &ConstTransaction<'_>,
     db: &TypedDatabaseRef<K, V>,
