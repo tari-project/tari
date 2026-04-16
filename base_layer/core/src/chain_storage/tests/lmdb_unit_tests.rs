@@ -50,6 +50,17 @@
 //!
 //! The five original blocks B6..B10 are stored in the orphan pool.
 //!
+//! ## Reference LMDB binary fixture
+//!
+//! The file `tests/fixtures/reference_lmdb/data.mdb.gz` is a gzip-compressed copy of an
+//! actual LMDB database containing the first 3 blocks of the test chain.  It is **committed to
+//! git** at ~150 KB (the raw `data.mdb` is ~136 MB, but LMDB pre-allocates with zeroes which
+//! compress to almost nothing).  Tests that need to open it call `open_reference_db()`, which
+//! decompresses the archive on first use.
+//!
+//! The reference tests prove that the LMDB read path works against a pre-existing on-disk
+//! database — not just one that was just written in the same test process.
+//!
 //! ## Regenerating the JSON fixture
 //!
 //! Run the ignored `generate_fixtures` test:
@@ -403,42 +414,42 @@ fn generate_fixtures() {
 // Reference LMDB fixture generator (run with --ignored to regenerate)
 // ---------------------------------------------------------------------------
 
-/// Generates a reference LMDB binary fixture by building the test chain from the JSON fixture
-/// and copying the resulting `data.mdb` file into `tests/fixtures/reference_lmdb/`.
+/// Generates a reference LMDB binary fixture by building the test chain from the JSON fixture,
+/// gzip-compressing the resulting `data.mdb`, and writing it to
+/// `tests/fixtures/reference_lmdb/data.mdb.gz`.
+///
+/// LMDB pre-allocates its map as a sparse file.  On disk the raw `data.mdb` for a 3-block chain
+/// is ~136 MB, but it compresses to ~150 KB because the unused pages are all zeroes.  We commit
+/// the compressed version so that CI can always open a pre-existing on-disk LMDB database without
+/// requiring a large binary attachment or git-LFS.
 ///
 /// Run with:
 /// ```bash
-/// cargo test -p tari_core --lib -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture
+/// cargo test -p tari_core --lib --features sqlite_bundled \
+///   -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture
 /// ```
 ///
 /// After running, commit the generated file:
 /// ```bash
-/// git add base_layer/core/src/chain_storage/tests/fixtures/reference_lmdb/data.mdb
+/// git add base_layer/core/src/chain_storage/tests/fixtures/reference_lmdb/data.mdb.gz
 /// git commit -S -m "test: regenerate reference LMDB fixture"
 /// ```
 ///
 /// **IMPORTANT:** Re-running this generator after the JSON fixture has been regenerated requires
 /// updating the hardcoded expected constants in `reference_lmdb_constants` below.
-///
-/// **Platform note:** LMDB `data.mdb` uses a little-endian on-disk format that is
-/// architecture-neutral, but the fixture should be regenerated on each target platform to ensure
-/// correctness.
 #[test]
 #[ignore = "Run manually to regenerate the reference LMDB binary fixture"]
 fn generate_reference_lmdb_fixture() {
+    use flate2::{Compression, write::GzEncoder};
     use tari_storage::lmdb_store::LMDBConfig;
     use tari_utilities::hex::Hex;
 
     let data = load_test_chain_data();
-    // Build genesis + blocks B1..B3 only. The JMT grows fast for each block, so we
-    // intentionally keep the chain short to keep the committed data.mdb small enough
-    // for git (< 50 MB).  The reference tests assert height, commitment, and kernel
-    // from the first non-genesis block, which is enough to prove we can read an
-    // existing LMDB — the goal of this fixture.
+    // Build genesis + blocks B1..B3 only. The JMT grows fast for each block; we keep
+    // the chain short so the compressed fixture stays small.
     let db = {
         use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
         let db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(4, 4, 2, false));
-        // Add only B1..B3 — no orphans, no reorg
         for block in data.canonical_blocks[1..=3].iter() {
             db.add_block(Arc::new(block.clone())).unwrap().assert_added();
         }
@@ -467,20 +478,32 @@ fn generate_reference_lmdb_fixture() {
 
     // Copy data.mdb BEFORE dropping the database — TempDatabase::drop() deletes the temp dir
     let db_path = db.db_read_access().unwrap().path().to_path_buf();
-
-    let dest = reference_lmdb_dir();
-    fs::create_dir_all(&dest).unwrap();
-
     let src = db_path.join("data.mdb");
     assert!(src.exists(), "data.mdb not found at {}", src.display());
+    let raw = fs::read(&src).unwrap_or_else(|e| panic!("Failed to read data.mdb: {e}"));
 
-    let dst = dest.join("data.mdb");
-    fs::copy(&src, &dst).unwrap_or_else(|e| panic!("Failed to copy data.mdb: {e}"));
-
-    // Now drop the database (this deletes the temp dir, but we've already copied)
+    // Now drop the database (this deletes the temp dir, but we've already read the bytes)
     drop(db);
 
-    println!("Wrote reference LMDB fixture to {}", dst.display());
+    // Gzip-compress the raw bytes.  LMDB pre-allocates its map with zeroes so the
+    // compression ratio is typically >99 % (136 MB → ~150 KB).
+    let dest = reference_lmdb_dir();
+    fs::create_dir_all(&dest).unwrap();
+    let dst = dest.join("data.mdb.gz");
+
+    let gz_file = fs::File::create(&dst).unwrap_or_else(|e| panic!("Failed to create {}: {e}", dst.display()));
+    let mut enc = GzEncoder::new(gz_file, Compression::best());
+    std::io::copy(&mut raw.as_slice(), &mut enc).unwrap();
+    enc.finish().unwrap_or_else(|e| panic!("Failed to finalise gzip stream: {e}"));
+
+    println!(
+        "Wrote compressed reference LMDB fixture to {} ({} KB)",
+        dst.display(),
+        fs::metadata(&dst).map(|m| m.len() / 1024).unwrap_or(0)
+    );
+    println!("Commit it with:");
+    println!("  git add {}", dst.display());
+    println!("  git commit -S -m 'test: regenerate reference LMDB fixture'");
 }
 
 // ---------------------------------------------------------------------------
@@ -508,42 +531,53 @@ mod reference_lmdb_constants {
     pub const EXPECTED_BLOCK1_KERNEL_SIG_HEX: &str = "cd1b1efd8df818dc04eccf91fae58fade54cf03924ae5c66501035b2f2409f0a";
 }
 
-/// Ensure the reference LMDB fixture exists, generating it if this is the first run.
+/// Ensure a decompressed copy of the reference LMDB fixture is present in a temporary location.
 ///
-/// The fixture lives at `tests/fixtures/reference_lmdb/data.mdb`. It is intentionally NOT
-/// committed to git (the file is large due to LMDB pre-allocation), but it IS deterministic:
-/// given the same `test_chain_data.json`, re-running always produces the same on-disk bytes.
+/// The committed fixture is `tests/fixtures/reference_lmdb/data.mdb.gz` (~150 KB).  On first
+/// access it is decompressed into the same directory alongside the compressed source.  The
+/// `OnceLock` guarantees this is done at most once per test-process execution; subsequent tests
+/// that call `open_reference_db` find the decompressed file already in place.
 ///
-/// The `OnceLock` guarantees that concurrent test threads only run the generator once, and that
-/// subsequent test runs that find the file already on disk skip generation entirely.
+/// # Panics
+///
+/// Panics if the committed `.gz` file is missing — which means the fixture has not been
+/// generated yet.  Run `generate_reference_lmdb_fixture` and commit the result.
 fn ensure_reference_fixture_exists() {
     use std::sync::OnceLock;
-
-    use tari_storage::lmdb_store::LMDBConfig;
     static ONCE: OnceLock<()> = OnceLock::new();
     ONCE.get_or_init(|| {
         let fixture_dir = reference_lmdb_dir();
         let data_mdb = fixture_dir.join("data.mdb");
+
         if data_mdb.exists() {
-            return;
+            return; // Already decompressed from a previous test run in this process or on disk
         }
-        // First run: generate the fixture
-        let data = load_test_chain_data();
-        let db = {
-            use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
-            let empty_db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(4, 4, 2, false));
-            for block in data.canonical_blocks[1..=3].iter() {
-                empty_db.add_block(Arc::new(block.clone())).unwrap().assert_added();
-            }
-            empty_db
-        };
-        let db_path = db.db_read_access().unwrap().path().to_path_buf();
+
+        let gz_path = fixture_dir.join("data.mdb.gz");
+        assert!(
+            gz_path.exists(),
+            "Reference LMDB fixture not found at {}.\n\
+             Run the generator and commit the result:\n\
+             cargo test -p tari_core --lib --features sqlite_bundled \
+             -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+            gz_path.display()
+        );
+
+        // Decompress data.mdb.gz → data.mdb next to the compressed source.
+        let gz_file = fs::File::open(&gz_path)
+            .unwrap_or_else(|e| panic!("Failed to open {}: {e}", gz_path.display()));
+        let mut decoder = flate2::read::GzDecoder::new(gz_file);
         fs::create_dir_all(&fixture_dir).unwrap();
-        let src = db_path.join("data.mdb");
-        assert!(src.exists(), "data.mdb not found at {}", src.display());
-        fs::copy(&src, &data_mdb).unwrap_or_else(|e| panic!("Failed to copy data.mdb: {e}"));
-        drop(db);
-        println!("[reference_lmdb] Generated fixture at {}", data_mdb.display());
+        let mut out_file = fs::File::create(&data_mdb)
+            .unwrap_or_else(|e| panic!("Failed to create {}: {e}", data_mdb.display()));
+        let bytes_written = std::io::copy(&mut decoder, &mut out_file)
+            .unwrap_or_else(|e| panic!("Failed to decompress {}: {e}", gz_path.display()));
+
+        println!(
+            "[reference_lmdb] Decompressed fixture to {} ({} MB)",
+            data_mdb.display(),
+            bytes_written / 1024 / 1024
+        );
     });
 }
 
