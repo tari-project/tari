@@ -3362,7 +3362,7 @@ fn verify_no_duplicate_indexes(recipient_info: &[CliRecipientInfo]) -> Result<()
 
 fn sort_args_recipient_info(recipient_info: Vec<CliRecipientInfo>) -> Vec<CliRecipientInfo> {
     let mut args_recipient_info = recipient_info;
-    args_recipient_info.sort_by(|a, b| a.recipient_address.to_hex().cmp(&b.recipient_address.to_hex()));
+    args_recipient_info.sort_by_key(|a| a.recipient_address.to_hex());
     args_recipient_info.iter_mut().for_each(|v| v.output_indexes.sort());
     args_recipient_info
 }
@@ -3412,9 +3412,8 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
         },
     };
     let mut utxos = Vec::new();
-    let mut counter = 1;
     let lines_count = pre_mine_contents.lines().count();
-    for line in pre_mine_contents.lines() {
+    for (counter, line) in (1..).zip(pre_mine_contents.lines()) {
         if counter < lines_count {
             let utxo: Option<TransactionOutput> = serde_json::from_str(line).ok();
             if let Some(utxo) = utxo {
@@ -3423,7 +3422,6 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
         } else {
             break;
         }
-        counter += 1;
     }
 
     Ok(utxos)

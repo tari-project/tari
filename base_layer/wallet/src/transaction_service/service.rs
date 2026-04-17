@@ -4551,10 +4551,7 @@ where
         }
         let payment_id = request.request.info.payment_id;
         // Use original keys generated in this wallet (they correspond to keys with the same values)
-        let change = match request.signed_transaction.change_output {
-            Some(v) => Some(vec![v.clone()]),
-            None => None,
-        };
+        let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
 
         let _result = self
             .event_publisher
