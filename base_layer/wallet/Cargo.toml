@@ -90,7 +90,7 @@ tari_p2p = { workspace = true, features = ["test-mocks"] }
 tari_comms_dht = { workspace = true, features = ["test-mocks"] }
 tari_test_utils = { workspace = true }
 tari_core = { workspace = true }
-env_logger = "0.7.1"
+env_logger = "0.11"
 prost = "0.13.3"
 
 

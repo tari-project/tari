@@ -55,7 +55,7 @@ tari_common_types = { workspace = true }
 tari_test_utils = { workspace = true }
 tari_service_framework = { workspace = true }
 borsh = { workspace = true }
-env_logger = "0.7.1"
+env_logger = "0.11"
 
 [build-dependencies]
 cbindgen = "0.29"
