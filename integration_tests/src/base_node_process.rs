@@ -54,6 +54,7 @@ pub struct BaseNodeProcess {
     pub port: u16,
     pub grpc_port: u16,
     pub http_port: u16,
+    pub xmrig_proxy_port: u16,
     pub identity: NodeIdentity,
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
@@ -99,6 +100,7 @@ pub async fn spawn_base_node_with_config(
     let port: u16;
     let grpc_port: u16;
     let http_port: u16;
+    let xmrig_proxy_port: u16;
     let temp_dir_path: PathBuf;
     let base_node_identity: NodeIdentity;
 
@@ -106,6 +108,7 @@ pub async fn spawn_base_node_with_config(
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
         http_port = node_ps.http_port;
+        xmrig_proxy_port = node_ps.xmrig_proxy_port;
         temp_dir_path = node_ps.temp_dir_path.clone();
         base_node_config = node_ps.config.clone();
 
@@ -119,6 +122,7 @@ pub async fn spawn_base_node_with_config(
         port = ports.p2p;
         grpc_port = ports.grpc;
         http_port = ports.http;
+        xmrig_proxy_port = ports.xmrig_proxy;
         // Track in world for backwards compatibility
         world.assigned_ports.insert(port, port);
         world.assigned_ports.insert(grpc_port, grpc_port);
@@ -151,9 +155,11 @@ pub async fn spawn_base_node_with_config(
         config: base_node_config.clone(),
         kill_signal: shutdown.clone(),
         http_port,
+        xmrig_proxy_port,
     };
 
     let name_cloned = bn_name.clone();
+    let world_default_payment_address = world.default_payment_address.to_base58();
 
     let peer_addresses = get_peer_addresses(world, &peers).await;
 
@@ -182,6 +188,12 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.http_wallet_query_service.listen_ip = Some("127.0.0.1".to_string().parse().unwrap());
         base_node_config.base_node.http_wallet_query_service.external_address =
             Some(format!("http://127.0.0.1:{http_port}").parse().unwrap());
+
+        // Enable the built-in XMRig proxy for RandomXT mining (used by merge mining tests)
+        base_node_config.base_node.xmrig_proxy_enabled = true;
+        base_node_config.base_node.xmrig_proxy_address =
+            format!("/ip4/127.0.0.1/tcp/{xmrig_proxy_port}").parse().unwrap();
+        base_node_config.base_node.xmrig_proxy_wallet_payment_address = world_default_payment_address.clone();
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
@@ -250,7 +262,7 @@ pub async fn spawn_base_node_with_config(
 
         println!(
             "Initializing base node: name={name_cloned}; port={port}; grpc_port={grpc_port}; \
-             is_seed_node={is_seed_node}, http_port={http_port}"
+             is_seed_node={is_seed_node}, http_port={http_port}, xmrig_proxy_port={xmrig_proxy_port}"
         );
 
         let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
@@ -268,6 +280,7 @@ pub async fn spawn_base_node_with_config(
     wait_for_service(http_port).await;
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
+    wait_for_service(xmrig_proxy_port).await;
 }
 
 impl BaseNodeProcess {
@@ -283,7 +296,12 @@ impl BaseNodeProcess {
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
-        for (label, port) in [("p2p", self.port), ("grpc", self.grpc_port), ("http", self.http_port)] {
+        for (label, port) in [
+            ("p2p", self.port),
+            ("grpc", self.grpc_port),
+            ("http", self.http_port),
+            ("xmrig_proxy", self.xmrig_proxy_port),
+        ] {
             while std::time::Instant::now() < deadline {
                 if TcpListener::bind(("127.0.0.1", port)).is_ok() {
                     break;
