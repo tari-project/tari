@@ -25,7 +25,7 @@ base64 = { workspace = true }
 borsh = { workspace = true }
 bufstream = "0.1"
 chrono = { version = "0.4", default-features = false }
-clap = { version = "3.2", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 crossbeam = "0.8"
 crossterm = { version = "0.28" }
 derivative = "2.2.0"

@@ -360,7 +360,7 @@ impl CommandContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeOrHex<T> {
     Type(T),
     Hex(FromHex<Vec<u8>>),
