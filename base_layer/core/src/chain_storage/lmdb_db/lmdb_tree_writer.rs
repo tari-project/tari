@@ -111,7 +111,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 existing_history.push((version, x));
             }
             // sort by version
-            existing_history.sort_by(|a, b| a.0.cmp(&b.0));
+            existing_history.sort_by_key(|a| a.0);
 
             let latest_value = existing_history.last().and_then(|x| x.1.clone());
             match (value, &latest_value) {

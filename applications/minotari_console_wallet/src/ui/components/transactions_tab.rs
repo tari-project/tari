@@ -780,10 +780,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 };
                 self.detailed_transaction = app_state.get_completed_tx(idx).cloned();
             },
-            'c' => {
-                if self.selected_tx_list == SelectedTransactionList::PendingTxs {
-                    self.confirmation_dialog = true;
-                }
+            'c' if self.selected_tx_list == SelectedTransactionList::PendingTxs => {
+                self.confirmation_dialog = true;
             },
             // Rebroadcast
             'r' => {

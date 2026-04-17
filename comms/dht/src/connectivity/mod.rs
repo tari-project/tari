@@ -285,10 +285,8 @@ impl DhtConnectivity {
     async fn handle_dht_event(&mut self, event: &DhtEvent) -> Result<(), DhtConnectivityError> {
         #[allow(clippy::single_match)]
         match event {
-            DhtEvent::NetworkDiscoveryPeersAdded(info) => {
-                if info.num_new_peers > 0 {
-                    self.refresh_peer_pools(false).await?;
-                }
+            DhtEvent::NetworkDiscoveryPeersAdded(info) if info.num_new_peers > 0 => {
+                self.refresh_peer_pools(false).await?;
             },
             _ => {},
         }

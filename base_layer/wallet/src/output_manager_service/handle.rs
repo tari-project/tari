@@ -103,6 +103,7 @@ pub enum OutputManagerRequest {
         fee_per_gram: MicroMinotari,
         script: TariScript,
         covenant: Covenant,
+        memo: MemoField,
     },
     GetTransactionBuilderRangeLimitedCoinJoin {
         tx_id: TxId,
@@ -618,6 +619,7 @@ where KM: LegacyTransactionKeyManagerInterface
         fee_per_gram: MicroMinotari,
         script: TariScript,
         covenant: Covenant,
+        memo_field: MemoField,
     ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
@@ -629,6 +631,7 @@ where KM: LegacyTransactionKeyManagerInterface
                 fee_per_gram,
                 script,
                 covenant,
+                memo: memo_field,
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetTransactionBuilder({e})"))??

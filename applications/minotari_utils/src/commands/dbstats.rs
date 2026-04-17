@@ -364,9 +364,9 @@ impl DbStatsArgs {
     fn sort_lmdb_databases(&self, databases: &mut [DatabaseStats]) {
         match self.sort_by {
             SortField::Name => databases.sort_by(|a, b| a.name.cmp(&b.name)),
-            SortField::Size => databases.sort_by(|a, b| b.total_size.cmp(&a.total_size)),
-            SortField::Entries => databases.sort_by(|a, b| b.entries.cmp(&a.entries)),
-            SortField::Pages => databases.sort_by(|a, b| b.total_pages.cmp(&a.total_pages)),
+            SortField::Size => databases.sort_by_key(|b| std::cmp::Reverse(b.total_size)),
+            SortField::Entries => databases.sort_by_key(|b| std::cmp::Reverse(b.entries)),
+            SortField::Pages => databases.sort_by_key(|b| std::cmp::Reverse(b.total_pages)),
         }
     }
 }
@@ -506,11 +506,7 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         {
             let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
             let total_size = total_pages * page_size;
-            let avg_size = if db_stat.entries > 0 {
-                total_size / db_stat.entries
-            } else {
-                0
-            };
+            let avg_size = total_size.checked_div(db_stat.entries).unwrap_or(0);
 
             databases.push(DatabaseStats {
                 name: db_name.to_string(),
@@ -535,11 +531,7 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         .max_by_key(|d| d.total_size)
         .map(|d| d.name.clone())
         .unwrap_or_else(|| "None".to_string());
-    let avg_entries_per_db = if total_databases > 0 {
-        total_entries / total_databases
-    } else {
-        0
-    };
+    let avg_entries_per_db = total_entries.checked_div(total_databases).unwrap_or(0);
 
     let summary = DatabaseSummary {
         total_databases,
@@ -602,11 +594,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
             0
         };
 
-        let avg_row_size = if row_count > 0 {
-            table_size_estimate / row_count
-        } else {
-            0
-        };
+        let avg_row_size = table_size_estimate.checked_div(row_count).unwrap_or(0);
 
         tables.push(SqliteTableInfo {
             name: table_name,
@@ -619,7 +607,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
     }
 
     // Sort tables by row count (descending)
-    tables.sort_by(|a, b| b.row_count.cmp(&a.row_count));
+    tables.sort_by_key(|b| std::cmp::Reverse(b.row_count));
 
     let largest_table = tables
         .first()
