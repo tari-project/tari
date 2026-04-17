@@ -246,7 +246,6 @@ impl EncryptedData {
         // the length should always at least be the static total size, the extra len is the payment id
         self.data.len().saturating_sub(STATIC_ENCRYPTED_DATA_SIZE_TOTAL)
     }
-
 }
 
 impl Hex for EncryptedData {

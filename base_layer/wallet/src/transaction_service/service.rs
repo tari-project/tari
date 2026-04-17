@@ -515,7 +515,7 @@ where
                         TxType::PaymentToOther,
                         user_data.clone(),
                     )
-                        .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
+                    .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -1495,9 +1495,14 @@ where
                     };
                     let temp_tx_id = TxId::new_random();
                     let uuid = Uuid::new_v4();
-                    let payment_id =
-                        MemoField::new_address_and_data(request.recipient_address.clone(), 0.into(), true, TxType::PaymentToOther, uuid.as_bytes().to_vec())
-                            .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
+                    let payment_id = MemoField::new_address_and_data(
+                        request.recipient_address.clone(),
+                        0.into(),
+                        true,
+                        TxType::PaymentToOther,
+                        uuid.as_bytes().to_vec(),
+                    )
+                    .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -1508,7 +1513,8 @@ where
                             OutputFeatures::default(),
                             fee_per_gram,
                             push_pubkey_script(&Default::default()),
-                            Covenant::default(),payment_id,
+                            Covenant::default(),
+                            payment_id,
                         )
                         .await?;
                     let mut multisig_session =
@@ -2175,7 +2181,8 @@ where
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
-        let temp_payment_id = payment_id.clone()
+        let temp_payment_id = payment_id
+            .clone()
             .add_sender_address(self.resources.one_sided_tari_address.clone(), false, 0.into(), None)
             .map_err(TransactionServiceError::InvalidPaymentId)?;
         let mut tx_builder = self
@@ -2188,7 +2195,8 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script.clone(),
-                covenant.clone(),temp_payment_id
+                covenant.clone(),
+                temp_payment_id,
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
@@ -2365,7 +2373,8 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script,
-                covenant,payment_id.clone()
+                covenant,
+                payment_id.clone(),
             )
             .await?;
         if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
@@ -2858,7 +2867,8 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script,
-                covenant,destinations.first().expect("already checked").2.clone()
+                covenant,
+                destinations.first().expect("already checked").2.clone(),
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
@@ -3018,7 +3028,8 @@ where
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
         let script = script!(Nop)?;
-        let temp_payment_id = payment_id.clone()
+        let temp_payment_id = payment_id
+            .clone()
             .add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 false,
@@ -3036,7 +3047,8 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script,
-                covenant,temp_payment_id
+                covenant,
+                temp_payment_id,
             )
             .await?;
         let fee = tx_builder.get_fee_estimate_without_change()?;

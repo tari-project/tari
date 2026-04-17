@@ -55,24 +55,36 @@ use tari_script::{
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::{MicroMinotari, TransactionBuilder, consensus::ConsensusConstants, crypto_factories::CryptoFactories, fee::Fee, helpers::borsh::SerializedSize, key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId}, transaction_components::{
-    EncryptedData,
-    KernelFeatures,
-    OutputFeatures,
-    RangeProofType,
-    Transaction,
-    TransactionError,
-    TransactionOutput,
-    TransactionOutputVersion,
-    WalletOutput,
-    WalletOutputBuilder,
-    covenants::Covenant,
-    memo_field::{MemoField, TxType},
-    one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
-}, tx_outputs_to_tx_id, utxo_selection::branch_and_bound::{
-    branch_and_bound_selector::SelectionResult,
-    branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
-}, TransactionBuilderError};
+use tari_transaction_components::{
+    MicroMinotari,
+    TransactionBuilder,
+    TransactionBuilderError,
+    consensus::ConsensusConstants,
+    crypto_factories::CryptoFactories,
+    fee::Fee,
+    helpers::borsh::SerializedSize,
+    key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
+    transaction_components::{
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        RangeProofType,
+        Transaction,
+        TransactionError,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
+        WalletOutputBuilder,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
+    },
+    tx_outputs_to_tx_id,
+    utxo_selection::branch_and_bound::{
+        branch_and_bound_selector::SelectionResult,
+        branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
+    },
+};
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTransactionKeyManagerInterface, wallet_types::FeeType};
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::Mutex, time::Instant};
@@ -869,7 +881,7 @@ where
             TxType::PaymentToOther,
             Vec::new(),
         )
-            .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
+        .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
         // We assume that default OutputFeatures and PushPubKey TariScript is used
         let features_and_scripts_byte_size = self
             .resources
@@ -884,7 +896,8 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     Covenant::new()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?+ recipient_memo.get_size(),
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_memo.get_size(),
             );
 
         let utxo_selection = match self.select_utxos(
@@ -961,7 +974,8 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     recipient_covenant
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? + recipient_memo_field.get_size(),
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_memo_field.get_size(),
             );
 
         let input_selection = self.select_utxos(
@@ -970,7 +984,7 @@ where
             fee_per_gram,
             1,
             features_and_scripts_byte_size,
-            recipient_memo_field.get_payment_id()
+            recipient_memo_field.get_payment_id(),
         )?;
 
         let mut builder = TransactionBuilder::new(
@@ -1631,7 +1645,7 @@ where
             TxType::PaymentToOther,
             Vec::new(),
         )
-            .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
+        .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
@@ -1645,7 +1659,8 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     covenant
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? + own_memo.get_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    own_memo.get_size(),
             );
 
         let input_selection = self.select_utxos(
@@ -1844,7 +1859,7 @@ where
             vec![FixedHash::default()],
             recipient_payment_id,
         )
-            .map_err(TransactionBuilderError::InvalidMemo)?;
+        .map_err(TransactionBuilderError::InvalidMemo)?;
         let output_features_estimate = OutputFeatures::default();
         let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
             output_features_estimate
@@ -1855,7 +1870,8 @@ where
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                 TariScript::default()
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? + change_memo.get_size(),
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                change_memo.get_size(),
         );
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
