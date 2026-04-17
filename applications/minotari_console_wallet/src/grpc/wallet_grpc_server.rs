@@ -3409,17 +3409,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
 
         let mut transaction_service = self.get_transaction_service();
-        let completed_tx = transaction_service
-            .get_completed_transaction(tx_id)
+        let transaction = transaction_service
+            .get_any_transaction(tx_id)
             .await
-            .map_err(|e| Status::not_found(format!("Completed transaction not found: {e}")))?;
+            .map_err(|e| Status::not_found(format!("Completed transaction not found: {e}")))?.ok_or_else(|| Status::not_found(format!("Transaction with id {} not found", tx_id)))?;
 
         let wallet_address = self
             .wallet
             .get_wallet_interactive_address()
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let transaction_info = convert_wallet_transaction_into_transaction_info(
-            WalletTransaction::Completed(completed_tx),
+            transaction,
             &wallet_address,
         );
 

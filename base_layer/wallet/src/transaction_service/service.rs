@@ -441,7 +441,19 @@ where
                     // Prepare sender part of the transaction
                     let script = push_pubkey_script(&Default::default());
                     let covenant = Covenant::default();
-
+                    let mut payment_id = payment_id
+                        .clone()
+                        .add_sender_address(
+                            self.resources.one_sided_tari_address.clone(),
+                            true,
+                            0.into(),
+                            if destination == self.resources.one_sided_tari_address {
+                                Some(TxType::PaymentToSelf)
+                            } else {
+                                Some(TxType::PaymentToOther)
+                            },
+                        )
+                        .unwrap_or(payment_id);
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -457,19 +469,7 @@ where
                         )
                         .await?;
                     let fee = tx_builder.get_fee_estimate_without_change()?;
-                    let payment_id = payment_id
-                        .clone()
-                        .add_sender_address(
-                            self.resources.one_sided_tari_address.clone(),
-                            true,
-                            fee,
-                            if destination == self.resources.one_sided_tari_address {
-                                Some(TxType::PaymentToSelf)
-                            } else {
-                                Some(TxType::PaymentToOther)
-                            },
-                        )
-                        .unwrap_or(payment_id);
+                   payment_id.set_fee(fee);
 
                     let recipients = [PaymentRecipient {
                         amount,
@@ -2364,6 +2364,18 @@ where
         // Prepare sender part of the transaction
         let script = push_pubkey_script(&Default::default());
         let covenant = Covenant::default();
+        payment_id = payment_id
+            .add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                true,
+                0.into(),
+                if dest_address == self.resources.one_sided_tari_address {
+                    Some(TxType::PaymentToSelf)
+                } else {
+                    Some(TxType::PaymentToOther)
+                },
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
         let mut tx_builder = self
             .resources
             .output_manager_service
@@ -2392,19 +2404,8 @@ where
             }
         }
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
+        payment_id.set_fee(fee_estimate);
 
-        let payment_id = payment_id
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                true,
-                fee_estimate,
-                if dest_address == self.resources.one_sided_tari_address {
-                    Some(TxType::PaymentToSelf)
-                } else {
-                    Some(TxType::PaymentToOther)
-                },
-            )
-            .map_err(TransactionServiceError::InvalidPaymentId)?;
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
 
         tx_builder.add_stealth_recipient(
@@ -2852,8 +2853,27 @@ where
         let covenant = Covenant::default();
         let script = push_pubkey_script(&Default::default());
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
-        for (address, amount, memo) in &destinations {
+        for (address, amount, memo) in &mut destinations {
             self.verify_send(address, TariAddressFeatures::create_one_sided_only())?;
+            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
+                *memo = MemoField::new_open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+            }
+            *memo = memo
+                .clone()
+                .add_sender_address(
+                    self.resources.one_sided_tari_address.clone(),
+                    true,
+                    0.into(),
+                    if *address == self.resources.one_sided_tari_address {
+                        Some(TxType::PaymentToSelf)
+                    } else {
+                        Some(TxType::PaymentToOther)
+                    },
+                )
+                .map_err(TransactionServiceError::InvalidPaymentId)?;
+
             // Doing the fee estimate in the oms is going to very complex so lets rather over estimate the fee so that
             // we have enough to send here
             let features_and_scripts_byte_size = self
@@ -2903,24 +2923,8 @@ where
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
         for (address, amount, memo) in &mut destinations {
             // Let's override the payment_id if the address says we should
-            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo = MemoField::new_open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
-                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
-            }
-            *memo = memo
-                .clone()
-                .add_sender_address(
-                    self.resources.one_sided_tari_address.clone(),
-                    true,
-                    fee_estimate,
-                    if *address == self.resources.one_sided_tari_address {
-                        Some(TxType::PaymentToSelf)
-                    } else {
-                        Some(TxType::PaymentToOther)
-                    },
-                )
-                .map_err(TransactionServiceError::InvalidPaymentId)?;
+
+            memo.set_fee(fee_estimate);
 
             tx_builder.add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())?;
         }
