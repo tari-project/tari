@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.9](https://github.com/tari-project/tari/compare/v5.3.0-pre.8...v5.3.0-pre.9) (2026-04-17)
+
+
+### Bug Fixes
+
+* bnb edge case ([#7768](https://github.com/tari-project/tari/issues/7768)) ([566193d](https://github.com/tari-project/tari/commit/566193d466973dc041a89249defa278670312cd9))
+
 ## [5.3.0-pre.8](https://github.com/tari-project/tari/compare/v5.3.0-pre.7...v5.3.0-pre.8) (2026-04-15)
 
 
