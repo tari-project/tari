@@ -440,6 +440,7 @@ where
                     // Prepare sender part of the transaction
                     let script = push_pubkey_script(&Default::default());
                     let covenant = Covenant::default();
+
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -451,10 +452,10 @@ where
                             fee_per_gram,
                             script,
                             covenant,
+                            payment_id.clone(),
                         )
                         .await?;
                     let fee = tx_builder.get_fee_estimate_without_change()?;
-
                     let payment_id = payment_id
                         .clone()
                         .add_sender_address(
@@ -468,6 +469,7 @@ where
                             },
                         )
                         .unwrap_or(payment_id);
+
                     let recipients = [PaymentRecipient {
                         amount,
                         output_features: (*output_features).clone(),
@@ -506,7 +508,14 @@ where
                     let fee_per_gram = MicroMinotari::from(1);
                     let output_features = OutputFeatures::default();
                     let covenant = Covenant::default();
-
+                    let temp_payment_id = MemoField::new_address_and_data(
+                        request.recipient_address.clone(),
+                        0.into(),
+                        true,
+                        TxType::PaymentToOther,
+                        user_data.clone(),
+                    )
+                        .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -518,6 +527,7 @@ where
                             fee_per_gram,
                             script,
                             covenant,
+                            temp_payment_id,
                         )
                         .await?;
                     let fee = tx_builder.get_fee_estimate_without_change()?;
@@ -1484,6 +1494,10 @@ where
                         ..Default::default()
                     };
                     let temp_tx_id = TxId::new_random();
+                    let uuid = Uuid::new_v4();
+                    let payment_id =
+                        MemoField::new_address_and_data(request.recipient_address.clone(), 0.into(), true, TxType::PaymentToOther, uuid.as_bytes().to_vec())
+                            .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
@@ -1494,12 +1508,11 @@ where
                             OutputFeatures::default(),
                             fee_per_gram,
                             push_pubkey_script(&Default::default()),
-                            Covenant::default(),
+                            Covenant::default(),payment_id,
                         )
                         .await?;
                     let mut multisig_session =
                         MultisigSession::new(self.resources.transaction_key_manager_service.clone());
-                    let uuid = Uuid::new_v4();
                     let (tx, payment_id, sent_hashes, change_hashes, change, tx_id) = multisig_session
                         .create_deposit_multisig_transaction(
                             request.amount,
@@ -2162,6 +2175,9 @@ where
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
+        let temp_payment_id = payment_id.clone()
+            .add_sender_address(self.resources.one_sided_tari_address.clone(), false, 0.into(), None)
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
         let mut tx_builder = self
             .resources
             .output_manager_service
@@ -2172,7 +2188,7 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script.clone(),
-                covenant.clone(),
+                covenant.clone(),temp_payment_id
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
@@ -2349,7 +2365,7 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script,
-                covenant,
+                covenant,payment_id.clone()
             )
             .await?;
         if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
@@ -2842,7 +2858,7 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script,
-                covenant,
+                covenant,destinations.first().expect("already checked").2.clone()
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
@@ -3002,6 +3018,14 @@ where
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
         let script = script!(Nop)?;
+        let temp_payment_id = payment_id.clone()
+            .add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                false,
+                0.into(),
+                Some(TxType::Burn),
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
         let mut tx_builder = self
             .resources
             .output_manager_service
@@ -3012,7 +3036,7 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 script,
-                covenant,
+                covenant,temp_payment_id
             )
             .await?;
         let fee = tx_builder.get_fee_estimate_without_change()?;

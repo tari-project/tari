@@ -55,35 +55,24 @@ use tari_script::{
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::{
-    MicroMinotari,
-    TransactionBuilder,
-    consensus::ConsensusConstants,
-    crypto_factories::CryptoFactories,
-    fee::Fee,
-    helpers::borsh::SerializedSize,
-    key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
-    transaction_components::{
-        EncryptedData,
-        KernelFeatures,
-        OutputFeatures,
-        RangeProofType,
-        Transaction,
-        TransactionError,
-        TransactionOutput,
-        TransactionOutputVersion,
-        WalletOutput,
-        WalletOutputBuilder,
-        covenants::Covenant,
-        memo_field::{MemoField, TxType},
-        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
-    },
-    tx_outputs_to_tx_id,
-    utxo_selection::branch_and_bound::{
-        branch_and_bound_selector::SelectionResult,
-        branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
-    },
-};
+use tari_transaction_components::{MicroMinotari, TransactionBuilder, consensus::ConsensusConstants, crypto_factories::CryptoFactories, fee::Fee, helpers::borsh::SerializedSize, key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId}, transaction_components::{
+    EncryptedData,
+    KernelFeatures,
+    OutputFeatures,
+    RangeProofType,
+    Transaction,
+    TransactionError,
+    TransactionOutput,
+    TransactionOutputVersion,
+    WalletOutput,
+    WalletOutputBuilder,
+    covenants::Covenant,
+    memo_field::{MemoField, TxType},
+    one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
+}, tx_outputs_to_tx_id, utxo_selection::branch_and_bound::{
+    branch_and_bound_selector::SelectionResult,
+    branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
+}, TransactionBuilderError};
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTransactionKeyManagerInterface, wallet_types::FeeType};
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::Mutex, time::Instant};
@@ -342,6 +331,7 @@ where
                 fee_per_gram,
                 script,
                 covenant,
+                memo,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -351,6 +341,7 @@ where
                     *output_features,
                     script,
                     covenant,
+                    memo,
                 )
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::GetTransactionBuilderRangeLimitedCoinJoin {
@@ -871,6 +862,14 @@ where
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {amount}. Fee per gram: {fee_per_gram}. Num kernels: {num_kernels}. Num outputs: {num_outputs}"
         );
+        let recipient_memo = MemoField::new_address_and_data(
+            TariAddress::default(),
+            0.into(),
+            true,
+            TxType::PaymentToOther,
+            Vec::new(),
+        )
+            .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
         // We assume that default OutputFeatures and PushPubKey TariScript is used
         let features_and_scripts_byte_size = self
             .resources
@@ -885,7 +884,7 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     Covenant::new()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?+ recipient_memo.get_size(),
             );
 
         let utxo_selection = match self.select_utxos(
@@ -894,6 +893,7 @@ where
             fee_per_gram,
             num_outputs,
             features_and_scripts_byte_size * num_outputs,
+            Vec::new(),
         ) {
             Ok(v) => Ok(v),
             Err(OutputManagerError::FundsPending | OutputManagerError::NotEnoughFunds) => {
@@ -942,6 +942,7 @@ where
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        recipient_memo_field: MemoField,
     ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -960,7 +961,7 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     recipient_covenant
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? + recipient_memo_field.get_size(),
             );
 
         let input_selection = self.select_utxos(
@@ -969,6 +970,7 @@ where
             fee_per_gram,
             1,
             features_and_scripts_byte_size,
+            recipient_memo_field.get_payment_id()
         )?;
 
         let mut builder = TransactionBuilder::new(
@@ -1622,6 +1624,14 @@ where
         }
         let covenant = Covenant::default();
 
+        let own_memo = MemoField::new_address_and_data(
+            TariAddress::default(),
+            0.into(),
+            true,
+            TxType::PaymentToOther,
+            Vec::new(),
+        )
+            .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
@@ -1635,7 +1645,7 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     covenant
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? + own_memo.get_size()
             );
 
         let input_selection = self.select_utxos(
@@ -1644,6 +1654,7 @@ where
             fee_per_gram,
             1,
             features_and_scripts_byte_size,
+            Vec::new(),
         )?;
 
         // Create builder with no recipients (other than ourselves)
@@ -1762,6 +1773,7 @@ where
         fee_per_gram: MicroMinotari,
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
+        recipient_payment_id: Vec<u8>,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1823,6 +1835,16 @@ where
                 criteria: selection_criteria,
             });
         } // Assumes that default Outputfeatures are used for change utxo
+        let change_memo = MemoField::new_transaction_info(
+            TariAddress::default(),
+            MicroMinotari::default(),
+            amount,
+            true,
+            TxType::PaymentToOther,
+            vec![FixedHash::default()],
+            recipient_payment_id,
+        )
+            .map_err(TransactionBuilderError::InvalidMemo)?;
         let output_features_estimate = OutputFeatures::default();
         let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
             output_features_estimate
@@ -1833,7 +1855,7 @@ where
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                 TariScript::default()
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? + change_memo.get_size(),
         );
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
@@ -2313,6 +2335,7 @@ where
                     self.default_features_and_scripts_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
                         number_of_splits,
+                    Vec::new(),
                 )?;
 
                 self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)
