@@ -29,7 +29,7 @@ pub use lmdb_db::{
     get_all_database_names,
 };
 use serde::{Deserialize, Serialize};
-pub use stats_collector::DatabaseStats;
+pub use stats_collector::{DatabaseStats, JmtPruningStats};
 use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
 use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};

@@ -92,6 +92,15 @@ pub struct MigrationStats {
     pub target_db_version: u64,
 }
 
+/// JMT pruning statistics
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct JmtPruningStats {
+    /// Number of stale nodes recorded in the last block commit
+    pub stale_nodes_last_block: u64,
+    /// Total number of pending stale node index entries
+    pub total_pending_stale_nodes: u64,
+}
+
 /// Statistics data for database operations
 #[derive(Debug, Clone, PartialEq)]
 pub struct DatabaseStats {
@@ -99,6 +108,7 @@ pub struct DatabaseStats {
     pub last_updated: Instant,
     pub metadata: HashMap<MetadataKey, MetadataValue>,
     pub timestamp: u64,
+    pub jmt_pruning_stats: JmtPruningStats,
 }
 
 impl Default for DatabaseStats {
@@ -108,6 +118,7 @@ impl Default for DatabaseStats {
             last_updated: Instant::now(),
             metadata: HashMap::new(),
             timestamp: Utc::now().timestamp_millis() as u64,
+            jmt_pruning_stats: JmtPruningStats::default(),
         }
     }
 }
@@ -128,6 +139,7 @@ impl DatabaseStats {
             last_updated: Instant::now(),
             metadata: HashMap::new(),
             timestamp: Utc::now().timestamp_millis() as u64,
+            jmt_pruning_stats: JmtPruningStats::default(),
         }
     }
 

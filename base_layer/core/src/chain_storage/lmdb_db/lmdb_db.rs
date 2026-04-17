@@ -290,6 +290,7 @@ const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
+const LMDB_DB_JMT_STALE_NODE_INDEX: &str = "jmt_stale_node_index_data";
 
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
@@ -330,6 +331,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_JMT_VALUE_DATA,
         LMDB_DB_JMT_NODE_DATA,
         LMDB_DB_JMT_UNIQUE_KEY_DATA,
+        LMDB_DB_JMT_STALE_NODE_INDEX,
     ]
 }
 
@@ -355,7 +357,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         // NOLOCK - No lock required because we manage the DB locking using a RwLock
         .set_env_flags(env_flags)
         .set_env_config(config)
-        .set_max_number_of_databases(40)
+        .set_max_number_of_databases(41)
         .add_database(LMDB_DB_METADATA, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADERS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA, flags | db::INTEGERKEY)
@@ -391,6 +393,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         .add_database(LMDB_DB_JMT_VALUE_DATA, flags )
         .add_database(LMDB_DB_JMT_NODE_DATA, flags)
         .add_database(LMDB_DB_JMT_UNIQUE_KEY_DATA, flags)
+        .add_database(LMDB_DB_JMT_STALE_NODE_INDEX, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{err}")))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -527,6 +530,7 @@ pub struct LMDBDatabase {
     jmt_value_data: DatabaseRef,
     jmt_node_data: DatabaseRef,
     jmt_unique_key_data: DatabaseRef,
+    jmt_stale_node_index: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
@@ -589,6 +593,7 @@ impl LMDBDatabase {
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
             jmt_unique_key_data: get_database(store, LMDB_DB_JMT_UNIQUE_KEY_DATA)?,
+            jmt_stale_node_index: get_database(store, LMDB_DB_JMT_STALE_NODE_INDEX)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -1365,6 +1370,7 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_index.clone(),
         );
         smt_writer
             .delete_all_for_version(height)
@@ -1804,10 +1810,23 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_index.clone(),
         );
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        let stale_count = ops.stale_node_index_batch.len();
+        smt_writer
+            .write_stale_node_index_batch(&ops.stale_node_index_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        if stale_count > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "JMT pruning: recorded {} stale node(s) at height {}",
+                stale_count,
+                header.height
+            );
+        }
 
         self.insert_block_accumulated_data(
             txn,
@@ -2211,6 +2230,7 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_index.clone(),
         );
 
         // if the previous committed version is not contiguous with the new version,
@@ -2244,6 +2264,9 @@ impl LMDBDatabase {
         writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        writer
+            .write_stale_node_index_batch(&ops.stale_node_index_batch)
+            .map_err(|e| ChainStorageError::CriticalError(e.to_string()))?;
 
         Ok(())
     }
@@ -2519,6 +2542,42 @@ impl LMDBDatabase {
         Ok(output)
     }
 
+    fn prune_stale_jmt_nodes(&self, prune_below_version: u64) -> Result<(u64, u64), ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        let smt_writer = LmdbTreeWriter::new(
+            &write_txn,
+            self.jmt_node_data.clone(),
+            self.jmt_value_data.clone(),
+            self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_index.clone(),
+        );
+        let result = smt_writer
+            .prune_stale_nodes(prune_below_version)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        write_txn.commit()?;
+        Ok(result)
+    }
+
+    fn prune_stale_jmt_nodes_batch(
+        &self,
+        prune_below_version: u64,
+        max_batch_size: u64,
+    ) -> Result<(u64, u64, bool), ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        let smt_writer = LmdbTreeWriter::new(
+            &write_txn,
+            self.jmt_node_data.clone(),
+            self.jmt_value_data.clone(),
+            self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_index.clone(),
+        );
+        let result = smt_writer
+            .prune_stale_nodes_batch(prune_below_version, max_batch_size)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        write_txn.commit()?;
+        Ok(result)
+    }
+
     #[cfg(test)]
     pub(crate) fn create_write_txn(&self) -> WriteTransaction<'_> {
         self.write_transaction().expect("Failed to create write transaction")
@@ -2531,7 +2590,32 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_index.clone(),
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn jmt_node_entry_count(&self) -> u64 {
+        let txn = self.read_transaction().expect("Failed to create read transaction");
+        let (num_entries, _, _) =
+            fetch_db_entry_sizes(&txn, &self.jmt_node_data).expect("Failed to fetch jmt_node_data entry sizes");
+        num_entries
+    }
+
+    #[cfg(test)]
+    pub(crate) fn jmt_node_total_size(&self) -> u64 {
+        let txn = self.read_transaction().expect("Failed to create read transaction");
+        let (_, total_key_size, total_value_size) =
+            fetch_db_entry_sizes(&txn, &self.jmt_node_data).expect("Failed to fetch jmt_node_data entry sizes");
+        total_key_size + total_value_size
+    }
+
+    #[cfg(test)]
+    pub(crate) fn jmt_stale_index_entry_count(&self) -> u64 {
+        let txn = self.read_transaction().expect("Failed to create read transaction");
+        let (num_entries, _, _) = fetch_db_entry_sizes(&txn, &self.jmt_stale_node_index)
+            .expect("Failed to fetch jmt_stale_node_index entry sizes");
+        num_entries
     }
 }
 
@@ -2571,6 +2655,18 @@ impl BlockchainBackend for LMDBDatabase {
             OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
 
         Ok(smt_reader)
+    }
+
+    fn prune_stale_jmt_nodes(&self, prune_below_version: u64) -> Result<(u64, u64), ChainStorageError> {
+        self.prune_stale_jmt_nodes(prune_below_version)
+    }
+
+    fn prune_stale_jmt_nodes_batch(
+        &self,
+        prune_below_version: u64,
+        max_batch_size: u64,
+    ) -> Result<(u64, u64, bool), ChainStorageError> {
+        self.prune_stale_jmt_nodes_batch(prune_below_version, max_batch_size)
     }
 
     fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {

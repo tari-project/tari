@@ -621,6 +621,21 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().create_smt_reader()
     }
 
+    fn prune_stale_jmt_nodes(&self, prune_below_version: u64) -> Result<(u64, u64), ChainStorageError> {
+        self.db.as_ref().unwrap().prune_stale_jmt_nodes(prune_below_version)
+    }
+
+    fn prune_stale_jmt_nodes_batch(
+        &self,
+        prune_below_version: u64,
+        max_batch_size: u64,
+    ) -> Result<(u64, u64, bool), ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .prune_stale_jmt_nodes_batch(prune_below_version, max_batch_size)
+    }
+
     fn set_stats_total_height(&self, _total: u64) {}
 
     fn update_stats_progress(&self, _current: u64) {}

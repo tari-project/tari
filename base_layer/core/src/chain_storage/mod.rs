@@ -41,6 +41,7 @@ mod blockchain_database;
 pub use blockchain_database::{
     BlockchainDatabase,
     BlockchainDatabaseConfig,
+    JmtPruningMode,
     MmrRoots,
     Validators,
     calculate_mmr_roots,

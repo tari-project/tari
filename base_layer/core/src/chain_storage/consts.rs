@@ -30,3 +30,7 @@ pub const BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL: u64 = 50;
 pub const BACKGROUND_PRUNING_THRESHOLD: u64 = 25_000;
 /// The number of blocks to prune per chunk during background pruning.
 pub const BACKGROUND_PRUNING_CHUNK_SIZE: u64 = 5000;
+/// The maximum number of stale JMT nodes to prune per background batch.
+pub const JMT_BACKGROUND_PRUNING_BATCH_SIZE: u64 = 10_000;
+/// The interval in milliseconds between JMT background pruning batches.
+pub const JMT_BACKGROUND_PRUNING_INTERVAL_MS: u64 = 500;

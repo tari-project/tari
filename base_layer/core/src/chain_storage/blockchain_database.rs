@@ -121,6 +121,8 @@ use crate::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
+            JMT_BACKGROUND_PRUNING_BATCH_SIZE,
+            JMT_BACKGROUND_PRUNING_INTERVAL_MS,
         },
         db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
         error::ChainStorageError,
@@ -147,6 +149,36 @@ use crate::{
 
 const LOG_TARGET: &str = "c::cs::database";
 
+/// Mode for JMT stale node pruning.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum JmtPruningMode {
+    /// Pruning is completely disabled. No stale node tracking.
+    Off,
+    /// Shadow mode: track stale nodes but do not delete them. For monitoring only.
+    Shadow,
+    /// Manual prune: track stale nodes and allow explicit prune commands.
+    Manual,
+    /// Background pruning: automatically prune stale nodes in background batches.
+    Background,
+}
+
+impl Default for JmtPruningMode {
+    fn default() -> Self {
+        Self::Shadow
+    }
+}
+
+impl std::fmt::Display for JmtPruningMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JmtPruningMode::Off => write!(f, "off"),
+            JmtPruningMode::Shadow => write!(f, "shadow"),
+            JmtPruningMode::Manual => write!(f, "manual"),
+            JmtPruningMode::Background => write!(f, "background"),
+        }
+    }
+}
+
 /// Configuration for the BlockchainDatabase.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -157,6 +189,8 @@ pub struct BlockchainDatabaseConfig {
     pub track_reorgs: bool,
     pub cleanup_orphans_at_startup: bool,
     pub clear_bad_blocks_at_startup: bool,
+    pub jmt_pruning_mode: JmtPruningMode,
+    pub jmt_pruning_retention_window: u64,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -168,6 +202,8 @@ impl Default for BlockchainDatabaseConfig {
             track_reorgs: false,
             cleanup_orphans_at_startup: true,
             clear_bad_blocks_at_startup: true,
+            jmt_pruning_mode: JmtPruningMode::default(),
+            jmt_pruning_retention_window: 1000,
         }
     }
 }
@@ -251,6 +287,7 @@ pub struct BlockchainDatabase<B> {
     difficulty_calculator: Arc<DifficultyCalculator>,
     disable_add_block_flag: Arc<AtomicBool>,
     is_background_pruning: Arc<AtomicBool>,
+    is_jmt_background_pruning: Arc<AtomicBool>,
 }
 
 #[allow(clippy::ptr_arg)]
@@ -274,6 +311,7 @@ where B: BlockchainBackend
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
             is_background_pruning: Arc::new(AtomicBool::new(false)),
+            is_jmt_background_pruning: Arc::new(AtomicBool::new(false)),
         };
         Ok(blockchain_db)
     }
@@ -293,6 +331,7 @@ where B: BlockchainBackend
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
             is_background_pruning: Arc::new(AtomicBool::new(false)),
+            is_jmt_background_pruning: Arc::new(AtomicBool::new(false)),
         };
         blockchain_db.start()?;
         Ok(blockchain_db)
@@ -395,6 +434,7 @@ where B: BlockchainBackend
         self.rebuild_accumulated_data_background_task()?;
         self.initialize_blockchain_check_tasks()?;
         self.prune_database_background_task()?;
+        self.prune_jmt_background_task()?;
 
         Ok(())
     }
@@ -500,6 +540,173 @@ where B: BlockchainBackend
 
             is_pruning_flag.store(false, atomic::Ordering::SeqCst);
             info!(target: LOG_TARGET, "Background pruning task completed.");
+        });
+
+        Ok(())
+    }
+
+    /// Manually prune stale JMT nodes that are older than the retention window.
+    ///
+    /// This scans the `jmt_stale_node_index_data` table and deletes nodes from `jmt_node_data`
+    /// whose `stale_since_version` is strictly below `tip_height - jmt_pruning_retention_window`.
+    ///
+    /// Only runs if `jmt_pruning_mode` is `Manual` or `Background`.
+    /// Returns `(nodes_deleted, index_entries_removed)`.
+    pub fn prune_jmt_stale_nodes(&self) -> Result<(u64, u64), ChainStorageError> {
+        match self.config.jmt_pruning_mode {
+            JmtPruningMode::Off | JmtPruningMode::Shadow => {
+                debug!(
+                    target: LOG_TARGET,
+                    "JMT pruning skipped: mode is {}",
+                    self.config.jmt_pruning_mode,
+                );
+                return Ok((0, 0));
+            },
+            JmtPruningMode::Manual | JmtPruningMode::Background => {},
+        }
+
+        let tip_height = {
+            let db = self.db_read_access()?;
+            db.fetch_chain_metadata()?.best_block_height()
+        };
+
+        let prune_below_version = tip_height.saturating_sub(self.config.jmt_pruning_retention_window);
+        if prune_below_version == 0 {
+            debug!(
+                target: LOG_TARGET,
+                "JMT pruning skipped: tip height {} is within retention window {}",
+                tip_height,
+                self.config.jmt_pruning_retention_window,
+            );
+            return Ok((0, 0));
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "JMT pruning: pruning stale nodes with stale_since_version < {} (tip={}, retention_window={})",
+            prune_below_version,
+            tip_height,
+            self.config.jmt_pruning_retention_window,
+        );
+
+        let db = self.db_read_access()?;
+        let (nodes_deleted, index_entries_removed) = db.prune_stale_jmt_nodes(prune_below_version)?;
+
+        info!(
+            target: LOG_TARGET,
+            "JMT pruning complete: deleted {} node(s), removed {} stale index entries",
+            nodes_deleted,
+            index_entries_removed,
+        );
+
+        Ok((nodes_deleted, index_entries_removed))
+    }
+
+    /// Spawns a background task that prunes stale JMT nodes in small batches when
+    /// `jmt_pruning_mode` is `Background`. Each batch acquires and releases the read lock
+    /// independently, allowing normal node operations to proceed between batches.
+    /// Only one background JMT pruning task can run at a time.
+    pub fn prune_jmt_background_task(&self) -> Result<(), ChainStorageError> {
+        if self.config.jmt_pruning_mode != JmtPruningMode::Background {
+            return Ok(());
+        }
+
+        let tip_height = {
+            let db = self.db_read_access()?;
+            db.fetch_chain_metadata()?.best_block_height()
+        };
+        let prune_below_version = tip_height.saturating_sub(self.config.jmt_pruning_retention_window);
+        if prune_below_version == 0 {
+            return Ok(());
+        }
+
+        if self
+            .is_jmt_background_pruning
+            .compare_exchange(false, true, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst)
+            .is_err()
+        {
+            debug!(
+                target: LOG_TARGET,
+                "JMT background pruning task is already running, skipping."
+            );
+            return Ok(());
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "Starting JMT background pruning: prune_below_version={}, tip={}, retention_window={}",
+            prune_below_version,
+            tip_height,
+            self.config.jmt_pruning_retention_window,
+        );
+
+        let db_rw_lock = self.db.clone();
+        let is_pruning_flag = self.is_jmt_background_pruning.clone();
+        let retention_window = self.config.jmt_pruning_retention_window;
+
+        tokio::task::spawn(async move {
+            let mut total_nodes_deleted: u64 = 0;
+            let mut total_index_removed: u64 = 0;
+
+            loop {
+                tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_INTERVAL_MS)).await;
+
+                let db = db_rw_lock.clone();
+                let res = tokio::task::spawn_blocking(move || -> Result<(u64, u64, bool), ChainStorageError> {
+                    let db = db.read().map_err(|e| {
+                        ChainStorageError::AccessError(format!("Read lock on blockchain backend failed: {e:?}"))
+                    })?;
+                    let tip = db.fetch_chain_metadata()?.best_block_height();
+                    let target = tip.saturating_sub(retention_window);
+                    if target == 0 {
+                        return Ok((0, 0, false));
+                    }
+                    db.prune_stale_jmt_nodes_batch(target, JMT_BACKGROUND_PRUNING_BATCH_SIZE)
+                })
+                .await;
+
+                match res {
+                    Ok(Ok((nodes, index, has_more))) => {
+                        total_nodes_deleted += nodes;
+                        total_index_removed += index;
+                        if nodes > 0 {
+                            debug!(
+                                target: LOG_TARGET,
+                                "JMT background pruning batch: deleted {} nodes, {} index entries (total: {} / {})",
+                                nodes,
+                                index,
+                                total_nodes_deleted,
+                                total_index_removed,
+                            );
+                        }
+                        if !has_more {
+                            break;
+                        }
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "JMT background pruning failed: {e}",
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "JMT background pruning task panicked: {e}",
+                        );
+                        break;
+                    },
+                }
+            }
+
+            is_pruning_flag.store(false, atomic::Ordering::SeqCst);
+            info!(
+                target: LOG_TARGET,
+                "JMT background pruning completed: total deleted {} nodes, {} index entries",
+                total_nodes_deleted,
+                total_index_removed,
+            );
         });
 
         Ok(())
@@ -3701,6 +3908,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),
             is_background_pruning: self.is_background_pruning.clone(),
+            is_jmt_background_pruning: self.is_jmt_background_pruning.clone(),
         }
     }
 }

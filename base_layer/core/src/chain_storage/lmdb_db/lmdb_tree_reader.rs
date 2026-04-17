@@ -25,12 +25,12 @@ use std::ops::Deref;
 use borsh::BorshSerialize;
 use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
-use log::warn;
+use log::trace;
 use tari_storage::lmdb_store::DatabaseRef;
 
 use crate::chain_storage::lmdb_db::lmdb::{lmdb_fetch_matching_after, lmdb_get};
 
-pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
+const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_reader";
 
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
@@ -63,7 +63,7 @@ impl TreeReader for LmdbTreeReader<'_> {
 
     fn get_value_option(
         &self,
-        _max_version: jmt::Version,
+        max_version: jmt::Version,
         key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
         // see if there are any values already.
@@ -72,8 +72,12 @@ impl TreeReader for LmdbTreeReader<'_> {
         let mut existing_history = vec![];
         for (key, x) in existing_values {
             let version = u64::from_be_bytes(key.get(32..).ok_or(anyhow::anyhow!("invalid bytes"))?.try_into()?);
+            if version > max_version {
+                trace!(target: LOG_TARGET, "Skipping version {version} > max_version {max_version} for key {key_hash:?}");
+                continue;
+            }
             existing_history.push((version, x));
-            warn!(target: LOG_TARGET, "found version {version} for key {key:?}");
+            trace!(target: LOG_TARGET, "Found version {version} for key {key_hash:?}");
         }
         // sort by version
         existing_history.sort_by_key(|a| a.0);
