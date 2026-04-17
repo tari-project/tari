@@ -66,6 +66,7 @@ use tari_script::{
     Opcode,
     ScriptContext,
     StackItem,
+    TariScript,
     push_pubkey_script,
     script,
 };
@@ -2850,10 +2851,38 @@ where
         let mut total_send = MicroMinotari::zero();
         let covenant = Covenant::default();
         let script = push_pubkey_script(&Default::default());
-
-        for (address, amount, _memo) in &destinations {
-            total_send += *amount;
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
+        for (address, amount, memo) in &destinations {
             self.verify_send(address, TariAddressFeatures::create_one_sided_only())?;
+            // Doing the fee estimate in the oms is going to very complex so lets rather over estimate the fee so that
+            // we have enough to send here
+            let features_and_scripts_byte_size = self
+                .resources
+                .consensus_manager
+                .consensus_constants(tip_height)
+                .transaction_weight_params()
+                .round_up_features_and_scripts_size(
+                    OutputFeatures::default()
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        TariScript::default()
+                            .get_serialized_size()
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        Covenant::new()
+                            .get_serialized_size()
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        memo.get_size(),
+                );
+            let fee_calc = Fee::new(
+                *self
+                    .resources
+                    .consensus_manager
+                    .consensus_constants(tip_height)
+                    .transaction_weight_params(),
+            );
+            let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, features_and_scripts_byte_size);
+            total_send += *amount;
+            total_send += default_output_fee;
         }
 
         // Prepare sender part of the transaction
