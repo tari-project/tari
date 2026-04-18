@@ -76,6 +76,10 @@ impl<'a> LmdbTreeWriter<'a> {
             }
         }
 
+        let stale_entries =
+            lmdb_delete_keys_starting_with::<u8>(self.txn, &self.stale_node_index_db, &key)?;
+        warn!(target: LOG_TARGET, "Deleted {} stale index entries for version {}", stale_entries.len(), version);
+
         Ok(())
     }
 
@@ -162,7 +166,7 @@ impl<'a> LmdbTreeWriter<'a> {
                     nodes_deleted += 1;
                 },
                 Err(e) => {
-                    trace!(target: LOG_TARGET, "JMT prune: node not found in jmt_node_data (may have been deleted by reorg): {e}");
+                    warn!(target: LOG_TARGET, "JMT prune: node not found in jmt_node_data (may have been deleted by reorg): {e}");
                 },
             }
 
@@ -240,7 +244,7 @@ impl<'a> LmdbTreeWriter<'a> {
                     nodes_deleted += 1;
                 },
                 Err(e) => {
-                    trace!(target: LOG_TARGET, "JMT prune: node not found in jmt_node_data (may have been deleted by reorg): {e}");
+                    warn!(target: LOG_TARGET, "JMT prune: node not found in jmt_node_data (may have been deleted by reorg): {e}");
                 },
             }
 
