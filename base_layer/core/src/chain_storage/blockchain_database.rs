@@ -5382,6 +5382,237 @@ mod test {
             assert_eq!(pending_after, pending_before);
             assert_eq!(stats.total_pending_stale_nodes, pending_after);
         }
+
+        #[test]
+        fn full_prune_cycle_preserves_chain_integrity() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Manual;
+            config.jmt_pruning_retention_window = 3;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db = create_store_with_consensus_and_validators_and_config(
+                create_consensus_rules(),
+                validators,
+                config,
+            );
+
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                    ("H->G", 1, 120),
+                    ("I->H", 1, 120),
+                    ("J->I", 1, 120),
+                ],
+            );
+
+            let pending_before = current_pending_stale_nodes(&db);
+            assert!(pending_before > 0, "Should have accumulated stale nodes after 10 blocks");
+
+            let node_count_before = db.db_read_access().unwrap().jmt_node_entry_count();
+
+            // Prune
+            let (nodes_deleted, index_removed) = db.prune_jmt_stale_nodes().unwrap();
+            assert!(nodes_deleted > 0, "Should have deleted stale nodes");
+            assert!(index_removed > 0, "Should have removed stale index entries");
+
+            let pending_after = current_pending_stale_nodes(&db);
+            assert!(
+                pending_after < pending_before,
+                "Pending stale nodes should decrease: before={pending_before}, after={pending_after}"
+            );
+
+            let node_count_after = db.db_read_access().unwrap().jmt_node_entry_count();
+            assert!(
+                node_count_after < node_count_before,
+                "JMT node count should decrease: before={node_count_before}, after={node_count_after}"
+            );
+
+            // Chain tip is intact
+            let tip = db.fetch_last_header().unwrap();
+            assert_eq!(tip.height, 10);
+
+            // Blocks within retention window are readable
+            for h in 8..=10 {
+                let block = db.fetch_block(h, true);
+                assert!(block.is_ok(), "Block at height {h} must be readable after prune");
+            }
+
+            // Reorg within retention window succeeds
+            db.rewind_to_height(8)
+                .expect("Reorg within retention window must succeed after prune");
+            let tip_after = db.fetch_last_header().unwrap();
+            assert_eq!(tip_after.height, 8);
+        }
+
+        #[test]
+        fn prune_then_continue_adding_blocks() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Manual;
+            config.jmt_pruning_retention_window = 2;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db = create_store_with_consensus_and_validators_and_config(
+                create_consensus_rules(),
+                validators,
+                config,
+            );
+
+            // Phase 1: add 6 blocks, prune
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                ],
+            );
+            let (deleted_1, _) = db.prune_jmt_stale_nodes().unwrap();
+            assert!(deleted_1 > 0);
+
+            // Phase 2: add more blocks on top of pruned chain
+            let block_f = db
+                .fetch_block(6, true)
+                .unwrap()
+                .try_into_chain_block()
+                .map(Arc::new)
+                .unwrap();
+            let (names, chain) = create_chained_blocks(
+                &db,
+                &[("G->GB", 1, 120), ("H->G", 1, 120), ("I->H", 1, 120)],
+                block_f,
+            );
+            for name in &names {
+                db.add_block(chain.get(name).unwrap().to_arc_block()).unwrap();
+            }
+
+            // Tip advanced correctly
+            let tip = db.fetch_last_header().unwrap();
+            assert_eq!(tip.height, 9);
+
+            // Second prune works
+            let (deleted_2, _) = db.prune_jmt_stale_nodes().unwrap();
+            assert!(deleted_2 > 0, "Second prune should find new stale nodes");
+
+            let pending = current_pending_stale_nodes(&db);
+            assert!(pending < 5, "Most stale nodes should be pruned, got {pending}");
+        }
+
+        #[test]
+        fn prune_with_off_mode_is_noop() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Off;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db = create_store_with_consensus_and_validators_and_config(
+                create_consensus_rules(),
+                validators,
+                config,
+            );
+
+            create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)],
+            );
+
+            let (nodes_deleted, index_removed) = db.prune_jmt_stale_nodes().unwrap();
+            assert_eq!(nodes_deleted, 0);
+            assert_eq!(index_removed, 0);
+        }
+
+        #[test]
+        fn double_prune_without_new_blocks_is_idempotent() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Manual;
+            config.jmt_pruning_retention_window = 2;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db = create_store_with_consensus_and_validators_and_config(
+                create_consensus_rules(),
+                validators,
+                config,
+            );
+
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                ],
+            );
+
+            let (deleted_1, index_1) = db.prune_jmt_stale_nodes().unwrap();
+            assert!(deleted_1 > 0);
+            assert!(index_1 > 0);
+
+            let pending_after_first = current_pending_stale_nodes(&db);
+            let node_count_after_first = db.db_read_access().unwrap().jmt_node_entry_count();
+
+            // Second prune with no new blocks should be a no-op
+            let (deleted_2, index_2) = db.prune_jmt_stale_nodes().unwrap();
+            assert_eq!(deleted_2, 0, "Second prune should delete nothing");
+            assert_eq!(index_2, 0, "Second prune should remove no index entries");
+
+            let pending_after_second = current_pending_stale_nodes(&db);
+            let node_count_after_second = db.db_read_access().unwrap().jmt_node_entry_count();
+            assert_eq!(pending_after_second, pending_after_first);
+            assert_eq!(node_count_after_second, node_count_after_first);
+        }
+
+        #[test]
+        fn prune_on_short_chain_within_retention_window_is_noop() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Manual;
+            config.jmt_pruning_retention_window = 10;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db = create_store_with_consensus_and_validators_and_config(
+                create_consensus_rules(),
+                validators,
+                config,
+            );
+
+            // Only 3 blocks — well within retention window of 10
+            create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)],
+            );
+
+            let pending_before = current_pending_stale_nodes(&db);
+            let (nodes_deleted, index_removed) = db.prune_jmt_stale_nodes().unwrap();
+            let pending_after = current_pending_stale_nodes(&db);
+
+            assert_eq!(nodes_deleted, 0, "Should not prune when chain is within retention window");
+            assert_eq!(index_removed, 0);
+            assert_eq!(pending_after, pending_before, "Pending count should not change");
+        }
     }
 
     fn create_consensus_rules() -> BaseNodeConsensusManager {
