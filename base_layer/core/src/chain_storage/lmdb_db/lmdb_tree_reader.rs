@@ -25,7 +25,7 @@ use std::ops::Deref;
 use borsh::BorshSerialize;
 use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
-use log::trace;
+use log::warn;
 use tari_storage::lmdb_store::DatabaseRef;
 
 use crate::chain_storage::lmdb_db::lmdb::{lmdb_fetch_matching_after, lmdb_get};
@@ -73,11 +73,11 @@ impl TreeReader for LmdbTreeReader<'_> {
         for (key, x) in existing_values {
             let version = u64::from_be_bytes(key.get(32..).ok_or(anyhow::anyhow!("invalid bytes"))?.try_into()?);
             if version > max_version {
-                trace!(target: LOG_TARGET, "Skipping version {version} > max_version {max_version} for key {key_hash:?}");
+                warn!(target: LOG_TARGET, "Skipping version {version} > max_version {max_version} for key {key_hash:?}");
                 continue;
             }
             existing_history.push((version, x));
-            trace!(target: LOG_TARGET, "Found version {version} for key {key_hash:?}");
+            warn!(target: LOG_TARGET, "Found version {version} for key {key_hash:?}");
         }
         // sort by version
         existing_history.sort_by_key(|a| a.0);

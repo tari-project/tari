@@ -772,8 +772,7 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     }
 
     fn convert_value<V>(val: Result<Option<&[u8]>, error::Error>) -> Result<Option<V>, LMDBError>
-    where
-        for<'t> V: serde::de::DeserializeOwned, /* read this as, for *any* lifetime, t, we can convert a [u8] to V */
+    where for<'t> V: serde::de::DeserializeOwned /* read this as, for *any* lifetime, t, we can convert a [u8] to V */
     {
         match val {
             Ok(None) => Ok(None),
@@ -817,9 +816,7 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
     }
 
     fn convert_value<V>(value: &V) -> Result<Vec<u8>, LMDBError>
-    where
-        V: serde::Serialize,
-    {
+    where V: serde::Serialize {
         let size = bincode::serialized_size(value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
         let mut buf = Vec::with_capacity(size.try_into().unwrap());
         bincode::serialize_into(&mut buf, value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;

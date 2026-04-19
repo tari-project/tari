@@ -237,9 +237,7 @@ impl LMDBStatsCollector {
     }
 
     fn update_jmt_pruning_stats<F>(&self, update: F)
-    where
-        F: FnOnce(&mut JmtPruningStats),
-    {
+    where F: FnOnce(&mut JmtPruningStats) {
         let mut stats = self.receiver.borrow().clone();
         update(&mut stats.jmt_pruning_stats);
         stats.last_updated = Instant::now();

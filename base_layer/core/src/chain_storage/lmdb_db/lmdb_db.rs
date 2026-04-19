@@ -1886,8 +1886,8 @@ impl LMDBDatabase {
             batch.push((smt_key, None));
 
             let features = input_with_output_data.features()?;
-            if let Some(sidechain_feature) = features.sidechain_feature.as_ref()
-                && let Some(vn_reg) = sidechain_feature.validator_node_registration()
+            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
+                let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
                 self.validator_node_store(txn)
                     .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;

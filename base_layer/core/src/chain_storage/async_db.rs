@@ -82,8 +82,7 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
-where F: FnOnce() -> R,
-{
+where F: FnOnce() -> R {
     let start = Instant::now();
     let trace_id = OsRng.next_u32();
     trace!(
