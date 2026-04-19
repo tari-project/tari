@@ -94,19 +94,6 @@ fn main() {
             })
         });
         let file = fs::File::create("cucumber-output-junit.xml").unwrap();
-        world
-            .fail_on_skipped()
-            .fail_fast()
-            .with_writer(
-                writer::Summarize::new(writer::Basic::new(
-                    io::stdout(),
-                    writer::Coloring::Auto,
-                    Verbosity::ShowWorldAndDocString,
-                ))
-                .tee::<TariWorld, _>(writer::JUnit::for_tee(file, 0))
-                .normalized(),
-            )
-            .run_and_exit("tests/features/")
-            .await;
+        world.run_with_file(file).await;
     });
 }
