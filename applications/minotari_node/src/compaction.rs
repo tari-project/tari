@@ -24,6 +24,7 @@ use std::{fs, path::Path};
 
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_storage::lmdb_store::BYTES_PER_MB;
 use tari_core::{
     chain_storage::{BlockchainBackend, CompactReport, compact_lmdb_database, create_lmdb_database},
     consensus::BaseNodeConsensusManager,
@@ -66,7 +67,7 @@ pub fn run_compaction(config: &BaseNodeConfig) -> Result<CompactReport, ExitErro
     info!(
         target: LOG_TARGET,
         "Current database size: {:.2} MB",
-        db_size as f64 / (1024.0 * 1024.0)
+        db_size as f64 / BYTES_PER_MB as f64
     );
 
     // Clean up leftover directories from previous failed attempts
@@ -110,8 +111,8 @@ pub fn run_compaction(config: &BaseNodeConfig) -> Result<CompactReport, ExitErro
     info!(
         target: LOG_TARGET,
         "Compaction complete!\n  Before: {:.2} MB\n  After:  {:.2} MB\n  Reduction: {:.1}%\n  Duration: {:.2?}",
-        report.original_size as f64 / (1024.0 * 1024.0),
-        report.compacted_size as f64 / (1024.0 * 1024.0),
+        report.original_size as f64 / BYTES_PER_MB as f64,
+        report.compacted_size as f64 / BYTES_PER_MB as f64,
         reduction,
         report.duration,
     );
@@ -251,15 +252,15 @@ pub fn estimate_compaction_savings(config: &BaseNodeConfig) -> Result<(), ExitEr
     println!("\nDatabase Compaction Estimate:");
     println!(
         "  Map size:       {:.2} MB",
-        estimate.map_size as f64 / (1024.0 * 1024.0)
+        estimate.map_size as f64 / BYTES_PER_MB as f64
     );
     println!(
         "  Used:           {:.2} MB",
-        estimate.used_bytes as f64 / (1024.0 * 1024.0)
+        estimate.used_bytes as f64 / BYTES_PER_MB as f64
     );
     println!(
         "  Free:           {:.2} MB",
-        estimate.free_bytes as f64 / (1024.0 * 1024.0)
+        estimate.free_bytes as f64 / BYTES_PER_MB as f64
     );
     println!("  Est. reduction: {:.1}%", estimate.reduction_pct);
     println!();

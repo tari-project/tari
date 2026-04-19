@@ -23,6 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
+use tari_storage::lmdb_store::BYTES_PER_MB;
 
 use super::{CommandContext, HandleCommand};
 
@@ -34,20 +35,12 @@ pub struct Args {}
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
         let estimate = self.blockchain_db.estimate_compaction().await?;
+        let mb = BYTES_PER_MB as f64;
 
         println!("\nDatabase Compaction Estimate:");
-        println!(
-            "  Map size:       {:.2} MB",
-            estimate.map_size as f64 / (1024.0 * 1024.0)
-        );
-        println!(
-            "  Used:           {:.2} MB",
-            estimate.used_bytes as f64 / (1024.0 * 1024.0)
-        );
-        println!(
-            "  Free:           {:.2} MB",
-            estimate.free_bytes as f64 / (1024.0 * 1024.0)
-        );
+        println!("  Map size:       {:.2} MB", estimate.map_size as f64 / mb);
+        println!("  Used:           {:.2} MB", estimate.used_bytes as f64 / mb);
+        println!("  Free:           {:.2} MB", estimate.free_bytes as f64 / mb);
         println!("  Est. reduction: {:.1}%", estimate.reduction_pct);
         println!();
         println!("To compact, restart the node with --compact-db flag.");

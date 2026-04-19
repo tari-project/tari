@@ -98,11 +98,19 @@ use std::{
 
 use fs2::FileExt;
 use jmt::{
-    JellyfishMerkleTree, KeyHash,
+    JellyfishMerkleTree,
+    KeyHash,
     storage::{NibblePath, NodeKey, TreeReader, TreeWriter},
 };
 use lmdb_zero::{
-    ConstTransaction, Database, EnvBuilder, Environment, LmdbResultExt, ReadTransaction, WriteTransaction, open,
+    ConstTransaction,
+    Database,
+    EnvBuilder,
+    Environment,
+    LmdbResultExt,
+    ReadTransaction,
+    WriteTransaction,
+    open,
     traits::AsLmdbBytes,
 };
 use log::*;
@@ -113,8 +121,15 @@ use tari_common_types::{
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     types::{
-        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput,
-        PrivateKey, UncompressedCommitment,
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        UncompressedCommitment,
     },
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
@@ -126,8 +141,14 @@ use tari_transaction_components::{
     consensus::{ConsensusConstants, consensus_constants::BlockVersion},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
-        OutputType, SideChainFeatureData, SideChainId, SpentOutput, TransactionInput, TransactionKernel,
-        TransactionOutput, ValidatorNodeRegistration,
+        OutputType,
+        SideChainFeatureData,
+        SideChainId,
+        SpentOutput,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+        ValidatorNodeRegistration,
     },
 };
 use tari_utilities::{
@@ -147,24 +168,61 @@ use crate::{
     PrunedKernelMmr,
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
-        BlockchainBackend, ChainTipData, DbBasicStats, DbSize, HorizonData, InputMinedInfo, MinedInfo, MmrTree, Reorg,
-        TemplateRegistrationEntry, ValidatorNodeEntry, ValidatorNodeRegistrationInfo,
+        BlockchainBackend,
+        ChainTipData,
+        DbBasicStats,
+        DbSize,
+        HorizonData,
+        InputMinedInfo,
+        MinedInfo,
+        MmrTree,
+        Reorg,
+        TemplateRegistrationEntry,
+        ValidatorNodeEntry,
+        ValidatorNodeRegistrationInfo,
         db_transaction::{
-            DbKey, DbTransaction, DbValue, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint, WriteOperation,
+            DbKey,
+            DbTransaction,
+            DbValue,
+            HorizonStateTreeUpdate,
+            HorizonSyncOutputCheckpoint,
+            WriteOperation,
         },
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
-            TransactionInputRowData, TransactionInputRowDataRef, TransactionKernelRowData, TransactionOutputRowData,
+            TransactionInputRowData,
+            TransactionInputRowDataRef,
+            TransactionKernelRowData,
+            TransactionOutputRowData,
             composite_key::{CompositeKey, InputKey, OutputKey},
             helpers::deserialize,
             lmdb::{
-                fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
-                lmdb_delete_keys_starting_with, lmdb_delete_typed, lmdb_exists, lmdb_exists_typed,
-                lmdb_fetch_matching_after, lmdb_filter_map_values, lmdb_first_after, lmdb_get, lmdb_get_multiple,
-                lmdb_get_typed, lmdb_insert, lmdb_insert_dup, lmdb_insert_typed, lmdb_last, lmdb_len, lmdb_replace,
+                fetch_db_entry_sizes,
+                lmdb_all,
+                lmdb_clear,
+                lmdb_delete,
+                lmdb_delete_each_where,
+                lmdb_delete_key_value,
+                lmdb_delete_keys_starting_with,
+                lmdb_delete_typed,
+                lmdb_exists,
+                lmdb_exists_typed,
+                lmdb_fetch_matching_after,
+                lmdb_filter_map_values,
+                lmdb_first_after,
+                lmdb_get,
+                lmdb_get_multiple,
+                lmdb_get_typed,
+                lmdb_insert,
+                lmdb_insert_dup,
+                lmdb_insert_typed,
+                lmdb_last,
+                lmdb_len,
+                lmdb_replace,
             },
             row_data::block_header_accumulated_data::{
-                LmdbRowBlockHeaderAccumulatedDataV1, LmdbRowBlockHeaderAccumulatedDataV2,
+                LmdbRowBlockHeaderAccumulatedDataV1,
+                LmdbRowBlockHeaderAccumulatedDataV2,
             },
             validator_node_store::ValidatorNodeStore,
         },
@@ -437,8 +495,8 @@ pub fn compact_lmdb_database<P: AsRef<Path>>(path: P, dest: P) -> Result<Compact
     info!(
         target: LOG_TARGET,
         "LMDB compaction complete: {:.2} MB -> {:.2} MB ({:.1}% reduction) in {:.2?}",
-        original_size as f64 / (1024.0 * 1024.0),
-        compacted_size as f64 / (1024.0 * 1024.0),
+        original_size as f64 / BYTES_PER_MB as f64,
+        compacted_size as f64 / BYTES_PER_MB as f64,
         if original_size > 0 { (1.0 - compacted_size as f64 / original_size as f64) * 100.0 } else { 0.0 },
         duration
     );
@@ -2754,9 +2812,9 @@ impl BlockchainBackend for LMDBDatabase {
         // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
         // the write operation, with cleanup, resize and re-try afterwards.
         let block_operations = txn.operations().iter().filter(|op| {
-            matches!(op, WriteOperation::InsertOrphanBlock { .. })
-                || matches!(op, WriteOperation::InsertTipBlockBody { .. })
-                || matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
+            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
+                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
+                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
         });
         let count = block_operations.count();
         if count > 0 {
@@ -4700,8 +4758,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         &MetadataKey::PayrefRebuildStatus.as_u32(),
                     )?
                     .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()));
-                    if let MetadataValue::PayrefRebuildStatus(status) = status_key
-                        && status.is_rebuilt
+                    if let MetadataValue::PayrefRebuildStatus(status) = status_key &&
+                        status.is_rebuilt
                     {
                         info!(
                             target: LOG_TARGET,
@@ -4755,8 +4813,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty()
-                || current_height < known_good_difficulties.first().expect("is checked").0
+            if known_good_difficulties.is_empty() ||
+                current_height < known_good_difficulties.first().expect("is checked").0
             {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(
@@ -5076,25 +5134,25 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
 
             match metadata_key {
                 // Essential keys
-                Some(MetadataKey::ChainHeight)
-                | Some(MetadataKey::BestBlock)
-                | Some(MetadataKey::AccumulatedWork)
-                | Some(MetadataKey::PruningHorizon)
-                | Some(MetadataKey::PrunedHeight)
-                | Some(MetadataKey::HorizonData)
-                | Some(MetadataKey::BestBlockTimestamp)
-                | Some(MetadataKey::MigrationVersion) => {
+                Some(MetadataKey::ChainHeight) |
+                Some(MetadataKey::BestBlock) |
+                Some(MetadataKey::AccumulatedWork) |
+                Some(MetadataKey::PruningHorizon) |
+                Some(MetadataKey::PrunedHeight) |
+                Some(MetadataKey::HorizonData) |
+                Some(MetadataKey::BestBlockTimestamp) |
+                Some(MetadataKey::MigrationVersion) => {
                     warn!(
                         target: LOG_TARGET,
                         "Manual intervention is required to fix the corrupt essential metadata entry {metadata_key:?}.",
                     );
                 },
                 // Non-essential keys that can be auto-deleted
-                Some(MetadataKey::PayrefRebuildStatus)
-                | Some(MetadataKey::AccumulatedDataRebuildStatus)
-                | Some(MetadataKey::AccumulatedDataCheckStatus)
-                | Some(MetadataKey::BlockchainConsistencyCheckStatus)
-                | Some(MetadataKey::HorizonSyncOutputCheckpoint) => {
+                Some(MetadataKey::PayrefRebuildStatus) |
+                Some(MetadataKey::AccumulatedDataRebuildStatus) |
+                Some(MetadataKey::AccumulatedDataCheckStatus) |
+                Some(MetadataKey::BlockchainConsistencyCheckStatus) |
+                Some(MetadataKey::HorizonSyncOutputCheckpoint) => {
                     warn!(
                         target: LOG_TARGET,
                         "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",

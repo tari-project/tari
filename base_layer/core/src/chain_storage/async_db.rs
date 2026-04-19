@@ -28,11 +28,23 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
-        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput,
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
     },
 };
 use tari_node_components::blocks::{
-    Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, HistoricalBlock, NewBlockTemplate,
+    Block,
+    BlockHeader,
+    BlockHeaderAccumulatedData,
+    ChainBlock,
+    ChainHeader,
+    HistoricalBlock,
+    NewBlockTemplate,
 };
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
@@ -44,9 +56,21 @@ use super::{BlockchainCheckStatus, MinedInfo, TemplateRegistrationEntry, Validat
 use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
-        BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, CompactionEstimate, DatabaseStats,
-        DbBasicStats, DbTotalSizeStats, DbTransaction, HorizonData, HorizonStateTreeUpdate,
-        HorizonSyncOutputCheckpoint, LMDBDatabase, MmrTree, TargetDifficulties,
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        ChainStorageError,
+        CompactionEstimate,
+        DatabaseStats,
+        DbBasicStats,
+        DbTotalSizeStats,
+        DbTransaction,
+        HorizonData,
+        HorizonStateTreeUpdate,
+        HorizonSyncOutputCheckpoint,
+        LMDBDatabase,
+        MmrTree,
+        TargetDifficulties,
         blockchain_database::MmrRoots,
         kernel_merkle_proof::KernelMerkleProof,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
@@ -58,8 +82,7 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
-where
-    F: FnOnce() -> R,
+where F: FnOnce() -> R,
 {
     let start = Instant::now();
     let trace_id = OsRng.next_u32();

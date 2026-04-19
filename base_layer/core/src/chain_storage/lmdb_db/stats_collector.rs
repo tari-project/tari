@@ -148,8 +148,8 @@ impl DatabaseStats {
     /// Set metadata key-value pair
     fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
         self.metadata.insert(key, value.to_owned());
-        if key == MetadataKey::MigrationVersion
-            && let MetadataValue::MigrationVersion(version) = value
+        if key == MetadataKey::MigrationVersion &&
+            let MetadataValue::MigrationVersion(version) = value
         {
             self.migration_stats.current_db_version = *version;
         }

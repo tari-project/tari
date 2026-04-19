@@ -27,7 +27,10 @@ use std::{
     mem,
     ops::{Bound, RangeBounds},
     sync::{
-        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        Arc,
+        RwLock,
+        RwLockReadGuard,
+        RwLockWriteGuard,
         atomic::{self, AtomicBool},
     },
     time::{Duration, Instant},
@@ -36,7 +39,10 @@ use std::{
 use blake2::Blake2b;
 use digest::consts::U32;
 use jmt::{
-    JellyfishMerkleTree, KeyHash, OwnedValue, Version,
+    JellyfishMerkleTree,
+    KeyHash,
+    OwnedValue,
+    Version,
     storage::{LeafNode, Node, NodeKey, TreeReader},
 };
 use log::*;
@@ -46,15 +52,27 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
-        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput,
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
         UncompressedCommitment,
     },
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::{MerkleProof, pruned_hashset::PrunedHashSet};
 use tari_node_components::blocks::{
-    Block, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock, ChainHeader,
-    HistoricalBlock, NewBlockTemplate,
+    Block,
+    BlockHeader,
+    BlockHeaderAccumulatedData,
+    BlockHeaderValidationError,
+    ChainBlock,
+    ChainHeader,
+    HistoricalBlock,
+    NewBlockTemplate,
 };
 use tari_transaction_components::{
     BanPeriod,
@@ -65,22 +83,47 @@ use tari_transaction_components::{
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 
 use super::{
-    AccumulatedDataRebuildStatus, BlockchainCheckRequest, CheckFailure, MinedInfo, PayrefRebuildStatus,
-    TemplateRegistrationEntry, ValidatorNodeRegistrationInfo, smt_hasher::SmtHasher,
+    AccumulatedDataRebuildStatus,
+    BlockchainCheckRequest,
+    CheckFailure,
+    MinedInfo,
+    PayrefRebuildStatus,
+    TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
+    smt_hasher::SmtHasher,
 };
 use crate::{
-    PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, block_output_mr_hash_from_pruned_mmr,
+    PrunedInputMmr,
+    PrunedKernelMmr,
+    PrunedOutputMmr,
+    block_output_mr_hash_from_pruned_mmr,
     blocks::{
-        BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder, UpdateBlockAccumulatedData,
+        BlockAccumulatedData,
+        BlockHeaderAccumulatedDataBuilder,
+        UpdateBlockAccumulatedData,
         genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
     },
     chain_storage::{
-        BlockAddResult, BlockchainBackend, CompactionEstimate, DbBasicStats, DbTotalSizeStats, HorizonData,
-        InputMinedInfo, MmrTree, Optional, OrNotFound, Reorg, TargetDifficulties,
+        BlockAddResult,
+        BlockchainBackend,
+        CompactionEstimate,
+        DbBasicStats,
+        DbTotalSizeStats,
+        HorizonData,
+        InputMinedInfo,
+        MmrTree,
+        Optional,
+        OrNotFound,
+        Reorg,
+        TargetDifficulties,
         consts::{
-            BACKGROUND_PRUNING_CHUNK_SIZE, BACKGROUND_PRUNING_THRESHOLD, BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL, BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
-            JMT_BACKGROUND_PRUNING_BATCH_SIZE, JMT_BACKGROUND_PRUNING_INTERVAL_MS,
+            BACKGROUND_PRUNING_CHUNK_SIZE,
+            BACKGROUND_PRUNING_THRESHOLD,
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
+            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
+            JMT_BACKGROUND_PRUNING_BATCH_SIZE,
+            JMT_BACKGROUND_PRUNING_INTERVAL_MS,
         },
         db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
         error::ChainStorageError,
@@ -91,11 +134,17 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparer},
-    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr,
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{TargetDifficultyWindow, randomx_factory::RandomXFactory},
     validation::{
-        CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator, InternalConsistencyValidator,
-        ValidationError, helpers::calc_median_timestamp, tari_rx_vm_key_height,
+        CandidateBlockValidator,
+        DifficultyCalculator,
+        HeaderChainLinkedValidator,
+        InternalConsistencyValidator,
+        ValidationError,
+        helpers::calc_median_timestamp,
+        tari_rx_vm_key_height,
     },
 };
 
@@ -244,8 +293,7 @@ pub struct BlockchainDatabase<B> {
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where
-    B: BlockchainBackend,
+where B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -1222,8 +1270,8 @@ where
     /// Reset the accumulated data check counters.
     pub fn reset_accumulated_data_check_db_counters(&self) -> Result<(), ChainStorageError> {
         let acc_diff_status = self.fetch_accumulated_data_check_status()?;
-        if let Some(acc_diff) = acc_diff_status
-            && acc_diff.is_running()
+        if let Some(acc_diff) = acc_diff_status &&
+            acc_diff.is_running()
         {
             return Err(ChainStorageError::InvalidOperation(
                 "[AccData check] Cannot reset counters while a check is running.".to_string(),
@@ -1238,8 +1286,8 @@ where
     /// Reset the blockchain consistency check counters.
     pub fn reset_blockchain_consistency_check_db_counters(&self) -> Result<(), ChainStorageError> {
         let consistency_status = self.fetch_blockchain_consistency_check_status()?;
-        if let Some(consistency) = consistency_status
-            && consistency.is_running()
+        if let Some(consistency) = consistency_status &&
+            consistency.is_running()
         {
             return Err(ChainStorageError::InvalidOperation(
                 "[Blockchain check] Cannot reset counters while a check is running.".to_string(),
@@ -4154,8 +4202,13 @@ mod test {
         test_helpers::{
             BlockSpecs,
             blockchain::{
-                TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
-                create_store_with_consensus_and_validators_and_config, create_test_blockchain_db,
+                TempDatabase,
+                create_chained_blocks,
+                create_main_chain,
+                create_new_blockchain,
+                create_orphan_chain,
+                create_store_with_consensus_and_validators_and_config,
+                create_test_blockchain_db,
             },
         },
         validation::{header::HeaderFullValidator, mocks::MockValidator},
