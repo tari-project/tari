@@ -98,19 +98,11 @@ use std::{
 
 use fs2::FileExt;
 use jmt::{
-    JellyfishMerkleTree,
-    KeyHash,
+    JellyfishMerkleTree, KeyHash,
     storage::{NibblePath, NodeKey, TreeReader, TreeWriter},
 };
 use lmdb_zero::{
-    ConstTransaction,
-    Database,
-    EnvBuilder,
-    Environment,
-    LmdbResultExt,
-    ReadTransaction,
-    WriteTransaction,
-    open,
+    ConstTransaction, Database, EnvBuilder, Environment, LmdbResultExt, ReadTransaction, WriteTransaction, open,
     traits::AsLmdbBytes,
 };
 use log::*;
@@ -121,15 +113,8 @@ use tari_common_types::{
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        CompressedSignature,
-        FixedHash,
-        HashOutput,
-        PrivateKey,
-        UncompressedCommitment,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput,
+        PrivateKey, UncompressedCommitment,
     },
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
@@ -141,14 +126,8 @@ use tari_transaction_components::{
     consensus::{ConsensusConstants, consensus_constants::BlockVersion},
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
-        OutputType,
-        SideChainFeatureData,
-        SideChainId,
-        SpentOutput,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-        ValidatorNodeRegistration,
+        OutputType, SideChainFeatureData, SideChainId, SpentOutput, TransactionInput, TransactionKernel,
+        TransactionOutput, ValidatorNodeRegistration,
     },
 };
 use tari_utilities::{
@@ -168,61 +147,24 @@ use crate::{
     PrunedKernelMmr,
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
-        BlockchainBackend,
-        ChainTipData,
-        DbBasicStats,
-        DbSize,
-        HorizonData,
-        InputMinedInfo,
-        MinedInfo,
-        MmrTree,
-        Reorg,
-        TemplateRegistrationEntry,
-        ValidatorNodeEntry,
-        ValidatorNodeRegistrationInfo,
+        BlockchainBackend, ChainTipData, DbBasicStats, DbSize, HorizonData, InputMinedInfo, MinedInfo, MmrTree, Reorg,
+        TemplateRegistrationEntry, ValidatorNodeEntry, ValidatorNodeRegistrationInfo,
         db_transaction::{
-            DbKey,
-            DbTransaction,
-            DbValue,
-            HorizonStateTreeUpdate,
-            HorizonSyncOutputCheckpoint,
-            WriteOperation,
+            DbKey, DbTransaction, DbValue, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint, WriteOperation,
         },
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
-            TransactionInputRowData,
-            TransactionInputRowDataRef,
-            TransactionKernelRowData,
-            TransactionOutputRowData,
+            TransactionInputRowData, TransactionInputRowDataRef, TransactionKernelRowData, TransactionOutputRowData,
             composite_key::{CompositeKey, InputKey, OutputKey},
             helpers::deserialize,
             lmdb::{
-                fetch_db_entry_sizes,
-                lmdb_all,
-                lmdb_clear,
-                lmdb_delete,
-                lmdb_delete_each_where,
-                lmdb_delete_key_value,
-                lmdb_delete_keys_starting_with,
-                lmdb_delete_typed,
-                lmdb_exists,
-                lmdb_exists_typed,
-                lmdb_fetch_matching_after,
-                lmdb_filter_map_values,
-                lmdb_first_after,
-                lmdb_get,
-                lmdb_get_multiple,
-                lmdb_get_typed,
-                lmdb_insert,
-                lmdb_insert_dup,
-                lmdb_insert_typed,
-                lmdb_last,
-                lmdb_len,
-                lmdb_replace,
+                fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
+                lmdb_delete_keys_starting_with, lmdb_delete_typed, lmdb_exists, lmdb_exists_typed,
+                lmdb_fetch_matching_after, lmdb_filter_map_values, lmdb_first_after, lmdb_get, lmdb_get_multiple,
+                lmdb_get_typed, lmdb_insert, lmdb_insert_dup, lmdb_insert_typed, lmdb_last, lmdb_len, lmdb_replace,
             },
             row_data::block_header_accumulated_data::{
-                LmdbRowBlockHeaderAccumulatedDataV1,
-                LmdbRowBlockHeaderAccumulatedDataV2,
+                LmdbRowBlockHeaderAccumulatedDataV1, LmdbRowBlockHeaderAccumulatedDataV2,
             },
             validator_node_store::ValidatorNodeStore,
         },
@@ -335,6 +277,30 @@ pub fn get_all_database_names() -> Vec<&'static str> {
     ]
 }
 
+/// Estimate of space savings from LMDB compaction.
+#[derive(Debug, Clone)]
+pub struct CompactionEstimate {
+    /// Total map size in bytes
+    pub map_size: usize,
+    /// Used space in bytes (data pages)
+    pub used_bytes: usize,
+    /// Free space in bytes (free pages within the DB file)
+    pub free_bytes: usize,
+    /// Estimated reduction percentage
+    pub reduction_pct: f64,
+}
+
+/// Report from a completed compaction operation.
+#[derive(Debug, Clone)]
+pub struct CompactReport {
+    /// Original file size in bytes
+    pub original_size: u64,
+    /// Compacted file size in bytes
+    pub compacted_size: u64,
+    /// Duration of the compaction
+    pub duration: std::time::Duration,
+}
+
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
@@ -439,6 +405,49 @@ pub fn create_readonly_lmdb_environment<P: AsRef<Path>>(path: P) -> Result<Arc<E
 
     debug!(target: LOG_TARGET, "LMDB read-only environment access successful");
     Ok(env)
+}
+
+/// Open the LMDB environment at `path` in read-only mode and perform a compacted copy to `dest`.
+/// Returns a `CompactReport` with file size before/after and duration.
+pub fn compact_lmdb_database<P: AsRef<Path>>(path: P, dest: P) -> Result<CompactReport, ChainStorageError> {
+    let path_ref = path.as_ref();
+    let dest_ref = dest.as_ref();
+
+    info!(target: LOG_TARGET, "Starting LMDB compaction: {:?} -> {:?}", path_ref, dest_ref);
+
+    let data_file = path_ref.join("data.mdb");
+    let original_size = fs::metadata(&data_file).map(|m| m.len()).unwrap_or(0);
+
+    let env = create_readonly_lmdb_environment(path_ref)?;
+
+    let start = Instant::now();
+    let dest_str = dest_ref
+        .to_str()
+        .ok_or_else(|| ChainStorageError::CriticalError("Invalid destination path".to_string()))?;
+
+    fs::create_dir_all(dest_ref)?;
+
+    env.copy(dest_str, lmdb_zero::copy::COMPACT)
+        .map_err(|e| ChainStorageError::CriticalError(format!("LMDB compact copy failed: {e}")))?;
+    let duration = start.elapsed();
+
+    let compacted_file = dest_ref.join("data.mdb");
+    let compacted_size = fs::metadata(&compacted_file).map(|m| m.len()).unwrap_or(0);
+
+    info!(
+        target: LOG_TARGET,
+        "LMDB compaction complete: {:.2} MB -> {:.2} MB ({:.1}% reduction) in {:.2?}",
+        original_size as f64 / (1024.0 * 1024.0),
+        compacted_size as f64 / (1024.0 * 1024.0),
+        if original_size > 0 { (1.0 - compacted_size as f64 / original_size as f64) * 100.0 } else { 0.0 },
+        duration
+    );
+
+    Ok(CompactReport {
+        original_size,
+        compacted_size,
+        duration,
+    })
 }
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
@@ -607,6 +616,8 @@ impl LMDBDatabase {
         }
 
         run_migrations(&mut db)?;
+        let pending_stale_nodes = db.current_jmt_stale_index_entry_count()?;
+        db.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
 
         Ok(db)
     }
@@ -614,6 +625,33 @@ impl LMDBDatabase {
     /// Get a reference to the stats collector
     pub fn stats_collector(&self) -> &LMDBStatsCollector {
         &self.stats_collector
+    }
+
+    /// Estimate the space savings from LMDB compaction by comparing used vs free pages.
+    pub fn estimate_compaction(&self) -> Result<CompactionEstimate, ChainStorageError> {
+        let env_info = self
+            .env
+            .info()
+            .map_err(|e| ChainStorageError::AccessError(format!("Failed to get env info: {e}")))?;
+        let stat = self
+            .env
+            .stat()
+            .map_err(|e| ChainStorageError::AccessError(format!("Failed to get env stat: {e}")))?;
+        let used_bytes = stat.psize as usize * env_info.last_pgno;
+        let map_size = env_info.mapsize;
+        let free_bytes = map_size.saturating_sub(used_bytes);
+        let reduction_pct = if map_size > 0 {
+            (free_bytes as f64 / map_size as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        Ok(CompactionEstimate {
+            map_size,
+            used_bytes,
+            free_bytes,
+            reduction_pct,
+        })
     }
 
     /// Try to establish a read lock on the LMDB database. If an exclusive write lock has been previously acquired, this
@@ -634,6 +672,9 @@ impl LMDBDatabase {
         use WriteOperation::*;
 
         let number_of_operations = txn.operations().len();
+        let mut pending_stale_node_delta = 0u64;
+        let mut latest_stale_nodes_recorded = None;
+        let mut recount_pending_stale_nodes = false;
         let write_txn = self.write_transaction()?;
         for (i, op) in txn.operations().iter().enumerate() {
             trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {} ({} of {})", op, i + 1, number_of_operations);
@@ -643,7 +684,10 @@ impl LMDBDatabase {
                     self.insert_header(&write_txn, header.header(), header.accumulated_data())?;
                 },
                 InsertTipBlockBody { block } => {
-                    self.insert_tip_block_body(&write_txn, block.header(), block.block().body.clone())?;
+                    let stale_count =
+                        self.insert_tip_block_body(&write_txn, block.header(), block.block().body.clone())?;
+                    pending_stale_node_delta = pending_stale_node_delta.saturating_add(stale_count);
+                    latest_stale_nodes_recorded = Some(stale_count);
                 },
                 InsertKernel {
                     header_hash,
@@ -688,6 +732,7 @@ impl LMDBDatabase {
                 },
                 DeleteTipBlock(hash) => {
                     self.delete_tip_block_body(&write_txn, hash)?;
+                    recount_pending_stale_nodes = true;
                 },
                 DeleteBlockAccumulatedData(height) => {
                     lmdb_delete(
@@ -811,7 +856,10 @@ impl LMDBDatabase {
                     version,
                     updates,
                 } => {
-                    self.apply_horizon_state_tree_updates(&write_txn, *previous_version, *version, updates)?;
+                    let stale_count =
+                        self.apply_horizon_state_tree_updates(&write_txn, *previous_version, *version, updates)?;
+                    pending_stale_node_delta = pending_stale_node_delta.saturating_add(stale_count);
+                    latest_stale_nodes_recorded = Some(stale_count);
                 },
                 InsertBadBlock { hash, height, reason } => {
                     self.insert_bad_block_and_cleanup(&write_txn, hash, *height, reason.to_string())?;
@@ -842,6 +890,23 @@ impl LMDBDatabase {
             }
         }
         write_txn.commit()?;
+
+        if let Some(stale_count) = latest_stale_nodes_recorded {
+            self.stats_collector.record_jmt_stale_nodes_last_block(stale_count);
+        }
+
+        if recount_pending_stale_nodes {
+            let pending_stale_nodes = self.current_jmt_stale_index_entry_count()?;
+            self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
+        } else if pending_stale_node_delta > 0 {
+            let pending_stale_nodes = self
+                .stats_collector
+                .current_stats()
+                .jmt_pruning_stats
+                .total_pending_stale_nodes
+                .saturating_add(pending_stale_node_delta);
+            self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
+        }
 
         Ok(())
     }
@@ -1654,7 +1719,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
         body: AggregateBody,
-    ) -> Result<(), ChainStorageError> {
+    ) -> Result<u64, ChainStorageError> {
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
@@ -1763,8 +1828,8 @@ impl LMDBDatabase {
             batch.push((smt_key, None));
 
             let features = input_with_output_data.features()?;
-            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
-                let Some(vn_reg) = sidechain_feature.validator_node_registration()
+            if let Some(sidechain_feature) = features.sidechain_feature.as_ref()
+                && let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
                 self.validator_node_store(txn)
                     .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
@@ -1815,7 +1880,7 @@ impl LMDBDatabase {
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        let stale_count = ops.stale_node_index_batch.len();
+        let stale_count = u64::try_from(ops.stale_node_index_batch.len()).map_err(|_| ChainStorageError::OutOfRange)?;
         smt_writer
             .write_stale_node_index_batch(&ops.stale_node_index_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
@@ -1837,7 +1902,7 @@ impl LMDBDatabase {
             ),
         )?;
 
-        Ok(())
+        Ok(stale_count)
     }
 
     fn validator_node_store<'a, T: Deref<Target = ConstTransaction<'a>>>(
@@ -2223,7 +2288,7 @@ impl LMDBDatabase {
         previous_version: u64,
         version: u64,
         updates: &[HorizonStateTreeUpdate],
-    ) -> Result<(), ChainStorageError> {
+    ) -> Result<u64, ChainStorageError> {
         let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let writer = LmdbTreeWriter::new(
             write_txn,
@@ -2264,11 +2329,12 @@ impl LMDBDatabase {
         writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        let stale_count = u64::try_from(ops.stale_node_index_batch.len()).map_err(|_| ChainStorageError::OutOfRange)?;
         writer
             .write_stale_node_index_batch(&ops.stale_node_index_batch)
             .map_err(|e| ChainStorageError::CriticalError(e.to_string()))?;
 
-        Ok(())
+        Ok(stale_count)
     }
 
     fn delete_all_kernels_in_block(
@@ -2555,6 +2621,9 @@ impl LMDBDatabase {
             .prune_stale_nodes(prune_below_version)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         write_txn.commit()?;
+        self.stats_collector.record_jmt_prune_deleted_nodes(result.0);
+        let pending_stale_nodes = self.current_jmt_stale_index_entry_count()?;
+        self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
         Ok(result)
     }
 
@@ -2575,7 +2644,16 @@ impl LMDBDatabase {
             .prune_stale_nodes_batch(prune_below_version, max_batch_size)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         write_txn.commit()?;
+        self.stats_collector.record_jmt_prune_deleted_nodes(result.0);
+        let pending_stale_nodes = self.current_jmt_stale_index_entry_count()?;
+        self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
         Ok(result)
+    }
+
+    pub(crate) fn current_jmt_stale_index_entry_count(&self) -> Result<u64, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let (num_entries, _, _) = fetch_db_entry_sizes(&txn, &self.jmt_stale_node_index)?;
+        Ok(num_entries)
     }
 
     #[cfg(test)]
@@ -2612,10 +2690,8 @@ impl LMDBDatabase {
 
     #[cfg(test)]
     pub(crate) fn jmt_stale_index_entry_count(&self) -> u64 {
-        let txn = self.read_transaction().expect("Failed to create read transaction");
-        let (num_entries, _, _) = fetch_db_entry_sizes(&txn, &self.jmt_stale_node_index)
-            .expect("Failed to fetch jmt_stale_node_index entry sizes");
-        num_entries
+        self.current_jmt_stale_index_entry_count()
+            .expect("Failed to fetch jmt_stale_node_index entry sizes")
     }
 }
 
@@ -2678,9 +2754,9 @@ impl BlockchainBackend for LMDBDatabase {
         // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
         // the write operation, with cleanup, resize and re-try afterwards.
         let block_operations = txn.operations().iter().filter(|op| {
-            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
-                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
-                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
+            matches!(op, WriteOperation::InsertOrphanBlock { .. })
+                || matches!(op, WriteOperation::InsertTipBlockBody { .. })
+                || matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
         });
         let count = block_operations.count();
         if count > 0 {
@@ -3567,6 +3643,14 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(())
     }
 
+    fn fetch_jmt_pending_stale_nodes(&self) -> Result<u64, ChainStorageError> {
+        Ok(self
+            .stats_collector
+            .current_stats()
+            .jmt_pruning_stats
+            .total_pending_stale_nodes)
+    }
+
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let global = self.env.stat()?;
         let env_info = self.env.info()?;
@@ -3939,6 +4023,10 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn update_stats_progress(&self, current: u64) {
         self.stats_collector.update_migration_progress(current);
+    }
+
+    fn estimate_compaction(&self) -> Result<CompactionEstimate, ChainStorageError> {
+        LMDBDatabase::estimate_compaction(self)
     }
 }
 
@@ -4612,8 +4700,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         &MetadataKey::PayrefRebuildStatus.as_u32(),
                     )?
                     .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()));
-                    if let MetadataValue::PayrefRebuildStatus(status) = status_key &&
-                        status.is_rebuilt
+                    if let MetadataValue::PayrefRebuildStatus(status) = status_key
+                        && status.is_rebuilt
                     {
                         info!(
                             target: LOG_TARGET,
@@ -4667,8 +4755,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty() ||
-                current_height < known_good_difficulties.first().expect("is checked").0
+            if known_good_difficulties.is_empty()
+                || current_height < known_good_difficulties.first().expect("is checked").0
             {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(
@@ -4988,25 +5076,25 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
 
             match metadata_key {
                 // Essential keys
-                Some(MetadataKey::ChainHeight) |
-                Some(MetadataKey::BestBlock) |
-                Some(MetadataKey::AccumulatedWork) |
-                Some(MetadataKey::PruningHorizon) |
-                Some(MetadataKey::PrunedHeight) |
-                Some(MetadataKey::HorizonData) |
-                Some(MetadataKey::BestBlockTimestamp) |
-                Some(MetadataKey::MigrationVersion) => {
+                Some(MetadataKey::ChainHeight)
+                | Some(MetadataKey::BestBlock)
+                | Some(MetadataKey::AccumulatedWork)
+                | Some(MetadataKey::PruningHorizon)
+                | Some(MetadataKey::PrunedHeight)
+                | Some(MetadataKey::HorizonData)
+                | Some(MetadataKey::BestBlockTimestamp)
+                | Some(MetadataKey::MigrationVersion) => {
                     warn!(
                         target: LOG_TARGET,
                         "Manual intervention is required to fix the corrupt essential metadata entry {metadata_key:?}.",
                     );
                 },
                 // Non-essential keys that can be auto-deleted
-                Some(MetadataKey::PayrefRebuildStatus) |
-                Some(MetadataKey::AccumulatedDataRebuildStatus) |
-                Some(MetadataKey::AccumulatedDataCheckStatus) |
-                Some(MetadataKey::BlockchainConsistencyCheckStatus) |
-                Some(MetadataKey::HorizonSyncOutputCheckpoint) => {
+                Some(MetadataKey::PayrefRebuildStatus)
+                | Some(MetadataKey::AccumulatedDataRebuildStatus)
+                | Some(MetadataKey::AccumulatedDataCheckStatus)
+                | Some(MetadataKey::BlockchainConsistencyCheckStatus)
+                | Some(MetadataKey::HorizonSyncOutputCheckpoint) => {
                     warn!(
                         target: LOG_TARGET,
                         "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",

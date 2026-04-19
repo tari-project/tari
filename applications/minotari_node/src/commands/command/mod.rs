@@ -25,6 +25,7 @@ mod ban_peer;
 mod block_timing;
 mod check_db;
 mod check_for_updates;
+mod compact_db;
 mod create_tls_certs;
 mod dial_peer;
 mod discover_peer;
@@ -73,8 +74,7 @@ use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_comms::{
-    CommsNode,
-    NodeIdentity,
+    CommsNode, NodeIdentity,
     peer_manager::{Peer, PeerManagerError},
     protocol::rpc::RpcServerHandle,
 };
@@ -132,6 +132,7 @@ pub enum Command {
     ListConnections(list_connections::Args),
     ListHeaders(list_headers::Args),
     CheckDb(check_db::Args),
+    CompactDb(compact_db::Args),
     PeriodStats(period_stats::Args),
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
@@ -219,49 +220,52 @@ impl CommandContext {
             let time_out = match args.command {
                 // These commands should complete quickly, some of them like 'discover-peer' returns immediately
                 // although the requested action can take a long time
-                Command::Version(_) |
-                Command::Whoami(_) |
-                Command::CheckForUpdates(_) |
-                Command::AddPeer(_) |
-                Command::BanPeer(_) |
-                Command::UnbanAllPeers(_) |
-                Command::UnbanPeer(_) |
-                Command::GetPeer(_) |
-                Command::ResetOfflinePeers(_) |
-                Command::DialPeer(_) |
-                Command::PingPeer(_) |
-                Command::DiscoverPeer(_) |
-                Command::ListPeers(_) |
-                Command::ListBannedPeers(_) |
-                Command::ListConnections(_) |
-                Command::GetNetworkStats(_) |
-                Command::BlockTiming(_) |
-                Command::GetChainMetadata(_) |
-                Command::GetDbStats(_) |
-                Command::GetStateInfo(_) |
-                Command::ListReorgs(_) |
-                Command::FetchAllOrphanHeaders(_) |
-                Command::ListBadBlocks(_) |
-                Command::GetBlock(_) |
-                Command::ListHeaders(_) |
-                Command::HeaderStats(_) |
-                Command::SearchPayref(_) |
-                Command::SearchKernel(_) |
-                Command::GetMempoolStats(_) |
-                Command::GetMempoolState(_) |
-                Command::GetMempoolTx(_) |
-                Command::Status(_) |
-                Command::Watch(_) |
-                Command::ListValidatorNodes(_) |
-                Command::CreateTlsCerts(_) |
-                Command::PrintEnv(_) |
-                Command::Quit(_) |
-                Command::SearchOutput(_) |
-                Command::Exit(_) => 30,
+                Command::Version(_)
+                | Command::Whoami(_)
+                | Command::CheckForUpdates(_)
+                | Command::AddPeer(_)
+                | Command::BanPeer(_)
+                | Command::UnbanAllPeers(_)
+                | Command::UnbanPeer(_)
+                | Command::GetPeer(_)
+                | Command::ResetOfflinePeers(_)
+                | Command::DialPeer(_)
+                | Command::PingPeer(_)
+                | Command::DiscoverPeer(_)
+                | Command::ListPeers(_)
+                | Command::ListBannedPeers(_)
+                | Command::ListConnections(_)
+                | Command::GetNetworkStats(_)
+                | Command::BlockTiming(_)
+                | Command::GetChainMetadata(_)
+                | Command::GetDbStats(_)
+                | Command::GetStateInfo(_)
+                | Command::ListReorgs(_)
+                | Command::FetchAllOrphanHeaders(_)
+                | Command::ListBadBlocks(_)
+                | Command::GetBlock(_)
+                | Command::ListHeaders(_)
+                | Command::HeaderStats(_)
+                | Command::SearchPayref(_)
+                | Command::SearchKernel(_)
+                | Command::GetMempoolStats(_)
+                | Command::GetMempoolState(_)
+                | Command::GetMempoolTx(_)
+                | Command::Status(_)
+                | Command::Watch(_)
+                | Command::ListValidatorNodes(_)
+                | Command::CreateTlsCerts(_)
+                | Command::PrintEnv(_)
+                | Command::Quit(_)
+                | Command::SearchOutput(_)
+                | Command::Exit(_) => 30,
                 // This test can potentially take a longer time and should be allowed to run longer
                 Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
-                Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
+                Command::CheckDb(_)
+                | Command::CompactDb(_)
+                | Command::PeriodStats(_)
+                | Command::RewindBlockchain(_) => 600,
                 Command::SearchUtxo(_) => 1200,
             };
             let fut = self.handle_command(args.command);
@@ -308,6 +312,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListHeaders(args) => self.handle_command(args).await,
             Command::CheckDb(args) => self.handle_command(args).await,
+            Command::CompactDb(args) => self.handle_command(args).await,
             Command::PeriodStats(args) => self.handle_command(args).await,
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) => self.handle_command(args).await,
@@ -367,7 +372,8 @@ pub enum TypeOrHex<T> {
 }
 
 impl<T> FromStr for TypeOrHex<T>
-where T: FromStr
+where
+    T: FromStr,
 {
     type Err = Error;
 

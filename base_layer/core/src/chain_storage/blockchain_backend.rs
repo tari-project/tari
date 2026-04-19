@@ -11,29 +11,14 @@ use tari_sidechain::ShardGroup;
 use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 use super::{
-    AccumulatedDataRebuildStatus,
-    BlockchainCheckRequest,
-    MinedInfo,
-    PayrefRebuildStatus,
-    TemplateRegistrationEntry,
-    ValidatorNodeRegistrationInfo,
-    lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
+    AccumulatedDataRebuildStatus, BlockchainCheckRequest, MinedInfo, PayrefRebuildStatus, TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo, lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
 };
 use crate::{
     blocks::BlockAccumulatedData,
     chain_storage::{
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        HorizonSyncOutputCheckpoint,
-        InputMinedInfo,
-        MmrTree,
-        OutputMinedInfo,
-        Reorg,
+        ChainStorageError, CompactionEstimate, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue,
+        HorizonData, HorizonSyncOutputCheckpoint, InputMinedInfo, MmrTree, OutputMinedInfo, Reorg,
         lmdb_db::BlockchainCheckStatus,
     },
 };
@@ -318,6 +303,10 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         prune_below_version: u64,
         max_batch_size: u64,
     ) -> Result<(u64, u64, bool), ChainStorageError>;
+
+    fn fetch_jmt_pending_stale_nodes(&self) -> Result<u64, ChainStorageError>;
+
+    fn estimate_compaction(&self) -> Result<CompactionEstimate, ChainStorageError>;
 
     /// Stats reporting methods for long-running operations
     /// Set the total number of steps for progress tracking

@@ -39,28 +39,15 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
-    BlockchainDatabase,
-    BlockchainDatabaseConfig,
-    JmtPruningMode,
-    MmrRoots,
-    Validators,
-    calculate_mmr_roots,
-    calculate_validator_node_mr,
-    fetch_header,
-    fetch_headers,
-    fetch_target_difficulty_for_next_block,
+    BlockchainDatabase, BlockchainDatabaseConfig, JmtPruningMode, MmrRoots, Validators, calculate_mmr_roots,
+    calculate_validator_node_mr, fetch_header, fetch_headers, fetch_target_difficulty_for_next_block,
 };
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
 mod consts;
 mod db_transaction;
 pub use db_transaction::{
-    DbKey,
-    DbTransaction,
-    DbValue,
-    HorizonStateTreeUpdate,
-    HorizonSyncOutputCheckpoint,
-    WriteOperation,
+    DbKey, DbTransaction, DbValue, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint, WriteOperation,
 };
 mod mmr_tree;
 pub use mmr_tree::MmrTree;
@@ -72,18 +59,10 @@ mod reorg;
 pub use reorg::Reorg;
 mod lmdb_db;
 pub use lmdb_db::{
-    AccumulatedDataRebuildStatus,
-    BlockchainCheckRequest,
-    BlockchainCheckStatus,
-    CheckFailure,
-    DatabaseStats,
-    LMDBDatabase,
-    PayrefRebuildStatus,
-    create_lmdb_database,
-    create_lmdb_database_with_stats_channel,
-    create_readonly_lmdb_environment,
-    create_recovery_lmdb_database,
-    get_all_database_names,
+    AccumulatedDataRebuildStatus, BlockchainCheckRequest, BlockchainCheckStatus, CheckFailure, CompactReport,
+    CompactionEstimate, DatabaseStats, JmtPruningStats, LMDBDatabase, PayrefRebuildStatus, compact_lmdb_database,
+    create_lmdb_database, create_lmdb_database_with_stats_channel, create_readonly_lmdb_environment,
+    create_recovery_lmdb_database, get_all_database_names,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
 };
 mod stats;

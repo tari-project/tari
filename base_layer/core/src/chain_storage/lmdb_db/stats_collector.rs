@@ -99,6 +99,8 @@ pub struct JmtPruningStats {
     pub stale_nodes_last_block: u64,
     /// Total number of pending stale node index entries
     pub total_pending_stale_nodes: u64,
+    /// Number of nodes deleted in the last prune run or batch
+    pub last_prune_deleted_nodes: u64,
 }
 
 /// Statistics data for database operations
@@ -146,8 +148,8 @@ impl DatabaseStats {
     /// Set metadata key-value pair
     fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
         self.metadata.insert(key, value.to_owned());
-        if key == MetadataKey::MigrationVersion &&
-            let MetadataValue::MigrationVersion(version) = value
+        if key == MetadataKey::MigrationVersion
+            && let MetadataValue::MigrationVersion(version) = value
         {
             self.migration_stats.current_db_version = *version;
         }
@@ -234,6 +236,17 @@ impl LMDBStatsCollector {
         self.update_db_stats(new_stats);
     }
 
+    fn update_jmt_pruning_stats<F>(&self, update: F)
+    where
+        F: FnOnce(&mut JmtPruningStats),
+    {
+        let mut stats = self.receiver.borrow().clone();
+        update(&mut stats.jmt_pruning_stats);
+        stats.last_updated = Instant::now();
+        stats.timestamp = self.get_current_timestamp();
+        self.update_db_stats(stats);
+    }
+
     /// Create a new StatsCollector with specified total height
     pub fn with_total_height(total_height: u64) -> Self {
         let initial_stats = DatabaseStats::new(0, total_height);
@@ -282,6 +295,24 @@ impl LMDBStatsCollector {
         let mut stats = self.receiver.borrow().clone();
         stats.set_metadata(key, value);
         self.update_db_stats(stats);
+    }
+
+    pub fn set_jmt_pending_stale_nodes(&self, count: u64) {
+        self.update_jmt_pruning_stats(|stats| {
+            stats.total_pending_stale_nodes = count;
+        });
+    }
+
+    pub fn record_jmt_stale_nodes_last_block(&self, count: u64) {
+        self.update_jmt_pruning_stats(|stats| {
+            stats.stale_nodes_last_block = count;
+        });
+    }
+
+    pub fn record_jmt_prune_deleted_nodes(&self, count: u64) {
+        self.update_jmt_pruning_stats(|stats| {
+            stats.last_prune_deleted_nodes = count;
+        });
     }
 
     /// Set the total height for progress calculation
@@ -575,5 +606,25 @@ mod tests {
 
         assert_eq!(stats1.get_metadata(&key), Some(&value));
         assert_eq!(stats2.get_metadata(&key), Some(&value));
+    }
+
+    #[test]
+    fn test_stats_collector_updates_jmt_stats_without_touching_other_fields() {
+        let collector = LMDBStatsCollector::with_total_height(100);
+        let key = MetadataKey::ChainHeight;
+        let value = MetadataValue::ChainHeight(25);
+
+        collector.update_migration_progress(50);
+        collector.update_metadata(key, &value);
+        collector.record_jmt_stale_nodes_last_block(7);
+        collector.set_jmt_pending_stale_nodes(11);
+        collector.record_jmt_prune_deleted_nodes(3);
+
+        let stats = collector.current_stats();
+        assert_eq!(stats.migration_stats.current_height, 50);
+        assert_eq!(stats.get_metadata(&key), Some(&value));
+        assert_eq!(stats.jmt_pruning_stats.stale_nodes_last_block, 7);
+        assert_eq!(stats.jmt_pruning_stats.total_pending_stale_nodes, 11);
+        assert_eq!(stats.jmt_pruning_stats.last_prune_deleted_nodes, 3);
     }
 }

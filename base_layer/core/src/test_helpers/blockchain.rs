@@ -28,8 +28,7 @@ use std::{
 };
 
 use jmt::{
-    JellyfishMerkleTree,
-    KeyHash,
+    JellyfishMerkleTree, KeyHash,
     mock::MockTreeStore,
     storage::{TreeReader, TreeUpdateBatch, TreeWriter},
 };
@@ -57,34 +56,11 @@ use super::{create_block, create_consensus_constants, mine_to_difficulty};
 use crate::{
     blocks::{BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder},
     chain_storage::{
-        AccumulatedDataRebuildStatus,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainCheckRequest,
-        BlockchainCheckStatus,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        HorizonSyncOutputCheckpoint,
-        InputMinedInfo,
-        LMDBDatabase,
-        MinedInfo,
-        MmrTree,
-        OutputMinedInfo,
-        OwnedLmdbTreeReader,
-        PayrefRebuildStatus,
-        Reorg,
-        SmtHasher,
-        TemplateRegistrationEntry,
-        ValidatorNodeRegistrationInfo,
-        Validators,
-        create_lmdb_database,
+        AccumulatedDataRebuildStatus, BlockAddResult, BlockchainBackend, BlockchainCheckRequest, BlockchainCheckStatus,
+        BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats,
+        DbTransaction, DbValue, HorizonData, HorizonSyncOutputCheckpoint, InputMinedInfo, LMDBDatabase, MinedInfo,
+        MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, PayrefRebuildStatus, Reorg, SmtHasher,
+        TemplateRegistrationEntry, ValidatorNodeRegistrationInfo, Validators, create_lmdb_database,
     },
     consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparerBuilder},
     proof_of_work::AchievedTargetDifficulty,
@@ -196,6 +172,10 @@ impl TempDatabase {
 
     pub fn db(&self) -> &LMDBDatabase {
         self.db.as_ref().unwrap()
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -491,6 +471,10 @@ impl BlockchainBackend for TempDatabase {
             .verify_horizon_sync_output_root(version, expected_root)
     }
 
+    fn fetch_jmt_pending_stale_nodes(&self) -> Result<u64, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_jmt_pending_stale_nodes()
+    }
+
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         self.db.as_ref().unwrap().get_stats()
     }
@@ -639,6 +623,10 @@ impl BlockchainBackend for TempDatabase {
     fn set_stats_total_height(&self, _total: u64) {}
 
     fn update_stats_progress(&self, _current: u64) {}
+
+    fn estimate_compaction(&self) -> Result<crate::chain_storage::CompactionEstimate, ChainStorageError> {
+        self.db.as_ref().unwrap().estimate_compaction()
+    }
 }
 
 pub fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(

@@ -30,6 +30,7 @@ mod bootstrap;
 mod builder;
 pub mod cli;
 mod commands;
+mod compaction;
 pub mod config;
 mod consensus_constants_tracker;
 mod grpc;
@@ -100,6 +101,7 @@ pub async fn run_base_node(
         },
         init: true,
         rebuild_db: false,
+        compact_db: false,
         non_interactive_mode: true,
         watch: None,
         profile_with_tokio_console: false,
@@ -161,6 +163,12 @@ pub async fn run_base_node_with_cli(
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
     };
+
+    if cli.compact_db {
+        info!(target: LOG_TARGET, "Compacting database before starting node");
+        compaction::run_compaction(&config.base_node)?;
+        info!(target: LOG_TARGET, "Database compaction complete, continuing with normal startup");
+    }
 
     // Build, node, build!
     let ctx =

@@ -27,10 +27,7 @@ use std::{
     mem,
     ops::{Bound, RangeBounds},
     sync::{
-        Arc,
-        RwLock,
-        RwLockReadGuard,
-        RwLockWriteGuard,
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
         atomic::{self, AtomicBool},
     },
     time::{Duration, Instant},
@@ -39,10 +36,7 @@ use std::{
 use blake2::Blake2b;
 use digest::consts::U32;
 use jmt::{
-    JellyfishMerkleTree,
-    KeyHash,
-    OwnedValue,
-    Version,
+    JellyfishMerkleTree, KeyHash, OwnedValue, Version,
     storage::{LeafNode, Node, NodeKey, TreeReader},
 };
 use log::*;
@@ -52,27 +46,15 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        CompressedSignature,
-        FixedHash,
-        HashOutput,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput,
         UncompressedCommitment,
     },
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::{MerkleProof, pruned_hashset::PrunedHashSet};
 use tari_node_components::blocks::{
-    Block,
-    BlockHeader,
-    BlockHeaderAccumulatedData,
-    BlockHeaderValidationError,
-    ChainBlock,
-    ChainHeader,
-    HistoricalBlock,
-    NewBlockTemplate,
+    Block, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock, ChainHeader,
+    HistoricalBlock, NewBlockTemplate,
 };
 use tari_transaction_components::{
     BanPeriod,
@@ -83,46 +65,22 @@ use tari_transaction_components::{
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 
 use super::{
-    AccumulatedDataRebuildStatus,
-    BlockchainCheckRequest,
-    CheckFailure,
-    MinedInfo,
-    PayrefRebuildStatus,
-    TemplateRegistrationEntry,
-    ValidatorNodeRegistrationInfo,
-    smt_hasher::SmtHasher,
+    AccumulatedDataRebuildStatus, BlockchainCheckRequest, CheckFailure, MinedInfo, PayrefRebuildStatus,
+    TemplateRegistrationEntry, ValidatorNodeRegistrationInfo, smt_hasher::SmtHasher,
 };
 use crate::{
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
-    block_output_mr_hash_from_pruned_mmr,
+    PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, block_output_mr_hash_from_pruned_mmr,
     blocks::{
-        BlockAccumulatedData,
-        BlockHeaderAccumulatedDataBuilder,
-        UpdateBlockAccumulatedData,
+        BlockAccumulatedData, BlockHeaderAccumulatedDataBuilder, UpdateBlockAccumulatedData,
         genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
     },
     chain_storage::{
-        BlockAddResult,
-        BlockchainBackend,
-        DbBasicStats,
-        DbTotalSizeStats,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Optional,
-        OrNotFound,
-        Reorg,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, CompactionEstimate, DbBasicStats, DbTotalSizeStats, HorizonData,
+        InputMinedInfo, MmrTree, Optional, OrNotFound, Reorg, TargetDifficulties,
         consts::{
-            BACKGROUND_PRUNING_CHUNK_SIZE,
-            BACKGROUND_PRUNING_THRESHOLD,
-            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
-            BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
-            JMT_BACKGROUND_PRUNING_BATCH_SIZE,
-            JMT_BACKGROUND_PRUNING_INTERVAL_MS,
+            BACKGROUND_PRUNING_CHUNK_SIZE, BACKGROUND_PRUNING_THRESHOLD, BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
+            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL, BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
+            JMT_BACKGROUND_PRUNING_BATCH_SIZE, JMT_BACKGROUND_PRUNING_INTERVAL_MS,
         },
         db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
         error::ChainStorageError,
@@ -133,17 +91,11 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparer},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_pruned_mmr,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{TargetDifficultyWindow, randomx_factory::RandomXFactory},
     validation::{
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
-        helpers::calc_median_timestamp,
-        tari_rx_vm_key_height,
+        CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator, InternalConsistencyValidator,
+        ValidationError, helpers::calc_median_timestamp, tari_rx_vm_key_height,
     },
 };
 
@@ -292,7 +244,8 @@ pub struct BlockchainDatabase<B> {
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where B: BlockchainBackend
+where
+    B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -368,10 +321,13 @@ where B: BlockchainBackend
             for kernel in body.kernels() {
                 kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
             }
-            txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
-                ..Default::default()
-            });
+            txn.update_block_accumulated_data(
+                *genesis_block.hash(),
+                UpdateBlockAccumulatedData {
+                    kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                    ..Default::default()
+                },
+            );
             txn.set_pruned_height(0);
             txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
@@ -591,12 +547,14 @@ where B: BlockchainBackend
 
         let db = self.db_read_access()?;
         let (nodes_deleted, index_entries_removed) = db.prune_stale_jmt_nodes(prune_below_version)?;
+        let pending_after = db.fetch_jmt_pending_stale_nodes()?;
 
         info!(
             target: LOG_TARGET,
-            "JMT pruning complete: deleted {} node(s), removed {} stale index entries",
+            "JMT pruning complete: deleted {} node(s), removed {} stale index entries, pending_after={}",
             nodes_deleted,
             index_entries_removed,
+            pending_after,
         );
 
         Ok((nodes_deleted, index_entries_removed))
@@ -647,36 +605,43 @@ where B: BlockchainBackend
         tokio::task::spawn(async move {
             let mut total_nodes_deleted: u64 = 0;
             let mut total_index_removed: u64 = 0;
+            let mut last_pending_after: Option<u64> = None;
 
             loop {
                 tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_INTERVAL_MS)).await;
 
                 let db = db_rw_lock.clone();
-                let res = tokio::task::spawn_blocking(move || -> Result<(u64, u64, bool), ChainStorageError> {
+                let res = tokio::task::spawn_blocking(move || -> Result<(u64, u64, u64, bool), ChainStorageError> {
                     let db = db.read().map_err(|e| {
                         ChainStorageError::AccessError(format!("Read lock on blockchain backend failed: {e:?}"))
                     })?;
                     let tip = db.fetch_chain_metadata()?.best_block_height();
                     let target = tip.saturating_sub(retention_window);
                     if target == 0 {
-                        return Ok((0, 0, false));
+                        return Ok((0, 0, db.fetch_jmt_pending_stale_nodes()?, false));
                     }
-                    db.prune_stale_jmt_nodes_batch(target, JMT_BACKGROUND_PRUNING_BATCH_SIZE)
+                    let (nodes, index, has_more) =
+                        db.prune_stale_jmt_nodes_batch(target, JMT_BACKGROUND_PRUNING_BATCH_SIZE)?;
+                    let pending_after = db.fetch_jmt_pending_stale_nodes()?;
+                    Ok((nodes, index, pending_after, has_more))
                 })
                 .await;
 
                 match res {
-                    Ok(Ok((nodes, index, has_more))) => {
+                    Ok(Ok((nodes, index, pending_after, has_more))) => {
                         total_nodes_deleted += nodes;
                         total_index_removed += index;
-                        if nodes > 0 {
+                        last_pending_after = Some(pending_after);
+                        if nodes > 0 || index > 0 {
                             debug!(
                                 target: LOG_TARGET,
-                                "JMT background pruning batch: deleted {} nodes, {} index entries (total: {} / {})",
+                                "JMT background pruning batch: deleted {} nodes, {} index entries (total: {} / {}), \
+                                 pending_after={}",
                                 nodes,
                                 index,
                                 total_nodes_deleted,
                                 total_index_removed,
+                                pending_after,
                             );
                         }
                         if !has_more {
@@ -701,12 +666,21 @@ where B: BlockchainBackend
             }
 
             is_pruning_flag.store(false, atomic::Ordering::SeqCst);
-            info!(
-                target: LOG_TARGET,
-                "JMT background pruning completed: total deleted {} nodes, {} index entries",
-                total_nodes_deleted,
-                total_index_removed,
-            );
+            match last_pending_after {
+                Some(pending_after) => info!(
+                    target: LOG_TARGET,
+                    "JMT background pruning completed: total deleted {} nodes, {} index entries, pending_after={}",
+                    total_nodes_deleted,
+                    total_index_removed,
+                    pending_after,
+                ),
+                None => info!(
+                    target: LOG_TARGET,
+                    "JMT background pruning completed: total deleted {} nodes, {} index entries",
+                    total_nodes_deleted,
+                    total_index_removed,
+                ),
+            };
         });
 
         Ok(())
@@ -1248,8 +1222,8 @@ where B: BlockchainBackend
     /// Reset the accumulated data check counters.
     pub fn reset_accumulated_data_check_db_counters(&self) -> Result<(), ChainStorageError> {
         let acc_diff_status = self.fetch_accumulated_data_check_status()?;
-        if let Some(acc_diff) = acc_diff_status &&
-            acc_diff.is_running()
+        if let Some(acc_diff) = acc_diff_status
+            && acc_diff.is_running()
         {
             return Err(ChainStorageError::InvalidOperation(
                 "[AccData check] Cannot reset counters while a check is running.".to_string(),
@@ -1264,8 +1238,8 @@ where B: BlockchainBackend
     /// Reset the blockchain consistency check counters.
     pub fn reset_blockchain_consistency_check_db_counters(&self) -> Result<(), ChainStorageError> {
         let consistency_status = self.fetch_blockchain_consistency_check_status()?;
-        if let Some(consistency) = consistency_status &&
-            consistency.is_running()
+        if let Some(consistency) = consistency_status
+            && consistency.is_running()
         {
             return Err(ChainStorageError::InvalidOperation(
                 "[Blockchain check] Cannot reset counters while a check is running.".to_string(),
@@ -2372,6 +2346,11 @@ where B: BlockchainBackend
     ) -> Result<(), ChainStorageError> {
         let db = self.db_read_access()?;
         db.verify_horizon_sync_output_root(version, expected_root)
+    }
+
+    pub fn estimate_compaction(&self) -> Result<CompactionEstimate, ChainStorageError> {
+        let lock = self.db_read_access()?;
+        lock.estimate_compaction()
     }
 
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
@@ -4175,12 +4154,8 @@ mod test {
         test_helpers::{
             BlockSpecs,
             blockchain::{
-                TempDatabase,
-                create_chained_blocks,
-                create_main_chain,
-                create_new_blockchain,
-                create_orphan_chain,
-                create_test_blockchain_db,
+                TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
+                create_store_with_consensus_and_validators_and_config, create_test_blockchain_db,
             },
         },
         validation::{header::HeaderFullValidator, mocks::MockValidator},
@@ -4243,12 +4218,10 @@ mod test {
         async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 1, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-            ]);
+            let (_, mainchain) = create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            );
             // Create reorg chain
             let fork_root = mainchain.get("B").unwrap().clone();
             let (_, reorg_chain) = create_orphan_chain(
@@ -4360,15 +4333,18 @@ mod test {
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 2, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-                ("E->D", 1, 120),
-                ("F->E", 1, 120),
-                ("G->F", 1, 120),
-            ]);
+            let (_, main_chain) = create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 2, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                ],
+            );
 
             // Fork 1 (with 3 blocks)
             let fork_root_1 = main_chain.get("A").unwrap().clone();
@@ -4760,12 +4736,10 @@ mod test {
     // \ JMT"]
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ]);
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        );
 
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
@@ -4839,12 +4813,10 @@ mod test {
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ]);
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        );
 
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
@@ -5209,16 +5181,169 @@ mod test {
         Ok((results, chain))
     }
 
+    mod jmt_observability {
+        use super::*;
+        use crate::chain_storage::HorizonStateTreeUpdate;
+
+        fn current_pending_stale_nodes(db: &BlockchainDatabase<TempDatabase>) -> u64 {
+            db.db_read_access()
+                .unwrap()
+                .current_jmt_stale_index_entry_count()
+                .unwrap()
+        }
+
+        fn current_jmt_stats(db: &BlockchainDatabase<TempDatabase>) -> crate::chain_storage::JmtPruningStats {
+            db.db_read_access()
+                .unwrap()
+                .stats_collector()
+                .current_stats()
+                .jmt_pruning_stats
+                .clone()
+        }
+
+        #[test]
+        fn block_commit_updates_jmt_stats() {
+            let db = create_new_blockchain();
+            let genesis_block = db
+                .fetch_block(0, true)
+                .unwrap()
+                .try_into_chain_block()
+                .map(Arc::new)
+                .unwrap();
+            let (names, chain) = create_chained_blocks(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)],
+                genesis_block,
+            );
+
+            db.add_block(chain.get(&names[0]).unwrap().to_arc_block()).unwrap();
+            db.add_block(chain.get(&names[1]).unwrap().to_arc_block()).unwrap();
+            let pending_before = current_pending_stale_nodes(&db);
+
+            db.add_block(chain.get(&names[2]).unwrap().to_arc_block()).unwrap();
+
+            let stats = current_jmt_stats(&db);
+            let pending_after = current_pending_stale_nodes(&db);
+            assert_eq!(stats.total_pending_stale_nodes, pending_after);
+            assert_eq!(
+                stats.stale_nodes_last_block,
+                pending_after.saturating_sub(pending_before)
+            );
+        }
+
+        #[test]
+        fn horizon_sync_updates_jmt_stats() {
+            let mut db = TempDatabase::new();
+
+            let mut txn = DbTransaction::new();
+            txn.apply_horizon_state_tree_updates(
+                0,
+                1,
+                vec![HorizonStateTreeUpdate {
+                    key: FixedHash::from([1u8; 32]),
+                    value: Some(FixedHash::from([11u8; 32])),
+                }],
+            );
+            db.write(txn).unwrap();
+
+            let stats = db.stats_collector().current_stats().jmt_pruning_stats;
+            let pending_after = db.current_jmt_stale_index_entry_count().unwrap();
+            assert_eq!(stats.total_pending_stale_nodes, pending_after);
+            assert_eq!(stats.stale_nodes_last_block, pending_after);
+        }
+
+        #[test]
+        fn manual_prune_updates_jmt_stats() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Manual;
+            config.jmt_pruning_retention_window = 1;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                ],
+            );
+
+            let pending_before = current_pending_stale_nodes(&db);
+            let (nodes_deleted, index_entries_removed) = db.prune_jmt_stale_nodes().unwrap();
+            let stats = current_jmt_stats(&db);
+            let pending_after = current_pending_stale_nodes(&db);
+
+            assert!(index_entries_removed > 0);
+            assert_eq!(stats.total_pending_stale_nodes, pending_after);
+            assert_eq!(stats.last_prune_deleted_nodes, nodes_deleted);
+            assert_eq!(pending_after, pending_before.saturating_sub(index_entries_removed));
+        }
+
+        #[test]
+        fn reorg_cleanup_recounts_pending_jmt_stats() {
+            let db = create_new_blockchain();
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                ],
+            );
+
+            let pending_before = current_pending_stale_nodes(&db);
+            db.rewind_to_height(2).unwrap();
+
+            let stats = current_jmt_stats(&db);
+            let pending_after = current_pending_stale_nodes(&db);
+            assert_eq!(stats.total_pending_stale_nodes, pending_after);
+            assert!(pending_after < pending_before);
+        }
+
+        #[test]
+        fn startup_initializes_pending_jmt_stats_from_db() {
+            let db = create_new_blockchain();
+            create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            );
+
+            let pending_before = current_pending_stale_nodes(&db);
+            db.test_db_write_access().unwrap().disable_delete_on_drop();
+            let path = db.db_read_access().unwrap().path().to_path_buf();
+            drop(db);
+
+            let reopened = TempDatabase::from_path(&path);
+            let pending_after = reopened.current_jmt_stale_index_entry_count().unwrap();
+            let stats = reopened.stats_collector().current_stats().jmt_pruning_stats;
+
+            assert_eq!(pending_after, pending_before);
+            assert_eq!(stats.total_pending_stale_nodes, pending_after);
+        }
+    }
+
     fn create_consensus_rules() -> BaseNodeConsensusManager {
         BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-                        min_difficulty: Difficulty::min(),
-                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
-                        target_time: 120,
-                    })
+                    .add_proof_of_work(
+                        PowAlgorithm::Sha3x,
+                        PowAlgorithmConstants {
+                            min_difficulty: Difficulty::min(),
+                            max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
+                            target_time: 120,
+                        },
+                    )
                     .build(),
             )
             .build()

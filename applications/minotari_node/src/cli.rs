@@ -39,6 +39,10 @@ pub struct Cli {
     /// This will rebuild the db, adding block for block in
     #[clap(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
+    /// Compact the LMDB database to reclaim disk space freed by pruning.
+    /// Performs: compact copy -> validate -> swap, then starts the node normally.
+    #[clap(long, alias = "compact_db")]
+    pub compact_db: bool,
     /// Run in non-interactive mode, with no UI.
     #[clap(short, long, alias = "non-interactive", env = "TARI_NON_INTERACTIVE")]
     pub non_interactive_mode: bool,

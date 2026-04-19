@@ -28,23 +28,11 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        CompressedSignature,
-        FixedHash,
-        HashOutput,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput,
     },
 };
 use tari_node_components::blocks::{
-    Block,
-    BlockHeader,
-    BlockHeaderAccumulatedData,
-    ChainBlock,
-    ChainHeader,
-    HistoricalBlock,
-    NewBlockTemplate,
+    Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, HistoricalBlock, NewBlockTemplate,
 };
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
@@ -56,18 +44,9 @@ use super::{BlockchainCheckStatus, MinedInfo, TemplateRegistrationEntry, Validat
 use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-        DbBasicStats,
-        DbTotalSizeStats,
-        DbTransaction,
-        HorizonData,
-        HorizonStateTreeUpdate,
-        HorizonSyncOutputCheckpoint,
-        MmrTree,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, CompactionEstimate, DatabaseStats,
+        DbBasicStats, DbTotalSizeStats, DbTransaction, HorizonData, HorizonStateTreeUpdate,
+        HorizonSyncOutputCheckpoint, LMDBDatabase, MmrTree, TargetDifficulties,
         blockchain_database::MmrRoots,
         kernel_merkle_proof::KernelMerkleProof,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
@@ -79,7 +58,9 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
-where F: FnOnce() -> R {
+where
+    F: FnOnce() -> R,
+{
     let start = Instant::now();
     let trace_id = OsRng.next_u32();
     trace!(
@@ -286,6 +267,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
 
+    make_async_fn!(estimate_compaction() -> CompactionEstimate, "estimate_compaction");
+
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
@@ -328,6 +311,19 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {
     fn from(db: BlockchainDatabase<B>) -> Self {
         Self::new(db)
+    }
+}
+
+impl AsyncBlockchainDb<LMDBDatabase> {
+    pub async fn get_database_stats(&self) -> Result<DatabaseStats, ChainStorageError> {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            trace_log("get_database_stats", move || {
+                let db = db.db_read_access()?;
+                Ok(db.stats_collector().current_stats())
+            })
+        })
+        .await?
     }
 }
 
