@@ -237,7 +237,7 @@ pub struct PrepareDepositMultisigTransactionArgs {
 pub struct PrepareWithdrawMultisigTransactionArgs {
     #[clap(long)]
     pub utxo_commitment: String,
-    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',')]
+    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',', num_args = 1..)]
     pub schnorr_signatures: Vec<Vec<u8>>,
     #[clap(long)]
     /// The recipient address that will receive the funds
@@ -660,7 +660,7 @@ pub struct SendMultisigUtxoArgs {
     pub recipient_address: TariAddress,
 
     // signatures
-    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',')]
+    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',', num_args = 1..)]
     pub schnorr_signatures: Vec<Vec<u8>>,
 }
 
