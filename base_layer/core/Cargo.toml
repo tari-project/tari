@@ -50,7 +50,7 @@ dirs-next = "1.0.2"
 fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hickory-proto = { version = "0.26.0-alpha.1" }
+hickory-proto = { version = "0.26.0" }
 integer-encoding = "3.0"
 jmt = { version = "0.11.0", features = ["mocks"] }
 lmdb-zero = "0.4.4"
@@ -103,4 +103,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 
 [package.metadata.cargo-machete]
-ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2
+ignored = ["hickory-proto"]
