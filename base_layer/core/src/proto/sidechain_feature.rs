@@ -454,6 +454,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
             justify_id: value.justify_id.try_into().map_err(|_| "Invalid justify id")?,
             height: value.height,
             epoch: value.epoch,
+            epoch_hash: value.epoch_hash.try_into().map_err(|_| "Invalid epoch hash")?,
             shard_group: value.shard_group.ok_or("missing shard_group")?.try_into()?,
             proposed_by: CompressedPublicKey::from_canonical_bytes(&value.proposed_by)
                 .map_err(|_| "Invalid proposed_by public key")?,
@@ -483,6 +484,7 @@ impl From<&SidechainBlockHeader> for proto::types::SidechainBlockHeader {
             justify_id: value.justify_id.to_vec(),
             height: value.height,
             epoch: value.epoch,
+            epoch_hash: value.epoch_hash.to_vec(),
             shard_group: Some(value.shard_group.into()),
             proposed_by: value.proposed_by.to_vec(),
             state_merkle_root: value.state_merkle_root.to_vec(),
