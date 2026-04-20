@@ -66,9 +66,7 @@ impl DnsClient {
                 opts.timeout = std::time::Duration::from_secs(1);
                 TokioResolver::builder_tokio()?.with_options(opts).build()?
             },
-            DnsNameServer::Custom { addr, dns_name: _ } => {
-                Self::create_resolver(NameServerConfig::udp(addr.ip()))?
-            },
+            DnsNameServer::Custom { addr, dns_name: _ } => Self::create_resolver(NameServerConfig::udp(addr.ip()))?,
         };
 
         Ok(Self { resolver })
@@ -100,11 +98,7 @@ impl DnsClient {
                         .iter()
                         .map(|chunk| String::from_utf8_lossy(chunk).to_string())
                         .collect::<String>();
-                    if text.is_empty() {
-                        None
-                    } else {
-                        Some(text)
-                    }
+                    if text.is_empty() { None } else { Some(text) }
                 },
                 other => {
                     warn!(
