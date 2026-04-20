@@ -54,7 +54,7 @@ use crate::output_manager_service::{
     storage::{
         database::OutputBackendQuery,
         models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-        sqlite_db::CoinBucket,
+        sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
 };
 
@@ -103,6 +103,7 @@ pub enum OutputManagerRequest {
         fee_per_gram: MicroMinotari,
         script: TariScript,
         covenant: Covenant,
+        memo: MemoField,
     },
     GetTransactionBuilderRangeLimitedCoinJoin {
         tx_id: TxId,
@@ -166,7 +167,15 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    FetchOutputsByTxId(TxId),
     FetchUnspentOutputs(Vec<HashOutput>),
+    GetOutputsByCommitments(Vec<CompressedCommitment>),
+    UpdateOutputValidationState {
+        mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        spent_updates: Vec<SpentOutputInfoForBatch>,
+        unmined_invalid: Vec<FixedHash>,
+        unspent_updates: Vec<(FixedHash, bool)>,
+    },
     ClearShortTermEncumberances,
 }
 
@@ -292,11 +301,28 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            FetchOutputsByTxId(t) => write!(f, "FetchOutputsByTxId: {}", t),
             FetchUnspentOutputs(hashes) => write!(f, "FetchUnspentOutputs: {:?}", hashes),
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
             GetOutputsByQuery(query) => write!(f, "GetOutputsByQuery: {:?}", query),
             ScanOutputsForMultisig(_) => write!(f, "ScanOutputsForMultisig"),
             GetManyOutputs { outputs } => write!(f, "GetManyOutputs ({})", outputs.len()),
+            GetOutputsByCommitments(commitments) => {
+                write!(f, "GetOutputsByCommitments ({})", commitments.len())
+            },
+            UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            } => write!(
+                f,
+                "UpdateOutputValidationState (mined: {}, spent: {}, unmined_invalid: {}, unspent: {})",
+                mined_updates.len(),
+                spent_updates.len(),
+                unmined_invalid.len(),
+                unspent_updates.len()
+            ),
         }
     }
 }
@@ -354,6 +380,7 @@ pub enum OutputManagerResponse<KM> {
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
     FetchUnspentOutputs(Vec<TransactionOutput>),
     ConfirmEncumberance,
+    OutputValidationStateUpdated,
     ClearShortTermEncumberances,
 }
 
@@ -592,6 +619,7 @@ where KM: LegacyTransactionKeyManagerInterface
         fee_per_gram: MicroMinotari,
         script: TariScript,
         covenant: Covenant,
+        memo_field: MemoField,
     ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
@@ -603,6 +631,7 @@ where KM: LegacyTransactionKeyManagerInterface
                 fee_per_gram,
                 script,
                 covenant,
+                memo: memo_field,
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetTransactionBuilder({e})"))??
@@ -754,6 +783,52 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::Outputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::GetManyOutputs".to_string(),
+            )),
+        }
+    }
+
+    pub async fn get_outputs_by_commitments(
+        &mut self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputsByCommitments(commitments))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetOutputsByCommitments({e})"))??
+        {
+            OutputManagerResponse::Outputs(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::GetOutputsByCommitments".to_string(),
+            )),
+        }
+    }
+
+    pub async fn update_output_validation_state(
+        &mut self,
+        mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        spent_updates: Vec<SpentOutputInfoForBatch>,
+        unmined_invalid: Vec<FixedHash>,
+        unspent_updates: Vec<(FixedHash, bool)>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            })
+            .await
+            .inspect_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "OutputManagerRequest::UpdateOutputValidationState({e})"
+                )
+            })?? {
+            OutputManagerResponse::OutputValidationStateUpdated => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::UpdateOutputValidationState".to_string(),
             )),
         }
     }
@@ -1196,6 +1271,20 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::ReinstateCancelledInboundTx".to_string(),
+            )),
+        }
+    }
+
+    pub async fn fetch_outputs_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::FetchOutputsByTxId(tx_id))
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::FetchOutputsByTxId({e})"))??
+        {
+            OutputManagerResponse::Outputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::FetchOutputsByTxId".to_string(),
             )),
         }
     }

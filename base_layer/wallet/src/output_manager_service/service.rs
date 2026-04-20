@@ -58,6 +58,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
+    TransactionBuilderError,
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
     fee::Fee,
@@ -342,6 +343,7 @@ where
                 fee_per_gram,
                 script,
                 covenant,
+                memo,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -351,6 +353,7 @@ where
                     *output_features,
                     script,
                     covenant,
+                    memo,
                 )
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::GetTransactionBuilderRangeLimitedCoinJoin {
@@ -442,6 +445,32 @@ where
                 let outputs = self.fetch_many_outputs(&outputs)?;
                 Ok(OutputManagerResponse::Outputs(outputs))
             },
+            OutputManagerRequest::GetOutputsByCommitments(commitments) => {
+                let outputs = self.fetch_outputs_by_commitments(&commitments)?;
+                Ok(OutputManagerResponse::Outputs(outputs))
+            },
+            OutputManagerRequest::UpdateOutputValidationState {
+                mined_updates,
+                spent_updates,
+                unmined_invalid,
+                unspent_updates,
+            } => {
+                if !mined_updates.is_empty() {
+                    self.resources
+                        .db
+                        .set_received_outputs_mined_height_and_statuses(mined_updates)?;
+                }
+                if !spent_updates.is_empty() {
+                    self.resources.db.mark_outputs_as_spent(spent_updates)?;
+                }
+                if !unmined_invalid.is_empty() {
+                    self.resources.db.set_outputs_to_unmined_and_invalid(unmined_invalid)?;
+                }
+                if !unspent_updates.is_empty() {
+                    self.resources.db.mark_outputs_as_unspent(unspent_updates)?;
+                }
+                Ok(OutputManagerResponse::OutputValidationStateUpdated)
+            },
             OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
                     self.preview_coin_join_with_commitments(commitments, fee_per_gram)
@@ -523,6 +552,13 @@ where
             OutputManagerRequest::GetOutputInfoByTxId(tx_id) => {
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
+            },
+            OutputManagerRequest::FetchOutputsByTxId(tx_id) => {
+                let outputs = self
+                    .resources
+                    .db
+                    .fetch_outputs_by_tx_id(tx_id, &self.resources.key_manager)?;
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
 
             OutputManagerRequest::FetchUnspentOutputs(hashes) => {
@@ -838,6 +874,14 @@ where
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {amount}. Fee per gram: {fee_per_gram}. Num kernels: {num_kernels}. Num outputs: {num_outputs}"
         );
+        let recipient_memo = MemoField::new_address_and_data(
+            TariAddress::default(),
+            0.into(),
+            true,
+            TxType::PaymentToOther,
+            Vec::new(),
+        )
+        .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
         // We assume that default OutputFeatures and PushPubKey TariScript is used
         let features_and_scripts_byte_size = self
             .resources
@@ -852,7 +896,8 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     Covenant::new()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_memo.get_size(),
             );
 
         let utxo_selection = match self.select_utxos(
@@ -861,6 +906,7 @@ where
             fee_per_gram,
             num_outputs,
             features_and_scripts_byte_size * num_outputs,
+            Vec::new(),
         ) {
             Ok(v) => Ok(v),
             Err(OutputManagerError::FundsPending | OutputManagerError::NotEnoughFunds) => {
@@ -909,6 +955,7 @@ where
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        recipient_memo_field: MemoField,
     ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -927,7 +974,8 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     recipient_covenant
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_memo_field.get_size(),
             );
 
         let input_selection = self.select_utxos(
@@ -936,6 +984,7 @@ where
             fee_per_gram,
             1,
             features_and_scripts_byte_size,
+            recipient_memo_field.get_payment_id(),
         )?;
 
         let mut builder = TransactionBuilder::new(
@@ -1589,6 +1638,14 @@ where
         }
         let covenant = Covenant::default();
 
+        let own_memo = MemoField::new_address_and_data(
+            TariAddress::default(),
+            0.into(),
+            true,
+            TxType::PaymentToOther,
+            Vec::new(),
+        )
+        .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
@@ -1602,7 +1659,8 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     covenant
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    own_memo.get_size(),
             );
 
         let input_selection = self.select_utxos(
@@ -1611,6 +1669,7 @@ where
             fee_per_gram,
             1,
             features_and_scripts_byte_size,
+            Vec::new(),
         )?;
 
         // Create builder with no recipients (other than ourselves)
@@ -1729,6 +1788,7 @@ where
         fee_per_gram: MicroMinotari,
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
+        recipient_payment_id: Vec<u8>,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1790,6 +1850,16 @@ where
                 criteria: selection_criteria,
             });
         } // Assumes that default Outputfeatures are used for change utxo
+        let change_memo = MemoField::new_transaction_info(
+            TariAddress::default(),
+            MicroMinotari::default(),
+            amount,
+            true,
+            TxType::PaymentToOther,
+            vec![FixedHash::default()],
+            recipient_payment_id,
+        )
+        .map_err(TransactionBuilderError::InvalidMemo)?;
         let output_features_estimate = OutputFeatures::default();
         let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
             output_features_estimate
@@ -1800,7 +1870,8 @@ where
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                 TariScript::default()
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                change_memo.get_size(),
         );
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
@@ -2090,6 +2161,25 @@ where
             .fetch_many_outputs(outputs, &self.resources.key_manager)?)
     }
 
+    pub fn fetch_outputs_by_commitments(
+        &self,
+        commitments: &[CompressedCommitment],
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        let mut results = Vec::new();
+        for commitment in commitments {
+            match self
+                .resources
+                .db
+                .fetch_by_commitment(commitment.clone(), &self.resources.key_manager)
+            {
+                Ok(output) => results.push(output),
+                Err(OutputManagerStorageError::ValueNotFound) => {},
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(results)
+    }
+
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
         Ok(self
             .resources
@@ -2261,6 +2351,7 @@ where
                     self.default_features_and_scripts_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
                         number_of_splits,
+                    Vec::new(),
                 )?;
 
                 self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)
@@ -3289,8 +3380,8 @@ impl UtxoSelection {
 #[derive(Debug, Clone)]
 pub struct OutputInfoByTxId {
     pub statuses: Vec<OutputStatus>,
-    pub(crate) mined_height: Option<u64>,
-    pub(crate) block_hash: Option<BlockHash>,
+    pub mined_height: Option<u64>,
+    pub block_hash: Option<BlockHash>,
 }
 
 impl Display for OutputInfoByTxId {

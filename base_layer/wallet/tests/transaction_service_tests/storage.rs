@@ -308,6 +308,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             sent_output_hashes: vec![],
             change_output_hashes: vec![],
             received_output_hashes: vec![],
+            lock_height: 0,
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -356,6 +357,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0,
         true,
         completed_txs[0].status,
+        10,
     )
     .unwrap();
 
@@ -453,6 +455,7 @@ async fn import_tx_and_read_it_from_db() {
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
         MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+        0,
     )
     .unwrap();
 
@@ -482,6 +485,7 @@ async fn import_tx_and_read_it_from_db() {
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
         MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+        0,
     )
     .unwrap();
 
@@ -511,6 +515,7 @@ async fn import_tx_and_read_it_from_db() {
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
         MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+        0,
     )
     .unwrap();
 
@@ -537,4 +542,253 @@ async fn import_tx_and_read_it_from_db() {
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(7));
+}
+
+#[tokio::test]
+/// Test that a CompletedTransaction with a lock_height correctly transitions through:
+///   MinedUnconfirmed → MinedConfirmedLocked (confirmed but tip < lock_height) → MinedConfirmed (tip >= lock_height)
+async fn test_lock_height_status_transitions() {
+    let db_name = format!("{}.sqlite3", random::string(8));
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{db_folder}/{db_name}");
+    let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+    let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
+
+    // Create a completed transaction with lock_height = 20 (outputs locked until block 20)
+    let lock_height = 20u64;
+    let tx_id = TxId::from(100u64);
+    let transaction = CompletedTransaction::new(
+        tx_id,
+        TariAddress::default(),
+        TariAddress::default(),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(100),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        LegacyTransactionStatus::Completed,
+        Utc::now(),
+        TransactionDirection::Inbound,
+        None,
+        None,
+        MemoField::new_open_from_string("lock height test", TxType::PaymentToOther).unwrap(),
+        lock_height,
+    )
+    .unwrap();
+
+    // Verify lock_height was stored
+    assert_eq!(transaction.lock_height, lock_height);
+
+    // Insert the transaction
+    db.insert_completed_transaction(tx_id, transaction).unwrap();
+
+    // Verify it was stored with the correct lock_height
+    let retrieved = db.get_completed_transaction(tx_id).unwrap();
+    assert_eq!(retrieved.lock_height, lock_height);
+    assert_eq!(retrieved.status, LegacyTransactionStatus::Completed);
+
+    // Step 1: Mark as mined but not yet confirmed (tip_height=12, not enough confirmations)
+    // This should transition to MinedUnconfirmed regardless of lock_height
+    db.set_transaction_mined_height(
+        tx_id,
+        10,                // mined_height
+        FixedHash::zero(), // mined_in_block
+        0,                 // mined_timestamp
+        false,             // must_be_confirmed = false (not enough confirmations yet)
+        LegacyTransactionStatus::Completed,
+        12, // tip_height
+    )
+    .unwrap();
+
+    let retrieved = db.get_completed_transaction(tx_id).unwrap();
+    assert_eq!(
+        retrieved.status,
+        LegacyTransactionStatus::MinedUnconfirmed,
+        "Transaction should be MinedUnconfirmed when not enough confirmations"
+    );
+
+    // Step 2: Mark as confirmed but tip < lock_height (tip=15, lock_height=20)
+    // This should transition to MinedConfirmedLocked
+    db.set_transaction_mined_height(
+        tx_id,
+        10,                // mined_height
+        FixedHash::zero(), // mined_in_block
+        0,                 // mined_timestamp
+        true,              // must_be_confirmed = true (enough confirmations)
+        LegacyTransactionStatus::MinedUnconfirmed,
+        15, // tip_height < lock_height(20) → should be Locked
+    )
+    .unwrap();
+
+    let retrieved = db.get_completed_transaction(tx_id).unwrap();
+    assert_eq!(
+        retrieved.status,
+        LegacyTransactionStatus::MinedConfirmedLocked,
+        "Transaction should be MinedConfirmedLocked when confirmed but tip ({}) < lock_height ({})",
+        15,
+        lock_height
+    );
+    assert!(
+        retrieved.status.is_locked(),
+        "is_locked() should return true for MinedConfirmedLocked"
+    );
+    assert!(
+        retrieved.status.is_confirmed(),
+        "is_confirmed() should return true for MinedConfirmedLocked"
+    );
+    assert!(
+        retrieved.status.is_mined(),
+        "is_mined() should return true for MinedConfirmedLocked"
+    );
+
+    // Step 3: Tip advances past lock_height (tip=25, lock_height=20)
+    // This should transition to MinedConfirmed (fully unlocked)
+    db.set_transaction_mined_height(
+        tx_id,
+        10,                // mined_height
+        FixedHash::zero(), // mined_in_block
+        0,                 // mined_timestamp
+        true,              // must_be_confirmed = true
+        LegacyTransactionStatus::MinedConfirmedLocked,
+        25, // tip_height >= lock_height(20) → should be Confirmed
+    )
+    .unwrap();
+
+    let retrieved = db.get_completed_transaction(tx_id).unwrap();
+    assert_eq!(
+        retrieved.status,
+        LegacyTransactionStatus::MinedConfirmed,
+        "Transaction should be MinedConfirmed when tip ({}) >= lock_height ({})",
+        25,
+        lock_height
+    );
+    assert!(
+        !retrieved.status.is_locked(),
+        "is_locked() should return false for MinedConfirmed"
+    );
+    assert!(
+        retrieved.status.is_confirmed(),
+        "is_confirmed() should return true for MinedConfirmed"
+    );
+
+    // Test the same flow for OneSided transactions
+    let tx_id_os = TxId::from(101u64);
+    let os_transaction = CompletedTransaction::new(
+        tx_id_os,
+        TariAddress::default(),
+        TariAddress::default(),
+        MicroMinotari::from(50000),
+        MicroMinotari::from(50),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        LegacyTransactionStatus::OneSidedUnconfirmed,
+        Utc::now(),
+        TransactionDirection::Inbound,
+        Some(10),
+        None,
+        MemoField::new_open_from_string("one-sided lock test", TxType::PaymentToOther).unwrap(),
+        lock_height,
+    )
+    .unwrap();
+
+    db.insert_completed_transaction(tx_id_os, os_transaction).unwrap();
+
+    // Confirm with tip < lock_height → OneSidedConfirmedLocked
+    db.set_transaction_mined_height(
+        tx_id_os,
+        10,
+        FixedHash::zero(),
+        0,
+        true,
+        LegacyTransactionStatus::OneSidedUnconfirmed,
+        15, // tip < lock_height(20)
+    )
+    .unwrap();
+
+    let retrieved = db.get_completed_transaction(tx_id_os).unwrap();
+    assert_eq!(
+        retrieved.status,
+        LegacyTransactionStatus::OneSidedConfirmedLocked,
+        "OneSided transaction should be OneSidedConfirmedLocked when tip < lock_height"
+    );
+
+    // Confirm with tip >= lock_height → OneSidedConfirmed
+    db.set_transaction_mined_height(
+        tx_id_os,
+        10,
+        FixedHash::zero(),
+        0,
+        true,
+        LegacyTransactionStatus::OneSidedConfirmedLocked,
+        25, // tip >= lock_height(20)
+    )
+    .unwrap();
+
+    let retrieved = db.get_completed_transaction(tx_id_os).unwrap();
+    assert_eq!(
+        retrieved.status,
+        LegacyTransactionStatus::OneSidedConfirmed,
+        "OneSided transaction should be OneSidedConfirmed when tip >= lock_height"
+    );
+
+    // Test that outbound transactions (lock_height=0) go directly to Confirmed
+    let tx_id_out = TxId::from(102u64);
+    let out_transaction = CompletedTransaction::new(
+        tx_id_out,
+        TariAddress::default(),
+        TariAddress::default(),
+        MicroMinotari::from(25000),
+        MicroMinotari::from(25),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        LegacyTransactionStatus::Broadcast,
+        Utc::now(),
+        TransactionDirection::Outbound,
+        None,
+        None,
+        MemoField::new_open_from_string("outbound test", TxType::PaymentToOther).unwrap(),
+        0, // lock_height = 0 for outbound
+    )
+    .unwrap();
+
+    db.insert_completed_transaction(tx_id_out, out_transaction).unwrap();
+
+    // Confirm with any tip → should go directly to MinedConfirmed (lock_height is 0)
+    db.set_transaction_mined_height(
+        tx_id_out,
+        5,
+        FixedHash::zero(),
+        0,
+        true,
+        LegacyTransactionStatus::Broadcast,
+        8,
+    )
+    .unwrap();
+
+    let retrieved = db.get_completed_transaction(tx_id_out).unwrap();
+    assert_eq!(
+        retrieved.status,
+        LegacyTransactionStatus::MinedConfirmed,
+        "Outbound transaction (lock_height=0) should go directly to MinedConfirmed"
+    );
 }

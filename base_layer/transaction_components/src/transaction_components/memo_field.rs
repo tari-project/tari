@@ -549,6 +549,16 @@ impl MemoField {
         }
     }
 
+    pub fn update_fee(&mut self, new_fee: MicroMinotari) {
+        match self.inner {
+            InnerMemoField::TransactionInfo { fee: ref mut old, .. } |
+            InnerMemoField::AddressAndData { fee: ref mut old, .. } => {
+                *old = new_fee;
+            },
+            _ => {},
+        }
+    }
+
     /// Helper function to set the 'payment_id' of a 'MemoField::TransactionInfo'
     pub fn transaction_info_set_payment_id(&mut self, payment_id: Vec<u8>) -> Result<(), String> {
         if let InnerMemoField::TransactionInfo {

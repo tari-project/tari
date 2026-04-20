@@ -3408,7 +3408,7 @@ impl BlockchainBackend for LMDBDatabase {
         }
 
         // Sort the orphans by age, oldest first
-        orphans.sort_by(|a, b| a.0.cmp(&b.0));
+        orphans.sort_by_key(|a| a.0);
         let mut txn = DbTransaction::new();
         for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {
             if height > horizon_height && removed_count >= num_over_limit {

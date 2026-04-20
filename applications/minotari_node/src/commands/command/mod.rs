@@ -52,6 +52,7 @@ mod quit;
 mod reset_offline_peers;
 mod rewind_blockchain;
 mod search_kernel;
+mod search_output;
 mod search_payref;
 mod search_utxo;
 mod status;
@@ -140,6 +141,7 @@ pub enum Command {
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
     SearchUtxo(search_utxo::Args),
+    SearchOutput(search_output::Args),
     SearchPayref(search_payref::Args),
     SearchKernel(search_kernel::Args),
     GetMempoolStats(get_mempool_stats::Args),
@@ -243,7 +245,6 @@ impl CommandContext {
                 Command::GetBlock(_) |
                 Command::ListHeaders(_) |
                 Command::HeaderStats(_) |
-                Command::SearchUtxo(_) |
                 Command::SearchPayref(_) |
                 Command::SearchKernel(_) |
                 Command::GetMempoolStats(_) |
@@ -255,11 +256,13 @@ impl CommandContext {
                 Command::CreateTlsCerts(_) |
                 Command::PrintEnv(_) |
                 Command::Quit(_) |
+                Command::SearchOutput(_) |
                 Command::Exit(_) => 30,
                 // This test can potentially take a longer time and should be allowed to run longer
                 Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
                 Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
+                Command::SearchUtxo(_) => 1200,
             };
             let fut = self.handle_command(args.command);
             if let Err(e) = time::timeout(Duration::from_secs(time_out), fut).await? {
@@ -314,6 +317,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,
             Command::SearchUtxo(args) => self.handle_command(args).await,
+            Command::SearchOutput(args) => self.handle_command(args).await,
             Command::SearchPayref(args) => self.handle_command(args).await,
             Command::SearchKernel(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,

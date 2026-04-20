@@ -455,7 +455,7 @@ where
                 }
 
                 let mut response = response?;
-                response.blocks.sort_by(|a, b| a.height.cmp(&b.height));
+                response.blocks.sort_by_key(|a| a.height);
                 #[allow(clippy::cast_possible_wrap)]
                 for response in response.blocks {
                     if let Some(previous_block) = &prev_scanned_block {
@@ -837,6 +837,7 @@ where
                 scanned_output,
                 wallet_output.payment_id().clone(),
                 None,
+                wallet_output.max_lock_height(),
             )
             .await?;
 

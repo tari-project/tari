@@ -76,7 +76,7 @@ impl TreeReader for LmdbTreeReader<'_> {
             warn!(target: LOG_TARGET, "found version {version} for key {key:?}");
         }
         // sort by version
-        existing_history.sort_by(|a, b| a.0.cmp(&b.0));
+        existing_history.sort_by_key(|a| a.0);
 
         let latest_value = existing_history.last().and_then(|x| x.1.clone());
 
