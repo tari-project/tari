@@ -469,7 +469,7 @@ where
                         )
                         .await?;
                     let fee = tx_builder.get_fee_estimate_without_change()?;
-                   payment_id.set_fee(fee);
+                    payment_id.set_fee(fee);
 
                     let recipients = [PaymentRecipient {
                         amount,

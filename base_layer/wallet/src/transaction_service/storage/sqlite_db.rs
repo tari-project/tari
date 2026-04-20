@@ -1565,7 +1565,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let txs: Vec<CompletedTransactionSql> = completed_transactions::table
             .filter(completed_transactions::status.eq_any(&confirmed_statuses))
             .filter(completed_transactions::cancelled.is_null())
-            .filter(completed_transactions::lock_height.gt(Some(tip_height as i64)).or(completed_transactions::lock_height.lt(Some(0))))
+            .filter(
+                completed_transactions::lock_height
+                    .gt(Some(tip_height as i64))
+                    .or(completed_transactions::lock_height.lt(Some(0))),
+            )
             .load::<CompletedTransactionSql>(&mut conn)?;
 
         if txs.is_empty() {
