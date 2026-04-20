@@ -152,6 +152,18 @@ impl Listening {
 
         self.network_silence = network_silence;
 
+        // If the node was previously bootstrapped (had completed initial sync at least once), restore the is_synced
+        // flag. This prevents the node from getting stuck after a failed sync attempt: without this, the node would
+        // need to collect `initial_sync_peer_count` metadata events before retrying sync, which can take a very long
+        // time on networks with few peers (especially when the failed peer is banned).
+        if shared.is_bootstrapped() && !self.is_synced {
+            debug!(
+                target: LOG_TARGET,
+                "Restoring is_synced flag from shared bootstrapped state — node was previously synced"
+            );
+            self.is_synced = true;
+        }
+
         if network_silence {
             self.set_synced_response(shared);
             warn!(
