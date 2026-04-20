@@ -161,7 +161,7 @@ impl Listening {
                 target: LOG_TARGET,
                 "Restoring is_synced flag from shared bootstrapped state — node was previously synced"
             );
-            self.is_synced = true;
+            self.set_synced_response(shared);
         }
 
         if network_silence {
