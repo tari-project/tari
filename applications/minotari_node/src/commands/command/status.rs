@@ -167,10 +167,11 @@ impl CommandContext {
 fn format_jmt_status(stats: &DatabaseStats) -> String {
     let stats = &stats.jmt_pruning_stats;
     format!(
-        "stale={} pending={} prune={}",
+        "new_stale={} awaiting_prune={} pruned={} nodes/{} idx",
         format_compact_count(stats.stale_nodes_last_block),
         format_compact_count(stats.total_pending_stale_nodes),
         format_compact_count(stats.last_prune_deleted_nodes),
+        format_compact_count(stats.last_prune_deleted_index),
     )
 }
 
@@ -201,7 +202,10 @@ mod tests {
     #[test]
     fn format_jmt_status_displays_zero_values() {
         let stats = DatabaseStats::default();
-        assert_eq!(format_jmt_status(&stats), "stale=0 pending=0 prune=0");
+        assert_eq!(
+            format_jmt_status(&stats),
+            "new_stale=0 awaiting_prune=0 pruned=0 nodes/0 idx"
+        );
     }
 
     #[test]
@@ -211,9 +215,13 @@ mod tests {
             stale_nodes_last_block: 23,
             total_pending_stale_nodes: 1_400,
             last_prune_deleted_nodes: 120,
+            last_prune_deleted_index: 500,
         };
 
-        assert_eq!(format_jmt_status(&stats), "stale=23 pending=1.4k prune=120");
+        assert_eq!(
+            format_jmt_status(&stats),
+            "new_stale=23 awaiting_prune=1.4k pruned=120 nodes/500 idx"
+        );
     }
 
     #[test]
@@ -223,8 +231,12 @@ mod tests {
             stale_nodes_last_block: 12_400,
             total_pending_stale_nodes: 1_200_000,
             last_prune_deleted_nodes: 0,
+            last_prune_deleted_index: 0,
         };
 
-        assert_eq!(format_jmt_status(&stats), "stale=12k pending=1.2M prune=0");
+        assert_eq!(
+            format_jmt_status(&stats),
+            "new_stale=12k awaiting_prune=1.2M pruned=0 nodes/0 idx"
+        );
     }
 }

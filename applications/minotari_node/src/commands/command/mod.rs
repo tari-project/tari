@@ -49,6 +49,7 @@ mod list_validator_nodes;
 mod period_stats;
 mod ping_peer;
 mod print_env;
+mod prune_jmt;
 mod quit;
 mod reset_offline_peers;
 mod rewind_blockchain;
@@ -134,6 +135,7 @@ pub enum Command {
     ListHeaders(list_headers::Args),
     CheckDb(check_db::Args),
     CompactDb(compact_db::Args),
+    PruneJmt(prune_jmt::Args),
     PeriodStats(period_stats::Args),
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
@@ -263,7 +265,7 @@ impl CommandContext {
                 // This test can potentially take a longer time and should be allowed to run longer
                 Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
-                Command::CheckDb(_) | Command::CompactDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
+                Command::CheckDb(_) | Command::CompactDb(_) | Command::PruneJmt(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
                 Command::SearchUtxo(_) => 1200,
             };
             let fut = self.handle_command(args.command);
@@ -311,6 +313,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::ListHeaders(args) => self.handle_command(args).await,
             Command::CheckDb(args) => self.handle_command(args).await,
             Command::CompactDb(args) => self.handle_command(args).await,
+            Command::PruneJmt(args) => self.handle_command(args).await,
             Command::PeriodStats(args) => self.handle_command(args).await,
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) => self.handle_command(args).await,

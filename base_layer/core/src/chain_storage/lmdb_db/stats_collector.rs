@@ -101,6 +101,8 @@ pub struct JmtPruningStats {
     pub total_pending_stale_nodes: u64,
     /// Number of nodes deleted in the last prune run or batch
     pub last_prune_deleted_nodes: u64,
+    /// Number of stale index entries removed in the last prune run or batch
+    pub last_prune_deleted_index: u64,
 }
 
 /// Statistics data for database operations
@@ -307,9 +309,10 @@ impl LMDBStatsCollector {
         });
     }
 
-    pub fn record_jmt_prune_deleted_nodes(&self, count: u64) {
+    pub fn record_jmt_prune_deleted(&self, nodes: u64, index_entries: u64) {
         self.update_jmt_pruning_stats(|stats| {
-            stats.last_prune_deleted_nodes = count;
+            stats.last_prune_deleted_nodes = nodes;
+            stats.last_prune_deleted_index = index_entries;
         });
     }
 
@@ -616,7 +619,7 @@ mod tests {
         collector.update_metadata(key, &value);
         collector.record_jmt_stale_nodes_last_block(7);
         collector.set_jmt_pending_stale_nodes(11);
-        collector.record_jmt_prune_deleted_nodes(3);
+        collector.record_jmt_prune_deleted(3, 5);
 
         let stats = collector.current_stats();
         assert_eq!(stats.migration_stats.current_height, 50);
@@ -624,5 +627,6 @@ mod tests {
         assert_eq!(stats.jmt_pruning_stats.stale_nodes_last_block, 7);
         assert_eq!(stats.jmt_pruning_stats.total_pending_stale_nodes, 11);
         assert_eq!(stats.jmt_pruning_stats.last_prune_deleted_nodes, 3);
+        assert_eq!(stats.jmt_pruning_stats.last_prune_deleted_index, 5);
     }
 }

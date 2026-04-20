@@ -291,6 +291,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(estimate_compaction() -> CompactionEstimate, "estimate_compaction");
 
+    make_async_fn!(prune_jmt_stale_nodes() -> (u64, u64), "prune_jmt_stale_nodes");
+
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");

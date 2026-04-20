@@ -733,6 +733,7 @@ impl LMDBDatabase {
         let mut pending_stale_node_delta = 0u64;
         let mut latest_stale_nodes_recorded = None;
         let mut recount_pending_stale_nodes = false;
+        let track_jmt_stale_nodes = txn.track_jmt_stale_nodes();
         let write_txn = self.write_transaction()?;
         for (i, op) in txn.operations().iter().enumerate() {
             trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {} ({} of {})", op, i + 1, number_of_operations);
@@ -742,8 +743,12 @@ impl LMDBDatabase {
                     self.insert_header(&write_txn, header.header(), header.accumulated_data())?;
                 },
                 InsertTipBlockBody { block } => {
-                    let stale_count =
-                        self.insert_tip_block_body(&write_txn, block.header(), block.block().body.clone())?;
+                    let stale_count = self.insert_tip_block_body(
+                        &write_txn,
+                        block.header(),
+                        block.block().body.clone(),
+                        track_jmt_stale_nodes,
+                    )?;
                     pending_stale_node_delta = pending_stale_node_delta.saturating_add(stale_count);
                     latest_stale_nodes_recorded = Some(stale_count);
                 },
@@ -914,8 +919,13 @@ impl LMDBDatabase {
                     version,
                     updates,
                 } => {
-                    let stale_count =
-                        self.apply_horizon_state_tree_updates(&write_txn, *previous_version, *version, updates)?;
+                    let stale_count = self.apply_horizon_state_tree_updates(
+                        &write_txn,
+                        *previous_version,
+                        *version,
+                        updates,
+                        track_jmt_stale_nodes,
+                    )?;
                     pending_stale_node_delta = pending_stale_node_delta.saturating_add(stale_count);
                     latest_stale_nodes_recorded = Some(stale_count);
                 },
@@ -1777,6 +1787,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
         body: AggregateBody,
+        track_stale_nodes: bool,
     ) -> Result<u64, ChainStorageError> {
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
@@ -1886,8 +1897,8 @@ impl LMDBDatabase {
             batch.push((smt_key, None));
 
             let features = input_with_output_data.features()?;
-            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
-                let Some(vn_reg) = sidechain_feature.validator_node_registration()
+            if let Some(sidechain_feature) = features.sidechain_feature.as_ref()
+                && let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
                 self.validator_node_store(txn)
                     .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
@@ -1939,10 +1950,12 @@ impl LMDBDatabase {
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         let stale_count = u64::try_from(ops.stale_node_index_batch.len()).map_err(|_| ChainStorageError::OutOfRange)?;
-        smt_writer
-            .write_stale_node_index_batch(&ops.stale_node_index_batch)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        if stale_count > 0 {
+        if track_stale_nodes {
+            smt_writer
+                .write_stale_node_index_batch(&ops.stale_node_index_batch)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        }
+        if track_stale_nodes && stale_count > 0 {
             debug!(
                 target: LOG_TARGET,
                 "JMT pruning: recorded {} stale node(s) at height {}",
@@ -1960,7 +1973,7 @@ impl LMDBDatabase {
             ),
         )?;
 
-        Ok(stale_count)
+        if track_stale_nodes { Ok(stale_count) } else { Ok(0) }
     }
 
     fn validator_node_store<'a, T: Deref<Target = ConstTransaction<'a>>>(
@@ -2346,6 +2359,7 @@ impl LMDBDatabase {
         previous_version: u64,
         version: u64,
         updates: &[HorizonStateTreeUpdate],
+        track_stale_nodes: bool,
     ) -> Result<u64, ChainStorageError> {
         let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let writer = LmdbTreeWriter::new(
@@ -2388,11 +2402,14 @@ impl LMDBDatabase {
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         let stale_count = u64::try_from(ops.stale_node_index_batch.len()).map_err(|_| ChainStorageError::OutOfRange)?;
-        writer
-            .write_stale_node_index_batch(&ops.stale_node_index_batch)
-            .map_err(|e| ChainStorageError::CriticalError(e.to_string()))?;
-
-        Ok(stale_count)
+        if track_stale_nodes {
+            writer
+                .write_stale_node_index_batch(&ops.stale_node_index_batch)
+                .map_err(|e| ChainStorageError::CriticalError(e.to_string()))?;
+            Ok(stale_count)
+        } else {
+            Ok(0)
+        }
     }
 
     fn delete_all_kernels_in_block(
@@ -2679,7 +2696,7 @@ impl LMDBDatabase {
             .prune_stale_nodes(prune_below_version)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         write_txn.commit()?;
-        self.stats_collector.record_jmt_prune_deleted_nodes(result.0);
+        self.stats_collector.record_jmt_prune_deleted(result.0, result.1);
         let pending_stale_nodes = self.current_jmt_stale_index_entry_count()?;
         self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
         Ok(result)
@@ -2702,7 +2719,7 @@ impl LMDBDatabase {
             .prune_stale_nodes_batch(prune_below_version, max_batch_size)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         write_txn.commit()?;
-        self.stats_collector.record_jmt_prune_deleted_nodes(result.0);
+        self.stats_collector.record_jmt_prune_deleted(result.0, result.1);
         let pending_stale_nodes = self.current_jmt_stale_index_entry_count()?;
         self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
         Ok(result)
@@ -4758,8 +4775,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         &MetadataKey::PayrefRebuildStatus.as_u32(),
                     )?
                     .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()));
-                    if let MetadataValue::PayrefRebuildStatus(status) = status_key &&
-                        status.is_rebuilt
+                    if let MetadataValue::PayrefRebuildStatus(status) = status_key
+                        && status.is_rebuilt
                     {
                         info!(
                             target: LOG_TARGET,
@@ -4813,8 +4830,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty() ||
-                current_height < known_good_difficulties.first().expect("is checked").0
+            if known_good_difficulties.is_empty()
+                || current_height < known_good_difficulties.first().expect("is checked").0
             {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(

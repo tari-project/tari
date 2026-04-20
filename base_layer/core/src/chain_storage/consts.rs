@@ -34,3 +34,5 @@ pub const BACKGROUND_PRUNING_CHUNK_SIZE: u64 = 5000;
 pub const JMT_BACKGROUND_PRUNING_BATCH_SIZE: u64 = 10_000;
 /// The interval in milliseconds between JMT background pruning batches.
 pub const JMT_BACKGROUND_PRUNING_INTERVAL_MS: u64 = 500;
+/// The interval in milliseconds to wait when JMT background pruning is idle (caught up or tip too low).
+pub const JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS: u64 = 30_000;

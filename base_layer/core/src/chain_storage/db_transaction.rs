@@ -56,6 +56,7 @@ pub struct HorizonSyncOutputCheckpoint {
 #[derive(Debug)]
 pub struct DbTransaction {
     operations: Vec<WriteOperation>,
+    track_jmt_stale_nodes: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +79,7 @@ impl Default for DbTransaction {
     fn default() -> Self {
         DbTransaction {
             operations: Vec::with_capacity(128),
+            track_jmt_stale_nodes: true,
         }
     }
 }
@@ -333,8 +335,17 @@ impl DbTransaction {
         self
     }
 
+    pub fn set_track_jmt_stale_nodes(&mut self, enabled: bool) -> &mut Self {
+        self.track_jmt_stale_nodes = enabled;
+        self
+    }
+
     pub(crate) fn operations(&self) -> &[WriteOperation] {
         &self.operations
+    }
+
+    pub(crate) fn track_jmt_stale_nodes(&self) -> bool {
+        self.track_jmt_stale_nodes
     }
 
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.

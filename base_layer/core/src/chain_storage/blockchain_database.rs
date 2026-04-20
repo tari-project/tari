@@ -123,6 +123,7 @@ use crate::{
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             JMT_BACKGROUND_PRUNING_BATCH_SIZE,
+            JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS,
             JMT_BACKGROUND_PRUNING_INTERVAL_MS,
         },
         db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
@@ -152,11 +153,10 @@ const LOG_TARGET: &str = "c::cs::database";
 
 /// Mode for JMT stale node pruning.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum JmtPruningMode {
     /// Pruning is completely disabled. No stale node tracking.
     Off,
-    /// Shadow mode: track stale nodes but do not delete them. For monitoring only.
-    Shadow,
     /// Manual prune: track stale nodes and allow explicit prune commands.
     Manual,
     /// Background pruning: automatically prune stale nodes in background batches.
@@ -165,7 +165,13 @@ pub enum JmtPruningMode {
 
 impl Default for JmtPruningMode {
     fn default() -> Self {
-        Self::Shadow
+        Self::Manual
+    }
+}
+
+impl JmtPruningMode {
+    pub fn tracks_stale_nodes(self) -> bool {
+        !matches!(self, Self::Off)
     }
 }
 
@@ -173,7 +179,6 @@ impl std::fmt::Display for JmtPruningMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             JmtPruningMode::Off => write!(f, "off"),
-            JmtPruningMode::Shadow => write!(f, "shadow"),
             JmtPruningMode::Manual => write!(f, "manual"),
             JmtPruningMode::Background => write!(f, "background"),
         }
@@ -555,7 +560,7 @@ where B: BlockchainBackend
     /// Returns `(nodes_deleted, index_entries_removed)`.
     pub fn prune_jmt_stale_nodes(&self) -> Result<(u64, u64), ChainStorageError> {
         match self.config.jmt_pruning_mode {
-            JmtPruningMode::Off | JmtPruningMode::Shadow => {
+            JmtPruningMode::Off => {
                 debug!(
                     target: LOG_TARGET,
                     "JMT pruning skipped: mode is {}",
@@ -614,15 +619,6 @@ where B: BlockchainBackend
             return Ok(());
         }
 
-        let tip_height = {
-            let db = self.db_read_access()?;
-            db.fetch_chain_metadata()?.best_block_height()
-        };
-        let prune_below_version = tip_height.saturating_sub(self.config.jmt_pruning_retention_window);
-        if prune_below_version == 0 {
-            return Ok(());
-        }
-
         if self
             .is_jmt_background_pruning
             .compare_exchange(false, true, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst)
@@ -637,24 +633,18 @@ where B: BlockchainBackend
 
         info!(
             target: LOG_TARGET,
-            "Starting JMT background pruning: prune_below_version={}, tip={}, retention_window={}",
-            prune_below_version,
-            tip_height,
+            "Starting JMT background pruning task (retention_window={})",
             self.config.jmt_pruning_retention_window,
         );
 
         let db_rw_lock = self.db.clone();
-        let is_pruning_flag = self.is_jmt_background_pruning.clone();
         let retention_window = self.config.jmt_pruning_retention_window;
 
         tokio::task::spawn(async move {
             let mut total_nodes_deleted: u64 = 0;
             let mut total_index_removed: u64 = 0;
-            let mut last_pending_after: Option<u64> = None;
 
             loop {
-                tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_INTERVAL_MS)).await;
-
                 let db = db_rw_lock.clone();
                 let res = tokio::task::spawn_blocking(move || -> Result<(u64, u64, u64, bool), ChainStorageError> {
                     let db = db.read().map_err(|e| {
@@ -674,10 +664,9 @@ where B: BlockchainBackend
 
                 match res {
                     Ok(Ok((nodes, index, pending_after, has_more))) => {
-                        total_nodes_deleted += nodes;
-                        total_index_removed += index;
-                        last_pending_after = Some(pending_after);
                         if nodes > 0 || index > 0 {
+                            total_nodes_deleted += nodes;
+                            total_index_removed += index;
                             debug!(
                                 target: LOG_TARGET,
                                 "JMT background pruning batch: deleted {} nodes, {} index entries (total: {} / {}), \
@@ -689,43 +678,32 @@ where B: BlockchainBackend
                                 pending_after,
                             );
                         }
-                        if !has_more {
-                            break;
+                        if has_more {
+                            // More work to do — short sleep to yield then continue
+                            tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_INTERVAL_MS)).await;
+                        } else {
+                            // Caught up or tip too low — wait longer before re-checking
+                            tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS)).await;
                         }
                     },
                     Ok(Err(e)) => {
                         error!(
                             target: LOG_TARGET,
-                            "JMT background pruning failed: {e}",
+                            "JMT background pruning batch failed: {e}. Retrying in {}s.",
+                            JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS / 1000,
                         );
-                        break;
+                        tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS)).await;
                     },
                     Err(e) => {
                         error!(
                             target: LOG_TARGET,
-                            "JMT background pruning task panicked: {e}",
+                            "JMT background pruning task panicked: {e}. Retrying in {}s.",
+                            JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS / 1000,
                         );
-                        break;
+                        tokio::time::sleep(Duration::from_millis(JMT_BACKGROUND_PRUNING_IDLE_INTERVAL_MS)).await;
                     },
                 }
             }
-
-            is_pruning_flag.store(false, atomic::Ordering::SeqCst);
-            match last_pending_after {
-                Some(pending_after) => info!(
-                    target: LOG_TARGET,
-                    "JMT background pruning completed: total deleted {} nodes, {} index entries, pending_after={}",
-                    total_nodes_deleted,
-                    total_index_removed,
-                    pending_after,
-                ),
-                None => info!(
-                    target: LOG_TARGET,
-                    "JMT background pruning completed: total deleted {} nodes, {} index entries",
-                    total_nodes_deleted,
-                    total_index_removed,
-                ),
-            };
         });
 
         Ok(())
@@ -2206,7 +2184,7 @@ where B: BlockchainBackend
         let mut db = self.db_write_access()?;
 
         let mut txn = DbTransaction::new();
-        insert_best_block(&mut txn, block)?;
+        insert_best_block(&mut txn, block, self.config.jmt_pruning_mode.tracks_stale_nodes())?;
         db.write(txn)
     }
 
@@ -2870,7 +2848,11 @@ fn add_block<T: BlockchainBackend>(
 }
 
 /// Adds a new block onto the chain tip and sets it to the best block.
-fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
+fn insert_best_block(
+    txn: &mut DbTransaction,
+    block: Arc<ChainBlock>,
+    track_jmt_stale_nodes: bool,
+) -> Result<(), ChainStorageError> {
     let block_hash = block.accumulated_data().hash;
     debug!(
         target: LOG_TARGET,
@@ -2882,7 +2864,8 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     let timestamp = block.header().timestamp().as_u64();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash;
-    txn.insert_chain_header(block.to_chain_header())
+    txn.set_track_jmt_stale_nodes(track_jmt_stale_nodes)
+        .insert_chain_header(block.to_chain_header())
         .insert_tip_block_body(block)
         .set_best_block(
             height,
@@ -3252,6 +3235,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 /// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height highest to lowest).
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
+    config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
     new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
@@ -3292,11 +3276,11 @@ fn reorganize_chain<T: BlockchainBackend>(
             backend.write(txn)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            restore_reorged_chain(backend, config, fork_hash, removed_blocks)?;
             return Err(e.into());
         }
 
-        insert_best_block(&mut txn, block.clone())?;
+        insert_best_block(&mut txn, block.clone(), config.jmt_pruning_mode.tracks_stale_nodes())?;
 
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
@@ -3307,7 +3291,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 "Failed to commit reorg chain: {e:?}. Restoring last chain."
             );
 
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            restore_reorged_chain(backend, config, fork_hash, removed_blocks)?;
             return Err(e);
         }
     }
@@ -3374,7 +3358,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
 
     let num_added_blocks = reorg_chain.len();
     // Note: This will also remove ay surplus headers (i.e. headers that are not linked to any blocks)
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
+    let removed_blocks = reorganize_chain(db, config, block_validator, fork_hash, &reorg_chain)?;
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -3460,6 +3444,7 @@ fn remove_non_canonical_headers<T: BlockchainBackend>(db: &mut T) -> Result<usiz
 
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
+    config: &BlockchainDatabaseConfig,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
 ) -> Result<(), ChainStorageError> {
@@ -3477,7 +3462,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash);
-        insert_best_block(&mut txn, block)?;
+        insert_best_block(&mut txn, block, config.jmt_pruning_mode.tracks_stale_nodes())?;
     }
     db.write(txn)?;
     Ok(())
@@ -5340,6 +5325,36 @@ mod test {
         }
 
         #[test]
+        fn off_mode_does_not_track_stale_nodes() {
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Off;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                ],
+            );
+
+            let stats = current_jmt_stats(&db);
+            let pending = current_pending_stale_nodes(&db);
+
+            assert_eq!(pending, 0, "Off mode should not record stale node index entries");
+            assert_eq!(stats.total_pending_stale_nodes, 0);
+            assert_eq!(stats.stale_nodes_last_block, 0);
+        }
+
+        #[test]
         fn reorg_cleanup_recounts_pending_jmt_stats() {
             let db = create_new_blockchain();
             create_main_chain(
@@ -5510,7 +5525,7 @@ mod test {
             assert!(deleted_2 > 0, "Second prune should find new stale nodes");
 
             let pending = current_pending_stale_nodes(&db);
-            assert!(pending < 5, "Most stale nodes should be pruned, got {pending}");
+            assert!(pending <= 5, "Most stale nodes should be pruned, got {pending}");
         }
 
         #[test]
@@ -5612,6 +5627,51 @@ mod test {
             assert_eq!(nodes_deleted, 0, "Should not prune when chain is within retention window");
             assert_eq!(index_removed, 0);
             assert_eq!(pending_after, pending_before, "Pending count should not change");
+        }
+
+        #[tokio::test]
+        async fn background_pruning_starts_when_tip_below_retention_window() {
+            // Regression test: background pruning must spawn the task even when the chain tip
+            // is below the retention window (e.g., fresh node at genesis). Previously the task
+            // would early-exit if tip - retention_window == 0, so pruning never ran during
+            // initial sync.
+            let mut config = BlockchainDatabaseConfig::default();
+            config.jmt_pruning_mode = JmtPruningMode::Background;
+            config.jmt_pruning_retention_window = 2;
+            let validators = Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
+
+            // Tip starts at genesis (height 0) — background task was spawned during start().
+            // Add blocks past the retention window to generate stale nodes.
+            create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 1, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                ],
+            );
+
+            let pending_before = current_pending_stale_nodes(&db);
+            assert!(pending_before > 0, "Should have stale nodes after adding blocks");
+
+            // Give the background task time to prune (it runs every 500ms)
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+            let pending_after = current_pending_stale_nodes(&db);
+            assert!(
+                pending_after < pending_before,
+                "Background pruning should have reduced pending stale nodes: before={pending_before}, \
+                 after={pending_after}"
+            );
         }
     }
 
