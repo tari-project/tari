@@ -76,8 +76,7 @@ impl<'a> LmdbTreeWriter<'a> {
             }
         }
 
-        let stale_entries =
-            lmdb_delete_keys_starting_with::<u8>(self.txn, &self.stale_node_index_db, &key)?;
+        let stale_entries = lmdb_delete_keys_starting_with::<u8>(self.txn, &self.stale_node_index_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} stale index entries for version {}", stale_entries.len(), version);
 
         Ok(())
@@ -100,7 +99,13 @@ impl<'a> LmdbTreeWriter<'a> {
             lmdb_key.extend_from_slice(&stale_index.node_key.version().to_be_bytes());
             borsh::BorshSerialize::serialize(&stale_index.node_key.nibble_path(), &mut lmdb_key)?;
             // Value: empty, the key itself encodes all needed info
-            lmdb_insert(self.txn, &self.stale_node_index_db, &lmdb_key, &0u8, "jmt_stale_node_index")?;
+            lmdb_insert(
+                self.txn,
+                &self.stale_node_index_db,
+                &lmdb_key,
+                &0u8,
+                "jmt_stale_node_index",
+            )?;
         }
         trace!(target: LOG_TARGET, "Wrote {} stale node indices", stale_node_index_batch.len());
         Ok(())
@@ -124,9 +129,10 @@ impl<'a> LmdbTreeWriter<'a> {
         max_batch_size: u64,
     ) -> anyhow::Result<(u64, u64, bool)> {
         let access = self.txn.access();
-        let mut cursor = self.txn.cursor(self.stale_node_index_db.as_ref()).map_err(|e| {
-            anyhow::anyhow!("Could not get cursor for jmt_stale_node_index: {e}")
-        })?;
+        let mut cursor = self
+            .txn
+            .cursor(self.stale_node_index_db.as_ref())
+            .map_err(|e| anyhow::anyhow!("Could not get cursor for jmt_stale_node_index: {e}"))?;
 
         let mut stale_keys: Vec<Vec<u8>> = Vec::new();
         let mut has_more = false;
@@ -178,7 +184,12 @@ impl<'a> LmdbTreeWriter<'a> {
                 },
             }
 
-            match lmdb_delete(self.txn, self.stale_node_index_db.as_ref(), stale_key.as_slice(), "jmt_stale_node_index") {
+            match lmdb_delete(
+                self.txn,
+                self.stale_node_index_db.as_ref(),
+                stale_key.as_slice(),
+                "jmt_stale_node_index",
+            ) {
                 Ok(()) => {
                     index_entries_removed += 1;
                 },
@@ -399,7 +410,9 @@ mod test {
             let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
             let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], v).unwrap();
             tree_writer.write_node_batch(&updates.node_batch).unwrap();
-            tree_writer.write_stale_node_index_batch(&updates.stale_node_index_batch).unwrap();
+            tree_writer
+                .write_stale_node_index_batch(&updates.stale_node_index_batch)
+                .unwrap();
             txn.commit().unwrap();
         }
 
@@ -410,7 +423,10 @@ mod test {
         txn.commit().unwrap();
         assert!(nodes_deleted <= 1);
         assert!(index_removed <= 1);
-        assert!(has_more, "Expected has_more=true when batch_size=1 and multiple stale entries exist");
+        assert!(
+            has_more,
+            "Expected has_more=true when batch_size=1 and multiple stale entries exist"
+        );
 
         // Prune remaining with large batch
         let txn = db.db().create_write_txn();
@@ -437,7 +453,9 @@ mod test {
             let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
             let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], v).unwrap();
             tree_writer.write_node_batch(&updates.node_batch).unwrap();
-            tree_writer.write_stale_node_index_batch(&updates.stale_node_index_batch).unwrap();
+            tree_writer
+                .write_stale_node_index_batch(&updates.stale_node_index_batch)
+                .unwrap();
             txn.commit().unwrap();
             roots.push(root);
         }
@@ -472,7 +490,9 @@ mod test {
             let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
             let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], v).unwrap();
             tree_writer.write_node_batch(&updates.node_batch).unwrap();
-            tree_writer.write_stale_node_index_batch(&updates.stale_node_index_batch).unwrap();
+            tree_writer
+                .write_stale_node_index_batch(&updates.stale_node_index_batch)
+                .unwrap();
             txn.commit().unwrap();
             latest_root = root;
         }
@@ -487,7 +507,10 @@ mod test {
         let reader = db.db().create_smt_reader().unwrap();
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let root_after = jmt.get_root_hash(4).unwrap();
-        assert_eq!(latest_root, root_after, "Root hash at the latest version must not change after pruning");
+        assert_eq!(
+            latest_root, root_after,
+            "Root hash at the latest version must not change after pruning"
+        );
     }
 
     #[test]
@@ -511,7 +534,9 @@ mod test {
             let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
             let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value))], v).unwrap();
             tree_writer.write_node_batch(&updates.node_batch).unwrap();
-            tree_writer.write_stale_node_index_batch(&updates.stale_node_index_batch).unwrap();
+            tree_writer
+                .write_stale_node_index_batch(&updates.stale_node_index_batch)
+                .unwrap();
             txn.commit().unwrap();
             roots.push(root);
         }
@@ -532,7 +557,10 @@ mod test {
         let reader = db.db().create_smt_reader().unwrap();
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let root3_after = jmt.get_root_hash(3).unwrap();
-        assert_eq!(roots[3], root3_after, "Root at version 3 must survive after reorg of version 4");
+        assert_eq!(
+            roots[3], root3_after,
+            "Root at version 3 must survive after reorg of version 4"
+        );
     }
 
     #[test]
@@ -568,7 +596,9 @@ mod test {
             let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
             let (_, updates) = jmt.put_value_set(vec![(smt_key, Some(vec![v as u8]))], v).unwrap();
             tree_writer.write_node_batch(&updates.node_batch).unwrap();
-            tree_writer.write_stale_node_index_batch(&updates.stale_node_index_batch).unwrap();
+            tree_writer
+                .write_stale_node_index_batch(&updates.stale_node_index_batch)
+                .unwrap();
             txn.commit().unwrap();
         }
 
@@ -602,9 +632,13 @@ mod test {
         let tree_writer = db.db().create_lmdb_tree_writer(&txn);
         let reader = db.db().create_smt_reader().unwrap();
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let (_, u0) = jmt.put_value_set(vec![(smt_key, Some(b"original".to_vec()))], 0).unwrap();
+        let (_, u0) = jmt
+            .put_value_set(vec![(smt_key, Some(b"original".to_vec()))], 0)
+            .unwrap();
         tree_writer.write_node_batch(&u0.node_batch).unwrap();
-        tree_writer.write_stale_node_index_batch(&u0.stale_node_index_batch).unwrap();
+        tree_writer
+            .write_stale_node_index_batch(&u0.stale_node_index_batch)
+            .unwrap();
         txn.commit().unwrap();
 
         // Version 1: update value (makes version-0 nodes stale)
@@ -614,7 +648,9 @@ mod test {
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let (_, u1) = jmt.put_value_set(vec![(smt_key, None)], 1).unwrap();
         tree_writer.write_node_batch(&u1.node_batch).unwrap();
-        tree_writer.write_stale_node_index_batch(&u1.stale_node_index_batch).unwrap();
+        tree_writer
+            .write_stale_node_index_batch(&u1.stale_node_index_batch)
+            .unwrap();
         txn.commit().unwrap();
 
         // Version 2: re-insert with new value
@@ -622,9 +658,13 @@ mod test {
         let tree_writer = db.db().create_lmdb_tree_writer(&txn);
         let reader = db.db().create_smt_reader().unwrap();
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let (root2, u2) = jmt.put_value_set(vec![(smt_key, Some(b"updated".to_vec()))], 2).unwrap();
+        let (root2, u2) = jmt
+            .put_value_set(vec![(smt_key, Some(b"updated".to_vec()))], 2)
+            .unwrap();
         tree_writer.write_node_batch(&u2.node_batch).unwrap();
-        tree_writer.write_stale_node_index_batch(&u2.stale_node_index_batch).unwrap();
+        tree_writer
+            .write_stale_node_index_batch(&u2.stale_node_index_batch)
+            .unwrap();
         txn.commit().unwrap();
 
         // Prune all stale below version 2
@@ -669,7 +709,9 @@ mod test {
             let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
             let (_root, updates) = jmt.put_value_set(entries, v).unwrap();
             tree_writer.write_node_batch(&updates.node_batch).unwrap();
-            tree_writer.write_stale_node_index_batch(&updates.stale_node_index_batch).unwrap();
+            tree_writer
+                .write_stale_node_index_batch(&updates.stale_node_index_batch)
+                .unwrap();
             txn.commit().unwrap();
         }
 
@@ -707,16 +749,25 @@ mod test {
         println!("Versions: {num_versions}, Keys per version: {keys_per_version}");
         println!("BEFORE pruning:");
         println!("  jmt_node_data entries: {nodes_before}");
-        println!("  jmt_node_data total size: {size_before} bytes ({:.2} KB)", size_before as f64 / 1024.0);
+        println!(
+            "  jmt_node_data total size: {size_before} bytes ({:.2} KB)",
+            size_before as f64 / 1024.0
+        );
         println!("  jmt_stale_node_index entries: {stale_entries}");
         println!("AFTER pruning:");
         println!("  jmt_node_data entries: {nodes_after}");
-        println!("  jmt_node_data total size: {size_after} bytes ({:.2} KB)", size_after as f64 / 1024.0);
+        println!(
+            "  jmt_node_data total size: {size_after} bytes ({:.2} KB)",
+            size_after as f64 / 1024.0
+        );
         println!("  jmt_stale_node_index entries: {stale_after}");
         println!("RESULTS:");
         println!("  Nodes deleted: {nodes_deleted}");
         println!("  Index entries removed: {index_removed}");
-        println!("  Node count reduction: {nodes_before} -> {nodes_after} ({:.1}%)", (1.0 - nodes_after as f64 / nodes_before as f64) * 100.0);
+        println!(
+            "  Node count reduction: {nodes_before} -> {nodes_after} ({:.1}%)",
+            (1.0 - nodes_after as f64 / nodes_before as f64) * 100.0
+        );
         println!("  Storage reduction: {reduction_pct:.1}%");
         println!("=============================");
 
@@ -726,7 +777,10 @@ mod test {
             "Expected ≥50% storage reduction, got {reduction_pct:.1}% (before={size_before}, after={size_after})"
         );
         assert!(nodes_deleted > 0, "Expected nodes to be deleted");
-        assert_eq!(stale_after, 0, "All stale index entries should be removed after full prune");
+        assert_eq!(
+            stale_after, 0,
+            "All stale index entries should be removed after full prune"
+        );
     }
 
     /// AC 1.1: Root hash consistency after pruning.
@@ -2149,9 +2203,9 @@ mod test {
             .unwrap();
         txn.commit().unwrap();
 
-        let total_stale = updates0.stale_node_index_batch.len()
-            + updates1.stale_node_index_batch.len()
-            + updates2.stale_node_index_batch.len();
+        let total_stale = updates0.stale_node_index_batch.len() +
+            updates1.stale_node_index_batch.len() +
+            updates2.stale_node_index_batch.len();
         assert!(total_stale > 0, "Expected some stale nodes to prune");
 
         // Prune stale nodes with stale_since_version < 2
@@ -2170,6 +2224,9 @@ mod test {
         let reader = db.db().create_smt_reader().unwrap();
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let root2_after_prune = jmt.get_root_hash(2).unwrap();
-        assert_eq!(root2, root2_after_prune, "Root hash at version 2 should be unchanged after pruning");
+        assert_eq!(
+            root2, root2_after_prune,
+            "Root hash at version 2 should be unchanged after pruning"
+        );
     }
 }

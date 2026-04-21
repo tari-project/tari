@@ -1897,8 +1897,8 @@ impl LMDBDatabase {
             batch.push((smt_key, None));
 
             let features = input_with_output_data.features()?;
-            if let Some(sidechain_feature) = features.sidechain_feature.as_ref()
-                && let Some(vn_reg) = sidechain_feature.validator_node_registration()
+            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
+                let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
                 self.validator_node_store(txn)
                     .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
@@ -4759,8 +4759,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         &MetadataKey::PayrefRebuildStatus.as_u32(),
                     )?
                     .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()));
-                    if let MetadataValue::PayrefRebuildStatus(status) = status_key
-                        && status.is_rebuilt
+                    if let MetadataValue::PayrefRebuildStatus(status) = status_key &&
+                        status.is_rebuilt
                     {
                         info!(
                             target: LOG_TARGET,
@@ -4814,8 +4814,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty()
-                || current_height < known_good_difficulties.first().expect("is checked").0
+            if known_good_difficulties.is_empty() ||
+                current_height < known_good_difficulties.first().expect("is checked").0
             {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(

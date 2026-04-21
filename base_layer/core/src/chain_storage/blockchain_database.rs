@@ -5294,14 +5294,10 @@ mod test {
             let mut db = TempDatabase::new();
 
             let mut txn = DbTransaction::new();
-            txn.apply_horizon_state_tree_updates(
-                0,
-                1,
-                vec![HorizonStateTreeUpdate {
-                    key: FixedHash::from([1u8; 32]),
-                    value: Some(FixedHash::from([11u8; 32])),
-                }],
-            );
+            txn.apply_horizon_state_tree_updates(0, 1, vec![HorizonStateTreeUpdate {
+                key: FixedHash::from([1u8; 32]),
+                value: Some(FixedHash::from([11u8; 32])),
+            }]);
             db.write(txn).unwrap();
 
             let stats = db.stats_collector().current_stats().jmt_pruning_stats;
@@ -5324,16 +5320,13 @@ mod test {
             );
             let db =
                 create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+            ]);
 
             let pending_before = current_pending_stale_nodes(&db);
             let (nodes_deleted, index_entries_removed) = db.prune_jmt_stale_nodes().unwrap();
@@ -5359,16 +5352,13 @@ mod test {
             );
             let db =
                 create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+            ]);
 
             let stats = current_jmt_stats(&db);
             let pending = current_pending_stale_nodes(&db);
@@ -5381,16 +5371,13 @@ mod test {
         #[test]
         fn reorg_cleanup_recounts_pending_jmt_stats() {
             let db = create_new_blockchain();
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+            ]);
 
             let pending_before = current_pending_stale_nodes(&db);
             db.rewind_to_height(2).unwrap();
@@ -5404,10 +5391,12 @@ mod test {
         #[test]
         fn startup_initializes_pending_jmt_stats_from_db() {
             let db = create_new_blockchain();
-            create_main_chain(
-                &db,
-                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+            ]);
 
             let pending_before = current_pending_stale_nodes(&db);
             db.test_db_write_access().unwrap().disable_delete_on_drop();
@@ -5434,30 +5423,27 @@ mod test {
                 MockValidator::new(true),
                 MockValidator::new(true),
             );
-            let db = create_store_with_consensus_and_validators_and_config(
-                create_consensus_rules(),
-                validators,
-                config,
-            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
 
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                    ("F->E", 1, 120),
-                    ("G->F", 1, 120),
-                    ("H->G", 1, 120),
-                    ("I->H", 1, 120),
-                    ("J->I", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+                ("F->E", 1, 120),
+                ("G->F", 1, 120),
+                ("H->G", 1, 120),
+                ("I->H", 1, 120),
+                ("J->I", 1, 120),
+            ]);
 
             let pending_before = current_pending_stale_nodes(&db);
-            assert!(pending_before > 0, "Should have accumulated stale nodes after 10 blocks");
+            assert!(
+                pending_before > 0,
+                "Should have accumulated stale nodes after 10 blocks"
+            );
 
             let node_count_before = db.db_read_access().unwrap().jmt_node_entry_count();
 
@@ -5507,24 +5493,18 @@ mod test {
                 MockValidator::new(true),
                 MockValidator::new(true),
             );
-            let db = create_store_with_consensus_and_validators_and_config(
-                create_consensus_rules(),
-                validators,
-                config,
-            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
 
             // Phase 1: add 6 blocks, prune
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                    ("F->E", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+                ("F->E", 1, 120),
+            ]);
             let (deleted_1, _) = db.prune_jmt_stale_nodes().unwrap();
             assert!(deleted_1 > 0);
 
@@ -5535,11 +5515,8 @@ mod test {
                 .try_into_chain_block()
                 .map(Arc::new)
                 .unwrap();
-            let (names, chain) = create_chained_blocks(
-                &db,
-                &[("G->GB", 1, 120), ("H->G", 1, 120), ("I->H", 1, 120)],
-                block_f,
-            );
+            let (names, chain) =
+                create_chained_blocks(&db, &[("G->GB", 1, 120), ("H->G", 1, 120), ("I->H", 1, 120)], block_f);
             for name in &names {
                 db.add_block(chain.get(name).unwrap().to_arc_block()).unwrap();
             }
@@ -5567,16 +5544,10 @@ mod test {
                 MockValidator::new(true),
                 MockValidator::new(true),
             );
-            let db = create_store_with_consensus_and_validators_and_config(
-                create_consensus_rules(),
-                validators,
-                config,
-            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
 
-            create_main_chain(
-                &db,
-                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)],
-            );
+            create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)]);
 
             let (nodes_deleted, index_removed) = db.prune_jmt_stale_nodes().unwrap();
             assert_eq!(nodes_deleted, 0);
@@ -5595,22 +5566,16 @@ mod test {
                 MockValidator::new(true),
                 MockValidator::new(true),
             );
-            let db = create_store_with_consensus_and_validators_and_config(
-                create_consensus_rules(),
-                validators,
-                config,
-            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
 
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+            ]);
 
             let (deleted_1, index_1) = db.prune_jmt_stale_nodes().unwrap();
             assert!(deleted_1 > 0);
@@ -5642,23 +5607,20 @@ mod test {
                 MockValidator::new(true),
                 MockValidator::new(true),
             );
-            let db = create_store_with_consensus_and_validators_and_config(
-                create_consensus_rules(),
-                validators,
-                config,
-            );
+            let db =
+                create_store_with_consensus_and_validators_and_config(create_consensus_rules(), validators, config);
 
             // Only 3 blocks — well within retention window of 10
-            create_main_chain(
-                &db,
-                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)],
-            );
+            create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)]);
 
             let pending_before = current_pending_stale_nodes(&db);
             let (nodes_deleted, index_removed) = db.prune_jmt_stale_nodes().unwrap();
             let pending_after = current_pending_stale_nodes(&db);
 
-            assert_eq!(nodes_deleted, 0, "Should not prune when chain is within retention window");
+            assert_eq!(
+                nodes_deleted, 0,
+                "Should not prune when chain is within retention window"
+            );
             assert_eq!(index_removed, 0);
             assert_eq!(pending_after, pending_before, "Pending count should not change");
         }
@@ -5684,17 +5646,14 @@ mod test {
 
             // Tip starts at genesis (height 0) — background task was spawned during start().
             // Add blocks past the retention window to generate stale nodes.
-            create_main_chain(
-                &db,
-                &[
-                    ("A->GB", 1, 120),
-                    ("B->A", 1, 120),
-                    ("C->B", 1, 120),
-                    ("D->C", 1, 120),
-                    ("E->D", 1, 120),
-                    ("F->E", 1, 120),
-                ],
-            );
+            create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 1, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+                ("F->E", 1, 120),
+            ]);
 
             let pending_before = current_pending_stale_nodes(&db);
             assert!(pending_before > 0, "Should have stale nodes after adding blocks");

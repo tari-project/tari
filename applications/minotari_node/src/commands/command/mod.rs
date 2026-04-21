@@ -265,7 +265,11 @@ impl CommandContext {
                 // This test can potentially take a longer time and should be allowed to run longer
                 Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
-                Command::CheckDb(_) | Command::CompactDb(_) | Command::PruneJmt(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
+                Command::CheckDb(_) |
+                Command::CompactDb(_) |
+                Command::PruneJmt(_) |
+                Command::PeriodStats(_) |
+                Command::RewindBlockchain(_) => 600,
                 Command::SearchUtxo(_) => 1200,
             };
             let fut = self.handle_command(args.command);

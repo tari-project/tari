@@ -24,11 +24,11 @@ use std::{fs, path::Path};
 
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_storage::lmdb_store::BYTES_PER_MB;
 use tari_core::{
     chain_storage::{BlockchainBackend, CompactReport, compact_lmdb_database, create_lmdb_database},
     consensus::BaseNodeConsensusManager,
 };
+use tari_storage::lmdb_store::BYTES_PER_MB;
 
 use crate::BaseNodeConfig;
 

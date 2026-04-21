@@ -38,12 +38,14 @@ impl HandleCommand<Args> for CommandContext {
             JmtPruningMode::Manual => {},
             JmtPruningMode::Off => {
                 return Err(anyhow!(
-                    "JMT pruning mode is 'off'. Set [base_node.storage].jmt_pruning_mode = \"manual\" to use prune-jmt."
+                    "JMT pruning mode is 'off'. Set [base_node.storage].jmt_pruning_mode = \"manual\" to use \
+                     prune-jmt."
                 ));
             },
             JmtPruningMode::Background => {
                 return Err(anyhow!(
-                    "JMT pruning mode is 'background'. Automatic pruning is already enabled; switch to 'manual' to use prune-jmt explicitly."
+                    "JMT pruning mode is 'background'. Automatic pruning is already enabled; switch to 'manual' to \
+                     use prune-jmt explicitly."
                 ));
             },
         }
