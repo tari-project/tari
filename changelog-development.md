@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.11](https://github.com/tari-project/tari/compare/v5.3.0-pre.10...v5.3.0-pre.11) (2026-04-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sidechain:** include epoch_hash in sidechain block header (#7767)
+
+### Features
+
+* sparse block header storage for wallet scanner ([#7744](https://github.com/tari-project/tari/issues/7744)) ([317a59a](https://github.com/tari-project/tari/commit/317a59a9f96fce4a70ffcb6004a645241c783f14)), closes [#7738](https://github.com/tari-project/tari/issues/7738)
+
+
+### Bug Fixes
+
+* better sync ([#7774](https://github.com/tari-project/tari/issues/7774)) ([11dc8d2](https://github.com/tari-project/tari/commit/11dc8d2d976e0078f324a4240b20b187818f5849))
+* **sidechain:** include epoch_hash in sidechain block header ([#7767](https://github.com/tari-project/tari/issues/7767)) ([a625c47](https://github.com/tari-project/tari/commit/a625c47600f63932d6227c98f06090fcbc754ee5))
+
 ## [5.3.0-pre.10](https://github.com/tari-project/tari/compare/v5.3.0-pre.9...v5.3.0-pre.10) (2026-04-17)
 
 
