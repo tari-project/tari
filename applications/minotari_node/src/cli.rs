@@ -68,7 +68,7 @@ pub struct Cli {
     #[clap(long)]
     pub print_env: bool,
     /// Path to the libtor data directory
-    #[clap(short = 'z', long, parse(from_os_str))]
+    #[clap(short = 'z', long)]
     pub libtor_data_dir: Option<PathBuf>,
 }
 

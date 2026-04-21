@@ -56,7 +56,7 @@ pub struct CommonCliArgs {
     /// -p esmeralda.p2p.seeds.peer_seeds="<public_key_1>::<address_1>", "<public_key_2>::<address_2>", or,
     /// -p base_node.grpc_server_allow_methods=""
     /// -p esmeralda.p2p.seeds.peer_seeds=""
-    #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
+    #[clap(short = 'p', value_parser = parse_key_val::<String, String>, action = clap::ArgAction::Append)]
     pub config_property_overrides: Vec<(String, String)>,
 }
 

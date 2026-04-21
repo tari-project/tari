@@ -24,7 +24,7 @@ rand = { workspace = true }
 blake2 = "0.10"
 serde_json = "1.0"
 bincode = "1.1"
-criterion = { version = "0.5" }
+criterion = { version = "0.8" }
 
 [lib]
 # Disable libtest from intercepting Criterion bench arguments

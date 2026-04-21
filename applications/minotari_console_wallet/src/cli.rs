@@ -73,13 +73,13 @@ pub struct Cli {
     )]
     pub seed_words: Option<SeedWords>,
     /// Supply the optional file name to save the wallet seed words into
-    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
+    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"])]
     pub seed_words_file_name: Option<PathBuf>,
     /// Run in non-interactive mode, with no UI.
     #[clap(short, long, alias = "non-interactive")]
     pub non_interactive_mode: bool,
     /// Path to input file of commands
-    #[clap(short, long, aliases = &["input", "script"], parse(from_os_str))]
+    #[clap(short, long, aliases = &["input", "script"])]
     pub input_file: Option<PathBuf>,
     /// Single input command
     #[clap(long)]
@@ -106,11 +106,11 @@ pub struct Cli {
     #[clap(long)]
     pub birthday: Option<u16>,
     /// Path to the libtor data directory
-    #[clap(short = 'z', long, parse(from_os_str))]
+    #[clap(short = 'z', long)]
     pub libtor_data_dir: Option<PathBuf>,
     /// Directory where burn proof files are written after a burn transaction completes. If relative, resolved against
     /// base-dir. Defaults to the platform shared data directory (e.g. ~/.local/share/tari/burn_proofs).
-    #[clap(long, alias = "burn-proof-out", parse(from_os_str))]
+    #[clap(long, alias = "burn-proof-out")]
     pub burn_proof_out: Option<PathBuf>,
     /// Skip wallet recovery
     #[clap(long)]
@@ -225,7 +225,7 @@ pub struct PrepareDepositMultisigTransactionArgs {
     /// The number of required signatures
     #[clap(long)]
     pub party_number: u8,
-    #[clap(long, multiple = true)]
+    #[clap(long, num_args = 1..)]
     /// list of public keys of the parties involved in the multisig
     pub public_keys: Vec<UniPublicKey>,
     #[clap(long)]
@@ -237,7 +237,7 @@ pub struct PrepareDepositMultisigTransactionArgs {
 pub struct PrepareWithdrawMultisigTransactionArgs {
     #[clap(long)]
     pub utxo_commitment: String,
-    #[clap(short, long, parse(try_from_str = parse_hex), multiple = true, use_value_delimiter = true)]
+    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',', num_args = 1..)]
     pub schnorr_signatures: Vec<Vec<u8>>,
     #[clap(long)]
     /// The recipient address that will receive the funds
@@ -442,11 +442,11 @@ pub struct MakeItRainArgs {
     pub start_amount: MicroMinotari,
     #[clap(short, long, alias = "tps", default_value_t = 25.0)]
     pub transactions_per_second: f64,
-    #[clap(short, long, parse(try_from_str = parse_duration), default_value="60")]
+    #[clap(short, long, value_parser = parse_duration, default_value = "60")]
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
     pub increase_amount: MicroMinotari,
-    #[clap(long, parse(try_from_str=parse_start_time))]
+    #[clap(long, value_parser = parse_start_time)]
     pub start_time: Option<DateTime<Utc>>,
     #[clap(long, alias = "stealth-one-sided")]
     pub one_sided: bool,
@@ -545,10 +545,10 @@ pub struct ExportAuditArgs {
     #[clap(short, long)]
     pub output_file: PathBuf,
     /// Optional start date/time filter (RFC3339, e.g. "2021-01-01T00:00:00Z" or "2021-01-01")
-    #[clap(long, parse(try_from_str = parse_utc_datetime))]
+    #[clap(long, value_parser = parse_utc_datetime)]
     pub start_date: Option<DateTime<Utc>>,
     /// Optional end date/time filter (RFC3339, e.g. "2021-12-31T23:59:59Z" or "2021-12-31")
-    #[clap(long, parse(try_from_str = parse_utc_datetime))]
+    #[clap(long, value_parser = parse_utc_datetime)]
     pub end_date: Option<DateTime<Utc>>,
     /// Conversion rate from XTM to the selected fiat currency (e.g. 3130.0)
     #[clap(long)]
@@ -594,7 +594,7 @@ impl From<HexError> for CliParseError {
 
 #[derive(Debug, Args, Clone)]
 pub struct FinaliseShaAtomicSwapArgs {
-    #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
+    #[clap(short, long, value_parser = parse_hex, required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(long)]
     pub pre_image: UniPublicKey,
@@ -608,7 +608,7 @@ fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
 
 #[derive(Debug, Args, Clone)]
 pub struct ClaimShaAtomicSwapRefundArgs {
-    #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
+    #[clap(short, long, value_parser = parse_hex, required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub payment_id: String,
@@ -619,11 +619,11 @@ pub struct RegisterValidatorNodeArgs {
     pub amount: MicroMinotari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
-    #[clap(long, parse(try_from_str = parse_hex), required = true)]
+    #[clap(long, value_parser = parse_hex, required = true)]
     pub validator_node_signature: Vec<Vec<u8>>,
     pub validator_node_claim_public_key: UniPublicKey,
     pub epoch: VnEpoch,
-    #[clap(long, parse(try_from_str = parse_hex), required = false)]
+    #[clap(long, value_parser = parse_hex, required = false)]
     pub sidechain_deployment_key: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Registering VN")]
     pub payment_id: String,
@@ -652,7 +652,7 @@ fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> 
 
 #[derive(Debug, Args, Clone)]
 pub struct SendMultisigUtxoArgs {
-    #[clap(long, parse(try_from_str = parse_compressed_commitment))]
+    #[clap(long, value_parser = parse_compressed_commitment)]
     //  The commitment of the multisig UTXO
     pub utxo_commitment: CompressedCommitment,
     #[clap(long)]
@@ -660,14 +660,14 @@ pub struct SendMultisigUtxoArgs {
     pub recipient_address: TariAddress,
 
     // signatures
-    #[clap(short, long, parse(try_from_str = parse_hex), multiple = true, use_value_delimiter = true)]
+    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',', num_args = 1..)]
     pub schnorr_signatures: Vec<Vec<u8>>,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct GetMultisigUtxoDataArgs {
     //  The commitment of the multisig UTXO
-    #[clap(long, parse(try_from_str = parse_compressed_commitment))]
+    #[clap(long, value_parser = parse_compressed_commitment)]
     pub utxo_commitment: CompressedCommitment,
 
     #[clap(short, long)]
@@ -684,7 +684,7 @@ pub struct CreateMultisigUtxoArgs {
     #[clap(long, default_value = "2")]
     pub party_number: u8,
 
-    #[clap(long, multiple = true)]
+    #[clap(long, num_args = 1..)]
     // list of public keys of the parties involved in the multisig
     pub public_keys: Vec<UniPublicKey>,
 
@@ -712,6 +712,6 @@ pub struct RescanWalletArgs {
 #[derive(Debug, Args, Clone)]
 pub struct ValidateOutputsArgs {
     /// Hex-encoded commitments of outputs to validate
-    #[clap(long, multiple = true, required = true)]
+    #[clap(long, num_args = 1.., required = true)]
     pub commitments: Vec<String>,
 }

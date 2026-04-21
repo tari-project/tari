@@ -50,7 +50,7 @@ dirs-next = "1.0.2"
 fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hickory-proto = { version = "0.26.0-alpha.1" }
+hickory-proto = { version = "0.26.0" }
 integer-encoding = "3.0"
 jmt = { version = "0.11.0", features = ["mocks"] }
 lmdb-zero = "0.4.4"
@@ -76,7 +76,7 @@ primitive-types = { version = "0.12", features = ["serde"] }
 url = "2.5.4"
 
 [dev-dependencies]
-criterion = { version = "0.4.0" }
+criterion = { version = "0.8" }
 tari_p2p = { workspace = true, features = ["test-mocks"] }
 tari_test_utils = { workspace = true }
 # SQLite required for the integration tests
@@ -84,7 +84,7 @@ config = { version = "0.14.0" }
 tempfile = "3.1.0"
 quickcheck = "1.0"
 serial_test = "0.5"
-env_logger = "0.7.1"
+env_logger = "0.11"
 
 [build-dependencies]
 tari_common = { workspace = true, features = ["build"] }
@@ -103,4 +103,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 
 [package.metadata.cargo-machete]
-ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2
+ignored = ["hickory-proto"]

@@ -28,7 +28,7 @@ base64 = { workspace = true }
 bitflags = { version = "2.4", features = ["serde"] }
 borsh = { workspace = true, features = ["derive"] }
 
-bytes = "0.5"
+bytes = "1.11.1"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4", default-features = false, features = ["serde", "now"] }
 
@@ -86,4 +86,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 
 [package.metadata.cargo-machete]
-ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2
+ignored = ["hickory-proto"]
