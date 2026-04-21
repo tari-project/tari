@@ -542,13 +542,14 @@ impl WalletBackend for WalletSqliteDatabase {
         ScannedBlockSql::clear_from_and_higher(height, &mut conn)
     }
 
-    fn clear_scanned_blocks_before_height(
-        &self,
-        height: u64,
-        exclude_recovered: bool,
-    ) -> Result<(), WalletStorageError> {
+    fn clear_scanned_blocks_before_height(&self, height: u64) -> Result<(), WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
-        ScannedBlockSql::clear_before_height(height, exclude_recovered, &mut conn)
+        ScannedBlockSql::clear_before_height(height, &mut conn)
+    }
+
+    fn apply_sparse_scanned_blocks_schedule(&self, tip_height: u64) -> Result<(), WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::apply_sparse_schedule(tip_height, &mut conn)
     }
 
     fn change_passphrase(&self, existing: &SafePassword, new: &SafePassword) -> Result<(), WalletStorageError> {

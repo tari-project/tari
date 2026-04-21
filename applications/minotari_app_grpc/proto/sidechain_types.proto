@@ -143,6 +143,7 @@ message SidechainBlockHeader {
   bytes metadata_hash = 10;
   Signature signature = 11;
   ShardGroupAccumulatedData accumulated_data = 12;
+  bytes epoch_hash = 13;
 }
 
 message ShardGroup {

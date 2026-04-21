@@ -506,7 +506,7 @@ mod test {
         // block with only the miner tx and no other transactions
         let hex = "0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000029b892201ffdf882201b699d4c8b1ec020223df524af2a2ef5f870adb6e1ceb03a475c39f8b9ef76aa50b46ddd2a18349402b012839bfa19b7524ec7488917714c216ca254b38ed0424ca65ae828a7c006aeaf10208f5316a7f6b99cca60000";
         // blockhashing blob for above block as accepted by monero
-        let hex_blockhash_blob="0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000602d0d4710e2c2d38da0cce097accdf5dc18b1d34323880c1aae90ab8f6be6e201";
+        let hex_blockhash_blob = "0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000602d0d4710e2c2d38da0cce097accdf5dc18b1d34323880c1aae90ab8f6be6e201";
         let bytes = hex::decode(hex).unwrap();
         let block = deserialize::<monero::Block>(&bytes[..]).unwrap();
         let header = consensus::serialize::<monero::BlockHeader>(&block.header);
@@ -678,7 +678,10 @@ mod test {
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let block = deserialize::<monero::Block>(&bytes[..]).unwrap();
         let input_blob = create_blockhashing_blob_from_block(&block).unwrap();
-        assert_eq!(input_blob, "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000058b030b6800d433bbcb2b560afe2a08e4dc152fa77ead96d37aaf14897d3c09601");
+        assert_eq!(
+            input_blob,
+            "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000058b030b6800d433bbcb2b560afe2a08e4dc152fa77ead96d37aaf14897d3c09601"
+        );
     }
 
     #[test]

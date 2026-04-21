@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.10](https://github.com/tari-project/tari/compare/v5.3.0-pre.9...v5.3.0-pre.10) (2026-04-17)
+
+
+### Features
+
+* convert merge mining cucumber tests to RxT ([#7747](https://github.com/tari-project/tari/issues/7747)) ([f75de46](https://github.com/tari-project/tari/commit/f75de46d4908748e2a479773d3bb5c9a559bafeb))
+
+
+### Bug Fixes
+
+* edge cases ([#7769](https://github.com/tari-project/tari/issues/7769)) ([b32d517](https://github.com/tari-project/tari/commit/b32d51745b1542a7691d4661634dac83a286b65e))
+
+## [5.3.0-pre.10](https://github.com/tari-project/tari/compare/v5.3.0-pre.9...v5.3.0-pre.10) (2026-04-17)
+
+
+### Features
+
+* convert merge mining cucumber tests to RxT ([#7747](https://github.com/tari-project/tari/issues/7747)) ([f75de46](https://github.com/tari-project/tari/commit/f75de46d4908748e2a479773d3bb5c9a559bafeb))
+
 ## [5.3.0-pre.9](https://github.com/tari-project/tari/compare/v5.3.0-pre.8...v5.3.0-pre.9) (2026-04-17)
 
 

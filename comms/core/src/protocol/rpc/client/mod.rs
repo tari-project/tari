@@ -511,14 +511,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             },
         }
 
-        let mut terminate_signal = self
-            .terminate_signal
-            .take()
-            .map(|f| f.boxed())
-            .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
+        let terminate_signal = self.terminate_signal.take();
 
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.protocol_id).inc();
+        let mut terminate_signal_fut = terminate_signal
+            .clone()
+            .map(|f| f.boxed())
+            .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
         loop {
             tokio::select! {
                 // Check the futures in the order they are listed
@@ -526,7 +526,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 _ = &mut self.shutdown_signal => {
                     break;
                 }
-                node_id = &mut terminate_signal => {
+                node_id = &mut terminate_signal_fut => {
                     debug!(
                         target: LOG_TARGET, "(stream={}) Peer '{}' connection has dropped. Worker is terminating.",
                         self.stream_id(), node_id.unwrap_or_default()
@@ -536,7 +536,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 req = self.request_rx.recv() => {
                     match req {
                         Some(req) => {
-                            if let Err(err) = self.handle_request(req).await {
+                            if let Err(err) = self.handle_request(req, terminate_signal.clone()).await {
                                 #[cfg(feature = "metrics")]
                                 metrics::client_errors(&self.protocol_id).inc();
                                 info!(
@@ -584,11 +584,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         );
     }
 
-    async fn handle_request(&mut self, req: ClientRequest) -> Result<(), RpcError> {
+    async fn handle_request(
+        &mut self,
+        req: ClientRequest,
+        terminate_signal: Option<OneshotSignal<NodeId>>,
+    ) -> Result<(), RpcError> {
         use ClientRequest::{SendPing, SendRequest};
         match req {
             SendRequest { request, reply } => {
-                self.do_request_response(request, reply).await?;
+                self.do_request_response(request, reply, terminate_signal).await?;
             },
             SendPing(reply) => {
                 self.do_ping_pong(reply).await?;
@@ -669,6 +673,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         &mut self,
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
+        terminate_signal: Option<OneshotSignal<NodeId>>,
     ) -> Result<(), RpcError> {
         #[cfg(feature = "metrics")]
         metrics::outbound_request_bytes(&self.protocol_id).observe(request.get_ref().len() as f64);
@@ -719,6 +724,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         }
         let partial_latency = timer.elapsed();
 
+        let mut terminate_signal_fut = terminate_signal
+            .map(|f| f.boxed())
+            .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
         loop {
             if self.shutdown_signal.is_triggered() {
                 debug!(
@@ -733,15 +741,30 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 break;
             }
 
-            // Check if the response receiver has been dropped while receiving messages
+            // Check if the response receiver has been dropped while receiving messages,
+            // or if the peer connection has been terminated (e.g., peer was banned)
             let resp_result = {
+                let stream_id = self.stream_id();
                 let resp_fut = self.read_response(request_id);
                 tokio::pin!(resp_fut);
                 let closed_fut = response_tx.closed();
                 tokio::pin!(closed_fut);
-                match future::select(resp_fut, closed_fut).await {
-                    Either::Left((r, _)) => Some(r),
-                    Either::Right(_) => None,
+
+                tokio::select! {
+                    biased;
+                    node_id = &mut terminate_signal_fut => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "(stream={}) Peer '{}' connection terminated during streaming response. \
+                             Aborting request {}.",
+                            stream_id,
+                            node_id.unwrap_or_default(),
+                            request_id,
+                        );
+                        return Err(RpcError::ServerClosedRequest);
+                    }
+                    r = &mut resp_fut => Some(r),
+                    _ = &mut closed_fut => None,
                 }
             };
             let resp_result = match resp_result {

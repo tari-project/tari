@@ -191,6 +191,8 @@ pub struct SidechainBlockHeader {
     pub justify_id: FixedHash,
     pub height: u64,
     pub epoch: u64,
+    #[serde(with = "hex_or_bytes")]
+    pub epoch_hash: FixedHash,
     pub shard_group: ShardGroup,
     pub proposed_by: CompressedPublicKey,
     #[serde(with = "hex_or_bytes")]
@@ -211,6 +213,7 @@ impl SidechainBlockHeader {
             justify_id: &self.justify_id,
             height: self.height,
             epoch: self.epoch,
+            epoch_hash: &self.epoch_hash,
             shard_group: self.shard_group,
             proposed_by: self.proposed_by.as_bytes(),
             state_merkle_root: &self.state_merkle_root,
@@ -368,6 +371,7 @@ pub struct BlockHeaderHashFieldsV1<'a> {
     pub justify_id: &'a FixedHash,
     pub height: u64,
     pub epoch: u64,
+    pub epoch_hash: &'a FixedHash,
     pub shard_group: ShardGroup,
     pub accumulated_data: &'a ShardGroupAccumulatedData,
     // NOTE this is borsh encoded as variable length bytes - technically should always be 32
