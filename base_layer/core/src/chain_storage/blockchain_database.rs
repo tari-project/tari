@@ -152,21 +152,16 @@ use crate::{
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Mode for JMT stale node pruning.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum JmtPruningMode {
     /// Pruning is completely disabled. No stale node tracking.
     Off,
     /// Manual prune: track stale nodes and allow explicit prune commands.
+    #[default]
     Manual,
     /// Background pruning: automatically prune stale nodes in background batches.
     Background,
-}
-
-impl Default for JmtPruningMode {
-    fn default() -> Self {
-        Self::Manual
-    }
 }
 
 impl JmtPruningMode {
@@ -5317,9 +5312,11 @@ mod test {
 
         #[test]
         fn manual_prune_updates_jmt_stats() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Manual;
-            config.jmt_pruning_retention_window = 1;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Manual,
+                jmt_pruning_retention_window: 1,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5351,8 +5348,10 @@ mod test {
 
         #[test]
         fn off_mode_does_not_track_stale_nodes() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Off;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Off,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5425,9 +5424,11 @@ mod test {
 
         #[test]
         fn full_prune_cycle_preserves_chain_integrity() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Manual;
-            config.jmt_pruning_retention_window = 3;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Manual,
+                jmt_pruning_retention_window: 3,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5496,9 +5497,11 @@ mod test {
 
         #[test]
         fn prune_then_continue_adding_blocks() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Manual;
-            config.jmt_pruning_retention_window = 2;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Manual,
+                jmt_pruning_retention_window: 2,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5555,8 +5558,10 @@ mod test {
 
         #[test]
         fn prune_with_off_mode_is_noop() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Off;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Off,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5580,9 +5585,11 @@ mod test {
 
         #[test]
         fn double_prune_without_new_blocks_is_idempotent() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Manual;
-            config.jmt_pruning_retention_window = 2;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Manual,
+                jmt_pruning_retention_window: 2,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5625,9 +5632,11 @@ mod test {
 
         #[test]
         fn prune_on_short_chain_within_retention_window_is_noop() {
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Manual;
-            config.jmt_pruning_retention_window = 10;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Manual,
+                jmt_pruning_retention_window: 10,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),
@@ -5660,9 +5669,11 @@ mod test {
             // is below the retention window (e.g., fresh node at genesis). Previously the task
             // would early-exit if tip - retention_window == 0, so pruning never ran during
             // initial sync.
-            let mut config = BlockchainDatabaseConfig::default();
-            config.jmt_pruning_mode = JmtPruningMode::Background;
-            config.jmt_pruning_retention_window = 2;
+            let config = BlockchainDatabaseConfig {
+                jmt_pruning_mode: JmtPruningMode::Background,
+                jmt_pruning_retention_window: 2,
+                ..Default::default()
+            };
             let validators = Validators::new(
                 MockValidator::new(true),
                 MockValidator::new(true),

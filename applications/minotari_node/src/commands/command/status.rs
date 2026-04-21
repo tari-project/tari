@@ -210,12 +210,14 @@ mod tests {
 
     #[test]
     fn format_jmt_status_compacts_large_pending_values() {
-        let mut stats = DatabaseStats::default();
-        stats.jmt_pruning_stats = JmtPruningStats {
-            stale_nodes_last_block: 23,
-            total_pending_stale_nodes: 1_400,
-            last_prune_deleted_nodes: 120,
-            last_prune_deleted_index: 500,
+        let stats = DatabaseStats {
+            jmt_pruning_stats: JmtPruningStats {
+                stale_nodes_last_block: 23,
+                total_pending_stale_nodes: 1_400,
+                last_prune_deleted_nodes: 120,
+                last_prune_deleted_index: 500,
+            },
+            ..Default::default()
         };
 
         assert_eq!(
@@ -226,12 +228,14 @@ mod tests {
 
     #[test]
     fn format_jmt_status_compacts_million_scale_values() {
-        let mut stats = DatabaseStats::default();
-        stats.jmt_pruning_stats = JmtPruningStats {
-            stale_nodes_last_block: 12_400,
-            total_pending_stale_nodes: 1_200_000,
-            last_prune_deleted_nodes: 0,
-            last_prune_deleted_index: 0,
+        let stats = DatabaseStats {
+            jmt_pruning_stats: JmtPruningStats {
+                stale_nodes_last_block: 12_400,
+                total_pending_stale_nodes: 1_200_000,
+                last_prune_deleted_nodes: 0,
+                last_prune_deleted_index: 0,
+            },
+            ..Default::default()
         };
 
         assert_eq!(
