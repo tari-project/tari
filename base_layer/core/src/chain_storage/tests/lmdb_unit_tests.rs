@@ -445,15 +445,14 @@ fn generate_reference_lmdb_fixture() {
     use tari_utilities::hex::Hex;
 
     let data = load_test_chain_data();
-    // Build genesis + blocks B1..B3 only. The JMT grows fast for each block; we keep
-    // the chain short so the compressed fixture stays small.
+    // Build the full chain so the fixture matches the JSON: genesis → B1..B5 →
+    // reorg (orphans B6..B10, promotes F6'..F15') → tip at height 15.
+    // LMDB pre-allocates its map as a sparse file so a 128 MB map still compresses
+    // to a few hundred KB.
     let db = {
         use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
-        let db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(4, 4, 2, false));
-        for block in data.canonical_blocks[1..=3].iter() {
-            db.add_block(Arc::new(block.clone())).unwrap().assert_added();
-        }
-        db
+        let db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(128, 4, 2, false));
+        populate_chain(db, &data)
     };
 
     // Print a traceability summary before we drop the database
@@ -515,10 +514,10 @@ fn generate_reference_lmdb_fixture() {
 /// If the JSON fixture is regenerated (via `generate_fixtures`), both these constants AND the
 /// binary fixture (via `generate_reference_lmdb_fixture`) must be updated together.
 mod reference_lmdb_constants {
-    /// The canonical chain tip height of the reference fixture (genesis + B1..B3).
-    pub const EXPECTED_TIP_HEIGHT: u64 = 3;
-    /// Hex-encoded block hash of the chain tip (height 3).
-    pub const EXPECTED_TIP_HASH_HEX: &str = "56e5221fe25b28f98a94b033309f7708af5bb8e452fb635cccfecb4b47feafc4";
+    /// The canonical chain tip height of the reference fixture (genesis + B1..B5 + F6'..F15').
+    pub const EXPECTED_TIP_HEIGHT: u64 = 15;
+    /// Hex-encoded block hash of the chain tip (height 15, F15' after reorg).
+    pub const EXPECTED_TIP_HASH_HEX: &str = "e055c040bf1c9541426045ff95a43e3e3fade6392dd7ed82aac6a8f4234dd2d7";
     /// Hex-encoded Pedersen commitment of the first output in block 1.
     pub const EXPECTED_BLOCK1_COMMITMENT_HEX: &str = "d28588acee522cc1e903e201501c9f0126e39abe335c41083a7ef652a2015f66";
     /// Hex-encoded output hash of the first output in block 1.
