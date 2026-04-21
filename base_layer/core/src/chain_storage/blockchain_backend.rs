@@ -308,10 +308,6 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Creates a reader to construct a JMT
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
 
-    /// Prune stale JMT nodes that became stale at versions strictly below `prune_below_version`.
-    /// Returns `(nodes_deleted, index_entries_removed)`.
-    fn prune_stale_jmt_nodes(&self, prune_below_version: u64) -> Result<(u64, u64), ChainStorageError>;
-
     /// Prune up to `max_batch_size` stale JMT nodes with `stale_since_version < prune_below_version`.
     /// Returns `(nodes_deleted, index_entries_removed, has_more)`.
     fn prune_stale_jmt_nodes_batch(

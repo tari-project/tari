@@ -2683,30 +2683,18 @@ impl LMDBDatabase {
         Ok(output)
     }
 
-    fn prune_stale_jmt_nodes(&self, prune_below_version: u64) -> Result<(u64, u64), ChainStorageError> {
-        let write_txn = self.write_transaction()?;
-        let smt_writer = LmdbTreeWriter::new(
-            &write_txn,
-            self.jmt_node_data.clone(),
-            self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
-            self.jmt_stale_node_index.clone(),
-        );
-        let result = smt_writer
-            .prune_stale_nodes(prune_below_version)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        write_txn.commit()?;
-        self.stats_collector.record_jmt_prune_deleted(result.0, result.1);
-        let pending_stale_nodes = self.current_jmt_stale_index_entry_count()?;
-        self.stats_collector.set_jmt_pending_stale_nodes(pending_stale_nodes);
-        Ok(result)
-    }
-
     fn prune_stale_jmt_nodes_batch(
         &self,
         prune_below_version: u64,
         max_batch_size: u64,
     ) -> Result<(u64, u64, bool), ChainStorageError> {
+        // Ensure there is enough map space before opening the write transaction.
+        // Without this, a near-full LMDB map causes MDB_MAP_FULL on the first
+        // delete, which poisons the transaction with MDB_BAD_TXN for all
+        // subsequent operations in the same batch.
+        unsafe {
+            LMDBStore::resize_if_required(&self.env, &self.env_config, None)?;
+        }
         let write_txn = self.write_transaction()?;
         let smt_writer = LmdbTreeWriter::new(
             &write_txn,
@@ -2806,10 +2794,6 @@ impl BlockchainBackend for LMDBDatabase {
             OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
 
         Ok(smt_reader)
-    }
-
-    fn prune_stale_jmt_nodes(&self, prune_below_version: u64) -> Result<(u64, u64), ChainStorageError> {
-        self.prune_stale_jmt_nodes(prune_below_version)
     }
 
     fn prune_stale_jmt_nodes_batch(

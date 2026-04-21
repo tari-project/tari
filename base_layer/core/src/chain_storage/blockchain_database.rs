@@ -595,19 +595,44 @@ where B: BlockchainBackend
             self.config.jmt_pruning_retention_window,
         );
 
+        let mut total_nodes_deleted: u64 = 0;
+        let mut total_index_removed: u64 = 0;
+
+        loop {
+            let db = self.db_read_access()?;
+            let (nodes, index, has_more) =
+                db.prune_stale_jmt_nodes_batch(prune_below_version, JMT_BACKGROUND_PRUNING_BATCH_SIZE)?;
+            total_nodes_deleted += nodes;
+            total_index_removed += index;
+
+            if nodes > 0 || index > 0 {
+                debug!(
+                    target: LOG_TARGET,
+                    "JMT manual pruning batch: deleted {} nodes, {} index entries (total: {} / {})",
+                    nodes,
+                    index,
+                    total_nodes_deleted,
+                    total_index_removed,
+                );
+            }
+
+            if !has_more {
+                break;
+            }
+        }
+
         let db = self.db_read_access()?;
-        let (nodes_deleted, index_entries_removed) = db.prune_stale_jmt_nodes(prune_below_version)?;
         let pending_after = db.fetch_jmt_pending_stale_nodes()?;
 
         info!(
             target: LOG_TARGET,
             "JMT pruning complete: deleted {} node(s), removed {} stale index entries, pending_after={}",
-            nodes_deleted,
-            index_entries_removed,
+            total_nodes_deleted,
+            total_index_removed,
             pending_after,
         );
 
-        Ok((nodes_deleted, index_entries_removed))
+        Ok((total_nodes_deleted, total_index_removed))
     }
 
     /// Spawns a background task that prunes stale JMT nodes in small batches when

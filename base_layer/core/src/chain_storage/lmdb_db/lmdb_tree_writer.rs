@@ -106,81 +106,11 @@ impl<'a> LmdbTreeWriter<'a> {
         Ok(())
     }
 
-    /// Prune stale JMT nodes that became stale at versions strictly below `prune_below_version`.
-    ///
-    /// This scans `jmt_stale_node_index_data` from the beginning, and for each entry whose
-    /// `stale_since_version < prune_below_version`, deletes the corresponding node from `jmt_node_data`
-    /// and removes the stale index entry itself.
-    ///
-    /// Returns `(nodes_deleted, index_entries_removed)`.
+    /// Prune all stale JMT nodes with `stale_since_version < prune_below_version`.
+    /// Convenience wrapper around [`Self::prune_stale_nodes_batch`] with no batch limit.
+    #[cfg(test)]
     pub fn prune_stale_nodes(&self, prune_below_version: u64) -> anyhow::Result<(u64, u64)> {
-        let access = self.txn.access();
-        let mut cursor = self.txn.cursor(self.stale_node_index_db.as_ref()).map_err(|e| {
-            anyhow::anyhow!("Could not get cursor for jmt_stale_node_index: {e}")
-        })?;
-
-        // Collect keys to process: we need to collect because we can't mutate while iterating
-        let mut stale_keys: Vec<Vec<u8>> = Vec::new();
-        let mut row = match cursor.first::<[u8], [u8]>(&access).to_opt()? {
-            Some(r) => r,
-            None => {
-                trace!(target: LOG_TARGET, "JMT prune: stale node index is empty, nothing to prune");
-                return Ok((0, 0));
-            },
-        };
-
-        loop {
-            let key = row.0;
-            // The first 8 bytes are stale_since_version (big-endian)
-            if key.len() < 8 {
-                break;
-            }
-            let stale_since_version = u64::from_be_bytes(key[..8].try_into()?);
-            if stale_since_version >= prune_below_version {
-                break;
-            }
-            stale_keys.push(key.to_vec());
-            row = match cursor.next::<[u8], [u8]>(&access).to_opt()? {
-                Some(r) => r,
-                None => break,
-            };
-        }
-        // Drop the cursor and access before mutating
-        drop(cursor);
-        drop(access);
-
-        let mut nodes_deleted: u64 = 0;
-        let mut index_entries_removed: u64 = 0;
-
-        for stale_key in &stale_keys {
-            if stale_key.len() < 16 {
-                warn!(target: LOG_TARGET, "JMT prune: stale index key too short ({} bytes), skipping", stale_key.len());
-                continue;
-            }
-            // Extract the node key: node_version(8 bytes) || nibble_path(rest) — bytes [8..]
-            let node_key_bytes = &stale_key[8..];
-
-            // Delete the node from jmt_node_data
-            match lmdb_delete(self.txn, self.node_db.as_ref(), node_key_bytes, "jmt_node_table") {
-                Ok(()) => {
-                    nodes_deleted += 1;
-                },
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "JMT prune: node not found in jmt_node_data (may have been deleted by reorg): {e}");
-                },
-            }
-
-            // Delete the stale index entry
-            match lmdb_delete(self.txn, self.stale_node_index_db.as_ref(), stale_key.as_slice(), "jmt_stale_node_index") {
-                Ok(()) => {
-                    index_entries_removed += 1;
-                },
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "JMT prune: failed to delete stale index entry: {e}");
-                },
-            }
-        }
-
+        let (nodes_deleted, index_entries_removed, _) = self.prune_stale_nodes_batch(prune_below_version, u64::MAX)?;
         Ok((nodes_deleted, index_entries_removed))
     }
 
