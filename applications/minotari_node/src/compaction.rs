@@ -47,9 +47,12 @@ pub fn run_compaction(config: &BaseNodeConfig) -> Result<CompactReport, ExitErro
             ),
         ));
     }
-    let db_parent = db_path
-        .parent()
-        .ok_or_else(|| ExitError::new(ExitCode::DatabaseError, "Database path has no parent directory".to_string()))?;
+    let db_parent = db_path.parent().ok_or_else(|| {
+        ExitError::new(
+            ExitCode::DatabaseError,
+            "Database path has no parent directory".to_string(),
+        )
+    })?;
     let compact_path = db_parent.join("db_compact");
     let backup_path = db_parent.join("db_backup");
 

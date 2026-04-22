@@ -5267,10 +5267,7 @@ mod tests {
     use tari_storage::lmdb_store::LMDBConfig;
     use tari_test_utils::paths::create_temporary_data_path;
 
-    use crate::{
-        chain_storage::create_lmdb_database,
-        test_helpers::create_consensus_rules,
-    };
+    use crate::{chain_storage::create_lmdb_database, test_helpers::create_consensus_rules};
 
     #[test]
     fn estimate_compaction_uses_file_size() {
@@ -5287,7 +5284,10 @@ mod tests {
             estimate.file_size, actual_file_size,
             "file_size should match the actual data.mdb size on disk"
         );
-        assert!(estimate.used_bytes > 0, "A freshly created DB should have some used pages");
+        assert!(
+            estimate.used_bytes > 0,
+            "A freshly created DB should have some used pages"
+        );
         assert!(
             estimate.file_size >= estimate.used_bytes as u64,
             "file_size must be >= used_bytes"
