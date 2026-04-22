@@ -38,7 +38,18 @@ const LOG_TARGET: &str = "minotari::base_node::compaction";
 /// Called before the node starts when `--compact-db` is passed.
 pub fn run_compaction(config: &BaseNodeConfig) -> Result<CompactReport, ExitError> {
     let db_path = &config.lmdb_path;
-    let db_parent = db_path.parent().unwrap_or(db_path);
+    if !db_path.is_absolute() {
+        return Err(ExitError::new(
+            ExitCode::DatabaseError,
+            format!(
+                "Database path must be absolute, got: {}. Ensure set_base_path() was called.",
+                db_path.display()
+            ),
+        ));
+    }
+    let db_parent = db_path
+        .parent()
+        .ok_or_else(|| ExitError::new(ExitCode::DatabaseError, "Database path has no parent directory".to_string()))?;
     let compact_path = db_parent.join("db_compact");
     let backup_path = db_parent.join("db_backup");
 
