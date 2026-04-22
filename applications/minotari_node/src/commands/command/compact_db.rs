@@ -38,7 +38,7 @@ impl HandleCommand<Args> for CommandContext {
         let mb = BYTES_PER_MB as f64;
 
         println!("\nDatabase Compaction Estimate:");
-        println!("  Map size:       {:.2} MB", estimate.map_size as f64 / mb);
+        println!("  File size:      {:.2} MB", estimate.file_size as f64 / mb);
         println!("  Used:           {:.2} MB", estimate.used_bytes as f64 / mb);
         println!("  Free:           {:.2} MB", estimate.free_bytes as f64 / mb);
         println!("  Est. reduction: {:.1}%", estimate.reduction_pct);

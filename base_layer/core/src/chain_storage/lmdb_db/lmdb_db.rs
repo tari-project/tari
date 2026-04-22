@@ -91,7 +91,7 @@ use std::{
     fmt,
     fs::{self, File},
     ops::Deref,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
 };
@@ -255,6 +255,8 @@ impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> T
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
+const LMDB_DATA_FILE: &str = "data.mdb";
+
 const LMDB_DB_METADATA: &str = "metadata";
 const LMDB_DB_HEADERS: &str = "headers";
 const LMDB_DB_HEADER_ACCUMULATED_DATA: &str = "header_accumulated_data";
@@ -338,13 +340,13 @@ pub fn get_all_database_names() -> Vec<&'static str> {
 /// Estimate of space savings from LMDB compaction.
 #[derive(Debug, Clone)]
 pub struct CompactionEstimate {
-    /// Total map size in bytes
-    pub map_size: usize,
-    /// Used space in bytes (data pages)
+    /// Actual database file size on disk in bytes
+    pub file_size: u64,
+    /// Used space in bytes (allocated pages up to last_pgno)
     pub used_bytes: usize,
-    /// Free space in bytes (free pages within the DB file)
-    pub free_bytes: usize,
-    /// Estimated reduction percentage
+    /// Free space in bytes (file size minus used pages)
+    pub free_bytes: u64,
+    /// Estimated reduction percentage (free bytes as a fraction of file size)
     pub reduction_pct: f64,
 }
 
@@ -473,7 +475,7 @@ pub fn compact_lmdb_database<P: AsRef<Path>>(path: P, dest: P) -> Result<Compact
 
     info!(target: LOG_TARGET, "Starting LMDB compaction: {:?} -> {:?}", path_ref, dest_ref);
 
-    let data_file = path_ref.join("data.mdb");
+    let data_file = path_ref.join(LMDB_DATA_FILE);
     let original_size = fs::metadata(&data_file).map(|m| m.len()).unwrap_or(0);
 
     let env = create_readonly_lmdb_environment(path_ref)?;
@@ -489,7 +491,7 @@ pub fn compact_lmdb_database<P: AsRef<Path>>(path: P, dest: P) -> Result<Compact
         .map_err(|e| ChainStorageError::CriticalError(format!("LMDB compact copy failed: {e}")))?;
     let duration = start.elapsed();
 
-    let compacted_file = dest_ref.join("data.mdb");
+    let compacted_file = dest_ref.join(LMDB_DATA_FILE);
     let compacted_size = fs::metadata(&compacted_file).map(|m| m.len()).unwrap_or(0);
 
     info!(
@@ -513,8 +515,9 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     config: LMDBConfig,
     consensus_manager: BaseNodeConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
+    let db_path = path.as_ref().to_path_buf();
     let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, None)
+    LMDBDatabase::new(&lmdb_store, db_path, file_lock, consensus_manager, None)
 }
 
 pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
@@ -523,13 +526,16 @@ pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
     consensus_manager: BaseNodeConsensusManager,
     stats_sender: Option<watch::Sender<DatabaseStats>>,
 ) -> Result<LMDBDatabase, ChainStorageError> {
+    let db_path = path.as_ref().to_path_buf();
     let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, stats_sender)
+    LMDBDatabase::new(&lmdb_store, db_path, file_lock, consensus_manager, stats_sender)
 }
+
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,
     env_config: LMDBConfig,
+    db_path: PathBuf,
     metadata_db: DatabaseRef,
     /// Maps height -> BlockHeader
     headers_db: DatabaseRef,
@@ -606,6 +612,7 @@ pub struct LMDBDatabase {
 impl LMDBDatabase {
     pub fn new(
         store: &LMDBStore,
+        db_path: PathBuf,
         file_lock: File,
         consensus_manager: BaseNodeConsensusManager,
         stats_sender: Option<watch::Sender<DatabaseStats>>,
@@ -663,6 +670,7 @@ impl LMDBDatabase {
             jmt_stale_node_index: get_database(store, LMDB_DB_JMT_STALE_NODE_INDEX)?,
             env,
             env_config: store.env_config(),
+            db_path,
             _file_lock: Arc::new(file_lock),
             consensus_manager,
             stats_collector: LMDBStatsCollector::new(),
@@ -685,8 +693,14 @@ impl LMDBDatabase {
         &self.stats_collector
     }
 
-    /// Estimate the space savings from LMDB compaction by comparing used vs free pages.
+    /// Estimate the space savings from LMDB compaction by comparing the actual file size on disk
+    /// against the used page extent. The difference represents space that compaction can reclaim.
     pub fn estimate_compaction(&self) -> Result<CompactionEstimate, ChainStorageError> {
+        let data_file = self.db_path.join(LMDB_DATA_FILE);
+        let file_size = fs::metadata(&data_file)
+            .map(|m| m.len())
+            .map_err(|e| ChainStorageError::AccessError(format!("Failed to stat data.mdb: {e}")))?;
+
         let env_info = self
             .env
             .info()
@@ -695,17 +709,17 @@ impl LMDBDatabase {
             .env
             .stat()
             .map_err(|e| ChainStorageError::AccessError(format!("Failed to get env stat: {e}")))?;
+
         let used_bytes = stat.psize as usize * env_info.last_pgno;
-        let map_size = env_info.mapsize;
-        let free_bytes = map_size.saturating_sub(used_bytes);
-        let reduction_pct = if map_size > 0 {
-            (free_bytes as f64 / map_size as f64) * 100.0
+        let free_bytes = file_size.saturating_sub(used_bytes as u64);
+        let reduction_pct = if file_size > 0 {
+            (free_bytes as f64 / file_size as f64) * 100.0
         } else {
             0.0
         };
 
         Ok(CompactionEstimate {
-            map_size,
+            file_size,
             used_bytes,
             free_bytes,
             reduction_pct,
@@ -2762,9 +2776,9 @@ pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), Chai
     let new_path = path.as_ref().join("temp_recovery");
     let _result = fs::create_dir_all(&new_path);
 
-    let data_file = path.as_ref().join("data.mdb");
+    let data_file = path.as_ref().join(LMDB_DATA_FILE);
 
-    let new_data_file = new_path.join("data.mdb");
+    let new_data_file = new_path.join(LMDB_DATA_FILE);
 
     fs::rename(data_file, new_data_file)
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{err}")))?;
@@ -5245,5 +5259,50 @@ fn summarize_value(v: &MetadataValue) -> String {
         MetadataValue::HorizonSyncOutputCheckpoint(cp) => {
             format!("{} targeting {}", cp.checkpoint_height, cp.sync_target_height)
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_storage::lmdb_store::LMDBConfig;
+    use tari_test_utils::paths::create_temporary_data_path;
+
+    use crate::{
+        chain_storage::create_lmdb_database,
+        test_helpers::create_consensus_rules,
+    };
+
+    #[test]
+    fn estimate_compaction_uses_file_size() {
+        let temp_path = create_temporary_data_path();
+        let rules = create_consensus_rules();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap();
+
+        let estimate = db.estimate_compaction().unwrap();
+
+        let data_file = temp_path.join(super::LMDB_DATA_FILE);
+        let actual_file_size = std::fs::metadata(&data_file).unwrap().len();
+
+        assert_eq!(
+            estimate.file_size, actual_file_size,
+            "file_size should match the actual data.mdb size on disk"
+        );
+        assert!(estimate.used_bytes > 0, "A freshly created DB should have some used pages");
+        assert!(
+            estimate.file_size >= estimate.used_bytes as u64,
+            "file_size must be >= used_bytes"
+        );
+        assert_eq!(
+            estimate.free_bytes,
+            estimate.file_size.saturating_sub(estimate.used_bytes as u64),
+        );
+        assert!(
+            estimate.reduction_pct >= 0.0 && estimate.reduction_pct <= 100.0,
+            "reduction_pct should be between 0 and 100, got {}",
+            estimate.reduction_pct
+        );
+
+        drop(db);
+        let _ = std::fs::remove_dir_all(&temp_path);
     }
 }
