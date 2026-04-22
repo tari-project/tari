@@ -27,7 +27,10 @@ use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
 use super::lmdb::lmdb_insert;
-use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with, lmdb_fetch_matching_after};
+use crate::chain_storage::{
+    ChainStorageError,
+    lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with, lmdb_fetch_matching_after},
+};
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {
@@ -179,24 +182,22 @@ impl<'a> LmdbTreeWriter<'a> {
                 Ok(()) => {
                     nodes_deleted += 1;
                 },
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "JMT prune: node not found in jmt_node_data (may have been deleted by reorg): {e}");
+                Err(ChainStorageError::ValueNotFound { .. }) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "JMT prune: node already absent in jmt_node_data, likely due to reorg"
+                    );
                 },
+                Err(e) => return Err(e.into()),
             }
 
-            match lmdb_delete(
+            lmdb_delete(
                 self.txn,
                 self.stale_node_index_db.as_ref(),
                 stale_key.as_slice(),
                 "jmt_stale_node_index",
-            ) {
-                Ok(()) => {
-                    index_entries_removed += 1;
-                },
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "JMT prune: failed to delete stale index entry: {e}");
-                },
-            }
+            )?;
+            index_entries_removed += 1;
         }
 
         Ok((nodes_deleted, index_entries_removed, has_more))
