@@ -189,7 +189,11 @@ fn format_compact_count(count: u64) -> String {
 fn format_compact_scaled(value: f64, suffix: &str) -> String {
     let precision = if value < 10.0 { 1 } else { 0 };
     let formatted = format!("{value:.precision$}");
-    let formatted = formatted.trim_end_matches('0').trim_end_matches('.');
+    let formatted = if precision > 0 {
+        formatted.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        &formatted
+    };
     format!("{formatted}{suffix}")
 }
 
