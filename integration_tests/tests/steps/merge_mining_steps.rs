@@ -23,6 +23,21 @@
 use cucumber::{then, when};
 use tari_integration_tests::{TariWorld, merge_mining_proxy::register_merge_mining_proxy_process};
 
+const TARI_MINING_BLOB_SIZE: usize = 76;
+const POW_ALGO_OFFSET: usize = 43;
+const POW_ALGO_RANDOMXT: u8 = 2;
+
+fn decode_hex(s: &str) -> Result<Vec<u8>, String> {
+    if !s.len().is_multiple_of(2) {
+        return Err("hex string must have an even length".to_string());
+    }
+
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
+}
+
 // Merge mining proxy steps
 
 #[when(expr = "I have a merge mining proxy {word} connected to {word} with default config")]
@@ -84,6 +99,24 @@ async fn merge_mining_response_block_template_is_valid(world: &mut TariWorld) {
         result.get("status").unwrap().as_str().unwrap(),
         "OK",
         "Result has no `status` {result}"
+    );
+
+    let blob_hex = result
+        .get("blocktemplate_blob")
+        .and_then(|v| v.as_str())
+        .expect("`blocktemplate_blob` must be a hex string");
+    let blob = decode_hex(blob_hex).expect("`blocktemplate_blob` must decode as hex");
+    assert_eq!(
+        blob.len(),
+        TARI_MINING_BLOB_SIZE,
+        "Unexpected mining blob size: expected {TARI_MINING_BLOB_SIZE}, got {}",
+        blob.len()
+    );
+    assert_eq!(
+        blob[POW_ALGO_OFFSET],
+        POW_ALGO_RANDOMXT,
+        "Expected RandomXT pow algo byte ({POW_ALGO_RANDOMXT}) at offset {POW_ALGO_OFFSET}, got {}",
+        blob[POW_ALGO_OFFSET]
     );
 }
 
