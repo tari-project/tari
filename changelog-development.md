@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.3.0-pre.12](https://github.com/tari-project/tari/compare/v5.3.0-pre.11...v5.3.0-pre.12) (2026-04-23)
+
+### Features
+
+* add api to change birthday ([#7782](https://github.com/tari-project/tari/issues/7782)) ([c3b369c](https://github.com/tari-project/tari/commit/c3b369c2f0e76ea70f7618bb7cbe7716db79a3e8))
+* http docs ([bdcd4db](https://github.com/tari-project/tari/commit/bdcd4dbfde51b9c79b843bd2a8de76d051308d0e))
+
+
+### Bug Fixes
+
+* sync peer swapping ([#7781](https://github.com/tari-project/tari/issues/7781)) ([c06c9d3](https://github.com/tari-project/tari/commit/c06c9d3aae9ef83f2560773492b71e53603bf8a0))
+
 ## [5.3.0-pre.11](https://github.com/tari-project/tari/compare/v5.3.0-pre.10...v5.3.0-pre.11) (2026-04-21)
 
 
