@@ -22,6 +22,7 @@
 
 use std::{
     fmt,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -104,6 +105,12 @@ pub enum ConnectivityRequest {
     AddPeerToAllowList(NodeId),
     RemovePeerFromAllowList(NodeId),
     GetAllowList(oneshot::Sender<Vec<NodeId>>),
+    /// Register a peer as currently in use for sync and get back a ref-counted handle.
+    /// The peer remains in the sync list while any `Arc<NodeId>` clone of this handle is
+    /// alive; once every clone is dropped the manager will prune it on its next sweep.
+    AddPeerToSyncList(NodeId, oneshot::Sender<Arc<NodeId>>),
+    /// Retrieve the current sync-peer list (only peers with active sync references).
+    GetSyncPeerList(oneshot::Sender<Vec<NodeId>>),
     GetSeeds(oneshot::Sender<Vec<Peer>>),
     GetPeerStats(NodeId, oneshot::Sender<Option<Peer>>),
     GetNodeIdentity(oneshot::Sender<NodeIdentity>),
@@ -325,6 +332,33 @@ impl ConnectivityRequester {
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())
+    }
+
+    /// Register `node_id` as currently in use for a sync and return an `Arc<NodeId>` handle.
+    ///
+    /// While the returned handle (or any clone of it) is alive, other subsystems that query the
+    /// sync-peer list (e.g. DhtConnectivity) will treat the peer as protected from opportunistic
+    /// disconnection such as random-pool pruning. The connectivity manager keeps its own
+    /// `Arc<NodeId>` clone in a list and periodically prunes entries whose strong-count has
+    /// dropped to 1 (only the manager's own copy remaining).
+    pub async fn add_peer_to_sync_list(&mut self, node_id: NodeId) -> Result<Arc<NodeId>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::AddPeerToSyncList(node_id, reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    /// Retrieve the current sync-peer list. Entries whose caller-side handles have all been
+    /// dropped will have been pruned on the manager's previous sweep.
+    pub async fn get_sync_peer_list(&mut self) -> Result<Vec<NodeId>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetSyncPeerList(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Returns a Future that resolves when the connectivity actor has started.

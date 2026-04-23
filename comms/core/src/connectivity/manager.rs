@@ -110,6 +110,7 @@ impl ConnectivityManager {
             #[cfg(feature = "metrics")]
             uptime: Some(Instant::now()),
             allow_list: vec![],
+            sync_peers: vec![],
             proactive_dialer,
             seeds: vec![],
         }
@@ -169,6 +170,15 @@ struct ConnectivityManagerActor {
     #[cfg(feature = "metrics")]
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
+    /// Peers currently being used for a sync operation.
+    ///
+    /// Each entry is an `Arc<NodeId>`; when a caller registers a peer via `AddPeerToSyncList`
+    /// they receive an `Arc<NodeId>` clone and this list keeps its own. When the caller drops
+    /// their handle the list entry's strong-count drops to 1, and the manager prunes such
+    /// entries on the next access (see `sweep_sync_peers`). While an entry has strong-count >= 2
+    /// it signals "in use by sync" and other subsystems should not proactively disconnect the
+    /// peer (see DhtConnectivity::handle_new_peer_connected).
+    sync_peers: Vec<Arc<NodeId>>,
     proactive_dialer: ProactiveDialer,
     seeds: Vec<NodeId>,
 }
@@ -263,6 +273,7 @@ impl ConnectivityManagerActor {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_request(&mut self, req: ConnectivityRequest) {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityRequest::*;
@@ -335,6 +346,15 @@ impl ConnectivityManagerActor {
             GetAllowList(reply) => {
                 let allow_list = self.allow_list.clone();
                 let _result = reply.send(allow_list);
+            },
+            AddPeerToSyncList(node_id, reply) => {
+                let handle = self.acquire_sync_peer_handle(node_id);
+                let _result = reply.send(handle);
+            },
+            GetSyncPeerList(reply) => {
+                self.sweep_sync_peers();
+                let list = self.sync_peers.iter().map(|p| (**p).clone()).collect();
+                let _result = reply.send(list);
             },
             GetSeeds(reply) => {
                 let seeds = self.peer_manager.get_seed_peers().await.unwrap_or_else(|e| {
@@ -522,8 +542,12 @@ impl ConnectivityManagerActor {
         };
         let num_connections = connections.len();
 
-        // Remove peers that are on the allow list
-        connections.retain(|conn| !self.allow_list.contains(conn.peer_node_id()));
+        // Remove peers that are on the allow list or are currently in use for sync
+        self.sweep_sync_peers();
+        connections.retain(|conn| {
+            !self.allow_list.contains(conn.peer_node_id()) &&
+                !self.sync_peers.iter().any(|p| **p == *conn.peer_node_id())
+        });
         debug!(
             target: LOG_TARGET,
             "minimize_connections: ({}) Filtered peers: {}, Handles: {}",
@@ -1230,6 +1254,32 @@ impl ConnectivityManagerActor {
     fn publish_event(&mut self, event: ConnectivityEvent) {
         // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
         let _result = self.event_tx.send(event);
+    }
+
+    /// Drop sync-peer entries whose caller-side handles have all been released.
+    ///
+    /// An entry with `Arc::strong_count == 1` means only this manager still holds a reference,
+    /// so no active sync is using the peer. Pruning is run lazily on every sync-list access to
+    /// avoid keeping a timer purely for this list.
+    fn sweep_sync_peers(&mut self) {
+        self.sync_peers.retain(|p| Arc::strong_count(p) > 1);
+    }
+
+    /// Register `node_id` on the sync-peer list and return a shared `Arc<NodeId>` handle.
+    ///
+    /// If the peer is already registered, the existing `Arc` is cloned and returned (so all
+    /// callers interested in the same peer share the same handle). Otherwise a fresh `Arc` is
+    /// created, one clone is retained by the manager and another is returned. The caller must
+    /// keep the returned handle alive for as long as the peer should remain protected; dropping
+    /// it signals to the manager that the peer is no longer in use for sync.
+    fn acquire_sync_peer_handle(&mut self, node_id: NodeId) -> Arc<NodeId> {
+        self.sweep_sync_peers();
+        if let Some(existing) = self.sync_peers.iter().find(|p| ***p == node_id) {
+            return existing.clone();
+        }
+        let handle = Arc::new(node_id);
+        self.sync_peers.push(handle.clone());
+        handle
     }
 
     async fn ban_peer(

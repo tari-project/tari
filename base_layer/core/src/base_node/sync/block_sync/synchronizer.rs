@@ -94,6 +94,29 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
+        // Protect every sync-candidate peer from being collaterally disconnected by unrelated
+        // subsystems (e.g. DhtConnectivity's random-pool-full pruning) while this sync runs.
+        // `add_peer_to_sync_list` returns an `Arc<NodeId>` handle; holding the handles alive for
+        // the duration of sync keeps each peer on the connectivity manager's sync list. When
+        // this function returns and the handles drop, the manager's next sweep prunes the
+        // entries and the peers become eligible for normal disconnect behaviour again.
+        let mut _sync_guards: Vec<Arc<NodeId>> = Vec::with_capacity(self.sync_peers.len());
+        for peer in self.sync_peers.iter() {
+            match self.connectivity.add_peer_to_sync_list(peer.node_id().clone()).await {
+                Ok(handle) => _sync_guards.push(handle),
+                Err(e) => debug!(
+                    target: LOG_TARGET,
+                    "Failed to register sync peer {} on sync list: {e}", peer.node_id()
+                ),
+            }
+        }
+
+        self.synchronize_inner().await
+        // `_sync_guards` drops here (success or error), releasing this sync's references on
+        // each peer's sync-list entry.
+    }
+
+    async fn synchronize_inner(&mut self) -> Result<(), BlockSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
         let mut sync_round = 0;
         let mut latency_increases_counter = 0;
@@ -132,6 +155,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
         let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         info!(
@@ -155,18 +179,42 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     continue;
                 },
             };
+            // Defensive: the connection may have been torn down by another subsystem between
+            // dial_peer() returning and this point (e.g. DhtConnectivity pruning). Without this
+            // check we would attempt an RPC negotiation on a dead channel.
+            if !conn.is_connected() {
+                warn!(
+                    target: LOG_TARGET,
+                    "Sync peer `{node_id}` was disconnected before RPC negotiation could begin"
+                );
+                self.remove_sync_peer(&node_id);
+                continue;
+            }
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
                 .with_deadline_grace_period(Duration::from_secs(5));
-            let mut client = match conn
-                .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
-                .await
+            // Bound RPC negotiation: without this the negotiation itself (as opposed to
+            // individual RPC requests) has no timeout and can wedge the sync loop indefinitely.
+            let mut client = match tokio::time::timeout(
+                self.config.rpc_deadline,
+                conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
+            )
+            .await
             {
-                Ok(val) => val,
-                Err(e) => {
+                Ok(Ok(val)) => val,
+                Ok(Err(e)) => {
                     warn!(
                         target: LOG_TARGET,
                         "Failed to obtain RPC connection from sync peer `{node_id}`: {e}"
+                    );
+                    self.remove_sync_peer(&node_id);
+                    continue;
+                },
+                Err(_) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Timed out establishing RPC connection with sync peer `{node_id}` after {:.2?}",
+                        self.config.rpc_deadline,
                     );
                     self.remove_sync_peer(&node_id);
                     continue;

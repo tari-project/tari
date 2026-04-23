@@ -487,6 +487,18 @@ impl DhtConnectivity {
             return Ok(());
         }
 
+        // Peers currently being used by a sync operation must not be disconnected by pool
+        // pruning — the sync code holds an Arc<NodeId> handle on the connectivity manager
+        // that keeps the peer on the sync list until sync finishes.
+        if self.is_sync_peer(conn.peer_node_id()).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Sync peer '{}' connected — leaving connection alone while sync holds a handle",
+                conn.peer_node_id()
+            );
+            return Ok(());
+        }
+
         if self.is_pool_peer(conn.peer_node_id()) {
             debug!(
                 target: LOG_TARGET,
@@ -549,7 +561,8 @@ impl DhtConnectivity {
         // Retrieve all communication node peers with an active connection status
         let mut peers_by_distance = self.pool_peers_with_active_connections().await?;
         let peer_allow_list = self.peer_allow_list().await?;
-        peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id));
+        let peer_sync_list = self.peer_sync_list().await?;
+        peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id) && !peer_sync_list.contains(&p.node_id));
 
         // Remove all above threshold connections
         let threshold = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
@@ -683,6 +696,14 @@ impl DhtConnectivity {
 
     async fn peer_allow_list(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
         Ok(self.connectivity.get_allow_list().await?)
+    }
+
+    async fn peer_sync_list(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
+        Ok(self.connectivity.get_sync_peer_list().await?)
+    }
+
+    async fn is_sync_peer(&mut self, node_id: &NodeId) -> Result<bool, DhtConnectivityError> {
+        Ok(self.peer_sync_list().await?.contains(node_id))
     }
 
     async fn replace_pool_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {
