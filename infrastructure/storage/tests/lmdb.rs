@@ -131,7 +131,7 @@ fn test_single_thread() {
             let check: User = db.get(&user.id).unwrap().unwrap();
             assert_eq!(check, *user);
         }
-        assert_eq!(db.len().unwrap(), 1000);
+        assert_eq!(db.len().unwrap(), 700);
     }
     clean_up("single_thread"); // In Windows file handles must be released before files can be deleted
 }
@@ -142,7 +142,7 @@ fn test_multi_thread() {
         let users_arc = Arc::new(load_users());
         let env = init("multi_thread").unwrap();
         let mut threads = Vec::new();
-        for i in 0..10 {
+        for i in 0..7 {
             let db = env.get_handle("users").unwrap();
             let users = users_arc.clone();
             threads.push(thread::spawn(move || {

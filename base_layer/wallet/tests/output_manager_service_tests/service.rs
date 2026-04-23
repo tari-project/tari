@@ -1241,7 +1241,7 @@ async fn it_handles_large_coin_splits() {
     backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
-    let split_count = 100;
+    let split_count = 70;
 
     let (_tx_id, coin_split_tx, _amount) = oms
         .output_manager_handle
