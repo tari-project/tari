@@ -23,8 +23,8 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
-use minotari_app_grpc::tari_rpc as grpc;
 use grpc::{PaymentRecipient, payment_recipient::PaymentType};
+use minotari_app_grpc::tari_rpc as grpc;
 use minotari_console_wallet::{CliCommands, SignOneSidedTransactionArgs};
 use tari_integration_tests::{
     TariWorld,
@@ -32,14 +32,10 @@ use tari_integration_tests::{
 };
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 
-#[when(expr = "I prepare an offline one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
-async fn prepare_offline_transaction(
-    world: &mut TariWorld,
-    amount: u64,
-    sender: String,
-    receiver: String,
-    fee: u64,
-) {
+#[when(
+    expr = "I prepare an offline one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}"
+)]
+async fn prepare_offline_transaction(world: &mut TariWorld, amount: u64, sender: String, receiver: String, fee: u64) {
     let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
@@ -145,14 +141,11 @@ async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_na
         "Signed transaction file never appeared at {output_file:?} within {timeout:?}"
     );
 
-    let signed_json = std::fs::read_to_string(&output_file)
-        .unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
+    let signed_json =
+        std::fs::read_to_string(&output_file).unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
     assert!(!signed_json.is_empty(), "Signed transaction file is empty");
 
-    println!(
-        "Transaction signed via wallet CLI: {} bytes of JSON",
-        signed_json.len()
-    );
+    println!("Transaction signed via wallet CLI: {} bytes of JSON", signed_json.len());
     world.offline_signing_signed = Some(signed_json);
 }
 
@@ -166,9 +159,7 @@ async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String
 
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
-    let request = grpc::BroadcastSignedOneSidedTransactionRequest {
-        request: signed_json,
-    };
+    let request = grpc::BroadcastSignedOneSidedTransactionRequest { request: signed_json };
 
     let response = client
         .broadcast_signed_one_sided_transaction(request)
