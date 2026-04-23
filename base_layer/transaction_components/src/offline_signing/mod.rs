@@ -25,6 +25,7 @@ pub mod offline_signer;
 pub mod one_sided_signer;
 
 pub use models::PaymentRecipient;
+pub use models::PrepareOneSidedTransactionForSigningResult;
 pub use offline_signer::{
     prepare_deposit_multisig_transaction,
     prepare_one_sided_transaction_for_signing,

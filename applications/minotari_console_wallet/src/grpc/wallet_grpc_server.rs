@@ -117,6 +117,8 @@ use minotari_app_grpc::tari_rpc::{
     SendShaAtomicSwapResponse,
     SignMessageRequest,
     SignMessageResponse,
+    SignOneSidedTransactionRequest,
+    SignOneSidedTransactionResponse,
     SubmitValidatorEvictionProofRequest,
     SubmitValidatorEvictionProofResponse,
     SubmitValidatorNodeExitRequest,
@@ -888,6 +890,43 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     "Failed to lock transaction for address `{address}`: {err}"
                 );
                 PrepareOneSidedTransactionForSigningResponse {
+                    is_success: false,
+                    result: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn sign_one_sided_transaction(
+        &self,
+        request: Request<SignOneSidedTransactionRequest>,
+    ) -> Result<Response<SignOneSidedTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut transaction_service = self.get_transaction_service();
+        let request = PrepareOneSidedTransactionForSigningResult::from_json(&message.request)
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let response = match transaction_service
+            .sign_one_sided_transaction(request)
+            .await
+        {
+            Ok(data) => {
+                let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
+                SignOneSidedTransactionResponse {
+                    is_success: true,
+                    result: json_data,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to sign a prepared transaction: {err}"
+                );
+                SignOneSidedTransactionResponse {
                     is_success: false,
                     result: Default::default(),
                     failure_message: err.to_string(),

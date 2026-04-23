@@ -26,6 +26,7 @@ use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use grpc::{
+    BroadcastSignedOneSidedTransactionRequest,
     CancelTransactionRequest,
     ClaimHtlcRefundRequest,
     ClaimShaAtomicSwapRequest,
@@ -39,6 +40,7 @@ use grpc::{
     PaymentRecipient,
     ReplaceByFeeRequest,
     SendShaAtomicSwapRequest,
+    SignOneSidedTransactionRequest,
     TransferRequest,
     UserPayForFeeRequest,
     ValidateRequest,
@@ -3690,8 +3692,45 @@ async fn sign_prepared_transaction(world: &mut TariWorld, wallet: String) {
             panic!("No prepared transaction found for wallet {}", wallet);
         });
 
-    let request = BroadcastSignedOneSidedTransactionRequest {
+    let request = SignOneSidedTransactionRequest {
         request: prepared_tx,
+    };
+
+    let response = client
+        .sign_one_sided_transaction(request)
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(
+        response.is_success,
+        "SignOneSidedTransaction failed: {}",
+        response.failure_message
+    );
+
+    world
+        .signed_offline_transaction
+        .insert(wallet.clone(), response.result);
+
+    cucumber_steps_log(format!(
+        "Signed prepared transaction using wallet {}",
+        wallet
+    ));
+}
+
+#[when(expr = "I broadcast the signed transaction from wallet {word}")]
+#[then(expr = "I broadcast the signed transaction from wallet {word}")]
+async fn broadcast_signed_transaction(world: &mut TariWorld, wallet: String) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+
+    let signed_tx = world
+        .signed_offline_transaction
+        .get(&wallet)
+        .cloned()
+        .unwrap_or_else(|| panic!("No signed transaction found for wallet {}", wallet));
+
+    let request = BroadcastSignedOneSidedTransactionRequest {
+        request: signed_tx,
     };
 
     let response = client
@@ -3712,42 +3751,7 @@ async fn sign_prepared_transaction(world: &mut TariWorld, wallet: String) {
         .insert(wallet.clone(), tx_id);
 
     cucumber_steps_log(format!(
-        "Signed and broadcast transaction from {} with tx_id {}",
+        "Broadcasted signed transaction from {} with tx_id {}",
         wallet, tx_id
-    ));
-}
-
-#[when(expr = "I broadcast the signed transaction from wallet {word}")]
-#[then(expr = "I broadcast the signed transaction from wallet {word}")]
-async fn broadcast_signed_transaction(world: &mut TariWorld, wallet: String) {
-    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-
-    let tx_id = world
-        .signed_offline_transaction_id
-        .get(&wallet)
-        .copied()
-        .unwrap_or_else(|| panic!("No signed transaction found for wallet {}", wallet));
-
-    let request = GetTransactionInfoRequest {
-        transaction_ids: vec![tx_id],
-    };
-
-    wait_for!(
-        timeout: Duration::from_secs(100),
-        description: format!("signed transaction {tx_id} to be broadcast"),
-        condition: async {
-            let response = client.get_transaction_info(request.clone()).await.unwrap().into_inner();
-            let tx_info = response.transactions.first().unwrap();
-            if tx_info.status == grpc::TransactionStatus::Broadcast as i32 {
-                Ok(true)
-            } else {
-                Err(format!("status: {:?}", tx_info.status))
-            }
-        }
-    );
-
-    cucumber_steps_log(format!(
-        "Transaction {} broadcast from {} successfully",
-        tx_id, wallet
     ));
 }

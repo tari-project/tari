@@ -319,184 +319,49 @@ service Wallet {
   //   "failure_message": "Destination address is malformed."
   // }
   // ```
-  rpc PrepareOneSidedTransactionForSigning (PrepareOneSidedTransactionForSigningRequest)  returns (PrepareOneSidedTransactionForSigningResponse);
+rpc PrepareOneSidedTransactionForSigning (PrepareOneSidedTransactionForSigningRequest)  returns (PrepareOneSidedTransactionForSigningResponse);
 
-  // Prepares a multisignature deposit transaction for offline signing.
+  // Signs a one-sided transaction that was prepared for offline signing.
   //
-  // The PrepareDepositMultisigTransaction RPC constructs a deposit transaction requiring multiple signers,
-  // which can be signed and completed offline. This is commonly used to fund shared wallets or validator nodes
-  // that rely on multisignature output scripts.
-  //
-  // The transaction is returned in JSON format and can be signed by each participant independently.
+  // The SignOneSidedTransaction RPC takes a prepared one-sided transaction and signs it using the wallet's private keys.
+  // This RPC is used in the offline signing flow where the transaction was prepared by a view-only wallet but needs to be
+  // signed by a full-spend wallet. The signed transaction can then be broadcast using the view-only wallet.
   //
   // ### Request Parameters:
   //
-  // - `amount` (required):
-  //   - **Type**: `uint64`
-  //   - **Description**: The amount to deposit in MicroTari (µT).
-  //   - **Validation**: Must be greater than 0.
-  //
-  // - `party_number` (required):
-  //   - **Type**: `uint64`
-  //   - **Description**: The index of the current signer (this party) in the multisignature group.
-  //   - **Validation**:
-  //     - Must be greater than 0.
-  //     - Must be less than or equal to the number of provided public keys.
-  //     - Will be cast to an unsigned 8-bit integer (`u8`).
-  //
-  // - `public_keys` (required):
-  //   - **Type**: `repeated bytes`
-  //   - **Description**: A list of canonical public keys (compressed) representing all participants in the multisig group.
-  //   - **Validation**:
-  //     - Must include at least one key.
-  //     - All public keys must be valid and unique.
-  //     - Public key at `party_number - 1` is assumed to be the current caller.
-  //
-  // - `recipient_address` (required):
-  //   - **Type**: `bytes`
-  //   - **Description**: A byte-encoded Tari address to which the deposit output will be attributed.
-  //   - **Validation**: Must be a valid `TariAddress`; invalid values will trigger an error.
+  // - `request` (required):
+  //   - **Type**: `string`
+  //   - **Description**: A JSON-encoded string of the prepared transaction data from PrepareOneSidedTransactionForSigning.
   //
   // ### Response Fields:
   //
   // - `is_success`:
   //   - **Type**: `bool`
-  //   - **Description**: Indicates whether the deposit transaction was prepared successfully.
+  //   - **Description**: Indicates whether the transaction was signed successfully.
   //
   // - `result`:
   //   - **Type**: `string`
-  //   - **Description**: A JSON-encoded representation of the unsigned multisig transaction. Present only if `is_success` is `true`.
+  //   - **Description**: A JSON-encoded string of the signed transaction. Only populated if `is_success` is `true`.
   //
   // - `failure_message`:
   //   - **Type**: `string`
-  //   - **Description**: Explains why the transaction preparation failed. Present only if `is_success` is `false`.
+  //   - **Description**: Provides context if signing failed.
   //
-  // ### Example JavaScript gRPC client usage:
-  //
+  // ### Example:
   // ```javascript
   // const request = {
-  //   amount: 5000000,
-  //   party_number: 1,
-  //   public_keys: [
-  //     Buffer.from("03a1...abc", "hex"),
-  //     Buffer.from("02bc...def", "hex")
-  //   ],
-  //   recipient_address: Buffer.from("a1b2...c3d4", "hex")
+  //   request: JSON.stringify({
+  //     // prepared transaction data from PrepareOneSidedTransactionForSigning
+  //   })
   // };
   //
-  // client.prepareDepositMultisigTransaction(request, (err, response) => {
-  //   if (err) {
-  //     console.error("RPC error:", err);
-  //   } else if (!response.is_success) {
-  //     console.error("Preparation failed:", response.failure_message);
-  //   } else {
-  //     console.log("Multisig transaction:", response.result);
-  //   }
+  // client.signOneSidedTransaction(request, (err, response) => {
+  //   if (err) console.error("RPC Error:", err);
+  //   else if (!response.is_success) console.error("Signing failed:", response.failure_message);
+  //   else console.log("Signed transaction:", response.result);
   // });
   // ```
-  //
-  // ### Sample JSON Response:
-  //
-  // ```json
-  // {
-  //   "is_success": true,
-  //   "result": "{ \"amount\": 5000000, \"public_keys\": [\"...\"], \"recipient\": \"tari:...\", \"outputs\": [...] }",
-  //   "failure_message": ""
-  // }
-  // ```
-  //
-  // If preparation fails:
-  //
-  // ```json
-  // {
-  //   "is_success": false,
-  //   "result": "",
-  //   "failure_message": "public_keys must be unique"
-  // }
-  // ```
-  rpc PrepareDepositMultisigTransaction (PrepareDepositMultisigTransactionRequest) returns (PrepareDepositMultisigTransactionResponse);
-  
-  // Prepares a multisignature withdrawal transaction for offline signing.
-  //
-  // The PrepareWithdrawMultisigTransaction RPC constructs a transaction that spends a previously created multisig UTXO.
-  // The caller must supply a valid UTXO commitment and a complete set of Schnorr signatures from all multisig participants.
-  // The unsigned transaction is returned as JSON and can be submitted once fully signed.
-  //
-  // ### Request Parameters:
-  //
-  // - `utxo_commitment` (required):
-  //   - **Type**: `string`
-  //   - **Description**: A hex-encoded commitment of the multisig UTXO to be spent.
-  //   - **Validation**: Must be a valid commitment string (compressed format).
-  //
-  // - `signatures` (required):
-  //   - **Type**: `repeated bytes`
-  //   - **Description**: A list of raw signature byte arrays used in the multisig withdrawal.
-  //     Each item may represent a full or partial signature, or a concatenated sequence of signature fragments.
-  //     The interpretation depends on the signing scheme used by the multisig script.
-  //
-  // - `recipient_address` (required):
-  //   - **Type**: `bytes`
-  //   - **Description**: A byte-encoded Tari address to receive the withdrawn funds.
-  //   - **Validation**: Must be a valid `TariAddress`; invalid values will cause the request to fail.
-  //
-  // ### Response Fields:
-  //
-  // - `is_success`:
-  //   - **Type**: `bool`
-  //   - **Description**: Indicates whether the transaction was successfully prepared.
-  //
-  // - `result`:
-  //   - **Type**: `string`
-  //   - **Description**: A JSON-encoded string of the unsigned withdrawal transaction. Only present if `is_success` is `true`.
-  //
-  // - `failure_message`:
-  //   - **Type**: `string`
-  //   - **Description**: Describes the reason for failure. Only present if `is_success` is `false`.
-  //
-  // ### Example JavaScript gRPC client usage:
-  //
-  // ```javascript
-  // const request = {
-  //   utxo_commitment: "b2f3e1...9ac4",
-  //   signatures: [
-  //     Buffer.from("3045...f1a2", "hex"),
-  //     Buffer.from("3081...9b23", "hex")
-  //   ],
-  //   recipient_address: Buffer.from("a1b2...c3d4", "hex")
-  // };
-  //
-  // client.prepareWithdrawMultisigTransaction(request, (err, response) => {
-  //   if (err) {
-  //     console.error("RPC error:", err);
-  //   } else if (!response.is_success) {
-  //     console.error("Preparation failed:", response.failure_message);
-  //   } else {
-  //     console.log("Withdrawal transaction:", response.result);
-  //   }
-  // });
-  // ```
-  //
-  // ### Sample JSON Response:
-  //
-  // ```json
-  // {
-  //   "is_success": true,
-  //   "result": "{ \"inputs\": [\"b2f3e1...\"], \"outputs\": [...], \"recipient\": \"tari:...\" }",
-  //   "failure_message": ""
-  // }
-  // ```
-  //
-  // If preparation fails:
-  //
-  // ```json
-  // {
-  //   "is_success": false,
-  //   "result": "",
-  //   "failure_message": "Invalid UTXO commitment hash: invalid hex format"
-  // }
-  // ```
-  rpc PrepareWithdrawMultisigTransaction (PrepareWithdrawMultisigTransactionRequest) returns (PrepareWithdrawMultisigTransactionResponse);
+  rpc SignOneSidedTransaction (SignOneSidedTransactionRequest) returns (SignOneSidedTransactionResponse);
 
   // Broadcasts a signed one-sided transaction to the Tari network.
   //
@@ -571,6 +436,50 @@ service Wallet {
   // }
   // ```
   rpc BroadcastSignedOneSidedTransaction  (BroadcastSignedOneSidedTransactionRequest)  returns (BroadcastSignedOneSidedTransactionResponse);
+
+  // Signs a one-sided transaction that was prepared for offline signing.
+  //
+  // The SignOneSidedTransaction RPC takes a prepared one-sided transaction (from PrepareOneSidedTransactionForSigning)
+  // and signs it using the wallet's keys. It returns the signed transaction that can then be broadcast.
+  // This RPC enables the offline signing pattern where a view-only wallet prepares, a full-spend wallet signs,
+  // and the view-only wallet broadcasts.
+  //
+  // ### Request Parameters:
+  //
+  // - `request` (required):
+  //   - **Type**: `string`
+  //   - **Description**: A JSON-encoded string of the prepared transaction from PrepareOneSidedTransactionForSigning.
+  //   - **Validation**:
+  //     - Must be a valid JSON string conforming to the PrepareOneSidedTransactionForSigningResult format.
+  //
+  // ### Response Fields:
+  //
+  // - `is_success`:
+  //   - **Type**: `bool`
+  //   - **Description**: Indicates whether the transaction was successfully signed.
+  //
+  // - `result`:
+  //   - **Type**: `string`
+  //   - **Description**: A JSON-encoded string of the signed transaction. Only populated if `is_success` is `true`.
+  //
+  // - `failure_message`:
+  //   - **Type**: `string`
+  //   - **Description**: Provides context for any signing failure. Only populated if `is_success` is `false`.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   request: JSON.stringify(preparedTransactionData)
+  // };
+  //
+  // client.signOneSidedTransaction(request, (err, response) => {
+  //   if (err) console.error("Sign error:", err);
+  //   else if (!response.is_success) console.error("Signing failed:", response.failure_message);
+  //   else console.log("Signed transaction:", response.result);
+  // });
+  // ```
+  rpc SignOneSidedTransaction (SignOneSidedTransactionRequest) returns (SignOneSidedTransactionResponse);
 
   // This call supports standard interactive transactions (Mimblewimble),
   // one-sided transactions, and one-sided-to-stealth-address transactions.
@@ -1989,6 +1898,17 @@ message PrepareOneSidedTransactionForSigningRequest {
 }
 
 message PrepareOneSidedTransactionForSigningResponse {
+  bool is_success = 1;
+  string result = 2;
+  string failure_message = 3;
+}
+
+// A request to sign a prepared one sided transaction for offline signing
+message SignOneSidedTransactionRequest {
+  string request = 1;
+}
+
+message SignOneSidedTransactionResponse {
   bool is_success = 1;
   string result = 2;
   string failure_message = 3;
