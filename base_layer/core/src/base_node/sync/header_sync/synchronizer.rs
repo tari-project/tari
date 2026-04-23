@@ -119,6 +119,26 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             "Synchronizing headers ({} candidate peers selected)",
             self.sync_peers.len()
         );
+
+        // Hold `Arc<NodeId>` sync-list handles for each candidate peer. While these guards are
+        // alive the connectivity manager marks the peers as "in use by sync", which prevents
+        // opportunistic disconnects (e.g. DhtConnectivity random-pool pruning). The guards are
+        // dropped automatically when this function returns.
+        let mut _sync_guards: Vec<Arc<NodeId>> = Vec::with_capacity(self.sync_peers.len());
+        for peer in self.sync_peers.iter() {
+            match self.connectivity.add_peer_to_sync_list(peer.node_id().clone()).await {
+                Ok(handle) => _sync_guards.push(handle),
+                Err(e) => debug!(
+                    target: LOG_TARGET,
+                    "Failed to register sync peer {} on sync list: {e}", peer.node_id()
+                ),
+            }
+        }
+
+        self.synchronize_inner().await
+    }
+
+    async fn synchronize_inner(&mut self) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
         let mut latency_increases_counter = 0;
         loop {
@@ -201,13 +221,27 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             target: LOG_TARGET,
             "Attempting to synchronize headers with `{node_id}`"
         );
+        // Defensive: the connection may have been torn down by another subsystem between
+        // dial returning and this point (e.g. DhtConnectivity pruning). This is not the peer's
+        // fault, so use NotInSync (no ban) to trigger a skip-and-retry with the next peer.
+        if !conn.is_connected() {
+            warn!(
+                target: LOG_TARGET,
+                "Sync peer `{node_id}` was disconnected before RPC negotiation could begin"
+            );
+            return Err(BlockHeaderSyncError::NotInSync);
+        }
 
         let config = RpcClient::builder()
             .with_deadline(self.config.rpc_deadline)
             .with_deadline_grace_period(Duration::from_secs(5));
-        let mut client = conn
-            .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
-            .await?;
+        // Bound RPC negotiation so a stuck negotiation cannot wedge the sync loop.
+        let mut client = tokio::time::timeout(
+            self.config.rpc_deadline,
+            conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
+        )
+        .await
+        .map_err(|_| BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout))??;
 
         let latency = client
             .get_last_request_latency()

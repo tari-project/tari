@@ -301,6 +301,12 @@ impl ConnectivityManagerMock {
             GetAllowList(reply) => {
                 let _result = reply.send(vec![]);
             },
+            AddPeerToSyncList(node_id, reply) => {
+                let _result = reply.send(std::sync::Arc::new(node_id));
+            },
+            GetSyncPeerList(reply) => {
+                let _result = reply.send(vec![]);
+            },
             GetMinimizeConnectionsThreshold(_) => unimplemented!(),
         }
     }
