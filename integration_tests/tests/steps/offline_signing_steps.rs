@@ -99,8 +99,11 @@ async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_na
         let input = wallet_ps.temp_dir_path.join("offline_signing_input.json");
         let output = wallet_ps.temp_dir_path.join("offline_signing_output.json");
         // Ensure any stale output from a previous run doesn't cause a false-
-        // positive read below.
-        let _ = std::fs::remove_file(&output);
+        // positive read below. `drop` rather than `let _ =` so clippy's
+        // `let-underscore-drop` lint is satisfied; we genuinely want to
+        // discard the Result here because "file not present" is expected on
+        // the first run.
+        drop(std::fs::remove_file(&output));
         std::fs::write(&input, &prepared_json).expect("Failed to write prepared transaction file");
 
         wallet_ps.kill();
