@@ -146,6 +146,10 @@ impl CipherSeed {
         CipherSeed::new_with_birthday(birthday)
     }
 
+    pub fn change_birthday(&mut self, birthday: u16) {
+        self.birthday = birthday;
+    }
+
     #[cfg(target_arch = "wasm32")]
     /// Generate a new seed
     pub fn random() -> Self {
@@ -582,7 +586,7 @@ mod test {
     #[test]
     fn test_cipher_seed_to_mnemonic_and_from_mnemonic() {
         // Valid Mnemonic sequence
-        let seed = CipherSeed::random();
+        let mut seed = CipherSeed::new_with_birthday(183u16);
         let mnemonic_seq = seed
             .to_mnemonic(MnemonicLanguage::Japanese, None)
             .expect("Couldn't convert CipherSeed to Mnemonic");
@@ -594,6 +598,16 @@ mod test {
         let mnemonic_seed = CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None)
             .expect("Couldn't create CipherSeed from Mnemonic with Language");
         assert_eq!(seed, mnemonic_seed);
+        assert_eq!(mnemonic_seed.birthday, 183u16);
+        // change the birthday and check it is correctly reflected in the mnemonic
+        seed.change_birthday(200u16);
+
+        let mnemonic_seq = seed
+            .to_mnemonic(MnemonicLanguage::Japanese, None)
+            .expect("Couldn't convert CipherSeed to Mnemonic");
+        let mnemonic_seed = CipherSeed::from_mnemonic(&mnemonic_seq, None).expect("Should decrypt");
+        assert_eq!(mnemonic_seed.birthday, 200u16);
+
         // Invalid Mnemonic sequence
         let mnemonic_seq = vec![
             "stay", "what", "minor", "stay", "olive", "clip", "buyer", "know", "report", "obey", "pen", "door", "type",
