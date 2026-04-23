@@ -84,6 +84,8 @@ pub struct TariWorld {
     pub wallets: IndexMap<String, WalletProcess>,
     pub balance: IndexMap<String, GetBalanceResponse>,
     pub view_and_spend_keys: IndexMap<String, PathBuf>,
+    pub prepared_offline_transaction: IndexMap<String, String>,
+    pub signed_offline_transaction_id: IndexMap<String, u64>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -160,6 +162,8 @@ impl TariWorld {
             wallets: Default::default(),
             balance: Default::default(),
             view_and_spend_keys: Default::default(),
+            prepared_offline_transaction: Default::default(),
+            signed_offline_transaction_id: Default::default(),
             merge_mining_proxies: Default::default(),
             transactions: Default::default(),
             wallet_addresses: Default::default(),
