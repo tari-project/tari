@@ -435,8 +435,9 @@ fn generate_fixtures() {
 /// git commit -S -m "test: regenerate reference LMDB fixture"
 /// ```
 ///
-/// **IMPORTANT:** Re-running this generator after the JSON fixture has been regenerated requires
-/// updating the hardcoded expected constants in `reference_lmdb_constants` below.
+/// **IMPORTANT:** When the JSON fixture is regenerated, this generator must be re-run so the
+/// committed `data.mdb.gz` matches the new JSON. The expected values used by the read-side
+/// tests are derived from the JSON at runtime, so no separate constants need updating.
 #[test]
 #[ignore = "Run manually to regenerate the reference LMDB binary fixture"]
 fn generate_reference_lmdb_fixture() {
@@ -493,7 +494,8 @@ fn generate_reference_lmdb_fixture() {
     let gz_file = fs::File::create(&dst).unwrap_or_else(|e| panic!("Failed to create {}: {e}", dst.display()));
     let mut enc = GzEncoder::new(gz_file, Compression::best());
     std::io::copy(&mut raw.as_slice(), &mut enc).unwrap();
-    enc.finish().unwrap_or_else(|e| panic!("Failed to finalise gzip stream: {e}"));
+    enc.finish()
+        .unwrap_or_else(|e| panic!("Failed to finalise gzip stream: {e}"));
 
     println!(
         "Wrote compressed reference LMDB fixture to {} ({} KB)",
@@ -508,27 +510,6 @@ fn generate_reference_lmdb_fixture() {
 // ---------------------------------------------------------------------------
 // Reference LMDB tests: open the committed binary fixture and assert values
 // ---------------------------------------------------------------------------
-
-/// Hardcoded expected values derived from the committed `test_chain_data.json` fixture.
-///
-/// If the JSON fixture is regenerated (via `generate_fixtures`), both these constants AND the
-/// binary fixture (via `generate_reference_lmdb_fixture`) must be updated together.
-mod reference_lmdb_constants {
-    /// The canonical chain tip height of the reference fixture (genesis + B1..B5 + F6'..F15').
-    pub const EXPECTED_TIP_HEIGHT: u64 = 15;
-    /// Hex-encoded block hash of the chain tip (height 15, F15' after reorg).
-    pub const EXPECTED_TIP_HASH_HEX: &str = "e055c040bf1c9541426045ff95a43e3e3fade6392dd7ed82aac6a8f4234dd2d7";
-    /// Hex-encoded Pedersen commitment of the first output in block 1.
-    pub const EXPECTED_BLOCK1_COMMITMENT_HEX: &str = "d28588acee522cc1e903e201501c9f0126e39abe335c41083a7ef652a2015f66";
-    /// Hex-encoded output hash of the first output in block 1.
-    pub const EXPECTED_BLOCK1_OUTPUT_HASH_HEX: &str =
-        "422e9933dce4257f5647de6a9a29b01e43fe02a15c156ddbcaef6e54c1517b5c";
-    /// Hex-encoded public nonce of the first kernel excess_sig in block 1.
-    pub const EXPECTED_BLOCK1_KERNEL_NONCE_HEX: &str =
-        "7e7b6ae78a92c6251a000c41d78937289376cbafb8a3471bfda5d5a39924f728";
-    /// Hex-encoded signature scalar of the first kernel excess_sig in block 1.
-    pub const EXPECTED_BLOCK1_KERNEL_SIG_HEX: &str = "cd1b1efd8df818dc04eccf91fae58fade54cf03924ae5c66501035b2f2409f0a";
-}
 
 /// Ensure a decompressed copy of the reference LMDB fixture is present in a temporary location.
 ///
@@ -563,12 +544,11 @@ fn ensure_reference_fixture_exists() {
         );
 
         // Decompress data.mdb.gz → data.mdb next to the compressed source.
-        let gz_file = fs::File::open(&gz_path)
-            .unwrap_or_else(|e| panic!("Failed to open {}: {e}", gz_path.display()));
+        let gz_file = fs::File::open(&gz_path).unwrap_or_else(|e| panic!("Failed to open {}: {e}", gz_path.display()));
         let mut decoder = flate2::read::GzDecoder::new(gz_file);
         fs::create_dir_all(&fixture_dir).unwrap();
-        let mut out_file = fs::File::create(&data_mdb)
-            .unwrap_or_else(|e| panic!("Failed to create {}: {e}", data_mdb.display()));
+        let mut out_file =
+            fs::File::create(&data_mdb).unwrap_or_else(|e| panic!("Failed to create {}: {e}", data_mdb.display()));
         let bytes_written = std::io::copy(&mut decoder, &mut out_file)
             .unwrap_or_else(|e| panic!("Failed to decompress {}: {e}", gz_path.display()));
 
@@ -593,51 +573,62 @@ fn open_reference_db() -> BlockchainDatabase<TempDatabase> {
 }
 
 mod reference_lmdb {
-    use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoSecretKey};
-    use tari_utilities::{ByteArray, hex::Hex};
-
-    use super::{reference_lmdb_constants::*, *};
+    use super::*;
 
     /// Test 1 — tip header check.
     ///
     /// Opens the committed binary fixture and verifies the tip height and block hash, proving
     /// that the LMDB on-disk serialisation format has not changed since the fixture was generated.
+    /// Expected values are derived from the JSON fixture at runtime so the JSON is the single
+    /// source of truth: regenerating it automatically propagates here without manual constant
+    /// edits.
     #[test]
     fn test_reads_reference_lmdb_tip_header() {
+        let data = load_test_chain_data();
+        let expected_tip = data.expected.last().expect("JSON fixture has no expected blocks");
+
         let db = open_reference_db();
         let tip = db.fetch_tip_header().unwrap();
         assert_eq!(
             tip.height(),
-            EXPECTED_TIP_HEIGHT,
-            "Tip height from reference LMDB does not match expected value"
+            expected_tip.height,
+            "Tip height from reference LMDB does not match expected value from JSON"
         );
         assert_eq!(
-            tip.hash().to_hex(),
-            EXPECTED_TIP_HASH_HEX,
-            "Tip block hash from reference LMDB does not match expected value"
+            *tip.hash(),
+            expected_tip.block_hash,
+            "Tip block hash from reference LMDB does not match expected value from JSON"
         );
     }
 
     /// Test 2 — UTXO lookup by commitment.
     ///
     /// Verifies that the UTXO commitment index in the binary fixture is intact and returns the
-    /// correct output hash for a known commitment from block 1.
+    /// correct output hash for a known commitment from block 1. Both the commitment to look up
+    /// and the expected output hash come from the JSON fixture, so the JSON remains the single
+    /// source of truth.
     #[test]
     fn test_reads_reference_lmdb_utxo_by_commitment() {
+        let data = load_test_chain_data();
+        let block1 = &data.expected[1];
+        let commitment = block1
+            .output_commitments
+            .first()
+            .expect("Block 1 in JSON fixture has no output commitments")
+            .clone();
+        let expected_output_hash = block1
+            .output_hashes
+            .first()
+            .expect("Block 1 in JSON fixture has no output hashes");
+
         let db = open_reference_db();
-
-        let commitment_bytes = Vec::from_hex(EXPECTED_BLOCK1_COMMITMENT_HEX).expect("Invalid commitment hex constant");
-        let commitment =
-            CompressedCommitment::from_canonical_bytes(&commitment_bytes).expect("Invalid commitment bytes");
-
         let found_hash = db
             .fetch_unspent_output_hash_by_commitment(commitment)
             .expect("fetch_unspent_output_hash_by_commitment failed on reference LMDB")
             .expect("Block-1 UTXO commitment not found in reference LMDB");
 
         assert_eq!(
-            found_hash.to_hex(),
-            EXPECTED_BLOCK1_OUTPUT_HASH_HEX,
+            found_hash, *expected_output_hash,
             "Commitment lookup returned unexpected output hash from reference LMDB"
         );
     }
@@ -645,19 +636,18 @@ mod reference_lmdb {
     /// Test 3 — kernel lookup by excess signature.
     ///
     /// Verifies that the kernel excess-sig index is intact and can locate the block-1 kernel,
-    /// which is the core backward-compatibility check for the LMDB serialisation format.
+    /// which is the core backward-compatibility check for the LMDB serialisation format. The
+    /// excess signature used for the lookup is taken straight from the JSON fixture.
     #[test]
     fn test_reads_reference_lmdb_kernel_by_excess_sig() {
+        let data = load_test_chain_data();
+        let excess_sig = data.expected[1]
+            .kernel_excess_sigs
+            .first()
+            .expect("Block 1 in JSON fixture has no kernel excess sigs")
+            .clone();
+
         let db = open_reference_db();
-
-        let nonce_bytes = Vec::from_hex(EXPECTED_BLOCK1_KERNEL_NONCE_HEX).expect("Invalid nonce hex constant");
-        let sig_scalar_bytes = Vec::from_hex(EXPECTED_BLOCK1_KERNEL_SIG_HEX).expect("Invalid sig hex constant");
-
-        let excess_sig = CompressedSignature::new(
-            CompressedKey::new(&nonce_bytes),
-            RistrettoSecretKey::from_canonical_bytes(&sig_scalar_bytes).expect("Invalid sig scalar bytes"),
-        );
-
         let (found_kernel, _block_hash) = db
             .fetch_kernel_by_excess_sig(excess_sig.clone())
             .expect("fetch_kernel_by_excess_sig failed on reference LMDB")
@@ -728,6 +718,185 @@ mod write_tests {
             assert_eq!(orphan.header.height, reorged.header.height);
         }
     }
+
+    /// Byte-level comparison of stored data: dump every (key, value) byte pair from every
+    /// named LMDB sub-database in a freshly-built chain, dump the same from the committed
+    /// reference fixture, and assert they are bit-identical.
+    ///
+    /// This is the strongest practical regression check on the LMDB on-disk format. Any
+    /// change to key encoding, value encoding (serde format, length prefixes, struct
+    /// layout), record ordering, or set membership will fail this test.
+    ///
+    /// # Why a kv-pair dump rather than `data.mdb` byte equality
+    ///
+    /// LMDB pre-allocates a sparse map and stores internal bookkeeping (free-page list,
+    /// transaction id in the meta page) that is not deterministic between independent
+    /// fresh builds even when the user-visible data is identical. A naive `data.mdb`
+    /// `assert_eq!(fresh_bytes, reference_bytes)` therefore fails by ~4 bytes in the
+    /// meta-page region on every run. Dumping kv-pairs strips out the LMDB-internal
+    /// bookkeeping while keeping every byte of every stored key and value subject to
+    /// the equality check.
+    ///
+    /// # On failure
+    ///
+    /// The assertion message names the database that diverged and the index of the
+    /// first differing kv-pair. If the change is intentional, regenerate the reference
+    /// fixture with the `generate_reference_lmdb_fixture` ignored test.
+    #[test]
+    fn fresh_lmdb_bytes_match_reference_fixture() {
+        use tari_storage::lmdb_store::LMDBConfig;
+
+        use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
+
+        // Build a fresh chain using the exact config used to produce the committed fixture.
+        // See `generate_reference_lmdb_fixture` above — these arguments must stay in sync.
+        let lmdb_config = LMDBConfig::new_from_mb(128, 4, 2, false);
+        let data = load_test_chain_data();
+        let fresh_db = create_new_blockchain_with_lmdb_config(lmdb_config.clone());
+        let fresh_db = populate_chain(fresh_db, &data);
+
+        // Copy the freshly-built data.mdb to a stable directory before the underlying
+        // TempDatabase is dropped (which would delete it). We then re-open it cleanly via
+        // `dump_lmdb_kv_pairs` for byte enumeration.
+        let fresh_src = fresh_db.db_read_access().unwrap().path().to_path_buf();
+        let fresh_dump_path = tari_test_utils::paths::create_temporary_data_path();
+        copy_dir_recursive(&fresh_src, &fresh_dump_path);
+        drop(fresh_db);
+
+        // Decompress the committed reference fixture into a sibling stable directory.
+        let ref_dump_path = tari_test_utils::paths::create_temporary_data_path();
+        decompress_reference_to(&ref_dump_path);
+
+        // Dump every kv-pair from every named sub-database in both LMDBs.
+        let fresh_dump = dump_lmdb_kv_pairs(&fresh_dump_path, &lmdb_config);
+        let reference_dump = dump_lmdb_kv_pairs(&ref_dump_path, &lmdb_config);
+
+        // Compare top-level structure (same set of named databases).
+        assert_eq!(
+            fresh_dump.len(),
+            reference_dump.len(),
+            "Fresh and reference LMDBs have a different number of named databases (fresh={}, ref={})",
+            fresh_dump.len(),
+            reference_dump.len(),
+        );
+
+        // Compare each named database by kv-pair set, with informative diagnostics on first
+        // divergence.
+        for ((fresh_name, fresh_pairs), (ref_name, ref_pairs)) in fresh_dump.iter().zip(reference_dump.iter()) {
+            assert_eq!(
+                fresh_name, ref_name,
+                "Database name order diverged between fresh ({fresh_name}) and reference ({ref_name})",
+            );
+            assert_eq!(
+                fresh_pairs.len(),
+                ref_pairs.len(),
+                "Database `{}` has {} kv-pairs in fresh build but {} in reference fixture. \
+                 If this change is intentional, regenerate the reference fixture with:\n\
+                 cargo test -p tari_core --lib --features sqlite_bundled \
+                 -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+                fresh_name,
+                fresh_pairs.len(),
+                ref_pairs.len(),
+            );
+
+            for (idx, ((fk, fv), (rk, rv))) in fresh_pairs.iter().zip(ref_pairs.iter()).enumerate() {
+                if fk != rk || fv != rv {
+                    panic!(
+                        "Database `{}` diverges at kv-pair index {}.\n\
+                         Fresh    key: {:02x?} ({} bytes)\n\
+                         Reference key: {:02x?} ({} bytes)\n\
+                         Fresh    val: {:02x?} ({} bytes)\n\
+                         Reference val: {:02x?} ({} bytes)\n\
+                         If this change is intentional, regenerate the reference fixture with:\n\
+                         cargo test -p tari_core --lib --features sqlite_bundled \
+                         -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+                        fresh_name,
+                        idx,
+                        fk,
+                        fk.len(),
+                        rk,
+                        rk.len(),
+                        fv,
+                        fv.len(),
+                        rv,
+                        rv.len(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Decompress the committed `reference_lmdb/data.mdb.gz` into `dest_dir/data.mdb`.
+///
+/// Used by tests that need a stable, writable copy of the reference LMDB independent of
+/// the shared `ensure_reference_fixture_exists` cache.
+fn decompress_reference_to(dest_dir: &Path) {
+    let gz_path = reference_lmdb_dir().join("data.mdb.gz");
+    assert!(
+        gz_path.exists(),
+        "Reference fixture not found at {}.\n\
+         Run the generator and commit the result:\n\
+         cargo test -p tari_core --lib --features sqlite_bundled \
+         -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+        gz_path.display()
+    );
+    fs::create_dir_all(dest_dir).unwrap();
+    let gz_file = fs::File::open(&gz_path).unwrap_or_else(|e| panic!("Failed to open {}: {e}", gz_path.display()));
+    let mut decoder = flate2::read::GzDecoder::new(gz_file);
+    let dst = dest_dir.join("data.mdb");
+    let mut out = fs::File::create(&dst).unwrap_or_else(|e| panic!("Failed to create {}: {e}", dst.display()));
+    std::io::copy(&mut decoder, &mut out).unwrap_or_else(|e| panic!("Failed to decompress {}: {e}", gz_path.display()));
+}
+
+/// A single raw key/value pair from an LMDB sub-database.
+type LmdbKvPair = (Vec<u8>, Vec<u8>);
+
+/// All kv-pairs from a single named LMDB sub-database, paired with that database's name.
+type NamedDbDump = (String, Vec<LmdbKvPair>);
+
+/// Open the LMDB at `path` with the same database list and flags as production, then
+/// dump every (key, value) raw byte pair from every named sub-database. Returns a Vec
+/// of (db_name, kv_pairs) preserving the iteration order of `get_all_database_names()`.
+///
+/// Within each sub-database, kv-pairs are returned in LMDB cursor order (lexicographic
+/// for byte keys, numeric for INTEGERKEY databases).
+fn dump_lmdb_kv_pairs(path: &Path, config: &tari_storage::lmdb_store::LMDBConfig) -> Vec<NamedDbDump> {
+    use lmdb_zero::{LmdbResultExt, ReadTransaction};
+
+    use crate::chain_storage::lmdb_db::{build_lmdb_store, get_all_database_names};
+
+    let (lmdb_store, _file_lock) =
+        build_lmdb_store(path, config.clone()).unwrap_or_else(|e| panic!("Failed to open LMDB at {:?}: {}", path, e));
+
+    let mut result: Vec<NamedDbDump> = Vec::new();
+    for name in get_all_database_names() {
+        let handle = lmdb_store
+            .get_handle(name)
+            .unwrap_or_else(|| panic!("Database `{name}` not present in LMDB at {:?}", path));
+        let db_ref = handle.db();
+        let env = db_ref.env();
+        let txn = ReadTransaction::new(env).unwrap_or_else(|e| panic!("ReadTransaction::new failed for `{name}`: {e}"));
+        let access = txn.access();
+        let mut cursor = txn
+            .cursor(db_ref.clone())
+            .unwrap_or_else(|e| panic!("cursor() failed for `{name}`: {e}"));
+
+        let mut pairs: Vec<LmdbKvPair> = Vec::new();
+        let mut next: lmdb_zero::Result<(&[u8], &[u8])> = cursor.first(&access);
+        loop {
+            match next.to_opt() {
+                Ok(Some((k, v))) => {
+                    pairs.push((k.to_vec(), v.to_vec()));
+                    next = cursor.next(&access);
+                },
+                Ok(None) => break,
+                Err(e) => panic!("Cursor iteration failed in `{name}`: {e}"),
+            }
+        }
+        result.push((name.to_string(), pairs));
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
