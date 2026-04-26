@@ -28,7 +28,6 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use minotari_app_utilities::consts;
 use tari_comms::connection_manager::SelfLivenessStatus;
-use tari_core::chain_storage::DatabaseStats;
 use tokio::time;
 
 use super::{CommandContext, HandleCommand};
@@ -77,9 +76,6 @@ impl CommandContext {
             "Tip",
             format!("{} ({})", metadata.best_block_height(), last_block_time.to_rfc2822()),
         );
-
-        let database_stats = self.blockchain_db.get_database_stats().await?;
-        status_line.add_field("JMT", format_jmt_status(&database_stats));
 
         let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
         let fut = self.mempool_service.get_mempool_stats();
@@ -161,90 +157,5 @@ impl CommandContext {
             StatusLineOutput::Log => log::info!(target: target, "{status_line}"),
         };
         Ok(())
-    }
-}
-
-fn format_jmt_status(stats: &DatabaseStats) -> String {
-    let stats = &stats.jmt_pruning_stats;
-    format!(
-        "new_stale={} awaiting_prune={} pruned={} nodes/{} idx",
-        format_compact_count(stats.stale_nodes_last_block),
-        format_compact_count(stats.total_pending_stale_nodes),
-        format_compact_count(stats.last_prune_deleted_nodes),
-        format_compact_count(stats.last_prune_deleted_index),
-    )
-}
-
-fn format_compact_count(count: u64) -> String {
-    const THOUSAND: f64 = 1_000.0;
-    const MILLION: f64 = 1_000_000.0;
-
-    match count {
-        0..=999 => count.to_string(),
-        1_000..=999_999 => format_compact_scaled(count as f64 / THOUSAND, "k"),
-        _ => format_compact_scaled(count as f64 / MILLION, "M"),
-    }
-}
-
-fn format_compact_scaled(value: f64, suffix: &str) -> String {
-    let precision = if value < 10.0 { 1 } else { 0 };
-    let formatted = format!("{value:.precision$}");
-    let formatted = if precision > 0 {
-        formatted.trim_end_matches('0').trim_end_matches('.')
-    } else {
-        &formatted
-    };
-    format!("{formatted}{suffix}")
-}
-
-#[cfg(test)]
-mod tests {
-    use tari_core::chain_storage::{DatabaseStats, JmtPruningStats};
-
-    use super::format_jmt_status;
-
-    #[test]
-    fn format_jmt_status_displays_zero_values() {
-        let stats = DatabaseStats::default();
-        assert_eq!(
-            format_jmt_status(&stats),
-            "new_stale=0 awaiting_prune=0 pruned=0 nodes/0 idx"
-        );
-    }
-
-    #[test]
-    fn format_jmt_status_compacts_large_pending_values() {
-        let stats = DatabaseStats {
-            jmt_pruning_stats: JmtPruningStats {
-                stale_nodes_last_block: 23,
-                total_pending_stale_nodes: 1_400,
-                last_prune_deleted_nodes: 120,
-                last_prune_deleted_index: 500,
-            },
-            ..Default::default()
-        };
-
-        assert_eq!(
-            format_jmt_status(&stats),
-            "new_stale=23 awaiting_prune=1.4k pruned=120 nodes/500 idx"
-        );
-    }
-
-    #[test]
-    fn format_jmt_status_compacts_million_scale_values() {
-        let stats = DatabaseStats {
-            jmt_pruning_stats: JmtPruningStats {
-                stale_nodes_last_block: 12_400,
-                total_pending_stale_nodes: 1_200_000,
-                last_prune_deleted_nodes: 0,
-                last_prune_deleted_index: 0,
-            },
-            ..Default::default()
-        };
-
-        assert_eq!(
-            format_jmt_status(&stats),
-            "new_stale=12k awaiting_prune=1.2M pruned=0 nodes/0 idx"
-        );
     }
 }

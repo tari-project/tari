@@ -33,6 +33,7 @@ mod fetch_all_orphan_headers;
 mod get_block;
 mod get_chain_metadata;
 mod get_db_stats;
+mod get_jmt_stats;
 mod get_mempool_state;
 mod get_mempool_stats;
 mod get_network_stats;
@@ -119,6 +120,7 @@ pub enum Command {
     Status(status::Args),
     GetChainMetadata(get_chain_metadata::Args),
     GetDbStats(get_db_stats::Args),
+    GetJmtStats(get_jmt_stats::Args),
     GetPeer(get_peer::Args),
     ListPeers(list_peers::Args),
     DialPeer(dial_peer::Args),
@@ -242,6 +244,7 @@ impl CommandContext {
                 Command::BlockTiming(_) |
                 Command::GetChainMetadata(_) |
                 Command::GetDbStats(_) |
+                Command::GetJmtStats(_) |
                 Command::GetStateInfo(_) |
                 Command::ListReorgs(_) |
                 Command::FetchAllOrphanHeaders(_) |
@@ -301,6 +304,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Status(args) => self.handle_command(args).await,
             Command::GetChainMetadata(args) => self.handle_command(args).await,
             Command::GetDbStats(args) => self.handle_command(args).await,
+            Command::GetJmtStats(args) => self.handle_command(args).await,
             Command::GetPeer(args) => self.handle_command(args).await,
             Command::TestPeerLiveness(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
