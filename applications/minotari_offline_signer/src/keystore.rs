@@ -27,8 +27,7 @@
 
 use argon2::{Argon2, password_hash::PasswordHasher};
 use chacha20poly1305::{
-    ChaCha20Poly1305,
-    Nonce,
+    ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit},
 };
 use keyring::Entry;
@@ -45,8 +44,11 @@ const SERVICE_NAME: &str = "minotari_offline_signer";
 const SPEND_KEY_ENTRY: &str = "spend_key";
 const VIEW_KEY_ENTRY: &str = "view_key";
 
-/// Encrypted key data stored in the keyring
-#[derive(Serialize, Deserialize)]
+#[cfg(feature = "test-keystore")]
+pub(crate) use test_keystore::set_test_keystore_file;
+
+/// Encrypted key data stored by a keystore backend.
+#[derive(Clone, Serialize, Deserialize)]
 struct EncryptedKeyData {
     /// Salt used for key derivation (base64 encoded)
     salt: String,
@@ -56,7 +58,256 @@ struct EncryptedKeyData {
     ciphertext: String,
 }
 
-/// Derives an encryption key from a passphrase and salt using Argon2id
+trait KeystoreBackend {
+    fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError>;
+    fn retrieve(&self, entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError>;
+    fn delete(&self, entry_name: &str) -> Result<(), OfflineSignerError>;
+    fn description(&self) -> &'static str;
+}
+
+enum KeystoreBackendKind {
+    OsKeyring(OsKeyringBackend),
+    #[cfg(feature = "test-keystore")]
+    TestFile(test_keystore::TestFileBackend),
+}
+
+impl KeystoreBackend for KeystoreBackendKind {
+    fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
+        match self {
+            Self::OsKeyring(backend) => backend.store(entry_name, data),
+            #[cfg(feature = "test-keystore")]
+            Self::TestFile(backend) => backend.store(entry_name, data),
+        }
+    }
+
+    fn retrieve(&self, entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
+        match self {
+            Self::OsKeyring(backend) => backend.retrieve(entry_name),
+            #[cfg(feature = "test-keystore")]
+            Self::TestFile(backend) => backend.retrieve(entry_name),
+        }
+    }
+
+    fn delete(&self, entry_name: &str) -> Result<(), OfflineSignerError> {
+        match self {
+            Self::OsKeyring(backend) => backend.delete(entry_name),
+            #[cfg(feature = "test-keystore")]
+            Self::TestFile(backend) => backend.delete(entry_name),
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::OsKeyring(backend) => backend.description(),
+            #[cfg(feature = "test-keystore")]
+            Self::TestFile(backend) => backend.description(),
+        }
+    }
+}
+
+pub struct Keystore {
+    backend: KeystoreBackendKind,
+}
+
+impl Keystore {
+    pub fn new() -> Self {
+        #[cfg(feature = "test-keystore")]
+        if let Some(path) = test_keystore::current_file() {
+            return Self {
+                backend: KeystoreBackendKind::TestFile(test_keystore::TestFileBackend::new(path)),
+            };
+        }
+
+        Self {
+            backend: KeystoreBackendKind::OsKeyring(OsKeyringBackend),
+        }
+    }
+
+    pub fn init(
+        &self,
+        spend_key: &PrivateKey,
+        view_key: &PrivateKey,
+        passphrase: &str,
+    ) -> Result<(), OfflineSignerError> {
+        let encrypted_spend = encrypt_key(spend_key, passphrase)?;
+        let encrypted_view = encrypt_key(view_key, passphrase)?;
+
+        self.backend.store(SPEND_KEY_ENTRY, &encrypted_spend)?;
+        self.backend.store(VIEW_KEY_ENTRY, &encrypted_view)?;
+
+        Ok(())
+    }
+
+    pub fn get_keys(&self, passphrase: &str) -> Result<(PrivateKey, PrivateKey), OfflineSignerError> {
+        let encrypted_spend = self.backend.retrieve(SPEND_KEY_ENTRY)?;
+        let encrypted_view = self.backend.retrieve(VIEW_KEY_ENTRY)?;
+
+        let spend_key = decrypt_key(&encrypted_spend, passphrase)?;
+        let view_key = decrypt_key(&encrypted_view, passphrase)?;
+
+        Ok((spend_key, view_key))
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.backend.retrieve(SPEND_KEY_ENTRY).is_ok()
+    }
+
+    pub fn clear(&self) -> Result<(), OfflineSignerError> {
+        // Try to delete both keys, ignoring errors if they do not exist.
+        let _unused = self.backend.delete(SPEND_KEY_ENTRY);
+        let _unused = self.backend.delete(VIEW_KEY_ENTRY);
+        Ok(())
+    }
+
+    pub fn description(&self) -> &'static str {
+        self.backend.description()
+    }
+}
+
+impl Default for Keystore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+struct OsKeyringBackend;
+
+impl KeystoreBackend for OsKeyringBackend {
+    fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
+        let entry = Entry::new(SERVICE_NAME, entry_name)
+            .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
+
+        let json = serde_json::to_string(data)
+            .map_err(|e| OfflineSignerError::SerializationError(format!("Failed to serialize key data: {}", e)))?;
+
+        entry
+            .set_password(&json)
+            .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to store in keyring: {}", e)))?;
+
+        Ok(())
+    }
+
+    fn retrieve(&self, entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
+        let entry = Entry::new(SERVICE_NAME, entry_name)
+            .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
+
+        let json = entry
+            .get_password()
+            .map_err(|e| OfflineSignerError::NotInitialized(format!("Key not found in keyring: {}", e)))?;
+
+        serde_json::from_str(&json)
+            .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse key data: {}", e)))
+    }
+
+    fn delete(&self, entry_name: &str) -> Result<(), OfflineSignerError> {
+        let entry = Entry::new(SERVICE_NAME, entry_name)
+            .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
+
+        entry
+            .delete_credential()
+            .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to delete from keyring: {}", e)))?;
+
+        Ok(())
+    }
+
+    fn description(&self) -> &'static str {
+        "the OS keystore"
+    }
+}
+
+#[cfg(feature = "test-keystore")]
+mod test_keystore {
+    use std::{cell::RefCell, collections::BTreeMap, path::PathBuf};
+
+    use super::{EncryptedKeyData, KeystoreBackend, OfflineSignerError};
+
+    thread_local! {
+        static TEST_KEYSTORE_FILE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) struct TestKeystoreFileGuard {
+        previous_path: Option<PathBuf>,
+    }
+
+    pub fn set_test_keystore_file(path: Option<PathBuf>) -> TestKeystoreFileGuard {
+        let previous_path = TEST_KEYSTORE_FILE.replace(path);
+        TestKeystoreFileGuard { previous_path }
+    }
+
+    pub(super) fn current_file() -> Option<PathBuf> {
+        TEST_KEYSTORE_FILE.with(|path| path.borrow().clone())
+    }
+
+    impl Drop for TestKeystoreFileGuard {
+        fn drop(&mut self) {
+            TEST_KEYSTORE_FILE.replace(self.previous_path.take());
+        }
+    }
+
+    pub(super) struct TestFileBackend {
+        path: PathBuf,
+    }
+
+    impl TestFileBackend {
+        pub(super) fn new(path: PathBuf) -> Self {
+            Self { path }
+        }
+
+        fn read(&self) -> Result<BTreeMap<String, EncryptedKeyData>, OfflineSignerError> {
+            match std::fs::read_to_string(&self.path) {
+                Ok(json) => serde_json::from_str(&json)
+                    .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse test keystore: {}", e))),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+                Err(e) => Err(OfflineSignerError::KeystoreError(format!(
+                    "Failed to read test keystore: {}",
+                    e
+                ))),
+            }
+        }
+
+        fn write(&self, entries: &BTreeMap<String, EncryptedKeyData>) -> Result<(), OfflineSignerError> {
+            if let Some(parent) = self.path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    OfflineSignerError::KeystoreError(format!("Failed to create test keystore directory: {}", e))
+                })?;
+            }
+            let json = serde_json::to_string(entries).map_err(|e| {
+                OfflineSignerError::SerializationError(format!("Failed to serialize test keystore: {}", e))
+            })?;
+            std::fs::write(&self.path, json)
+                .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to write test keystore: {}", e)))?;
+            Ok(())
+        }
+    }
+
+    impl KeystoreBackend for TestFileBackend {
+        fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
+            let mut entries = self.read()?;
+            entries.insert(entry_name.to_string(), data.clone());
+            self.write(&entries)
+        }
+
+        fn retrieve(&self, entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
+            let entries = self.read()?;
+            entries
+                .get(entry_name)
+                .cloned()
+                .ok_or_else(|| OfflineSignerError::NotInitialized("Key not found in test keystore".to_string()))
+        }
+
+        fn delete(&self, entry_name: &str) -> Result<(), OfflineSignerError> {
+            let mut entries = self.read()?;
+            entries.remove(entry_name);
+            self.write(&entries)
+        }
+
+        fn description(&self) -> &'static str {
+            "the test keystore"
+        }
+    }
+}
+
+/// Derives an encryption key from a passphrase and salt using Argon2id.
 fn derive_encryption_key(passphrase: &str, salt: &Salt) -> Result<Zeroizing<[u8; 32]>, OfflineSignerError> {
     let argon2 = Argon2::default();
     let hash = argon2
@@ -77,18 +328,15 @@ fn derive_encryption_key(passphrase: &str, salt: &Salt) -> Result<Zeroizing<[u8;
     Ok(key)
 }
 
-/// Encrypts a private key using ChaCha20-Poly1305
+/// Encrypts a private key using ChaCha20-Poly1305.
 fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
-    // Generate random salt and nonce
     let salt = Salt::generate();
     let mut nonce_bytes = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    // Derive encryption key from passphrase
     let encryption_key = derive_encryption_key(passphrase, &salt)?;
 
-    // Encrypt the private key
     let cipher = ChaCha20Poly1305::new_from_slice(&*encryption_key)
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to create cipher: {}", e)))?;
 
@@ -104,9 +352,8 @@ fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, O
     })
 }
 
-/// Decrypts a private key using ChaCha20-Poly1305
+/// Decrypts a private key using ChaCha20-Poly1305.
 fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, OfflineSignerError> {
-    // Parse salt and nonce
     let salt =
         Salt::from_b64(&data.salt).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid salt: {}", e)))?;
 
@@ -117,10 +364,8 @@ fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, 
     let ciphertext = Vec::from_hex(&data.ciphertext)
         .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid ciphertext: {}", e)))?;
 
-    // Derive encryption key from passphrase
     let encryption_key = derive_encryption_key(passphrase, &salt)?;
 
-    // Decrypt the private key
     let cipher = ChaCha20Poly1305::new_from_slice(&*encryption_key)
         .map_err(|e| OfflineSignerError::DecryptionError(format!("Failed to create cipher: {}", e)))?;
 
@@ -132,84 +377,31 @@ fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, 
         .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid key data: {}", e)))
 }
 
-/// Stores a key in the OS keyring
-fn store_in_keyring(entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
-    let entry = Entry::new(SERVICE_NAME, entry_name)
-        .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
-
-    let json = serde_json::to_string(data)
-        .map_err(|e| OfflineSignerError::SerializationError(format!("Failed to serialize key data: {}", e)))?;
-
-    entry
-        .set_password(&json)
-        .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to store in keyring: {}", e)))?;
-
-    Ok(())
-}
-
-/// Retrieves a key from the OS keyring
-fn retrieve_from_keyring(entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
-    let entry = Entry::new(SERVICE_NAME, entry_name)
-        .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
-
-    let json = entry
-        .get_password()
-        .map_err(|e| OfflineSignerError::NotInitialized(format!("Key not found in keyring: {}", e)))?;
-
-    serde_json::from_str(&json).map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse key data: {}", e)))
-}
-
-/// Deletes a key from the OS keyring
-fn delete_from_keyring(entry_name: &str) -> Result<(), OfflineSignerError> {
-    let entry = Entry::new(SERVICE_NAME, entry_name)
-        .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to create keyring entry: {}", e)))?;
-
-    entry
-        .delete_credential()
-        .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to delete from keyring: {}", e)))?;
-
-    Ok(())
-}
-
-/// Initializes the keystore with spend and view keys
+/// Initializes the keystore with spend and view keys.
 pub fn init_keystore(
     spend_key: &PrivateKey,
     view_key: &PrivateKey,
     passphrase: &str,
 ) -> Result<(), OfflineSignerError> {
-    // Encrypt both keys
-    let encrypted_spend = encrypt_key(spend_key, passphrase)?;
-    let encrypted_view = encrypt_key(view_key, passphrase)?;
-
-    // Store in keyring
-    store_in_keyring(SPEND_KEY_ENTRY, &encrypted_spend)?;
-    store_in_keyring(VIEW_KEY_ENTRY, &encrypted_view)?;
-
-    Ok(())
+    Keystore::new().init(spend_key, view_key, passphrase)
 }
 
-/// Retrieves the spend and view keys from the keystore
+/// Retrieves the spend and view keys from the keystore.
 pub fn get_keys(passphrase: &str) -> Result<(PrivateKey, PrivateKey), OfflineSignerError> {
-    let encrypted_spend = retrieve_from_keyring(SPEND_KEY_ENTRY)?;
-    let encrypted_view = retrieve_from_keyring(VIEW_KEY_ENTRY)?;
-
-    let spend_key = decrypt_key(&encrypted_spend, passphrase)?;
-    let view_key = decrypt_key(&encrypted_view, passphrase)?;
-
-    Ok((spend_key, view_key))
+    Keystore::new().get_keys(passphrase)
 }
 
-/// Checks if the keystore has been initialized
+/// Checks if the keystore has been initialized.
 pub fn is_initialized() -> bool {
-    Entry::new(SERVICE_NAME, SPEND_KEY_ENTRY)
-        .and_then(|e| e.get_password())
-        .is_ok()
+    Keystore::new().is_initialized()
 }
 
-/// Clears all keys from the keystore
+/// Clears all keys from the keystore.
 pub fn clear_keystore() -> Result<(), OfflineSignerError> {
-    // Try to delete both keys, ignoring errors if they don't exist
-    let _unused = delete_from_keyring(SPEND_KEY_ENTRY);
-    let _unused = delete_from_keyring(VIEW_KEY_ENTRY);
-    Ok(())
+    Keystore::new().clear()
+}
+
+/// Returns a human-readable description of the active keystore backend.
+pub fn storage_description() -> &'static str {
+    Keystore::new().description()
 }

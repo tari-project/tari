@@ -1,4 +1,4 @@
-// Copyright 2025. The Tari Project
+// Copyright 2026. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Minotari Offline Signer
-//!
-//! A standalone binary for signing one-sided transactions offline.
-//! This tool allows signing transactions without requiring a full wallet connection,
-//! using only the private spend and view keys.
-//!
-//! Keys are securely stored in the OS keystore (Keychain on macOS, Credential Manager on Windows,
-//! Secret Service on Linux), encrypted with a passphrase using ChaCha20-Poly1305.
-
-use anyhow::Result;
-use clap::Parser;
-use minotari_offline_signer::cli::Cli;
-
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-    cli.execute()
-}
+pub mod cli;
+pub mod error;
+mod keystore;

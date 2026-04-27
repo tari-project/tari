@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{ffi::OsString, fs, path::PathBuf, str::FromStr};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
@@ -51,6 +51,11 @@ use crate::{error::OfflineSignerError, keystore};
 #[derive(Debug, Parser)]
 #[clap(name = "minotari_offline_signer", version, about)]
 pub struct Cli {
+    /// Use a file-backed keystore instead of the OS keyring.
+    #[cfg(feature = "test-keystore")]
+    #[clap(long, global = true, hide = true)]
+    pub test_keystore_file: Option<PathBuf>,
+
     #[clap(subcommand)]
     pub command: Commands,
 }
@@ -133,6 +138,9 @@ pub struct SignArgs {
 
 impl Cli {
     pub fn execute(self) -> Result<()> {
+        #[cfg(feature = "test-keystore")]
+        let _test_keystore_guard = keystore::set_test_keystore_file(self.test_keystore_file.clone());
+
         match self.command {
             Commands::Init { method } => match method {
                 InitMethod::Keys(args) => init_with_keys(args),
@@ -143,6 +151,14 @@ impl Cli {
             Commands::Clear => clear_keystore(),
         }
     }
+}
+
+pub fn execute_from_args<I, T>(args: I) -> Result<()>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    Cli::try_parse_from(args)?.execute()
 }
 
 fn check_already_initialized() -> Result<()> {

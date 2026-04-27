@@ -7,6 +7,9 @@ license = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 
+[features]
+test-keystore = []
+
 [[bin]]
 name = "minotari_offline_signer"
 path = "src/main.rs"
@@ -28,4 +31,3 @@ argon2 = { version = "0.6.0-rc.8", features = ["password-hash"] }
 phc = { version = "0.6.1"}
 rand = { workspace = true }
 zeroize = "^1"
-

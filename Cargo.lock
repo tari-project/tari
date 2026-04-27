@@ -7981,6 +7981,7 @@ dependencies = [
  "minotari_miner",
  "minotari_node",
  "minotari_node_grpc_client",
+ "minotari_offline_signer",
  "minotari_wallet",
  "minotari_wallet_ffi",
  "minotari_wallet_grpc_client",
