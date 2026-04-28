@@ -46,7 +46,7 @@ serde_json.workspace = true
 
 subtle = "2.4.1"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.4.2", features = ["wasm_js"] }
 js-sys = { version = "0.3.55" }
 
 [dev-dependencies]
