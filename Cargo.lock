@@ -7640,6 +7640,7 @@ dependencies = [
  "chrono",
  "crc32fast",
  "digest 0.10.7",
+ "getrandom 0.2.15",
  "getrandom 0.4.2",
  "hex",
  "js-sys",
