@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 use tari_crypto::ristretto::{CompressedRistrettoSchnorr, RistrettoSchnorr};
@@ -140,7 +139,7 @@ impl SideChainId {
         Self {
             public_key,
             knowledge_proof: CompressedRistrettoSchnorr::new_from_schnorr(
-                RistrettoSchnorr::sign(private_key, message, &mut OsRng)
+                RistrettoSchnorr::sign(private_key, message, &mut rand::rng())
                     .expect("RistrettoSchnorr::sign is completely infallible"),
             ),
         }

@@ -368,7 +368,6 @@ impl Display for MultiaddressesWithStats {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use digest::crypto_common::rand_core::OsRng;
     use tari_crypto::keys::SecretKey;
 
     use super::*;
@@ -654,7 +653,7 @@ mod test {
     }
 
     fn create_identity_signature(addresses: &[Multiaddr]) -> IdentitySignature {
-        let secret = CommsSecretKey::random(&mut OsRng);
+        let secret = CommsSecretKey::random(&mut rand::rng());
         let public_key = CommsPublicKey::from_secret_key(&secret);
         let updated_at = Utc::now();
         let identity = IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, addresses, updated_at);

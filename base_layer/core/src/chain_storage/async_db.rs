@@ -23,7 +23,7 @@ use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
 use log::*;
 use primitive_types::U512;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
@@ -81,7 +81,7 @@ const LOG_TARGET: &str = "c::bn::async_db";
 fn trace_log<F, R>(name: &str, f: F) -> R
 where F: FnOnce() -> R {
     let start = Instant::now();
-    let trace_id = OsRng.next_u32();
+    let trace_id = rand::rng().next_u32();
     trace!(
         target: LOG_TARGET,
         "[{name}] Entered blocking thread. trace_id: {trace_id}"

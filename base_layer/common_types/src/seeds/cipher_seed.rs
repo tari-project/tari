@@ -31,7 +31,7 @@ use chacha20::{
 };
 use crc32fast::Hasher as CrcHasher;
 use digest::consts::U32;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hashing::DomainSeparatedHasher;
@@ -163,9 +163,9 @@ impl CipherSeed {
     /// Generate a new seed with a given birthday
     fn new_with_birthday(birthday: u16) -> Self {
         let mut entropy = Box::new([0u8; CIPHER_SEED_ENTROPY_BYTES]);
-        OsRng.fill_bytes(entropy.as_mut());
+        rand::rng().fill_bytes(entropy.as_mut());
         let mut salt = [0u8; CIPHER_SEED_MAIN_SALT_BYTES];
-        OsRng.fill_bytes(salt.as_mut());
+        rand::rng().fill_bytes(salt.as_mut());
 
         Self {
             version: CIPHER_SEED_VERSION,

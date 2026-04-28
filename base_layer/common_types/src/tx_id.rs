@@ -37,8 +37,8 @@ pub struct TxId(u64);
 impl TxId {
     /// Create a new random TxId. Only for temporary use.
     pub fn new_random() -> Self {
-        use rand::{RngCore, rngs::OsRng};
-        TxId(OsRng.next_u64())
+        use rand::Rng;
+        TxId(rand::rng().next_u64())
     }
 
     /// Create a new TxId deterministically from the given 32-byte output hash and MAC key.

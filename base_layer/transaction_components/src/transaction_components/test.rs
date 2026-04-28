@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedSignature, PrivateKey};
 use tari_crypto::{
@@ -147,7 +146,7 @@ fn range_proof_verification() {
             );
         },
     }
-    let key = PrivateKey::random(&mut OsRng);
+    let key = PrivateKey::random(&mut rand::rng());
 
     // Test that proofs with values encroaching on the bit length cannot be constructed
     if factories.range_proof.construct_proof(&key, 2u64.pow(32) - 1).is_err() {
@@ -345,7 +344,7 @@ fn kernel_metadata() {
 #[test]
 fn check_timelocks() {
     let factories = CryptoFactories::new(32);
-    let k = PrivateKey::random(&mut OsRng);
+    let k = PrivateKey::random(&mut rand::rng());
     let v = PrivateKey::from(2u64.pow(32) + 1);
     let c = CompressedCommitment::from_commitment(factories.commitment.commit(&k, &v));
 

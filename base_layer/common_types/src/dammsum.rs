@@ -99,7 +99,7 @@ pub fn validate_checksum(data: &[u8]) -> Result<&[u8], ChecksumError> {
 mod test {
 
     #![allow(clippy::indexing_slicing)]
-    use rand::Rng;
+    use rand::RngExt;
 
     use crate::dammsum::*;
 
@@ -115,8 +115,8 @@ mod test {
         const SIZE: usize = 33;
 
         // Generate random data
-        let mut rng = rand::thread_rng();
-        let data: Vec<u8> = (0..SIZE).map(|_| rng.r#gen::<u8>()).collect();
+        let mut rng = rand::rng();
+        let data: Vec<u8> = (0..SIZE).map(|_| rng.random::<u8>()).collect();
 
         // Compute and append the checksum
         let mut data_with_checksum = data.clone();
@@ -132,8 +132,8 @@ mod test {
         const SIZE: usize = 33;
 
         // Generate identical random data
-        let mut rng = rand::thread_rng();
-        let data_0: Vec<u8> = (0..SIZE).map(|_| rng.r#gen::<u8>()).collect();
+        let mut rng = rand::rng();
+        let data_0: Vec<u8> = (0..SIZE).map(|_| rng.random::<u8>()).collect();
         let check_0 = compute_checksum(&data_0);
 
         let data_1 = data_0;
@@ -176,8 +176,8 @@ mod test {
         const SIZE: usize = 33;
 
         // Generate random data
-        let mut rng = rand::thread_rng();
-        let mut data: Vec<u8> = (0..SIZE).map(|_| rng.r#gen::<u8>()).collect();
+        let mut rng = rand::rng();
+        let mut data: Vec<u8> = (0..SIZE).map(|_| rng.random::<u8>()).collect();
 
         // Compute the checksum
         data.push(compute_checksum(&data));
@@ -205,8 +205,8 @@ mod test {
         const SIZE: usize = 33;
 
         // Generate random data
-        let mut rng = rand::thread_rng();
-        let mut data: Vec<u8> = (0..SIZE).map(|_| rng.r#gen::<u8>()).collect();
+        let mut rng = rand::rng();
+        let mut data: Vec<u8> = (0..SIZE).map(|_| rng.random::<u8>()).collect();
 
         // Compute the checksum
         data.push(compute_checksum(&data));

@@ -27,7 +27,7 @@ use chacha20poly1305::{
     XNonce,
     aead::{Aead, Payload},
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_utilities::{ByteArray, Hidden};
 
 pub trait Encryptable<C> {
@@ -82,7 +82,7 @@ pub fn encrypt_bytes_integral_nonce(
 ) -> Result<Vec<u8>, String> {
     // Produce a secure random nonce
     let mut nonce = [0u8; size_of::<XNonce>()];
-    OsRng.fill_bytes(&mut nonce);
+    rand::rng().fill_bytes(&mut nonce);
     let nonce_ga = XNonce::from_slice(&nonce);
 
     // Bind the domain as additional data
@@ -115,7 +115,7 @@ mod test {
         // Encrypt a message
         let plaintext = b"The quick brown fox was annoying".to_vec();
         let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 

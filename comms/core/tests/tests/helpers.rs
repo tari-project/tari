@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_comms::{
     CommsBuilder,
@@ -45,7 +44,7 @@ pub fn create_peer_storage() -> CommsDatabase {
 
 pub fn create_comms(signal: ShutdownSignal) -> UnspawnedCommsNode {
     let node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));

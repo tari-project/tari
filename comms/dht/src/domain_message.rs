@@ -22,7 +22,7 @@
 
 use std::cmp;
 
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 
 /// Trait that exposes conversion to a protobuf i32 enum type.
 pub trait ToProtoEnum {
@@ -76,7 +76,7 @@ impl MessageHeader {
             message_type,
             // In the unimaginably unlikely case that a nonce of 0 chosen,
             // change it to 1 because 0 is exclusively for message propagation
-            nonce: cmp::max(1, OsRng.next_u64()),
+            nonce: cmp::max(1, rand::rng().next_u64()),
         }
     }
 

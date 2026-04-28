@@ -27,7 +27,7 @@ use std::sync::Arc;
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{Rng, rngs::OsRng};
+use rand::RngExt;
 use tari_common::configuration::Network;
 use tari_common_sqlite::connection::DbConnection;
 use tari_common_types::{
@@ -97,8 +97,8 @@ pub fn create_orphan_block(
 }
 
 pub fn default_coinbase_entities(key_manager: &KeyManager) -> (TariKeyId, TariAddress) {
-    let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
-    let wallet_private_view_key = PrivateKey::random(&mut OsRng);
+    let wallet_private_spend_key = PrivateKey::random(&mut rand::rng());
+    let wallet_private_view_key = PrivateKey::random(&mut rand::rng());
     let _key = key_manager
         .create_encrypted_key(wallet_private_view_key.clone(), None)
         .unwrap();
@@ -204,7 +204,7 @@ pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {
     // When starting from the same nonce, in tests it becomes common to mine the same block more than once without the
     // hash changing. This introduces the required entropy
-    block.header.nonce = rand::thread_rng().r#gen();
+    block.header.nonce = rand::rng().random();
     for _i in 0..20000 {
         if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);
@@ -215,7 +215,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
 }
 
 fn create_test_peer() -> Peer {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rng();
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
     let node_id = NodeId::from_key(&pk);
     let addresses = MultiaddressesWithStats::from_addresses_with_source(
@@ -256,7 +256,7 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
 }
 
 pub fn new_public_key() -> CompressedPublicKey {
-    CompressedPublicKey::random_keypair(&mut OsRng).1
+    CompressedPublicKey::random_keypair(&mut rand::rng()).1
 }
 
 pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {

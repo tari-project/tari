@@ -41,7 +41,7 @@ use std::{
 
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
-use rand::{Rng, thread_rng};
+use rand::RngExt;
 use tari_comms::{
     Minimized,
     PeerConnection,
@@ -425,8 +425,8 @@ impl DhtConnectivity {
         let keep_size = pool_size - pool_size * self.config.connectivity.churn_rate / 100;
         while connected.len() > keep_size {
             // we remove a random peer so as not to keep swapping the same peer each time.
-            let mut rng = thread_rng();
-            let index = rng.gen_range(0..connected.len());
+            let mut rng = rand::rng();
+            let index = rng.random_range(0..connected.len());
             let disconnect_peer = connected.swap_remove(index);
             disconnected_peers.push(disconnect_peer);
         }

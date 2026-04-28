@@ -283,7 +283,6 @@ pub fn create_message_domain_separated_hash_parts(
 mod test {
     #![allow(clippy::indexing_slicing)]
     use prost::Message;
-    use rand::rngs::OsRng;
 
     use super::*;
 
@@ -349,8 +348,8 @@ mod test {
     // In the context of the message protocol, this is sufficient
     fn decryption_fails_on_evil_key() {
         // Generate two distinct keys
-        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let (evil_sk, evil_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let (evil_sk, evil_pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         let key = generate_key_message(&CommsDHKE::new(&sk, &pk.to_public_key().unwrap()));
         let evil_key = generate_key_message(&CommsDHKE::new(&evil_sk, &evil_pk.to_public_key().unwrap()));
 

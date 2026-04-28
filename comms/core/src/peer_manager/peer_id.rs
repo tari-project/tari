@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 
 /// Represents a local peer id. This number is meaningless outside of this node.
 pub type PeerId = u64;
 
 /// Generates a random peer key that is guaranteed to be positive '< u64::MAX'.
 pub fn generate_peer_key() -> PeerId {
-    OsRng.next_u64().saturating_sub(1)
+    rand::rng().next_u64().saturating_sub(1)
 }
 
 /// Generates a random peer key that is guaranteed to be positive '< i64::MAX'.

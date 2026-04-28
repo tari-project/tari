@@ -32,7 +32,6 @@ mod test {
         get_public_spend_key_bytes_from_tari_dual_address,
         tari_dual_address_display,
     };
-    use rand::rngs::OsRng;
     use tari_common_types::tari_address::TariAddress;
     use tari_crypto::{
         compressed_key::CompressedKey,
@@ -65,7 +64,7 @@ mod test {
 
         for pub_key in [
             CompressedKey::<RistrettoPublicKey>::default(),
-            CompressedKey::<RistrettoPublicKey>::from_secret_key(&RistrettoSecretKey::random(&mut OsRng)),
+            CompressedKey::<RistrettoPublicKey>::from_secret_key(&RistrettoSecretKey::random(&mut rand::rng())),
         ] {
             scripts.push((
                 script!(PushPubKey(Box::new(pub_key.clone()))).unwrap(),
@@ -74,7 +73,7 @@ mod test {
             ));
         }
 
-        let key = RistrettoSecretKey::random(&mut OsRng);
+        let key = RistrettoSecretKey::random(&mut rand::rng());
         let msg = slice_to_boxed_message(key.as_bytes());
         scripts.push((
             script!(CheckSigVerify(msg)).unwrap(),

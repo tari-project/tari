@@ -45,7 +45,7 @@ use minotari_wallet::{
     util::watch::Watch,
     utxo_scanner_service::{handle::UtxoScannerHandle, service::ScannedBlock},
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -246,7 +246,7 @@ async fn fee_estimate() {
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let uo = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(3000),
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -356,7 +356,7 @@ async fn test_utxo_selection_no_chain_metadata() {
     let mut unspent = Vec::with_capacity(10);
     for i in 1..=10 {
         let uo = make_input_with_features(
-            &mut OsRng.clone(),
+            &mut rand::rng().clone(),
             i * amount,
             OutputFeatures {
                 maturity: i,
@@ -473,7 +473,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     let mut unspent = Vec::with_capacity(10);
     for i in 1..=10 {
         let uo = make_input_with_features(
-            &mut OsRng.clone(),
+            &mut rand::rng().clone(),
             i * amount,
             OutputFeatures {
                 maturity: i,
@@ -588,7 +588,7 @@ async fn test_utxo_selection_with_tx_priority() {
 
     // Low priority
     let uo_low_1 = make_input_with_features(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         amount,
         OutputFeatures {
             maturity: 1,
@@ -599,7 +599,7 @@ async fn test_utxo_selection_with_tx_priority() {
     oms.add_output(uo_low_1.clone(), None).await.unwrap();
     // High priority
     let uo_high = make_input_with_features(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         amount,
         OutputFeatures {
             maturity: 1,
@@ -615,7 +615,7 @@ async fn test_utxo_selection_with_tx_priority() {
         .unwrap();
     // Low priority
     let uo_low_2 = make_input_with_features(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         amount,
         OutputFeatures {
             maturity: 1,
@@ -685,8 +685,8 @@ async fn send_not_enough_funds() {
     let mut unspent: Vec<(FixedHash, bool)> = Vec::with_capacity(num_outputs);
     for _i in 0..num_outputs {
         let uo = make_input(
-            &mut OsRng.clone(),
-            MicroMinotari::from(200 + OsRng.next_u64() % 1000),
+            &mut rand::rng().clone(),
+            MicroMinotari::from(200 + rand::rng().next_u64() % 1000),
             &OutputFeatures::default(),
             oms.key_manager_handle.key_manager(),
         );
@@ -962,8 +962,8 @@ async fn cancel_transaction() {
     let mut unspent: Vec<(FixedHash, bool)> = Vec::with_capacity(num_outputs);
     for _i in 0..num_outputs {
         let uo = make_input(
-            &mut OsRng.clone(),
-            MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+            &mut rand::rng().clone(),
+            MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
             &OutputFeatures::default(),
             oms.key_manager_handle.key_manager(),
         );
@@ -1011,7 +1011,7 @@ async fn sending_transaction_persisted_while_offline() {
 
     let available_balance = 20_000 * uT;
     let uo = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         available_balance / 2,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -1019,7 +1019,7 @@ async fn sending_transaction_persisted_while_offline() {
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
     let uo = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         available_balance / 2,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -1103,19 +1103,19 @@ async fn coin_split_with_change() {
     let val2 = 7_000 * uT;
     let val3 = 8_000 * uT;
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val1,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
     );
     let uo2 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val2,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
     );
     let uo3 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val3,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -1182,19 +1182,19 @@ async fn coin_split_no_change() {
     let val2 = 5_000 * uT;
     let val3 = 6_000 * uT + expected_fee;
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val1,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
     );
     let uo2 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val2,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
     );
     let uo3 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val3,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -1231,7 +1231,7 @@ async fn it_handles_large_coin_splits() {
 
     let val = 20 * T;
     let uo = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         val,
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -1263,7 +1263,7 @@ async fn test_txo_validation() {
 
     // let output1_value = 1_000_000;
     // let output1 = make_input(
-    //     &mut OsRng,
+    //     &mut rand::rng(),
     //     MicroMinotari::from(output1_value),
     //     &OutputFeatures::default(),
     //     &oms.key_manager_handle,
@@ -1281,7 +1281,7 @@ async fn test_txo_validation() {
 
     // let output2_value = 2_000_000;
     // let output2 = make_input(
-    //     &mut OsRng,
+    //     &mut rand::rng(),
     //     MicroMinotari::from(output2_value),
     //     &OutputFeatures::default(),
     //     &oms.key_manager_handle,
@@ -1299,7 +1299,7 @@ async fn test_txo_validation() {
 
     // let output3_value = 4_000_000;
     // let output3 = make_input(
-    //     &mut OsRng,
+    //     &mut rand::rng(),
     //     MicroMinotari::from(output3_value),
     //     &OutputFeatures::default(),
     //     &oms.key_manager_handle,
@@ -2041,7 +2041,7 @@ async fn test_get_status_by_tx_id() {
     let mut oms = setup_output_manager_service(backend, true).await;
 
     let uo1 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -2052,7 +2052,7 @@ async fn test_get_status_by_tx_id() {
         .unwrap();
 
     let uo2 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
         oms.key_manager_handle.key_manager(),
@@ -2126,7 +2126,7 @@ async fn scan_for_recovery_test() {
     let key_manager = create_new_random_key_manager().await.unwrap();
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_input(
-            &mut OsRng,
+            &mut rand::rng(),
             MicroMinotari::from(1000 * i as u64),
             &OutputFeatures::default(),
             key_manager.key_manager(),
@@ -2189,7 +2189,7 @@ async fn recovered_output_key_not_in_keychain() {
     // we need to create a new key manager here as we dont want the input be recoverable from oms key chain
     let key_manager = create_new_random_key_manager().await.unwrap();
     let uo = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         MicroMinotari::from(1000u64),
         &OutputFeatures::default(),
         key_manager.key_manager(),

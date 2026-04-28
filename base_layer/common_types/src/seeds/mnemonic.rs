@@ -314,7 +314,6 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use std::str::FromStr;
 
-    use rand::rngs::OsRng;
     use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::byte_array::ByteArray};
 
     use super::*;
@@ -498,7 +497,7 @@ mod test {
 
     #[test]
     fn test_mnemonic_from_bytes_and_to_bytes() {
-        let secretkey_bytes = RistrettoSecretKey::random(&mut OsRng).to_vec();
+        let secretkey_bytes = RistrettoSecretKey::random(&mut rand::rng()).to_vec();
         let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).expect("");
         let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).expect("");
         let mismatched_bytes = secretkey_bytes
@@ -511,12 +510,12 @@ mod test {
 
     #[test]
     fn fuzzer() {
-        use rand::RngCore;
+        use rand::Rng;
         let start = 33;
         // We need the step by eleven to make sure that from_bytes will not do a padding with zeros.
         for len in (start..1024).step_by(11) {
             let mut secretkey_bytes = vec![0u8; len];
-            OsRng.fill_bytes(&mut secretkey_bytes);
+            rand::rng().fill_bytes(&mut secretkey_bytes);
             let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).unwrap();
             let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
             assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {len}");

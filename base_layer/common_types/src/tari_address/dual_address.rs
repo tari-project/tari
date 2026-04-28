@@ -272,7 +272,7 @@ mod test {
     /// Test valid dual tari address
     fn valid_emoji_id() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
@@ -363,7 +363,7 @@ mod test {
     /// Test encoding for dual tari address
     fn encoding() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
@@ -526,7 +526,7 @@ mod test {
     #[test]
     /// Test invalid features
     fn invalid_features() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let mut address =
@@ -543,7 +543,7 @@ mod test {
     #[test]
     /// Test invalid network
     fn invalid_network() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
@@ -560,7 +560,7 @@ mod test {
     #[test]
     fn valid_payment_id() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
@@ -603,7 +603,7 @@ mod test {
     #[test]
     fn valid_max_payment_id() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE + 1];

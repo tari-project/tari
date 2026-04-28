@@ -27,7 +27,6 @@ use std::{
 
 use futures::{Stream, pin_mut, stream::StreamExt};
 use log::*;
-use rand::rngs::OsRng;
 use tari_common_types::types::BlockHash;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_comms_dht::{
@@ -560,7 +559,7 @@ async fn handle_outbound_request(
             .map(|n| n.short_str())
             .unwrap_or_else(|| "random".to_string())
     );
-    let request_key = generate_request_key(&mut OsRng);
+    let request_key = generate_request_key(&mut rand::rng());
     let service_request = proto::BaseNodeServiceRequest {
         request_key,
         request: Some(request.try_into().map_err(CommsInterfaceError::InternalError)?),

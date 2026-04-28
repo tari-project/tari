@@ -23,7 +23,7 @@
 use std::{mem::size_of, sync::Arc};
 
 use chacha20poly1305::Key;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
@@ -55,7 +55,7 @@ pub async fn create_new_random_key_manager_from_seed(
     let cipher = seed;
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
-    OsRng.fill_bytes(key.as_mut());
+    rand::rng().fill_bytes(key.as_mut());
     let factory = CryptoFactories::new(rangeproof_size);
 
     LegacyTransactionKeyManagerWrapper::new(cipher, factory, Arc::new(LegacyWalletType::default())).await

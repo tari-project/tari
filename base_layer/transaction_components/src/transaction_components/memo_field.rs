@@ -1364,7 +1364,6 @@ impl BorshDeserialize for MemoField {
 
 #[cfg(test)]
 mod test {
-    use chacha20poly1305::aead::OsRng;
     use tari_common_types::{
         tari_address::TariAddress,
         types::{CommitmentFactory, CompressedCommitment, FixedHash, PrivateKey},
@@ -1381,9 +1380,9 @@ mod test {
     };
 
     fn create_random_fixed_hash() -> FixedHash {
-        use rand::RngCore;
+        use rand::Rng;
         let mut bytes = [0u8; FixedHash::byte_size()];
-        rand::thread_rng().fill_bytes(&mut bytes);
+        rand::rng().fill_bytes(&mut bytes);
         FixedHash::from(bytes)
     }
 
@@ -1605,15 +1604,15 @@ mod test {
         for payment_id in create_test_data_array() {
             for (value, mask) in [
                 (0, PrivateKey::default()),
-                (0, PrivateKey::random(&mut OsRng)),
+                (0, PrivateKey::random(&mut rand::rng())),
                 (123456, PrivateKey::default()),
-                (654321, PrivateKey::random(&mut OsRng)),
-                (u64::MAX, PrivateKey::random(&mut OsRng)),
+                (654321, PrivateKey::random(&mut rand::rng())),
+                (u64::MAX, PrivateKey::random(&mut rand::rng())),
             ] {
                 let commitment = CompressedCommitment::from_commitment(
                     CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)),
                 );
-                let encryption_key = PrivateKey::random(&mut OsRng);
+                let encryption_key = PrivateKey::random(&mut rand::rng());
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
                     EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone())
@@ -1633,15 +1632,15 @@ mod test {
         for payment_id in create_test_data_array() {
             for (value, mask) in [
                 (0, PrivateKey::default()),
-                (0, PrivateKey::random(&mut OsRng)),
+                (0, PrivateKey::random(&mut rand::rng())),
                 (123456, PrivateKey::default()),
-                (654321, PrivateKey::random(&mut OsRng)),
-                (u64::MAX, PrivateKey::random(&mut OsRng)),
+                (654321, PrivateKey::random(&mut rand::rng())),
+                (u64::MAX, PrivateKey::random(&mut rand::rng())),
             ] {
                 let commitment = CompressedCommitment::from_commitment(
                     CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)),
                 );
-                let encryption_key = PrivateKey::random(&mut OsRng);
+                let encryption_key = PrivateKey::random(&mut rand::rng());
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
                     EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone())

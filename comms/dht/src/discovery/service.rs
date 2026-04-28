@@ -23,7 +23,7 @@
 use std::{collections::HashMap, convert::TryFrom, sync::Arc, time::Instant};
 
 use log::*;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_comms::{
     log_if_error,
     peer_manager::{NodeIdentity, Peer, PeerManager},
@@ -294,7 +294,7 @@ impl DhtDiscoveryService {
         destination: NodeDestination,
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError> {
-        let nonce = OsRng.next_u64();
+        let nonce = rand::rng().next_u64();
         if *dest_pubkey == *self.node_identity.public_key() {
             let _result = reply_tx.send(Err(DhtDiscoveryError::CannotDiscoverThisNode));
             return Ok(());

@@ -31,7 +31,6 @@ use std::{
 
 use anyhow::anyhow;
 use multiaddr::Multiaddr;
-use rand::rngs::OsRng;
 use tari_comms::{
     NodeIdentity,
     peer_manager::{NodeId, PeerFeatures},
@@ -88,7 +87,7 @@ fn spawn_identity_miners(
 fn start_miner(id: usize, prefix: String, tx: mpsc::Sender<NodeIdentity>) -> Result<(), anyhow::Error> {
     let mut node_id_hex = String::with_capacity(26);
     for i in 0u64.. {
-        let (k, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (k, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         let node_id = NodeId::from_public_key(&pk);
         node_id_hex.clear();
         for byte in node_id.as_bytes() {

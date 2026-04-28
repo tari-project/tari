@@ -25,14 +25,14 @@
 //! Keys are encrypted with ChaCha20-Poly1305 using a key derived from the passphrase via Argon2id,
 //! then stored in the OS keyring (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux).
 
-use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
+use argon2::{Argon2, password_hash, password_hash::PasswordHasher};
 use chacha20poly1305::{
     ChaCha20Poly1305,
     Nonce,
     aead::{Aead, KeyInit},
 };
 use keyring::Entry;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_utilities::{ByteArray, hex::Hex};
@@ -55,11 +55,11 @@ struct EncryptedKeyData {
     ciphertext: String,
 }
 
-/// Derives an encryption key from a passphrase using Argon2id
-fn derive_encryption_key(passphrase: &str, salt: &SaltString) -> Result<Zeroizing<[u8; 32]>, OfflineSignerError> {
+/// Derives an encryption key from a passphrase and salt using Argon2id
+fn derive_encryption_key(passphrase: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, OfflineSignerError> {
     let argon2 = Argon2::default();
     let hash = argon2
-        .hash_password(passphrase.as_bytes(), salt)
+        .hash_password_with_salt(passphrase.as_bytes(), salt)
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to derive key: {}", e)))?;
 
     let hash_bytes = hash
@@ -79,9 +79,9 @@ fn derive_encryption_key(passphrase: &str, salt: &SaltString) -> Result<Zeroizin
 /// Encrypts a private key using ChaCha20-Poly1305
 fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
     // Generate random salt and nonce
-    let salt = SaltString::generate(&mut OsRng);
+    let salt = password_hash::generate_salt();
     let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
+    rand::rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     // Derive encryption key from passphrase
@@ -97,7 +97,7 @@ fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, O
         .map_err(|e| OfflineSignerError::EncryptionError(format!("Failed to encrypt: {}", e)))?;
 
     Ok(EncryptedKeyData {
-        salt: salt.to_string(),
+        salt: salt.to_hex(),
         nonce: nonce_bytes.to_hex(),
         ciphertext: ciphertext.to_hex(),
     })
@@ -106,8 +106,8 @@ fn encrypt_key(key: &PrivateKey, passphrase: &str) -> Result<EncryptedKeyData, O
 /// Decrypts a private key using ChaCha20-Poly1305
 fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, OfflineSignerError> {
     // Parse salt and nonce
-    let salt = SaltString::from_b64(&data.salt)
-        .map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid salt: {}", e)))?;
+    let salt =
+        Vec::from_hex(&data.salt).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid salt: {}", e)))?;
 
     let nonce_bytes =
         Vec::from_hex(&data.nonce).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid nonce: {}", e)))?;

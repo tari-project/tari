@@ -135,7 +135,6 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
-    use rand::rngs::OsRng;
     use tari_common_types::chain_metadata::ChainMetadata;
 
     use super::*;
@@ -149,7 +148,7 @@ mod test {
 
         // Helper function to generate a peer with a given latency
         fn generate_peer(latency: Option<usize>, accumulated_difficulty: Option<U512>) -> SyncPeer {
-            let sk = CommsSecretKey::random(&mut OsRng);
+            let sk = CommsSecretKey::random(&mut rand::rng());
             let pk = CommsPublicKey::from_secret_key(&sk);
             let node_id = NodeId::from_key(&pk);
             let latency_option = latency.map(|latency| Duration::from_millis(latency as u64));

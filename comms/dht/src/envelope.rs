@@ -370,7 +370,6 @@ mod tests {
     use super::*;
 
     mod node_destination {
-        use rand::rngs::OsRng;
         use tari_utilities::hex::{Hex, to_hex};
 
         use super::*;
@@ -378,7 +377,7 @@ mod tests {
         #[test]
         fn to_inner_bytes() {
             assert!(NodeDestination::Unknown.to_inner_bytes().iter().all(|b| *b == 0));
-            let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+            let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
             assert!(to_hex(&NodeDestination::PublicKey(Box::new(pk.clone())).to_inner_bytes()).contains(&pk.to_hex()));
         }
     }

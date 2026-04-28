@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
@@ -99,7 +99,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
 
         let mut message = Box::new([0u8; 32]);
-        OsRng.fill_bytes(message.as_mut());
+        rand::rng().fill_bytes(message.as_mut());
 
         let user_data = uuid.as_bytes().to_vec();
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;

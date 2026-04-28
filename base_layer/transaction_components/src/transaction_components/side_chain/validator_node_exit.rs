@@ -73,7 +73,6 @@ impl ValidatorNodeExit {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
 
@@ -84,21 +83,21 @@ mod test {
 
         #[test]
         fn it_returns_true_for_valid_signature() {
-            let sk = PrivateKey::random(&mut OsRng);
+            let sk = PrivateKey::random(&mut rand::rng());
             let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
             assert!(exit.is_valid_signature_for(None));
         }
 
         #[test]
         fn it_returns_false_if_epoch_is_malleated() {
-            let sk = PrivateKey::random(&mut OsRng);
+            let sk = PrivateKey::random(&mut rand::rng());
             let exit = ValidatorNodeExit::new(ValidatorNodeSignature::sign_for_exit(&sk, None, VnEpoch(1)), VnEpoch(2));
             assert!(!exit.is_valid_signature_for(None));
         }
 
         #[test]
         fn it_returns_false_for_zero_signature() {
-            let sk = PrivateKey::random(&mut OsRng);
+            let sk = PrivateKey::random(&mut rand::rng());
             let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
             let exit = ValidatorNodeExit::new(
                 ValidatorNodeSignature::new(exit.public_key().clone(), CompressedSignature::default()),

@@ -33,7 +33,7 @@ use minotari_app_grpc::{
     tls::identity::read_identity,
 };
 use minotari_wallet::{WalletConfig, WalletSqlite};
-use rand::{rngs::OsRng, seq::SliceRandom};
+use rand::seq::SliceRandom;
 use tari_common::{
     MAX_GRPC_MESSAGE_SIZE,
     exit_codes::{ExitCode, ExitError},

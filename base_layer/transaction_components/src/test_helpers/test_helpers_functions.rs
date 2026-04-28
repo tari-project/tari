@@ -22,7 +22,6 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_types::types::{
     CompressedCommitment,
@@ -219,7 +218,7 @@ pub fn create_random_signature(
     lock_height: u64,
     features: KernelFeatures,
 ) -> (CompressedPublicKey, CompressedSignature) {
-    let (k, p) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let (k, p) = CompressedPublicKey::random_keypair(&mut rand::rng());
     (p, create_signature(k, fee, lock_height, features))
 }
 
@@ -230,7 +229,7 @@ pub fn create_signature(
     lock_height: u64,
     features: KernelFeatures,
 ) -> CompressedSignature {
-    let r = PrivateKey::random(&mut OsRng);
+    let r = PrivateKey::random(&mut rand::rng());
     let e = TransactionKernel::build_kernel_signature_challenge(
         TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
@@ -282,7 +281,7 @@ pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
 }
 
 pub fn new_public_key() -> CompressedPublicKey {
-    CompressedPublicKey::random_keypair(&mut OsRng).1
+    CompressedPublicKey::random_keypair(&mut rand::rng()).1
 }
 
 pub fn create_coinbase_wallet_output<KM: TransactionKeyManagerInterface>(

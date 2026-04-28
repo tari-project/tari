@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{convert::TryInto, sync::Arc};
 
-use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_comms::{
     Bytes,
@@ -57,7 +56,7 @@ pub fn make_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
         .parse()
         .unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features))
+    Arc::new(NodeIdentity::random(&mut rand::rng(), public_addr, features))
 }
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
@@ -211,7 +210,7 @@ pub fn make_dht_inbound_message_raw(
 }
 
 pub fn make_keypair() -> (CommsSecretKey, CommsPublicKey) {
-    CommsPublicKey::random_keypair(&mut OsRng)
+    CommsPublicKey::random_keypair(&mut rand::rng())
 }
 
 pub fn make_dht_envelope<T: prost::Message>(

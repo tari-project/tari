@@ -496,7 +496,7 @@ mod test {
         use rand::prelude::SliceRandom;
 
         let mut uvs = uvs;
-        uvs.shuffle(&mut rand::thread_rng());
+        uvs.shuffle(&mut rand::rng());
         let result = verify_from_edges(&uvs, NonZeroUsize::new(4).unwrap());
         assert_eq!(result, Ok(()));
     }

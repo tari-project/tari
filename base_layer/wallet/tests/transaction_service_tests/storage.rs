@@ -41,7 +41,7 @@ use minotari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -135,8 +135,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
         let address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -195,8 +195,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -262,20 +262,20 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         vec![],
         vec![],
         vec![],
-        PrivateKey::random(&mut OsRng),
-        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut rand::rng()),
+        PrivateKey::random(&mut rand::rng()),
     );
 
     for i in 0..messages.len() {
         let source_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
         let dest_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -415,7 +415,7 @@ pub async fn test_transaction_service_sqlite_db() {
     let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
     let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -431,7 +431,7 @@ async fn import_tx_and_read_it_from_db() {
     let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
     let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
     let sqlite_db = TransactionServiceSqliteDatabase::new(connection, cipher);
@@ -446,8 +446,8 @@ async fn import_tx_and_read_it_from_db() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         LegacyTransactionStatus::Imported,
         Utc::now(),
@@ -476,8 +476,8 @@ async fn import_tx_and_read_it_from_db() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         LegacyTransactionStatus::OneSidedUnconfirmed,
         Utc::now(),
@@ -506,8 +506,8 @@ async fn import_tx_and_read_it_from_db() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         LegacyTransactionStatus::OneSidedConfirmed,
         Utc::now(),
@@ -555,7 +555,7 @@ async fn test_lock_height_status_transitions() {
     let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
     let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
     let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
@@ -573,8 +573,8 @@ async fn test_lock_height_status_transitions() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         LegacyTransactionStatus::Completed,
         Utc::now(),
@@ -693,8 +693,8 @@ async fn test_lock_height_status_transitions() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         LegacyTransactionStatus::OneSidedUnconfirmed,
         Utc::now(),
@@ -758,8 +758,8 @@ async fn test_lock_height_status_transitions() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         LegacyTransactionStatus::Broadcast,
         Utc::now(),

@@ -172,7 +172,7 @@ impl NodeIdentity {
     #[cfg(test)]
     pub fn random_for_test(public_address: Option<Multiaddr>, features: PeerFeatures) -> Self {
         Self::random(
-            &mut rand::rngs::OsRng,
+            &mut rand::rng(),
             public_address
                 .or_else(|| "/ip4/127.0.0.1/tcp/9000".parse().ok())
                 .unwrap(),

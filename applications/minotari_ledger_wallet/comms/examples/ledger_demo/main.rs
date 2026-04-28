@@ -36,7 +36,7 @@ use minotari_ledger_wallet_comms::{
     error::LedgerDeviceError,
     ledger_wallet::get_transport,
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -101,7 +101,7 @@ fn main() {
 
     // GetPublicAlpha
     println!("\ntest: GetPublicAlpha");
-    let account = OsRng.next_u64();
+    let account = rand::rng().next_u64();
     match ledger_get_public_spend_key(account) {
         Ok(public_alpha) => println!("public_alpha:   {}", public_alpha.to_hex()),
         Err(e) => {
@@ -112,7 +112,7 @@ fn main() {
 
     // GetPublicKey
     println!("\ntest: GetPublicKey");
-    let index = OsRng.next_u64();
+    let index = rand::rng().next_u64();
 
     for branch in [
         LedgerKeyBranch::OneSidedSenderOffset,
@@ -146,7 +146,7 @@ fn main() {
         },
         ScriptSignatureKey::Managed {
             branch: LedgerKeyBranch::Spend,
-            index: OsRng.next_u64(),
+            index: rand::rng().next_u64(),
         },
     ] {
         match ledger_get_script_signature(
@@ -183,9 +183,9 @@ fn main() {
     let mut sender_offset_indexes = Vec::new();
     for _i in 0..5 {
         derived_script_keys.push(get_random_nonce());
-        script_key_indexes.push((LedgerKeyBranch::Spend, OsRng.next_u64()));
+        script_key_indexes.push((LedgerKeyBranch::Spend, rand::rng().next_u64()));
         derived_sender_offsets.push(get_random_nonce());
-        sender_offset_indexes.push((LedgerKeyBranch::OneSidedSenderOffset, OsRng.next_u64()));
+        sender_offset_indexes.push((LedgerKeyBranch::OneSidedSenderOffset, rand::rng().next_u64()));
     }
 
     match ledger_get_script_offset(
@@ -217,7 +217,7 @@ fn main() {
 
     // GetDHSharedSecret
     println!("\ntest: GetDHSharedSecret");
-    let index = OsRng.next_u64();
+    let index = rand::rng().next_u64();
     let branch = LedgerKeyBranch::OneSidedSenderOffset;
     let public_key = CompressedPublicKey::from_secret_key(&get_random_nonce());
 
@@ -231,12 +231,12 @@ fn main() {
 
     // GetRawSchnorrSignature
     println!("\ntest: GetRawSchnorrSignature");
-    let private_key_index = OsRng.next_u64();
+    let private_key_index = rand::rng().next_u64();
     let private_key_branch = LedgerKeyBranch::Spend;
-    let nonce_index = OsRng.next_u64();
+    let nonce_index = rand::rng().next_u64();
     let nonce_branch = LedgerKeyBranch::Random;
     let mut challenge = [0u8; 64];
-    OsRng.fill_bytes(&mut challenge);
+    rand::rng().fill_bytes(&mut challenge);
 
     match ledger_get_raw_schnorr_signature(
         account,
@@ -259,10 +259,10 @@ fn main() {
 
     // GetScriptSchnorrSignature
     println!("\ntest: GetScriptSchnorrSignature");
-    let private_key_index = OsRng.next_u64();
+    let private_key_index = rand::rng().next_u64();
     let private_key_branch = LedgerKeyBranch::Spend;
     let mut nonce = [0u8; 32];
-    OsRng.fill_bytes(&mut nonce);
+    rand::rng().fill_bytes(&mut nonce);
 
     match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
         Ok(signature) => println!(
@@ -278,9 +278,9 @@ fn main() {
 
     // GetOneSidedMetadataSignature
     println!("\ntest: GetOneSidedMetadataSignature");
-    let sender_offset_key_index = OsRng.next_u64();
+    let sender_offset_key_index = rand::rng().next_u64();
     let mut metadata_signature_message_common = [0u8; 32];
-    OsRng.fill_bytes(&mut metadata_signature_message_common);
+    rand::rng().fill_bytes(&mut metadata_signature_message_common);
     let commitment_mask = get_random_nonce();
     let receiver_address = TariAddress::from_base58(
         "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt",
@@ -377,7 +377,7 @@ fn main() {
 
 pub fn get_random_nonce() -> PrivateKey {
     let mut raw_bytes = [0u8; 64];
-    OsRng.fill_bytes(&mut raw_bytes);
+    rand::rng().fill_bytes(&mut raw_bytes);
     RistrettoSecretKey::from_uniform_bytes(&raw_bytes).expect("will not fail")
 }
 

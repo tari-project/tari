@@ -86,9 +86,9 @@ struct OutputFeatures;
  * ```edition2018
  * use rand;
  * use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
- * use tari_utilities::{hex::Hex, ByteArray};
+ * use tari_utilities::{ByteArray, hex::Hex};
  *
- * let mut rng = rand::thread_rng();
+ * let mut rng = rand::rng();
  * let _k1 = RistrettoSecretKey::from_canonical_bytes(&[
  *     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
  *     0, 0,

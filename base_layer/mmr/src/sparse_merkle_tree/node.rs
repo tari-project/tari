@@ -510,14 +510,14 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use rand::RngCore;
+    use rand::Rng;
 
     use super::*;
     use crate::sparse_merkle_tree::bit_utils::TraverseDirection::{Left, Right};
 
     fn random_arr() -> [u8; KEY_LENGTH] {
         let mut result = [0; KEY_LENGTH];
-        rand::thread_rng().fill_bytes(&mut result);
+        rand::rng().fill_bytes(&mut result);
         result
     }
 

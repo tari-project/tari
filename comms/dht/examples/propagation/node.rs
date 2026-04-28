@@ -26,7 +26,6 @@ use std::{
     time::Duration,
 };
 
-use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     CommsBuilder,
@@ -65,12 +64,12 @@ pub async fn create(
     let this_node_identity = node_identity
         .as_ref()
         .map(|ni| ni.as_ref().clone())
-        .unwrap_or_else(|| NodeIdentity::random_multiple_addresses(&mut OsRng, vec![], Default::default()));
+        .unwrap_or_else(|| NodeIdentity::random_multiple_addresses(&mut rand::rng(), vec![], Default::default()));
     let peer_database = PeerDatabaseSql::new(db_connection, &this_node_identity.to_peer())?;
 
     let node_identity = node_identity.unwrap_or_else(|| {
         Arc::new(NodeIdentity::random_multiple_addresses(
-            &mut OsRng,
+            &mut rand::rng(),
             vec![],
             Default::default(),
         ))

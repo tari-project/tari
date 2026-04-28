@@ -30,7 +30,6 @@ use std::{
 use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
-use rand::rngs::OsRng;
 use serde_json::Value;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -147,7 +146,7 @@ pub enum NodeClient {
 
 impl TariWorld {
     pub async fn new() -> Self {
-        let wallet_private_key = PrivateKey::random(&mut OsRng);
+        let wallet_private_key = PrivateKey::random(&mut rand::rng());
         let default_payment_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&wallet_private_key),
             CompressedPublicKey::from_secret_key(&wallet_private_key),

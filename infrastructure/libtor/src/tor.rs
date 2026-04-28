@@ -25,7 +25,7 @@ use std::{fmt, fs, io, net::TcpListener, path::PathBuf, thread};
 use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{RngExt, distr::Alphanumeric};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
 use tor_hash_passwd::EncryptedKey;
@@ -82,7 +82,7 @@ impl Tor {
         instance.control_port = control_port;
 
         // generate a random passphrase
-        let passphrase: String = thread_rng()
+        let passphrase: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(30)
             .map(char::from)

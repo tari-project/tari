@@ -38,7 +38,7 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_script_schnorr_signature,
     ledger_get_script_signature,
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     tari_address::TariAddress,
@@ -519,7 +519,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         if let Some(branch) = ledger_key &&
             self.wallet_type.is_ledger()
         {
-            let random_index = OsRng.next_u64();
+            let random_index = rand::rng().next_u64();
             let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
             return Ok(TariKeyAndId {
                 key_id: TariKeyId::LedgerKey {
@@ -530,7 +530,7 @@ impl TransactionKeyManagerInterface for KeyManager {
             });
         }
 
-        let random_private_key = PrivateKey::random(&mut OsRng);
+        let random_private_key = PrivateKey::random(&mut rand::rng());
         let key_id = self.create_encrypted_key(random_private_key, encryption_key)?;
         let public_key = self.get_public_key_at_key_id(&key_id)?;
         Ok(TariKeyAndId {
@@ -783,9 +783,9 @@ impl TransactionKeyManagerInterface for KeyManager {
         } else {
             let commitment = self.get_commitment(commitment_mask_key_id, value)?;
             let commitment_private_key = self.get_private_key(commitment_mask_key_id)?;
-            let r_a = PrivateKey::random(&mut OsRng);
-            let r_x = PrivateKey::random(&mut OsRng);
-            let r_y = PrivateKey::random(&mut OsRng);
+            let r_a = PrivateKey::random(&mut rand::rng());
+            let r_x = PrivateKey::random(&mut rand::rng());
+            let r_y = PrivateKey::random(&mut rand::rng());
             let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
             let ephemeral_pubkey = CompressedPublicKey::from_secret_key(&r_y);
             let script_private_key = self.get_private_key(script_key_id)?;
@@ -824,8 +824,8 @@ impl TransactionKeyManagerInterface for KeyManager {
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         let private_commitment_mask = self.get_private_key(commitment_mask_id)?;
         let commitment = self.get_commitment(commitment_mask_id, value)?;
-        let r_a = PrivateKey::random(&mut OsRng);
-        let r_x = PrivateKey::random(&mut OsRng);
+        let r_a = PrivateKey::random(&mut rand::rng());
+        let r_x = PrivateKey::random(&mut rand::rng());
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
         let challenge = TransactionInput::finalize_script_signature_challenge(
             txi_version,
@@ -1129,14 +1129,14 @@ impl TransactionKeyManagerInterface for KeyManager {
             SignatureWithDomain::<WalletMessageSigningDomain>::sign(
                 &self.get_private_key(spend_key_id)?,
                 message,
-                &mut OsRng,
+                &mut rand::rng(),
             )
             .map_err(|e| KeyManagerError::UnexpectedError(e.to_string()))
         } else {
             SignatureWithDomain::<WalletMessageSigningDomain>::sign(
                 &self.get_private_key(&spend_key.key_id)?,
                 message,
-                &mut OsRng,
+                &mut rand::rng(),
             )
             .map_err(|e| KeyManagerError::UnexpectedError(e.to_string()))
         }
@@ -1154,7 +1154,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         }
 
         let private_key = self.get_private_key(private_key_id)?;
-        let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut OsRng)?;
+        let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut rand::rng())?;
 
         Ok(CompressedCheckSigSchnorrSignature::new_from_schnorr(signature))
     }
@@ -1305,7 +1305,7 @@ impl TransactionKeyManagerInterface for KeyManager {
             .chain(claim_public_key)
             .finalize();
 
-        let s = UncompressedSignature::sign(&mask, message, &mut OsRng)
+        let s = UncompressedSignature::sign(&mask, message, &mut rand::rng())
             .map_err(|e| TransactionError::InvalidSignatureError(format!("Failed to sign burn claim proof: {}", e)))?;
         Ok(CompressedSignature::new_from_schnorr(s))
     }

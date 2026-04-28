@@ -22,7 +22,7 @@
 
 use std::{iter, sync::Arc};
 
-use rand::{Rng, distributions::Alphanumeric};
+use rand::{RngExt, distr::Alphanumeric};
 use tari_common_sqlite::connection::DbConnection;
 
 #[cfg(test)]
@@ -72,7 +72,7 @@ mod not_test {
 }
 
 pub fn random_name() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     iter::repeat(())
         .map(|_| rng.sample(Alphanumeric) as char)
         .take(12)

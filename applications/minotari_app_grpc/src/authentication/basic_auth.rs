@@ -27,8 +27,11 @@ use std::{
     string::FromUtf8Error,
 };
 
-use argon2::{Argon2, PasswordHash, PasswordVerifier, password_hash::Encoding};
-use rand::RngCore;
+use argon2::{
+    Argon2,
+    password_hash::{PasswordVerifier, phc::PasswordHash},
+};
+use rand::Rng;
 use subtle::{Choice, ConstantTimeEq};
 use tari_utilities::{ByteArray, SafePassword};
 use tonic::metadata::{Ascii, MetadataValue, errors::InvalidMetadataValue};
@@ -58,7 +61,8 @@ impl BasicAuthCredentials {
         }
         // Validate the password is a well formed byte representation of a PHC string
         let bytes = phc_password_hash.reveal().to_vec();
-        let _parse_result = PasswordHash::parse(&String::from_utf8(bytes)?, Encoding::B64)?;
+        let _parse_result =
+            PasswordHash::new(&String::from_utf8(bytes)?).map_err(argon2::password_hash::Error::from)?;
 
         // Prepare the username bytes for constant time comparison ahead of time
         let bytes = user_name.as_bytes();
@@ -66,7 +70,7 @@ impl BasicAuthCredentials {
         // funny optimizations and to ensure that comparison for the same username for every new credentials instance
         // forces a different bitwise comparison.
         let mut random_bytes = [0u8; MAX_USERNAME_LEN];
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         rng.fill_bytes(&mut random_bytes);
         let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
 
@@ -150,7 +154,7 @@ impl BasicAuthCredentials {
         // password must be incorrect if conversion to utf-8 fails.
         let bytes = self.phc_password_hash.reveal().to_vec();
         let str_password = Zeroizing::new(String::from_utf8(bytes)?);
-        let header_password = PasswordHash::parse(&str_password, Encoding::B64)?;
+        let header_password = PasswordHash::new(&str_password).map_err(argon2::password_hash::Error::from)?;
         let valid_password = Choice::from(u8::from(
             Argon2::default()
                 .verify_password(password.reveal(), &header_password)
@@ -265,7 +269,7 @@ mod tests {
             let err = BasicAuthCredentials::new("admin".to_string(), "secret".to_string().into()).unwrap_err();
             assert!(matches!(
                 err,
-                BasicAuthError::InvalidPassword(argon2::password_hash::Error::PhcStringInvalid)
+                BasicAuthError::InvalidPassword(argon2::password_hash::Error::EncodingInvalid)
             ));
         }
 
@@ -394,7 +398,7 @@ mod tests {
                 let mut long_usernames = Vec::with_capacity(COUNTS);
                 for _ in 0..COUNTS {
                     let mut bytes_long = [0u8; MAX_USERNAME_LEN / 2];
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     rng.fill_bytes(&mut bytes_long);
                     let username = bytes_long.to_vec().to_hex();
                     long_usernames.push(username);
@@ -543,7 +547,7 @@ mod tests {
                 let mut long_usernames = Vec::with_capacity(COUNTS);
                 for _ in 0..COUNTS {
                     let mut bytes_long = [0u8; MAX_USERNAME_LEN / 2];
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     rng.fill_bytes(&mut bytes_long);
                     let username = bytes_long.to_vec().to_hex();
                     long_usernames.push(username);

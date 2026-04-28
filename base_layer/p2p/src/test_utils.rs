@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use rand::rngs::OsRng;
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,
@@ -55,7 +54,7 @@ macro_rules! unwrap_oms_send_msg {
 
 pub fn make_node_identity() -> Arc<NodeIdentity> {
     Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ))
@@ -93,7 +92,7 @@ pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) 
 }
 
 pub fn create_test_peer() -> Peer {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rng();
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
     let node_id = NodeId::from_key(&pk);
     let addresses = MultiaddressesWithStats::from_addresses_with_source(

@@ -1132,8 +1132,8 @@ mod test {
     #[test]
     fn test_generate_coinbase_with_payment_id_from_address() {
         let key_manager = KeyManager::new_random().unwrap();
-        let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
-        let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
+        let wallet_private_spend_key = PrivateKey::random(&mut rand::rng());
+        let wallet_private_view_key = PrivateKey::random(&mut rand::rng());
 
         let script_key_id = key_manager
             .create_encrypted_key(wallet_private_spend_key.clone(), None)

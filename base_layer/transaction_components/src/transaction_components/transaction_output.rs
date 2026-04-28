@@ -30,7 +30,6 @@ use std::{
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     ComAndPubSignature,
@@ -314,7 +313,7 @@ impl TransactionOutput {
             &self.sender_offset_public_key.to_public_key()?,
             &challenge,
             &CommitmentFactory::default(),
-            &mut OsRng,
+            &mut rand::rng(),
         ) {
             return Err(TransactionError::InvalidSignatureError(
                 "Metadata signature not valid!".to_string(),

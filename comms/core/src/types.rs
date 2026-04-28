@@ -49,7 +49,7 @@ pub type Signature = SchnorrSignature<RistrettoPublicKey, CommsSecretKey>;
 pub type CompressedSignature = CompressedSchnorrSignature<RistrettoPublicKey, CommsSecretKey>;
 
 /// Specify the RNG that should be used for random selection
-pub type CommsRng = rand::rngs::OsRng;
+pub type CommsRng = rand::rngs::ThreadRng;
 
 /// Datastore and Database used for persistence storage
 pub type CommsDataStore = LMDBStore;

@@ -22,8 +22,6 @@
 
 use std::sync::Arc;
 
-use rand::rngs::OsRng;
-
 use crate::{
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
@@ -33,7 +31,7 @@ pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())
         .parse()
         .unwrap();
-    Arc::new(NodeIdentity::random(&mut OsRng, public_addr, features))
+    Arc::new(NodeIdentity::random(&mut rand::rng(), public_addr, features))
 }
 
 pub fn ordered_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {

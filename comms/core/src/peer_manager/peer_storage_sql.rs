@@ -342,7 +342,7 @@ mod test {
 
     use chrono::{DateTime, Utc};
     use multiaddr::Multiaddr;
-    use rand::Rng;
+    use rand::RngExt;
     use tari_common_sqlite::connection::DbConnection;
 
     use super::*;
@@ -366,7 +366,7 @@ mod test {
     #[test]
     fn test_restore() {
         // Create Peers
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = rand::rng();
         let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
@@ -449,7 +449,7 @@ mod test {
         let peer_storage = get_peer_storage_sql_test_db().unwrap();
 
         // Create Peers
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = rand::rng();
         let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let net_address1 = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
@@ -619,7 +619,7 @@ mod test {
     }
 
     fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = rand::rng();
 
         let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
@@ -627,13 +627,13 @@ mod test {
         let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
 
         // Create 1 to 4 random addresses
-        for _i in 1..=rand::thread_rng().gen_range(1..4) {
+        for _i in 1..=rand::rng().random_range(1..4) {
             let n = [
-                rand::thread_rng().gen_range(1..255),
-                rand::thread_rng().gen_range(1..255),
-                rand::thread_rng().gen_range(1..255),
-                rand::thread_rng().gen_range(1..255),
-                rand::thread_rng().gen_range(5000..9000),
+                rand::rng().random_range(1..255),
+                rand::rng().random_range(1..255),
+                rand::rng().random_range(1..255),
+                rand::rng().random_range(1..255),
+                rand::rng().random_range(5000..9000),
             ];
             let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{}", n[0], n[1], n[2], n[3], n[4])
                 .parse::<Multiaddr>()

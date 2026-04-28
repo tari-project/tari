@@ -456,7 +456,6 @@ mod test {
     use std::time::Duration;
 
     use futures::stream;
-    use rand::rngs::OsRng;
     use tari_common_sqlite::connection::DbConnection;
     use tari_comms::{
         message::MessageTag,
@@ -567,7 +566,7 @@ mod test {
         // Run the LivenessService
         task::spawn(service.run());
 
-        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         let node_id = NodeId::from_key(&pk);
         // Receive outbound request
         task::spawn(async move {
@@ -589,7 +588,7 @@ mod test {
     }
 
     fn create_dummy_message<T>(inner: T) -> DomainMessage<Result<T, prost::DecodeError>> {
-        let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         let source_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk),

@@ -30,7 +30,6 @@ use futures::{
     task::Context,
 };
 use log::*;
-use rand::rngs::OsRng;
 use tari_comms::{
     Bytes,
     BytesMut,
@@ -496,7 +495,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;
 
                 // Perform an ephemeral ECDH exchange against the recipient public key
-                let (ephemeral_secret_key, ephemeral_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+                let (ephemeral_secret_key, ephemeral_public_key) = CommsPublicKey::random_keypair(&mut rand::rng());
                 let shared_ephemeral_secret = CommsDHKE::new(&ephemeral_secret_key, &ristretto_recipient_public_key);
 
                 // Produce a masked sender public key using an offset mask derived from the ECDH exchange
@@ -604,14 +603,14 @@ mod test {
 
         let other_peer = {
             let mut p = example_peer.clone();
-            let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+            let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
             p.node_id = NodeId::from_key(&pk);
             p.public_key = pk;
             p
         };
 
         let node_identity = Arc::new(NodeIdentity::random(
-            &mut OsRng,
+            &mut rand::rng(),
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         ));
@@ -662,7 +661,7 @@ mod test {
 
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(
-            &mut OsRng,
+            &mut rand::rng(),
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         );
@@ -704,7 +703,7 @@ mod test {
     #[tokio::test]
     async fn test_send_message_direct_dht_discovery() {
         let node_identity = NodeIdentity::random(
-            &mut OsRng,
+            &mut rand::rng(),
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         );

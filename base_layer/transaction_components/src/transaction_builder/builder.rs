@@ -1057,7 +1057,6 @@ mod test {
         let wallet = WalletType::ViewWallet(view_wallet);
         KeyManager::new(wallet)
     }
-    use chacha20poly1305::aead::OsRng;
     use tari_crypto::keys::SecretKey;
     use tari_script::{TariScript, script};
 
@@ -1430,8 +1429,8 @@ mod test {
             .with_input(input3)
             .unwrap();
         let bob_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();

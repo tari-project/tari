@@ -1752,7 +1752,7 @@ mod test {
 
     use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
-    use rand::{RngCore, rngs::OsRng};
+    use rand::Rng;
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{
@@ -1817,7 +1817,7 @@ mod test {
 
         let key_manager = KeyManager::new_random().unwrap();
         for _i in 0..2 {
-            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager);
+            let (_, uo) = make_input(MicroMinotari::from(100 + rand::rng().next_u64() % 1000), &key_manager);
             let uo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             let o = NewOutputSql::new(uo, Some(OutputStatus::Unspent), None).unwrap();
             outputs.push(o.clone());
@@ -1826,7 +1826,7 @@ mod test {
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager);
+            let (_, uo) = make_input(MicroMinotari::from(100 + rand::rng().next_u64() % 1000), &key_manager);
             let uo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
             let o = NewOutputSql::new(uo, Some(OutputStatus::Spent), None).unwrap();
             outputs.push(o.clone());

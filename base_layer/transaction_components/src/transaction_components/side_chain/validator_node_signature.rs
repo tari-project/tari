@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
@@ -46,7 +45,7 @@ impl ValidatorNodeSignature {
         claim_public_key: &CompressedPublicKey,
         epoch: VnEpoch,
     ) -> Self {
-        let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut rand::rng());
         let public_key = CompressedPublicKey::from_secret_key(private_key);
         let message = Self::construct_registration_signature_message(
             &public_key,
@@ -64,7 +63,7 @@ impl ValidatorNodeSignature {
     }
 
     pub fn sign_for_exit(private_key: &PrivateKey, sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> Self {
-        let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut rand::rng());
         let public_key = CompressedPublicKey::from_secret_key(private_key);
         let message = Self::construct_exit_signature_message(&public_key, &public_nonce, sidechain_pk, epoch);
         let signature = UncompressedSignature::sign_raw_uniform(private_key, secret_nonce, &message)

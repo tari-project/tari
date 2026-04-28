@@ -1765,29 +1765,29 @@ mod tests {
         // for peer in &mut new_peers {
         //     // - new peer stats
         //     peer.ban_for(
-        //         Duration::from_secs(rand::thread_rng().gen_range(1000..9000)),
+        //         Duration::from_secs(rand::rng().random_range(1000..9000)),
         //         "Misbehave".to_string(),
         //     );
         //     peer.supported_protocols
         //         .push(ProtocolId::from_static(b"Test Protocol 1.0"));
         //     peer.metadata
-        //         .insert(1, vec![1, 2, rand::thread_rng().gen_range(1..100)]);
+        //         .insert(1, vec![1, 2, rand::rng().random_range(1..100)]);
         //     peer.metadata
-        //         .insert(2, vec![4, 5, rand::thread_rng().gen_range(1..100)]);
+        //         .insert(2, vec![4, 5, rand::rng().random_range(1..100)]);
         //     // - add another multi-address
         //     let n = [
-        //         rand::thread_rng().gen_range(1..9),
-        //         rand::thread_rng().gen_range(1..9),
-        //         rand::thread_rng().gen_range(1..9),
-        //         rand::thread_rng().gen_range(1..9),
+        //         rand::rng().random_range(1..9),
+        //         rand::rng().random_range(1..9),
+        //         rand::rng().random_range(1..9),
+        //         rand::rng().random_range(1..9),
         //     ];
         //     let new_addr_str = format!("/ip4/{}.{}.{}.{}/udt/sctp/{0}{1}{2}{3}", n[0], n[1], n[2], n[3]);
         //     peer.addresses
         //         .add_address(&new_addr_str.parse().unwrap(), &PeerAddressSource::Config);
         //     // - new stats for the first multi-address
         //     let mut address_to_update = peer.addresses.addresses().first().unwrap().clone();
-        //     address_to_update.update_latency(Duration::from_millis(rand::thread_rng().gen_range(100..1000)));
-        //     address_to_update.update_initial_dial_time(Duration::from_millis(rand::thread_rng().gen_range(100..
+        //     address_to_update.update_latency(Duration::from_millis(rand::rng().random_range(100..1000)));
+        //     address_to_update.update_initial_dial_time(Duration::from_millis(rand::rng().random_range(100..
         // 1000)));     address_to_update.mark_last_seen_now();
         //     peer.addresses
         //         .merge(&MultiaddressesWithStats::new(vec![address_to_update.clone()]));

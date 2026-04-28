@@ -666,7 +666,7 @@ mod test {
 
             while is_all_unique_and_sorted(&outputs) {
                 // Shuffle the outputs until they are not sorted
-                outputs.shuffle(&mut rand::thread_rng());
+                outputs.shuffle(&mut rand::rng());
             }
 
             // Break the contract of new_unsorted_unchecked by calling it with unsorted outputs. The validator must not

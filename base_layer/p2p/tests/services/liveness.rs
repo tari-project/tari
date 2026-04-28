@@ -22,7 +22,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
 use tari_comms::{
     CommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -71,7 +70,7 @@ pub async fn setup_liveness_service(
 fn make_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         format!("/memory/{next_port}").parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ))

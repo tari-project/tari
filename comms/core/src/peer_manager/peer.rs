@@ -396,7 +396,7 @@ mod test {
 
     #[test]
     fn test_is_banned_and_ban_for() {
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = rand::rng();
         let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let addresses = MultiaddressesWithStats::from_addresses_with_source(

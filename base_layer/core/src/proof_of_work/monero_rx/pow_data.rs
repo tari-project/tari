@@ -200,7 +200,6 @@ impl Display for MoneroPowData {
 #[cfg(test)]
 mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
-    use chacha20poly1305::aead::OsRng;
     use monero::{BlockHeader, Hash, VarInt, blockdata::transaction::RawExtraField, consensus::Encodable};
     use tari_common::configuration::Network;
     use tari_common_types::types::PrivateKey;
@@ -281,12 +280,12 @@ mod test {
                         major_version: VarInt(u64::MAX),
                         minor_version: VarInt(u64::MAX),
                         timestamp: VarInt(u64::MAX),
-                        prev_id: Hash::new(PrivateKey::random(&mut OsRng).to_vec()),
+                        prev_id: Hash::new(PrivateKey::random(&mut rand::rng()).to_vec()),
                         nonce: u32::MAX,
                     },
                     randomx_key: FixedByteArray::default(),
                     transaction_count: u16::MAX,
-                    merkle_root: Hash::new(PrivateKey::random(&mut OsRng).to_vec()),
+                    merkle_root: Hash::new(PrivateKey::random(&mut rand::rng()).to_vec()),
                     coinbase_merkle_proof: MerkleProof::default(),
                     coinbase_tx_extra: RawExtraField(vec![1u8; consensus_constants.max_extra_field_size()]),
                     coinbase_tx_hasher: keccak.clone(),

@@ -534,14 +534,13 @@ fn determine_sync_mode(
 mod test {
 
     use primitive_types::U512;
-    use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 
     use super::*;
 
     fn random_node_id() -> NodeId {
-        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut rand::rng());
         NodeId::from_key(&public_key)
     }
 

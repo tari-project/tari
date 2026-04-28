@@ -320,7 +320,7 @@ mod test {
         let mask = PrivateKey::default();
         let commitment =
             CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)));
-        let encryption_key = PrivateKey::random(&mut OsRng);
+        let encryption_key = PrivateKey::random(&mut rand::rng());
         let amount = MicroMinotari::from(value);
         let encrypted_data = {
             let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + SIZE_VALUE]);

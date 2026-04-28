@@ -3054,7 +3054,7 @@ mod test {
     use chrono::Utc;
     use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
-    use rand::{RngCore, rngs::OsRng};
+    use rand::Rng;
     use tari_common::configuration::Network;
     use tari_common_sqlite::{PRAGMA_BUSY_TIMEOUT, sqlite_connection_pool::SqliteConnectionPool};
     use tari_common_types::{
@@ -3112,7 +3112,7 @@ mod test {
             SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -3149,7 +3149,7 @@ mod test {
             .unwrap();
 
         let address = TariAddress::new_single_address_with_interactive_only(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3170,7 +3170,7 @@ mod test {
             sent_output_hashes: vec![],
         };
         let address = TariAddress::new_single_address_with_interactive_only(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3232,8 +3232,8 @@ mod test {
         .unwrap();
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3306,18 +3306,18 @@ mod test {
             vec![],
             vec![],
             vec![],
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         );
         let source_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3348,14 +3348,14 @@ mod test {
             lock_height: 0,
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3534,13 +3534,13 @@ mod test {
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3568,8 +3568,8 @@ mod test {
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3599,14 +3599,14 @@ mod test {
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
             Network::LocalNet,
         )
         .unwrap();
@@ -3620,8 +3620,8 @@ mod test {
                 vec![],
                 vec![],
                 vec![],
-                PrivateKey::random(&mut OsRng),
-                PrivateKey::random(&mut OsRng),
+                PrivateKey::random(&mut rand::rng()),
+                PrivateKey::random(&mut rand::rng()),
             ),
             status: LegacyTransactionStatus::MinedUnconfirmed,
             timestamp: Utc::now(),
@@ -3665,7 +3665,7 @@ mod test {
             .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -3688,8 +3688,8 @@ mod test {
                 .expect("Migrations failed");
 
             let source_address = TariAddress::new_dual_address_with_default_features(
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
                 Network::LocalNet,
             )
             .unwrap();
@@ -3712,8 +3712,8 @@ mod test {
             inbound_tx_sql.commit(&mut conn).unwrap();
 
             let destination_address = TariAddress::new_dual_address_with_default_features(
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
                 Network::LocalNet,
             )
             .unwrap();
@@ -3737,14 +3737,14 @@ mod test {
             outbound_tx_sql.commit(&mut conn).unwrap();
 
             let source_address = TariAddress::new_dual_address_with_default_features(
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
                 Network::LocalNet,
             )
             .unwrap();
             let destination_address = TariAddress::new_dual_address_with_default_features(
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
                 Network::LocalNet,
             )
             .unwrap();
@@ -3758,8 +3758,8 @@ mod test {
                     vec![],
                     vec![],
                     vec![],
-                    PrivateKey::random(&mut OsRng),
-                    PrivateKey::random(&mut OsRng),
+                    PrivateKey::random(&mut rand::rng()),
+                    PrivateKey::random(&mut rand::rng()),
                 ),
                 status: LegacyTransactionStatus::MinedUnconfirmed,
                 timestamp: Utc::now(),
@@ -3793,7 +3793,7 @@ mod test {
         assert!(db2.fetch(&DbKey::CompletedTransactions(0)).is_ok());
 
         let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let new_cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -3834,7 +3834,7 @@ mod test {
             .expect("Migrations failed");
 
         let mut key = [0u8; size_of::<Key>()];
-        OsRng.fill_bytes(&mut key);
+        rand::rng().fill_bytes(&mut key);
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -3882,14 +3882,14 @@ mod test {
                 _ => (None, LegacyTransactionStatus::Completed),
             };
             let source_address = TariAddress::new_dual_address_with_default_features(
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
                 Network::LocalNet,
             )
             .unwrap();
             let destination_address = TariAddress::new_dual_address_with_default_features(
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
                 Network::LocalNet,
             )
             .unwrap();
@@ -3903,8 +3903,8 @@ mod test {
                     vec![],
                     vec![],
                     vec![],
-                    PrivateKey::random(&mut OsRng),
-                    PrivateKey::random(&mut OsRng),
+                    PrivateKey::random(&mut rand::rng()),
+                    PrivateKey::random(&mut rand::rng()),
                 ),
                 status,
                 timestamp: Utc::now(),
