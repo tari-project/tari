@@ -29,7 +29,7 @@ wasm-bindgen = { version = "0.2.100", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
-
+getrandom = { version = "0.2", features = ["js"] }
 js-sys = { version = "0.3.55" }
 
 [dev-dependencies]
