@@ -4633,6 +4633,7 @@ dependencies = [
  "log",
  "minotari_ledger_wallet_common",
  "minotari_node_wallet_client",
+ "phc",
  "prost 0.13.4",
  "rand 0.10.1",
  "serde",
@@ -5608,6 +5609,7 @@ dependencies = [
  "base64ct",
  "ctutils",
  "getrandom 0.4.2",
+ "rand_core 0.10.1",
 ]
 
 [[package]]
