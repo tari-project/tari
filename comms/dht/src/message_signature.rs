@@ -22,7 +22,6 @@
 
 use std::convert::TryFrom;
 
-use rand::rngs::OsRng;
 use tari_comms::types::{CommsPublicKey, CommsSecretKey, CompressedSignature, Signature};
 use tari_utilities::{ByteArray, ByteArrayError};
 
@@ -55,7 +54,7 @@ fn construct_message_signature_hash(
 impl MessageSignature {
     /// Create a new signed [MessageSignature](self::MessageSignature) for the given message.
     pub fn new_signed(signer_secret_key: CommsSecretKey, message: &[u8]) -> Self {
-        let (nonce_s, nonce_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (nonce_s, nonce_pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         let signer_public_key = CommsPublicKey::from_secret_key(&signer_secret_key);
         let challenge = construct_message_signature_hash(&signer_public_key, &nonce_pk, message);
         let signature = Signature::sign_raw_uniform(&signer_secret_key, nonce_s, &challenge)
@@ -144,7 +143,7 @@ mod test {
     const MSG: &[u8] = b"100% genuine";
 
     fn setup() -> (MessageSignature, CommsSecretKey) {
-        let signer_k = CommsSecretKey::random(&mut OsRng);
+        let signer_k = CommsSecretKey::random(&mut rand::rng());
         (MessageSignature::new_signed(signer_k.clone(), MSG), signer_k)
     }
 
@@ -163,7 +162,7 @@ mod test {
         let msg_scalar = CommsSecretKey::from_uniform_bytes(&msg).unwrap();
 
         // Some `a` key
-        let (bad_signer_k, bad_signer_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (bad_signer_k, bad_signer_pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         mac.signer_public_key =
             CommsPublicKey::new_from_pk(&bad_signer_pk.to_public_key().unwrap() + &signer_pk.to_public_key().unwrap());
         // s' = s + e.a
@@ -178,7 +177,7 @@ mod test {
     #[test]
     fn it_secures_the_public_nonce() {
         let (mut mac, signer_k) = setup();
-        let (nonce_k, _) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (nonce_k, _) = CommsPublicKey::random_keypair(&mut rand::rng());
         // Get the original hashed challenge
         let signer_pk = CommsPublicKey::from_secret_key(&signer_k);
         let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_compressed_public_nonce(), MSG);

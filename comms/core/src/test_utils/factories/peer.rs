@@ -23,7 +23,6 @@
 use std::iter::repeat_with;
 
 use multiaddr::Multiaddr;
-use rand::rngs::OsRng;
 
 use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
 use crate::{
@@ -72,7 +71,7 @@ impl TestFactory for PeerFactory {
             .public_key
             .clone()
             .or_else(|| {
-                let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+                let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
                 Some(pk)
             })
             .unwrap();

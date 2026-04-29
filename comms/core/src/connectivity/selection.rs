@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, fmt, fmt::Display, time::Duration};
 
-use rand::{rngs::OsRng, seq::SliceRandom};
+use rand::seq::IndexedRandom;
 
 use super::{connection_pool::ConnectionPool, connection_stats::PeerConnectionStats};
 use crate::{PeerConnection, connectivity::connection_pool::ConnectionStatus, peer_manager::NodeId};
@@ -122,7 +122,7 @@ fn select_connected_nodes<'a>(pool: &'a ConnectionPool, exclude: &[NodeId]) -> V
 
 fn select_random_nodes<'a>(pool: &'a ConnectionPool, n: usize, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
     let nodes = select_connected_nodes(pool, exclude);
-    nodes.choose_multiple(&mut OsRng, n).copied().collect()
+    nodes.sample(&mut rand::rng(), n).copied().collect()
 }
 
 fn select_healthy_nodes<'a>(

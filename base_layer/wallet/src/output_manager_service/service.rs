@@ -26,7 +26,7 @@ use futures::{StreamExt, pin_mut};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -648,7 +648,7 @@ where
 
     #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        let id = OsRng.next_u64();
+        let id = rand::rng().next_u64();
         let txo_validation = TxoValidationTask::new(
             id,
             self.resources.db.clone(),

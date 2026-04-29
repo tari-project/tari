@@ -66,7 +66,7 @@ use minotari_wallet::{
         service::ScannedBlock,
     },
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -160,7 +160,7 @@ async fn setup_transaction_service(
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
 
     let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -170,14 +170,14 @@ async fn setup_transaction_service(
     let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5)).unwrap();
     let cipher = CipherSeed::random();
     let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = TransactionKeyManagerSqliteDatabase::init(connection, db_cipher);
     let wallet_type = Arc::new(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
         public_spend_key: CompressedPublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
-        view_key: SK::random(&mut OsRng),
+        view_key: SK::random(&mut rand::rng()),
         private_comms_key: Some(node_identity.secret_key().clone()),
         birthday: None,
     }));
@@ -412,13 +412,13 @@ async fn large_coin_split_transaction() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -443,7 +443,7 @@ async fn large_coin_split_transaction() {
 
     let initial_wallet_value = 20 * T;
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         key_manager_handle.key_manager(),
@@ -509,13 +509,13 @@ async fn single_transaction_burn_tari() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -539,7 +539,7 @@ async fn single_transaction_burn_tari() {
     .await;
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         key_manager_handle.key_manager(),
@@ -551,7 +551,7 @@ async fn single_transaction_burn_tari() {
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     let burn_value = 10000.into();
-    let (_claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let (_claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
     let (tx_id, burn_proof) = alice_ts
         .burn_tari(
             burn_value,
@@ -618,20 +618,20 @@ async fn send_one_sided_transaction_to_other() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     // Bob's parameters
     let bob_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -659,7 +659,7 @@ async fn send_one_sided_transaction_to_other() {
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         key_manager_handle.key_manager(),
@@ -672,7 +672,7 @@ async fn send_one_sided_transaction_to_other() {
 
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let random_pvt_key = PrivateKey::random(&mut OsRng);
+    let random_pvt_key = PrivateKey::random(&mut rand::rng());
     let bob_view_key = CompressedPublicKey::from_secret_key(&random_pvt_key);
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_view_key,
@@ -754,20 +754,20 @@ async fn recover_one_sided_transaction() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     // Bob's parameters
     let bob_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -814,7 +814,7 @@ async fn recover_one_sided_transaction() {
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         alice_key_manager_handle.key_manager(),
@@ -896,20 +896,20 @@ async fn recover_stealth_one_sided_transaction() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     // Bob's parameters
     let bob_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -946,7 +946,7 @@ async fn recover_stealth_one_sided_transaction() {
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         alice_key_manager_handle.key_manager(),
@@ -1026,13 +1026,13 @@ async fn test_htlc_send_and_claim() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -1070,7 +1070,7 @@ async fn test_htlc_send_and_claim() {
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         key_manager_handle.key_manager(),
@@ -1155,13 +1155,13 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
 
     let bob_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         get_next_memory_address(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -1200,7 +1200,7 @@ async fn test_htlc_send_and_claim_payment_id_fee() {
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         initial_wallet_value,
         &OutputFeatures::default(),
         key_manager_handle.key_manager(),
@@ -1311,10 +1311,10 @@ async fn transaction_service_tx_broadcast() {
     // let factories = CryptoFactories::default();
 
     // let alice_node_identity =
-    //     NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    //     NodeIdentity::random(&mut rand::rng(), get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     // let bob_node_identity =
-    //     NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    //     NodeIdentity::random(&mut rand::rng(), get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // let connection = make_wallet_database_memory_connection();
 
     // let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
@@ -1330,7 +1330,7 @@ async fn transaction_service_tx_broadcast() {
     // let alice_output_value = MicroMinotari(250000);
 
     // let uo = make_input(
-    //     &mut OsRng,
+    //     &mut rand::rng(),
     //     alice_output_value,
     //     &OutputFeatures::default(),
     //     &alice_ts_interface.key_manager_handle,
@@ -1350,7 +1350,7 @@ async fn transaction_service_tx_broadcast() {
     //     .unwrap();
 
     // let uo2 = make_input(
-    //     &mut OsRng,
+    //     &mut rand::rng(),
     //     alice_output_value,
     //     &OutputFeatures::default(),
     //     &alice_ts_interface.key_manager_handle,
@@ -1710,18 +1710,18 @@ async fn broadcast_all_completed_transactions_on_startup() {
         vec![],
         vec![],
         vec![kernel],
-        PrivateKey::random(&mut OsRng),
-        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut rand::rng()),
+        PrivateKey::random(&mut rand::rng()),
     );
     let source_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
     let destination_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
@@ -1857,19 +1857,19 @@ async fn test_update_faux_tx_on_oms_validation() {
     .unwrap();
 
     let uo_1 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::default(),
         alice_ts_interface.key_manager_handle.key_manager(),
     );
     let uo_2 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(20000),
         &OutputFeatures::default(),
         alice_ts_interface.key_manager_handle.key_manager(),
     );
     let uo_3 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(30000),
         &OutputFeatures::default(),
         alice_ts_interface.key_manager_handle.key_manager(),
@@ -2046,19 +2046,19 @@ async fn test_update_coinbase_tx_on_oms_validation() {
     .unwrap();
 
     let uo_1 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(10000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
         alice_ts_interface.key_manager_handle.key_manager(),
     );
     let uo_2 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(20000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
         alice_ts_interface.key_manager_handle.key_manager(),
     );
     let uo_3 = make_input(
-        &mut OsRng.clone(),
+        &mut rand::rng().clone(),
         MicroMinotari::from(30000),
         &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
         alice_ts_interface.key_manager_handle.key_manager(),
@@ -2249,8 +2249,8 @@ fn create_mock_completed_transaction(
             vec![],
             vec![],
             vec![],
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut rand::rng()),
+            PrivateKey::random(&mut rand::rng()),
         ),
         status: LegacyTransactionStatus::Completed,
         timestamp: Utc::now(),
@@ -2278,14 +2278,14 @@ async fn test_completed_transactions_ordering() {
     let tx_backend = alice_ts_interface.ts_db;
 
     let source_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
     let destination_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
@@ -2336,20 +2336,20 @@ async fn test_get_completed_transactions_by_addresses() {
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
 
     let alice_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
     let carol_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
@@ -2461,15 +2461,15 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
     // This simulates a transaction where the original inputs have been spent/removed
 
     let alice_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
 
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
         Network::LocalNet,
     )
     .unwrap();
@@ -2483,7 +2483,7 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
 
     // Create a fake input that doesn't exist in the output manager
     let fake_input = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         MicroMinotari::from(5000),
         &OutputFeatures::default(),
         key_manager.key_manager(),

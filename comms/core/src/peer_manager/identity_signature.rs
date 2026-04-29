@@ -26,7 +26,6 @@ use blake2::Blake2b;
 use chrono::{DateTime, Utc};
 use digest::consts::U64;
 use prost::Message;
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -67,7 +66,7 @@ impl IdentitySignature {
         updated_at: DateTime<Utc>,
     ) -> Self {
         let public_key = CommsPublicKey::from_secret_key(secret_key);
-        let (secret_nonce, public_nonce) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (secret_nonce, public_nonce) = CommsPublicKey::random_keypair(&mut rand::rng());
         let challenge = Self::construct_challenge(
             &public_key,
             &public_nonce,
@@ -207,7 +206,7 @@ mod test {
 
         #[test]
         fn it_returns_true_for_valid_signature() {
-            let secret = CommsSecretKey::random(&mut OsRng);
+            let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
             let updated_at = Utc::now();
@@ -223,7 +222,7 @@ mod test {
 
         #[test]
         fn it_returns_false_for_tampered_address() {
-            let secret = CommsSecretKey::random(&mut OsRng);
+            let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
             let updated_at = Utc::now();
@@ -241,7 +240,7 @@ mod test {
 
         #[test]
         fn it_returns_false_for_tampered_features() {
-            let secret = CommsSecretKey::random(&mut OsRng);
+            let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
             let updated_at = Utc::now();

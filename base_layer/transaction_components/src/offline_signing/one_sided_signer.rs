@@ -21,7 +21,7 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
@@ -199,7 +199,7 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
         key_manager.stealth_address_script_spending_key(&commitment_mask_key_id, recipient_spend_key)?;
 
     let mut message = Box::new([0u8; 32]);
-    OsRng.fill_bytes(message.as_mut());
+    rand::rng().fill_bytes(message.as_mut());
 
     let ephemeral_pubkeys =
         derive_multisig_ephemeral_pubkeys(key_manager, &info.public_keys, &sender_offset_key.key_id)?;

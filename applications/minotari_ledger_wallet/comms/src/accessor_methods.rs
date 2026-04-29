@@ -24,7 +24,7 @@ use std::sync::{LazyLock, Mutex};
 
 use log::debug;
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use semver::Version;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -102,11 +102,11 @@ fn verify() -> Result<(), LedgerDeviceError> {
         },
     }
 
-    let account = OsRng.next_u64();
-    let private_key_index = OsRng.next_u64();
+    let account = rand::rng().next_u64();
+    let private_key_index = rand::rng().next_u64();
     let private_key_branch = LedgerKeyBranch::OneSidedSenderOffset;
     let mut nonce = [0u8; 32];
-    OsRng.fill_bytes(&mut nonce);
+    rand::rng().fill_bytes(&mut nonce);
     let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce)
     {
         Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
@@ -165,7 +165,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
 pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(OsRng.next_u64(), Instruction::GetAppName, vec![0]).execute() {
+    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetAppName, vec![0]).execute() {
         Ok(response) => {
             let name = match std::str::from_utf8(response.data()) {
                 Ok(val) => {
@@ -186,7 +186,7 @@ pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
 pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(OsRng.next_u64(), Instruction::GetVersion, vec![0]).execute() {
+    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetVersion, vec![0]).execute() {
         Ok(response) => {
             let name = match std::str::from_utf8(response.data()) {
                 Ok(val) => {

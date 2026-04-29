@@ -27,7 +27,7 @@ use std::{
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_comms::{
     NodeIdentity,
     multiaddr::Multiaddr,
@@ -73,7 +73,7 @@ impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {
             public_key: node_identity.public_key().to_vec(),
             addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
             peer_features: node_identity.features().bits(),
-            nonce: OsRng.next_u64(),
+            nonce: rand::rng().next_u64(),
             identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
         }
     }

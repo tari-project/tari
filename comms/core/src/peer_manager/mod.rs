@@ -41,7 +41,7 @@
 //! # use tari_storage::LMDBWrapper;
 //! # use tari_storage::lmdb_store::LMDBConfig;
 //!
-//! let mut rng = rand::rngs::OsRng;
+//! let mut rng = rand::rng();
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
 //! let node_id = NodeId::from_key(&pk).unwrap();
 //! let net_addresses = NetAddressesWithStats::from("1.2.3.4:8000".parse::<NetAddress>().unwrap());

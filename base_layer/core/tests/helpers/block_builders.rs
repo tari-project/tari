@@ -22,7 +22,7 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use jmt::{JellyfishMerkleTree, KeyHash, mock::MockTreeStore};
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_types::types::{CompressedCommitment, FixedHash};
 use tari_core::{
     KernelMmr,
@@ -392,7 +392,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
         None,
     );
     let mut block = db.prepare_new_block(template)?;
-    block.header.nonce = OsRng.next_u64();
+    block.header.nonce = rand::rng().next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     let res = db.add_block(Arc::new(block))?;
     match res {
@@ -515,7 +515,7 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_new_coinbase(blocks.last().unwrap(), transactions, consensus, None, key_manager).0;
     let mut new_block = db.prepare_new_block(template)?;
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
     let result = db.add_block(new_block.into());
     if let Ok(BlockAddResult::Ok(ref b)) = result {

@@ -586,7 +586,6 @@ mod clear_all_pending_headers {
 mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
-    use rand::rngs::OsRng;
     use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
     use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
 
@@ -609,7 +608,7 @@ mod validator_node_merkle_root {
         let key_manager = KeyManager::new_random().unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager);
 
-        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
         let signature = ValidatorNodeSignature::sign_for_registration(&sk, None, &public_key, VnEpoch::zero());
         let features =
             OutputFeatures::for_validator_node_registration(signature, public_key.clone(), None, VnEpoch::zero());
@@ -648,8 +647,8 @@ mod validator_node_merkle_root {
         let key_manager = KeyManager::new_random().unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager);
 
-        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
-        let (sidechain_private, sidechain_public) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+        let (sidechain_private, sidechain_public) = CompressedPublicKey::random_keypair(&mut rand::rng());
         let signature =
             ValidatorNodeSignature::sign_for_registration(&sk, Some(&sidechain_public), &public_key, VnEpoch::zero());
         let features = OutputFeatures::for_validator_node_registration(

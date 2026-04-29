@@ -169,7 +169,7 @@ non_overlapping_iter_impl!(usize);
 
 #[cfg(test)]
 mod test {
-    use rand::{Rng, rngs::OsRng};
+    use rand::RngExt;
 
     use super::*;
     #[test]
@@ -307,9 +307,9 @@ mod test {
 
     #[test]
     fn iterator_symmetry() {
-        let size = OsRng.gen_range(3usize..=10);
-        let rand_start = OsRng.r#gen::<u8>();
-        let rand_end = OsRng.r#gen::<u8>().saturating_add(rand_start);
+        let size = rand::rng().random_range(3usize..=10);
+        let rand_start = rand::rng().random::<u8>();
+        let rand_end = rand::rng().random::<u8>().saturating_add(rand_start);
 
         // If the iterator never ends, we have the params used
         eprintln!("iterator_symmetry: rand_start = {rand_start}, rand_end = {rand_end}, size = {size}");

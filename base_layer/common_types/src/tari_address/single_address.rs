@@ -216,7 +216,7 @@ mod test {
     /// Test valid single tari address
     fn valid_emoji_id() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
@@ -294,7 +294,7 @@ mod test {
     /// Test encoding for single tari address
     fn encoding() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
@@ -429,7 +429,7 @@ mod test {
     #[test]
     /// Test invalid features
     fn invalid_features() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let mut address = SingleAddress::new_with_interactive_only(spend_key.clone(), Network::Esmeralda).unwrap();
         address.features = TariAddressFeatures(8);
@@ -455,7 +455,7 @@ mod test {
     #[test]
     /// Test invalid network
     fn invalid_network() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an address using a valid network and ensure it's not valid on another network

@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use std::{iter::repeat_with, sync::Arc, time::Duration};
 
-use rand::{rngs::OsRng, seq::SliceRandom};
+use rand::seq::SliceRandom;
 use tari_comms::{
     NodeIdentity,
     PeerManager,
@@ -200,7 +200,7 @@ async fn insert_into_pool() {
 
     let shuffled = {
         let mut v = node_identities.clone();
-        v.shuffle(&mut OsRng);
+        v.shuffle(&mut rand::rng());
         v
     };
 

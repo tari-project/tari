@@ -31,7 +31,7 @@ use std::{
 /// id and an address used to establish peer connections. The files generated from this example are used to
 /// populate the peer manager in other examples.
 use clap::{Arg, Command};
-use rand::{Rng, rngs::OsRng};
+use rand::RngExt;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -40,7 +40,7 @@ use tari_comms::{
 use tari_utilities::message_format::MessageFormat;
 
 fn random_address() -> Multiaddr {
-    let port = OsRng.gen_range(9000..u16::MAX);
+    let port = rand::rng().random_range(9000..u16::MAX);
     let socket_addr: SocketAddr = (Ipv4Addr::LOCALHOST, port).into();
     socketaddr_to_multiaddr(&socket_addr)
 }
@@ -71,7 +71,7 @@ fn main() {
         .get_matches();
 
     let address = random_address();
-    let node_identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
+    let node_identity = NodeIdentity::random(&mut rand::rng(), address, PeerFeatures::COMMUNICATION_NODE);
     let json = node_identity.to_json().unwrap();
     let out_path = to_abs_path(matches.get_one::<String>("output").unwrap().as_str());
     fs::write(out_path, json).unwrap();

@@ -30,7 +30,7 @@ use std::{
 };
 
 use propagation::node;
-use rand::{Rng, rngs::OsRng};
+use rand::RngExt;
 use tari_comms::{CommsNode, NodeIdentity, multiaddr::Multiaddr, peer_manager::PeerFeatures};
 use tari_comms_dht::{
     Dht,
@@ -57,11 +57,11 @@ async fn main() -> anyhow::Result<()> {
     let tmp_path = tempdir()?;
     let shutdown = Shutdown::new();
     let node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         Multiaddr::empty(),
         PeerFeatures::COMMUNICATION_CLIENT,
     ));
-    let port = OsRng.gen_range(9000u16..55000);
+    let port = rand::rng().random_range(9000u16..55000);
     let seed_peers = &[
         "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/\
          6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",

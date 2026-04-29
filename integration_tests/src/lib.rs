@@ -22,7 +22,7 @@
 
 use std::{net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
 
-use rand::Rng;
+use rand::RngExt;
 
 pub mod base_node_process;
 pub mod ffi;
@@ -48,7 +48,7 @@ pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u16> {
 
     loop {
         let port = loop {
-            let port = rand::thread_rng().gen_range(min..max);
+            let port = rand::rng().random_range(min..max);
             if !world.assigned_ports.contains_key(&port) {
                 break port;
             }

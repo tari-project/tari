@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn encode_decode_signature() {
-        let secret_key = PrivateKey::random(&mut rand::thread_rng());
+        let secret_key = PrivateKey::random(&mut rand::rng());
         let public_key = CompressedPublicKey::from_secret_key(&secret_key);
         let signature = CompressedSignature::new(public_key, secret_key);
 

@@ -22,15 +22,13 @@
 // DAMAGE.
 use argon2::{
     Argon2,
-    PasswordHasher,
-    password_hash::{Decimal, SaltString},
+    password_hash::{self, CustomizedPasswordHasher},
 };
-use rand::rngs::OsRng;
 use zeroize::Zeroizing;
 
 pub fn create_salted_hashed_password(password: &[u8]) -> argon2::password_hash::Result<Zeroizing<String>> {
     // Generate a 16-byte random salt
-    let passphrase_salt = SaltString::generate(&mut OsRng);
+    let passphrase_salt = password_hash::generate_salt();
 
     // Use the recommended OWASP parameters, which are not the default:
     // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
@@ -45,10 +43,10 @@ pub fn create_salted_hashed_password(password: &[u8]) -> argon2::password_hash::
     // We explicitly use the recommended algorithm and version due to the API
     let hashed_password = Argon2::default().hash_password_customized(
         password,
-        Some(argon2::Algorithm::Argon2id.ident()),
-        Some(argon2::Version::V0x13 as Decimal), // for some reason we need to use the numerical representation here
-        params,
         &passphrase_salt,
+        Some(argon2::Algorithm::Argon2id.ident().as_str()),
+        Some(argon2::Version::V0x13 as u32),
+        params,
     )?;
 
     Ok(Zeroizing::new(hashed_password.to_string()))

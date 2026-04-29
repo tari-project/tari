@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use multiaddr::Multiaddr;
-use rand::rngs::OsRng;
 use tari_crypto::keys::SecretKey;
 
 use super::{TestFactory, TestFactoryError};
@@ -57,7 +56,7 @@ impl TestFactory for NodeIdentityFactory {
         // Generate a test identity, set it and return it
         let secret_key = self
             .secret_key
-            .or_else(|| Some(CommsSecretKey::random(&mut OsRng)))
+            .or_else(|| Some(CommsSecretKey::random(&mut rand::rng())))
             .unwrap();
 
         let control_service_address = self

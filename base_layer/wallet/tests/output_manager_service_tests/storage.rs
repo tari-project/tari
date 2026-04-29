@@ -36,7 +36,7 @@ use minotari_wallet::output_manager_service::{
         sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
 };
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common_types::{
     transaction::TxId,
     types::{FixedHash, HashOutput, PrivateKey},
@@ -61,8 +61,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
-            &mut OsRng,
-            MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+            &mut rand::rng(),
+            MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
             &OutputFeatures::default(),
             key_manager.key_manager(),
         );
@@ -75,8 +75,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         unspent_outputs.push(kmo);
     }
     let uo = make_input(
-        &mut OsRng,
-        MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+        &mut rand::rng(),
+        MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
         &OutputFeatures::default(),
         key_manager.key_manager(),
     );
@@ -128,8 +128,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         };
         for _ in 0..4 {
             let kmo = make_input(
-                &mut OsRng,
-                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+                &mut rand::rng(),
+                MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
                 &OutputFeatures::default(),
                 key_manager.key_manager(),
             );
@@ -140,8 +140,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         }
         for _ in 0..2 {
             let uo = make_input(
-                &mut OsRng,
-                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+                &mut rand::rng(),
+                MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
                 &OutputFeatures::default(),
                 key_manager.key_manager(),
             );
@@ -301,8 +301,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Add output to be received
     let uo = make_input(
-        &mut OsRng,
-        MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+        &mut rand::rng(),
+        MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
         &OutputFeatures::default(),
         key_manager.key_manager(),
     );
@@ -402,7 +402,7 @@ pub async fn test_count_outputs_in_ranges() {
 
     for value in values {
         let uo = make_input(
-            &mut OsRng,
+            &mut rand::rng(),
             MicroMinotari::from(value),
             &OutputFeatures::default(),
             key_manager.key_manager(),
@@ -463,7 +463,7 @@ pub async fn test_range_limited_outputs_for_spending() {
 
     for value in values {
         let uo = make_input(
-            &mut OsRng,
+            &mut rand::rng(),
             MicroMinotari::from(value),
             &OutputFeatures::default(),
             key_manager.key_manager(),
@@ -558,7 +558,7 @@ pub async fn test_must_include_filter() {
 
     for value in values {
         let uo = make_input(
-            &mut OsRng,
+            &mut rand::rng(),
             MicroMinotari::from(value),
             &OutputFeatures::default(),
             key_manager.key_manager(),
@@ -632,8 +632,8 @@ pub async fn test_raw_custom_queries_regression() {
     let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
-            &mut OsRng,
-            MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+            &mut rand::rng(),
+            MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
             &OutputFeatures::default(),
             key_manager.key_manager(),
         );
@@ -646,7 +646,7 @@ pub async fn test_raw_custom_queries_regression() {
         unspent_outputs.push(kmo);
     }
 
-    let unknown = HashOutput::try_from(PrivateKey::random(&mut rand::thread_rng()).as_bytes()).unwrap();
+    let unknown = HashOutput::try_from(PrivateKey::random(&mut rand::rng()).as_bytes()).unwrap();
     let mut unspent_with_unknown = unspent.clone();
     unspent_with_unknown.push((unknown, true));
     assert!(db.mark_outputs_as_unspent(unspent_with_unknown).is_err());
@@ -669,8 +669,8 @@ pub async fn test_raw_custom_queries_regression() {
         };
         for _ in 0..4 {
             let kmo = make_input(
-                &mut OsRng,
-                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+                &mut rand::rng(),
+                MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
                 &OutputFeatures::default(),
                 key_manager.key_manager(),
             );
@@ -681,8 +681,8 @@ pub async fn test_raw_custom_queries_regression() {
         }
         for _ in 0..2 {
             let uo = make_input(
-                &mut OsRng,
-                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+                &mut rand::rng(),
+                MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
                 &OutputFeatures::default(),
                 key_manager.key_manager(),
             );
@@ -707,7 +707,7 @@ pub async fn test_raw_custom_queries_regression() {
     let mut updates_info = Vec::new();
     let mut block_hashes = Vec::new();
     for (i, to_be_received) in pending_txs[0].outputs_to_be_received.iter().enumerate() {
-        let k = PrivateKey::random(&mut OsRng);
+        let k = PrivateKey::random(&mut rand::rng());
         let mined_in_block = FixedHash::from_hex(&k.to_hex()).unwrap();
         block_hashes.push(mined_in_block);
         updates_info.push(ReceivedOutputInfoForBatch {
@@ -720,8 +720,8 @@ pub async fn test_raw_custom_queries_regression() {
     }
 
     let uo = make_input(
-        &mut OsRng,
-        MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+        &mut rand::rng(),
+        MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
         &OutputFeatures::default(),
         key_manager.key_manager(),
     );
@@ -762,7 +762,7 @@ pub async fn test_raw_custom_queries_regression() {
     let mut updates_info = Vec::new();
     let mut block_hashes = Vec::new();
     for (i, to_be_spent) in pending_txs[0].outputs_to_be_spent.iter().enumerate() {
-        let k = PrivateKey::random(&mut OsRng);
+        let k = PrivateKey::random(&mut rand::rng());
         let mark_deleted_in_block = FixedHash::from_hex(&k.to_hex()).unwrap();
         block_hashes.push(mark_deleted_in_block);
         updates_info.push(SpentOutputInfoForBatch {
@@ -811,8 +811,8 @@ pub async fn test_short_term_encumberance() {
     let key_manager = create_new_random_key_manager().await.unwrap();
     for i in 0..5 {
         let kmo = make_input(
-            &mut OsRng,
-            MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+            &mut rand::rng(),
+            MicroMinotari::from(100 + rand::rng().next_u64() % 1000),
             &OutputFeatures::default(),
             key_manager.key_manager(),
         );
@@ -871,7 +871,7 @@ pub async fn test_no_duplicate_outputs() {
     // create an output
     let key_manager = create_new_random_key_manager().await.unwrap();
     let uo = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         MicroMinotari::from(1000),
         &OutputFeatures::default(),
         key_manager.key_manager(),
@@ -916,7 +916,7 @@ pub async fn test_mark_as_unmined() {
     // create an output
     let key_manager = create_new_random_key_manager().await.unwrap();
     let uo = make_input(
-        &mut OsRng,
+        &mut rand::rng(),
         MicroMinotari::from(1000),
         &OutputFeatures::default(),
         key_manager.key_manager(),
@@ -950,7 +950,7 @@ pub async fn test_mark_as_unmined() {
     let mut batch_info = Vec::with_capacity(batch_count);
     for i in 0..batch_count {
         let uo = make_input(
-            &mut OsRng,
+            &mut rand::rng(),
             MicroMinotari::from(1000),
             &OutputFeatures::default(),
             key_manager.key_manager(),

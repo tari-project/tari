@@ -23,7 +23,7 @@
 use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use rand::{rngs::OsRng, RngCore};
+use rand::{Rng};
 use support::utils::make_non_recoverable_input;
 use tari_common::configuration::{MultiaddrList, StringList};
 use tari_common_types::{
@@ -121,7 +121,7 @@ async fn create_wallet(
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::LocalNet;
-    let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let node_identity = NodeIdentity::random(&mut rand::rng(), get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
         override_from: None,
         public_addresses: MultiaddrList::default(),
@@ -211,7 +211,7 @@ async fn test_wallet() {
     let factories = CryptoFactories::default();
 
     let base_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+        NodeIdentity::random(&mut rand::rng(), get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     // create wallet creates a local wallet
     let network = Network::LocalNet;
@@ -276,7 +276,7 @@ async fn test_wallet() {
 
     let value = MicroMinotari::from(1000);
     let key_manager = create_memory_db_key_manager().unwrap()
-    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
+    let (_utxo, uo1) = make_non_recoverable_input(&mut rand::rng(), MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -481,7 +481,7 @@ async fn test_sign_message() {
     .await
     .unwrap();
 
-    let (secret, public_key) = PublicKey::random_keypair(&mut OsRng);
+    let (secret, public_key) = PublicKey::random_keypair(&mut rand::rng());
     let message = "Tragedy will find us.";
     let schnorr = wallet.sign_message(&secret, message).unwrap();
 
@@ -565,7 +565,7 @@ async fn test_store_and_forward_send_tx() {
 
     let value = MicroMinotari::from(1000);
     let key_manager = create_memory_db_key_manager().unwrap()
-    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
+    let (_utxo, uo1) = make_non_recoverable_input(&mut rand::rng(), MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -636,12 +636,12 @@ async fn test_import_utxo() {
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
     let alice_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ));
@@ -676,7 +676,7 @@ async fn test_import_utxo() {
     };
 
     let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
+    rand::rng().fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
@@ -701,7 +701,7 @@ async fn test_import_utxo() {
     )
     .await
     .unwrap();
-    let key = PrivateKey::random(&mut OsRng);
+    let key = PrivateKey::random(&mut rand::rng());
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop).unwrap();
     let input = inputs!(claim);

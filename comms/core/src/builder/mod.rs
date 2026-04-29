@@ -60,7 +60,7 @@ use crate::{
 ///
 /// ```rust
 /// # use std::{sync::Arc, time::Duration};
-/// # use rand::rngs::OsRng;
+/// # use rand::;
 /// # use tari_shutdown::Shutdown;
 /// # use tari_comms::{
 /// #     {CommsBuilder, NodeIdentity},
@@ -81,7 +81,7 @@ use crate::{
 ///     LMDBWrapper,
 /// };
 /// let node_identity = Arc::new(NodeIdentity::random(
-///     &mut OsRng,
+///     &mut rand::rng(),
 ///     "/dns4/basenodezforhire.com/tcp/18000".parse().unwrap(),
 ///     PeerFeatures::COMMUNICATION_NODE,
 /// ));

@@ -28,7 +28,6 @@ use std::{
     time::Duration,
 };
 
-use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     CommsBuilder,
@@ -62,7 +61,7 @@ use super::{STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR, error::
 static MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"example/msg/1.0");
 
 pub fn create_test_peer() -> Peer {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rng();
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
     let node_id = NodeId::from_key(&pk);
     let addresses = MultiaddressesWithStats::from_addresses_with_source(
@@ -123,7 +122,7 @@ pub async fn create(
         .inspect(|ni| {
             ni.add_public_address(public_addr.clone());
         })
-        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));
+        .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut rand::rng(), public_addr, Default::default())));
 
     let listener_addr = format!("/ip4/0.0.0.0/tcp/{port}").parse().unwrap();
 

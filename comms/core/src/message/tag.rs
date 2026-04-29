@@ -22,7 +22,7 @@
 
 use std::fmt;
 
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 
 /// Represents a tag for a message
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Default)]
@@ -30,7 +30,7 @@ pub struct MessageTag(u64);
 
 impl MessageTag {
     pub fn new() -> Self {
-        Self(OsRng.next_u64())
+        Self(rand::rng().next_u64())
     }
 
     pub fn as_value(self) -> u64 {

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_types::types::{
     ComAndPubSignature,
@@ -94,7 +93,7 @@ fn test_kernel_order() {
     let version = TransactionKernelVersion::V0;
     let features = KernelFeatures::default();
     for _i in 0..2000 {
-        let pvt_key = PrivateKey::random(&mut OsRng);
+        let pvt_key = PrivateKey::random(&mut rand::rng());
         let pub_key = PublicKey::from_secret_key(&pvt_key);
         let commitment = Commitment::from_public_key(&pub_key);
         let sig = Signature::new(pub_key, pvt_key);
@@ -132,7 +131,7 @@ fn test_utxo_order() {
     let covenant = Covenant::default();
     let encrypt = EncryptedOpenings::default();
     for _i in 0..2000 {
-        let pvt_key = PrivateKey::random(&mut OsRng);
+        let pvt_key = PrivateKey::random(&mut rand::rng());
         let pub_key = PublicKey::from_secret_key(&pvt_key);
         let commitment = Commitment::from_public_key(&pub_key);
         let utxo = TransactionOutput::new(

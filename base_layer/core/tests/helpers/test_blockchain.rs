@@ -24,7 +24,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use log::*;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
@@ -101,7 +101,7 @@ impl TestBlockchain {
         );
 
         let mut new_block = self.store.prepare_new_block(template).unwrap();
-        new_block.header.nonce = OsRng.next_u64();
+        new_block.header.nonce = rand::rng().next_u64();
         find_header_with_achieved_difficulty(
             &mut new_block.header,
             Difficulty::from_u64(block.difficulty.unwrap_or(1)).unwrap(),

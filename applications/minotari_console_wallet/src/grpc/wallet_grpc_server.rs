@@ -161,7 +161,6 @@ use minotari_wallet::{
         storage::models::{self, CompletedTransaction, WalletTransaction},
     },
 };
-use rand::rngs::OsRng;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
@@ -3018,7 +3017,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             String::from_utf8(message.message).map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
 
         let signature =
-            SignatureWithDomain::<WalletMessageSigningDomain>::sign(&secret, message_str.as_bytes(), &mut OsRng)
+            SignatureWithDomain::<WalletMessageSigningDomain>::sign(&secret, message_str.as_bytes(), &mut rand::rng())
                 .map_err(|e| Status::internal(format!("Failed to sign message: {e}")))?;
 
         let hex_sig = signature.get_signature().to_hex();

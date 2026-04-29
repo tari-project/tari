@@ -147,7 +147,6 @@ impl fmt::Debug for XorDistance {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
 
     use super::*;
     use crate::types::CommsPublicKey;
@@ -209,9 +208,9 @@ mod test {
         #[test]
         fn correctness_fuzzing() {
             for _ in 0..100 {
-                let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+                let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
                 let a = NodeId::from_public_key(&pk);
-                let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+                let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
                 let b = NodeId::from_public_key(&pk);
                 let dist = NodeDistance::from_node_ids(&a, &b);
                 let i = u32::from(dist.get_bucket_index());

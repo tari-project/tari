@@ -14,7 +14,7 @@ use std::{
 use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
-use rand::{RngCore, rngs::OsRng, thread_rng};
+use rand::Rng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     CommsBuilder,
@@ -159,7 +159,7 @@ async fn run() -> Result<(), Error> {
 }
 
 pub fn create_test_peer() -> Peer {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rng();
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
     let node_id = NodeId::from_key(&pk);
     let addresses = MultiaddressesWithStats::from_addresses_with_source(
@@ -208,7 +208,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let mut hs_controller = hs_builder.build()?;
 
     let node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_CLIENT,
     ));
@@ -263,7 +263,7 @@ async fn start_ping_ponger(
         match msg_parts.next() {
             Some("START") => {
                 println!("\n-----------------------------------");
-                let id = thread_rng().next_u64();
+                let id = rand::rng().next_u64();
                 inflight_pings.insert(id, Utc::now().naive_utc());
                 let msg = make_msg(&dest_node_id, &format!("PING {id}"));
                 outbound_tx.send(msg)?;
@@ -288,7 +288,7 @@ async fn start_ping_ponger(
                     });
 
                 println!("-----------------------------------");
-                let new_id = thread_rng().next_u64();
+                let new_id = rand::rng().next_u64();
                 inflight_pings.insert(new_id, Utc::now().naive_utc());
                 let msg = make_msg(&dest_node_id, &format!("PING {new_id}"));
                 outbound_tx.send(msg)?;

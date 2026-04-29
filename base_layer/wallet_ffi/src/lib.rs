@@ -106,7 +106,6 @@ use minotari_wallet::{
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
 };
 use num_traits::FromPrimitive;
-use rand::rngs::OsRng;
 use tari_common::{
     configuration::{MultiaddrList, Network},
     network_check::set_network_if_choice_valid,
@@ -2898,7 +2897,7 @@ pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_ou
 /// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
-    let secret_key = TariPrivateKey::random(&mut OsRng);
+    let secret_key = TariPrivateKey::random(&mut rand::rng());
     Box::into_raw(Box::new(secret_key))
 }
 
@@ -10098,7 +10097,7 @@ mod test {
     #[test]
     fn test_address_getters() {
         unsafe {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
             let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
@@ -10368,10 +10367,10 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let spending_key = PrivateKey::random(&mut OsRng);
+            let spending_key = PrivateKey::random(&mut rand::rng());
             let commitment =
                 CompressedCommitment::from_compressed_key(CompressedPublicKey::from_secret_key(&spending_key));
-            let encryption_key = PrivateKey::random(&mut OsRng);
+            let encryption_key = PrivateKey::random(&mut rand::rng());
             let amount = MicroMinotari::from(123456);
             let encrypted_data = TariEncryptedOpenings::encrypt_data(
                 &encryption_key,
@@ -12111,9 +12110,9 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let (a_value, ephemeral_pubkey) = CompressedPublicKey::random_keypair(&mut OsRng);
-            let (x_value, ephemeral_com) = CompressedPublicKey::random_keypair(&mut OsRng);
-            let (y_value, _) = CompressedPublicKey::random_keypair(&mut OsRng);
+            let (a_value, ephemeral_pubkey) = CompressedPublicKey::random_keypair(&mut rand::rng());
+            let (x_value, ephemeral_com) = CompressedPublicKey::random_keypair(&mut rand::rng());
+            let (y_value, _) = CompressedPublicKey::random_keypair(&mut rand::rng());
             let ephemeral_com = CompressedCommitment::from_compressed_key(ephemeral_com.clone());
 
             let a_bytes = Box::into_raw(Box::new(ByteVector(a_value.to_vec())));
@@ -12277,8 +12276,11 @@ mod test {
             assert_eq!(error, 0);
             let key_manager = &mut (*wallet_ptr).wallet.key_manager_service;
 
-            let node_identity =
-                NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+            let node_identity = NodeIdentity::random(
+                &mut rand::rng(),
+                get_next_memory_address(),
+                PeerFeatures::COMMUNICATION_NODE,
+            );
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
 
             let source_address_ptr = Box::into_raw(Box::default());

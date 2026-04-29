@@ -4378,7 +4378,7 @@ mod test {
 
             // Add orphans out of height order
             let mut unordered = vec!["3b", "4b", "5b", "6b", "7b", "8b", "9b", "10b", "11b", "12b"];
-            unordered.shuffle(&mut rand::thread_rng());
+            unordered.shuffle(&mut rand::rng());
             for name in unordered {
                 let block = orphan_chain_b.get(name).unwrap().clone();
                 let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();

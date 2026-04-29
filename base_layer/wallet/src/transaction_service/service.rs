@@ -33,7 +33,6 @@ use futures::{StreamExt, pin_mut, stream::FuturesUnordered};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -2161,7 +2160,7 @@ where
         let temp_tx_id = TxId::new_random();
         self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
-        let pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+        let pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours

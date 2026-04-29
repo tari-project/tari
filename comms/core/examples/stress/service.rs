@@ -29,7 +29,7 @@ use std::{
 
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{SinkExt, StreamExt, stream};
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use tari_comms::{
     CommsNode,
     PeerConnection,
@@ -496,7 +496,7 @@ fn generate_message(n: u32, size: usize) -> Bytes {
     let mut bytes = BytesMut::with_capacity(size);
     bytes.resize(size, 0);
     bytes[..4].copy_from_slice(&counter_bytes);
-    OsRng.fill_bytes(&mut bytes[4..size]);
+    rand::rng().fill_bytes(&mut bytes[4..size]);
     bytes.freeze()
 }
 

@@ -27,15 +27,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use argon2::password_hash::{
-    SaltString,
-    rand_core::{OsRng, RngCore},
-};
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::{prelude::*, result::Error};
 use digest::{FixedOutput, consts::U32, generic_array::GenericArray};
 use log::*;
+use phc::SaltString;
+use rand::Rng;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -576,7 +574,7 @@ impl WalletBackend for WalletSqliteDatabase {
                 let new_argon2_params = Argon2Parameters::from_version(None)?;
 
                 // Derive a new secondary key from the new passphrase and a fresh salt
-                let new_secondary_key_salt = SaltString::generate(&mut OsRng).to_string();
+                let new_secondary_key_salt = SaltString::generate().to_string();
                 let (new_secondary_key, new_secondary_key_hash) =
                     derive_secondary_key(new, new_argon2_params.clone(), &new_secondary_key_salt)?;
 
@@ -732,14 +730,13 @@ fn get_db_cipher(
         Ok(None) => {
             // Generate a high-entropy main key
             let mut main_key = WalletMainEncryptionKey::from(vec![0u8; size_of::<Key>()]);
-            let mut rng = OsRng;
-            rng.fill_bytes(main_key.reveal_mut());
+            rand::rng().fill_bytes(main_key.reveal_mut());
 
             // Use the most recent `Argon2` parameters
             let argon2_params = Argon2Parameters::from_version(None)?;
 
             // Derive the secondary key from the user's passphrase and a high-entropy salt
-            let secondary_key_salt = SaltString::generate(&mut rng).to_string();
+            let secondary_key_salt = SaltString::generate().to_string();
             let (secondary_key, secondary_key_hash) =
                 derive_secondary_key(passphrase, argon2_params.clone(), &secondary_key_salt)?;
 

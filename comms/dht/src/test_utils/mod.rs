@@ -68,7 +68,7 @@ where
 
 #[cfg(test)]
 pub fn create_test_peer() -> Peer {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rng();
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
     let node_id = NodeId::from_key(&pk);
     let addresses = MultiaddressesWithStats::from_addresses_with_source(

@@ -22,7 +22,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     CommsBuilder,
@@ -98,14 +97,14 @@ impl TestNode {
 pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         format!("/memory/{port}").parse().unwrap(),
         features,
     ))
 }
 
 pub fn create_test_peer() -> Peer {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = rand::rng();
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
     let node_id = NodeId::from_key(&pk);
     let addresses = MultiaddressesWithStats::from_addresses_with_source(

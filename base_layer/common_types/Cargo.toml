@@ -20,7 +20,7 @@ tari_max_size = { workspace = true }
 tari_utilities = { workspace = true }
 
 
-argon2 = { version = "0.4.1", features = ["std", "alloc"] }
+argon2 = { version = "0.6.0-rc.8", features = ["alloc"] }
 base64 = { workspace = true }
 blake2 = "0.10"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -46,7 +46,8 @@ serde_json.workspace = true
 
 subtle = "2.4.1"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom = { version = "0.4.2", features = ["wasm_js"] }
 js-sys = { version = "0.3.55" }
 
 [dev-dependencies]

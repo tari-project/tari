@@ -131,7 +131,6 @@ fn generate_shard_key(public_key: &CompressedPublicKey, entropy: &[u8; 32]) -> [
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
 
@@ -139,7 +138,7 @@ mod test {
     use crate::test_helpers::new_public_key;
 
     fn create_instance() -> ValidatorNodeRegistration {
-        let sk = PrivateKey::random(&mut OsRng);
+        let sk = PrivateKey::random(&mut rand::rng());
         let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
         let epoch = VnEpoch(1);
 
@@ -157,7 +156,7 @@ mod test {
 
         #[test]
         fn it_returns_false_for_invalid_challenge() {
-            let sk = PrivateKey::random(&mut OsRng);
+            let sk = PrivateKey::random(&mut rand::rng());
             let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
 
             let reg = ValidatorNodeRegistration::new(

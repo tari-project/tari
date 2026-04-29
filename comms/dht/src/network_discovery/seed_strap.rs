@@ -164,7 +164,7 @@ impl SeedStrap {
         );
 
         let mut seed_peers = seed_peers_available.clone();
-        seed_peers.shuffle(&mut rand::thread_rng());
+        seed_peers.shuffle(&mut rand::rng());
         let mut seed_peers_iter = seed_peers.iter();
 
         let max_peers_to_sync_per_round = self.config().network_discovery.max_peers_to_sync_per_round;

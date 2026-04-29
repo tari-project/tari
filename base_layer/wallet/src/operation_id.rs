@@ -26,7 +26,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
@@ -34,7 +34,7 @@ pub struct OperationId(u64);
 
 impl OperationId {
     pub fn new_random() -> Self {
-        OperationId(OsRng.next_u64())
+        OperationId(rand::rng().next_u64())
     }
 
     pub fn as_u64(self) -> u64 {

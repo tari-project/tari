@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{Rng};
 use tari_common::configuration::Network;
 use tari_common_types::types::BlockHash;
 use tari_core::{
@@ -1224,7 +1224,7 @@ fn test_handle_reorg_failure_recovery() {
 
         let template = chain_block(orphan1_blocks.last().unwrap().block(), txns, &consensus_manager);
         let mut block = orphan1_store.prepare_new_block(template).unwrap();
-        block.header.nonce = OsRng.next_u64();
+        block.header.nonce = rand::rng().next_u64();
         block.header.height += 1;
         find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(2).unwrap());
         block

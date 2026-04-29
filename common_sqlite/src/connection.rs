@@ -35,7 +35,7 @@ use diesel::{
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use log::*;
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{RngExt, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -205,7 +205,7 @@ impl DbConnection {
     /// Connect and migrate the database in a temporary location, then return a handle to the migrated database.
     pub fn connect_temp_file_and_migrate(migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
         fn prefixed_string(prefix: &str, len: usize) -> String {
-            let mut rng = thread_rng();
+            let mut rng = rand::rng();
             let rand_str = iter::repeat(())
                 .map(|_| rng.sample(Alphanumeric) as char)
                 .take(len)

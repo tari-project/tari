@@ -207,7 +207,7 @@ mod test {
     /// Test valid emoji ID
     fn valid_emoji_id() {
         // Generate random public key
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it

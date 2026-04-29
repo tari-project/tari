@@ -41,7 +41,7 @@ mod memory_net;
 use std::{iter::repeat_with, time::Duration};
 
 use futures::future;
-use rand::{Rng, rngs::OsRng};
+use rand::RngExt;
 use tari_comms::peer_manager::PeerFeatures;
 use tokio::sync::mpsc;
 
@@ -114,7 +114,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
-                vec![nodes[OsRng.gen_range(0..NUM_NODES - 1)].node_identity()],
+                vec![nodes[rand::rng().random_range(0..NUM_NODES - 1)].node_identity()],
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,

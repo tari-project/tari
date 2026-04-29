@@ -23,8 +23,8 @@
 use std::convert::TryFrom;
 
 use rand::{
-    Rng,
-    distributions::{Distribution, Uniform},
+    RngExt,
+    distr::{Distribution, Uniform},
 };
 use tari_mmr::{
     Hash,
@@ -65,15 +65,17 @@ fn pruned_mmrs() {
 }
 
 fn get_changes() -> (usize, Vec<Hash>, Vec<u32>) {
-    let mut rng = rand::thread_rng();
-    let src_size: usize = rng.gen_range(25..150);
-    let addition_length = rng.gen_range(1..100);
-    let additions: Vec<Hash> = Uniform::from(1..1000)
+    let mut rng = rand::rng();
+    let src_size: usize = rng.random_range(25..150);
+    let addition_length = rng.random_range(1..100);
+    let additions: Vec<Hash> = Uniform::new(1, 1000)
+        .unwrap()
         .sample_iter(&mut rng)
         .take(addition_length)
         .map(int_to_hash)
         .collect();
-    let deletions: Vec<u32> = Uniform::from(0..src_size)
+    let deletions: Vec<u32> = Uniform::new(0, src_size)
+        .unwrap()
         .sample_iter(&mut rng)
         .take(src_size / 5)
         .map(|v| u32::try_from(v).unwrap())

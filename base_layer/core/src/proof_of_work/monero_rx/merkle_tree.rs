@@ -606,7 +606,7 @@ mod test {
     }
 
     mod create_merkle_proof {
-        use rand::RngCore;
+        use rand::Rng;
 
         use super::*;
 
@@ -746,7 +746,7 @@ mod test {
         #[test]
         fn big_proof_construction() {
             // 65536 transactions is beyond what is reasonable to fit in a block
-            let mut thread_rng = rand::thread_rng();
+            let mut thread_rng = rand::rng();
             let tx_hashes = std::iter::repeat_n((), 0x10000)
                 .map(|_| {
                     let mut buf = [0u8; 32];

@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use borsh::BorshSerialize;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use serial_test::serial;
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
@@ -513,7 +513,7 @@ OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, None, &key_manager);
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
 
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
@@ -545,7 +545,7 @@ OutputFeatures::default()),
 
     // lets break the chain sequence
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     assert!(
@@ -589,7 +589,7 @@ OutputFeatures::default()),
         key_manager_utxo2.to_transaction_input(&key_manager).unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let achieved_target_diff = header_validator
@@ -623,7 +623,7 @@ OutputFeatures::default()),
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
@@ -656,7 +656,7 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template).unwrap();
     let prev_header = db.fetch_header(new_block.header.height - 1).unwrap().unwrap();
     new_block.header.output_mr = FixedHash::zero();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
@@ -739,7 +739,7 @@ OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, None, &key_manager);
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
 
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
@@ -758,7 +758,7 @@ OutputFeatures::default()),
 
     // Lets break ftl rules
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
     new_block.header.timestamp = rules
         .consensus_constants(0)
@@ -781,7 +781,7 @@ OutputFeatures::default()),
 
     // lets break difficulty
     let mut new_block = db.prepare_new_block(template).unwrap();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let mut result = header_validator
         .validate(
@@ -793,11 +793,11 @@ OutputFeatures::default()),
             FixedHash::zero(),
         )
         .is_err();
-    new_block.header.nonce = OsRng.next_u64();
+    new_block.header.nonce = rand::rng().next_u64();
     let mut counter = 0;
     while counter < 10 && !result {
         counter += 1;
-        new_block.header.nonce = OsRng.next_u64();
+        new_block.header.nonce = rand::rng().next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
         result = header_validator
             .validate(

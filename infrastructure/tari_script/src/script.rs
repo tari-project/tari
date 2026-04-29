@@ -846,7 +846,7 @@ mod test {
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (_, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let inputs = inputs!(1, p.clone(), 1, 3);
         let err = script.execute(&inputs).unwrap_err();
@@ -1055,7 +1055,7 @@ mod test {
 
     #[test]
     fn op_hash() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (_, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let c = CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(p.clone());
         let script = script!(HashSha256).unwrap();
@@ -1102,7 +1102,7 @@ mod test {
     #[test]
     fn op_add_commitments() {
         let script = script!(Add).unwrap();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (_, c1) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (_, c2) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let c3 = &c1.to_public_key().unwrap() + &c2.to_public_key().unwrap();
@@ -1139,7 +1139,7 @@ mod test {
     #[test]
     fn check_sig() {
         use crate::StackItem::Number;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (pvt_key, pub_key) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
         let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
@@ -1162,7 +1162,7 @@ mod test {
     #[test]
     fn check_sig_verify() {
         use crate::StackItem::Number;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (pvt_key, pub_key) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
         let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
@@ -1193,7 +1193,7 @@ mod test {
             CompressedCheckSigSchnorrSignature,
         )>,
     ) {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut data = Vec::with_capacity(n);
         let m = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(m.as_bytes());
@@ -1213,7 +1213,7 @@ mod test {
     #[test]
     fn check_multisig() {
         use crate::{StackItem::Number, op_codes::Opcode::CheckMultiSig};
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (k_alice, p_alice) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (k_bob, p_bob) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
@@ -1421,7 +1421,7 @@ mod test {
     #[test]
     fn check_multisig_verify() {
         use crate::{StackItem::Number, op_codes::Opcode::CheckMultiSigVerify};
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (k_alice, p_alice) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (k_bob, p_bob) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
@@ -1661,7 +1661,7 @@ mod test {
     #[test]
     fn hex_roundtrip() {
         // Generate a signature
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (secret_key, public_key) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let message = [1u8; 32];
         let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
@@ -1762,7 +1762,7 @@ mod test {
     #[test]
     fn m_of_n_signatures() {
         use crate::StackItem::PublicKey;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (k_alice, p_alice) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (k_bob, p_bob) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
@@ -1822,7 +1822,7 @@ mod test {
         use crate::{Opcode::ToRistrettoPoint, StackItem::PublicKey};
 
         // Generate a key pair
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let (k_1, p_1) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
 
         // Generate a test script

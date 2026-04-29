@@ -193,7 +193,7 @@ where
             let key = if let TariKeyId::Derived { key } = spending_key {
                 TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
-                let private_key = PrivateKey::random(&mut rand::thread_rng());
+                let private_key = PrivateKey::random(&mut rand::rng());
                 self.master_key_manager.create_encrypted_key(private_key, None)?
             };
             let public_key = self.master_key_manager.get_public_key_at_key_id(&key)?;

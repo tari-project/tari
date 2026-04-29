@@ -24,7 +24,6 @@ use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt, stream::FuturesUnordered};
-use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
@@ -130,7 +129,7 @@ async fn new_inbound_substream_handling() {
         spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
-    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
     let peer1 = Peer::new(
         pk.clone(),
         expected_node_id.clone(),
@@ -142,7 +141,7 @@ async fn new_inbound_substream_handling() {
     );
     peer_manager.add_or_update_peer(peer1.clone()).await.unwrap();
 
-    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
     let peer2 = Peer::new(
         pk.clone(),
         expected_node_id.clone(),
@@ -389,7 +388,7 @@ async fn new_inbound_substream_only_single_session_permitted() {
     let expected_node_id = node_id::random();
     let peer1 = node_identity_1.to_peer();
 
-    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
     let peer2 = Peer::new(
         pk.clone(),
         expected_node_id.clone(),

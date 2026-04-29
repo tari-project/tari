@@ -383,7 +383,7 @@ pub struct SelectionResult<T> {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::indexing_slicing)]
-    use rand::Rng;
+    use rand::RngExt;
 
     use super::*;
 
@@ -545,7 +545,7 @@ mod tests {
     fn large_input_set() {
         let mut utxos = Vec::new();
         for _ in 0..1000 {
-            let value: u64 = rand::thread_rng().gen_range(500..1500);
+            let value: u64 = rand::rng().random_range(500..1500);
             utxos.push(MicroMinotari(value));
         }
         let params = section_params(500000, 0, 0, 0, 500);

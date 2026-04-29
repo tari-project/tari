@@ -381,7 +381,6 @@ mod test {
     use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
     use digest::{Digest, consts::U32};
-    use rand::rngs::OsRng;
     use tari_crypto::{
         compressed_commitment::CompressedCommitment,
         compressed_key::CompressedKey,
@@ -405,10 +404,10 @@ mod test {
     #[test]
     fn as_bytes_roundtrip() {
         use crate::StackItem::{Number, PublicKey, Signature};
-        let k = RistrettoSecretKey::random(&mut rand::thread_rng());
+        let k = RistrettoSecretKey::random(&mut rand::rng());
         let p = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k);
         let s = CompressedCheckSigSchnorrSignature::new_from_schnorr(
-            CheckSigSchnorrSignature::sign(&k, b"hi", &mut OsRng).unwrap(),
+            CheckSigSchnorrSignature::sign(&k, b"hi", &mut rand::rng()).unwrap(),
         );
         let items = vec![Number(5432), Number(21), Signature(s), PublicKey(p)];
         let stack = ExecutionStack::new(items);

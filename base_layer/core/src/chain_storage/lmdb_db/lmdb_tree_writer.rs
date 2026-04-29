@@ -144,7 +144,6 @@ impl TreeWriter for LmdbTreeWriter<'_> {
 #[cfg(test)]
 mod test {
     use jmt::{JellyfishMerkleTree, KeyHash};
-    use rand::rngs::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_utilities::ByteArray;
 
@@ -162,7 +161,7 @@ mod test {
         let reader = db.db().create_smt_reader().unwrap();
 
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut rand::rng());
         let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
         let value = b"test_value".to_vec();
         let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
@@ -192,7 +191,7 @@ mod test {
         let reader = db.db().create_smt_reader().unwrap();
 
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut rand::rng());
         let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
         let value = b"test_value".to_vec();
         let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
@@ -232,7 +231,7 @@ mod test {
         let reader = db.db().create_smt_reader().unwrap();
 
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut rand::rng());
         let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
         let value = b"test_value".to_vec();
         let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
@@ -243,7 +242,7 @@ mod test {
         let txn = db.db().create_write_txn();
         let tree_writer = db.db().create_lmdb_tree_writer(&txn);
         let reader = db.db().create_smt_reader().unwrap();
-        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut rand::rng());
         let smt_key2 = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 

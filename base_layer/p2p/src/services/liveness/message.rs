@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 
 pub use crate::proto::liveness::{PingPong, PingPongMessage};
 use crate::services::liveness::state::Metadata;
@@ -36,7 +36,7 @@ impl PingPongMessage {
 
     /// Construct a ping message with metadata
     pub fn ping_with_metadata(metadata: Metadata) -> Self {
-        let nonce = OsRng.next_u64();
+        let nonce = rand::rng().next_u64();
         Self::new(PingPong::Ping, nonce, metadata)
     }
 

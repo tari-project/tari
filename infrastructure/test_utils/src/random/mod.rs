@@ -22,11 +22,11 @@
 
 use std::iter;
 
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
+use rand::{RngExt, distr::Alphanumeric};
 
 /// Generate a random alphanumeric string of the given size using the default `ThreadRng`.
 pub fn string(len: usize) -> String {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     iter::repeat(())
         .map(|_| rng.sample(Alphanumeric) as char)
         .take(len)
@@ -35,7 +35,7 @@ pub fn string(len: usize) -> String {
 
 /// Generate a random alphanumeric string of the given size using the default `ThreadRng`.
 pub fn prefixed_string(prefix: &str, len: usize) -> String {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let rand_str = iter::repeat(())
         .map(|_| rng.sample(Alphanumeric) as char)
         .take(len)

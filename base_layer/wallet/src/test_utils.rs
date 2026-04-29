@@ -23,7 +23,7 @@
 use core::iter;
 use std::path::Path;
 
-use rand::{Rng, distributions::Alphanumeric, rngs::OsRng};
+use rand::{RngExt, distr::Alphanumeric};
 use tari_common::configuration::Network;
 use tari_transaction_components::consensus::{ConsensusConstants, ConsensusManager};
 use tempfile::{TempDir, tempdir};
@@ -36,7 +36,7 @@ use crate::storage::sqlite_utilities::{
 
 pub fn random_string(len: usize) -> String {
     iter::repeat(())
-        .map(|_| OsRng.sample(Alphanumeric) as char)
+        .map(|_| rand::rng().sample(Alphanumeric) as char)
         .take(len)
         .collect()
 }

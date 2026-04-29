@@ -23,7 +23,6 @@
 #![allow(clippy::indexing_slicing)]
 use blake2::Blake2b;
 use digest::{FixedOutput, consts::U32, generic_array::GenericArray};
-use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
     resolvers::{CryptoResolver, DefaultResolver},
@@ -105,7 +104,7 @@ impl Dh for CommsDiffieHellman {
     fn generate(&mut self, _: &mut dyn Random) {
         // `&mut dyn Random` is unsized and cannot be used with `CommsSecretKey::random`
         // COMMS_RNG fulfills the RNG requirements anyhow
-        self.secret_key = CommsSecretKey::random(&mut OsRng);
+        self.secret_key = CommsSecretKey::random(&mut rand::rng());
         self.public_key = CommsPublicKey::from_secret_key(&self.secret_key);
     }
 
@@ -153,13 +152,13 @@ mod test {
 
     #[test]
     fn dh() {
-        let (secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (secret_key, public_key) = CommsPublicKey::random_keypair(&mut rand::rng());
         let dh = CommsDiffieHellman {
             public_key: public_key.clone(),
             secret_key,
         };
 
-        let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut rand::rng());
         let expected_shared = CommsDHKE::new(&secret_key2, &public_key.to_public_key().unwrap());
         let expected_shared = noise_kdf(&expected_shared);
 

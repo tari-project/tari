@@ -22,7 +22,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -49,7 +48,7 @@ pub struct TestNodeConfig {
 impl Default for TestNodeConfig {
     fn default() -> Self {
         let node_identity = Arc::new(NodeIdentity::random(
-            &mut OsRng,
+            &mut rand::rng(),
             "/memory/0".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         ));

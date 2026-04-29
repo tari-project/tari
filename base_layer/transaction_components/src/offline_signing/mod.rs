@@ -37,8 +37,7 @@ pub use offline_signer::{
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use argon2::password_hash::rand_core::OsRng;
-    use rand::RngCore;
+    use rand::Rng;
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::{TariAddress, TariAddressFeatures},
@@ -624,7 +623,7 @@ mod test {
         let sender_offset_key = alice_view_key_manager.get_random_key(None, None).unwrap();
 
         let mut message = Box::new([0u8; 32]);
-        OsRng.fill_bytes(message.as_mut());
+        rand::rng().fill_bytes(message.as_mut());
 
         let mut signatures: Vec<CompressedCheckSigSchnorrSignature> = Vec::new();
 

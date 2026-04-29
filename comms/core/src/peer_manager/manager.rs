@@ -351,25 +351,25 @@ impl fmt::Debug for PeerManager {
 pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     use std::borrow::BorrowMut;
 
-    use rand::{Rng, rngs::OsRng};
+    use rand::RngExt;
 
     use crate::peer_manager::PeerFlags;
-    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
     let node_id = NodeId::from_key(&pk);
 
     // Create 1 to 4 random addresses
     let mut addresses = Vec::new();
-    for _i in 1..=rand::thread_rng().gen_range(1..4) {
+    for _i in 1..=rand::rng().random_range(1..4) {
         let n = [
-            match rand::thread_rng().gen_range(0..3) {
-                0 => rand::thread_rng().gen_range(1..10),   // Range excluding 10
-                1 => rand::thread_rng().gen_range(11..127), // Range excluding 127
-                _ => rand::thread_rng().gen_range(128..255),
+            match rand::rng().random_range(0..3) {
+                0 => rand::rng().random_range(1..10),   // Range excluding 10
+                1 => rand::rng().random_range(11..127), // Range excluding 127
+                _ => rand::rng().random_range(128..255),
             },
-            rand::thread_rng().gen_range(1..255),
-            rand::thread_rng().gen_range(1..255),
-            rand::thread_rng().gen_range(1..255),
-            rand::thread_rng().gen_range(5000..9000),
+            rand::rng().random_range(1..255),
+            rand::rng().random_range(1..255),
+            rand::rng().random_range(1..255),
+            rand::rng().random_range(5000..9000),
         ];
         let address = format!("/ip4/{}.{}.{}.{}/tcp/{}", n[0], n[1], n[2], n[3], n[4])
             .parse::<Multiaddr>()
@@ -405,18 +405,18 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
 ///  - 56 chars, base32 alphabet [a-z2-7], lowercase.
 #[cfg(test)]
 fn random_onion3_host() -> String {
-    use rand::distributions::Uniform;
+    use rand::distr::Uniform;
 
     const LEN: usize = 56;
     // RFC4648 base32 alphabet as used by onion v3 (lowercase).
     const B32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
 
-    let mut rng = rand::thread_rng();
-    let dist = Uniform::from(0..B32.len());
+    let mut rng = rand::rng();
+    let dist = Uniform::new(0, B32.len()).unwrap();
 
     let mut s = String::with_capacity(LEN);
     for _ in 0..LEN {
-        use rand::Rng;
+        use rand::RngExt;
 
         let idx = rng.sample(dist);
         s.push(*B32.get(idx).expect("Index out of bounds") as char);
@@ -428,19 +428,19 @@ fn random_onion3_host() -> String {
 pub fn create_test_peer_with_onion_address(ban_flag: bool, features: PeerFeatures) -> Peer {
     use std::borrow::BorrowMut;
 
-    use rand::{Rng, rngs::OsRng};
+    use rand::RngExt;
 
     use crate::peer_manager::PeerFlags;
-    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
     let node_id = NodeId::from_key(&pk);
 
     // Create 1 to 4 random onion addresses
     let mut addresses = Vec::new();
-    for _i in 1..=rand::thread_rng().gen_range(1..4) {
+    for _i in 1..=rand::rng().random_range(1..4) {
         use std::str::FromStr;
 
         let host = random_onion3_host();
-        let port = rand::thread_rng().gen_range(1024..=65535);
+        let port = rand::rng().random_range(1024..=65535);
         let addr_str = format!("/onion3/{}:{}", host, port);
         let address = Multiaddr::from_str(&addr_str).expect("valid onion3 multiaddr");
         addresses.push(address);
@@ -480,10 +480,8 @@ pub fn create_test_peer_add_internal_addresses(ban_flag: bool, features: PeerFea
 
 #[cfg(test)]
 pub fn create_test_peer_internal_addresses_only(ban_flag: bool, features: PeerFeatures) -> Peer {
-    use rand::rngs::OsRng;
-
     use crate::peer_manager::PeerFlags;
-    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
     let node_id = NodeId::from_key(&pk);
 
     let mut peer = Peer::new(
@@ -505,32 +503,32 @@ pub fn create_test_peer_internal_addresses_only(ban_flag: bool, features: PeerFe
 
 #[cfg(test)]
 fn add_internal_addresses(peer: &mut Peer) {
-    use rand::{Rng, prelude::SliceRandom};
+    use rand::{RngExt, prelude::SliceRandom};
 
     let mut addresses = Vec::new();
     // IPv4 Loopback
     let address_1 = format!(
         "/ip4/127.{}.{}.{}/tcp/{}",
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(9000..9100)
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(9000..9100)
     )
     .parse::<Multiaddr>()
     .unwrap();
     addresses.push(address_1);
     // IPv4 Unspecified
-    let address_2 = format!("/ip4/0.0.0.0/tcp/{}", rand::thread_rng().gen_range(9100..9200))
+    let address_2 = format!("/ip4/0.0.0.0/tcp/{}", rand::rng().random_range(9100..9200))
         .parse::<Multiaddr>()
         .unwrap();
     addresses.push(address_2);
     // IPv4 Private
     let address_3 = format!(
         "/ip4/10.{}.{}.{}/tcp/{}",
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(9200..9300)
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(9200..9300)
     )
     .parse::<Multiaddr>()
     .unwrap();
@@ -538,10 +536,10 @@ fn add_internal_addresses(peer: &mut Peer) {
     // IPv4 Private
     let address_4 = format!(
         "/ip4/172.{}.{}.{}/tcp/{}",
-        rand::thread_rng().gen_range(16..=31),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(9300..9400)
+        rand::rng().random_range(16..=31),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(9300..9400)
     )
     .parse::<Multiaddr>()
     .unwrap();
@@ -549,24 +547,24 @@ fn add_internal_addresses(peer: &mut Peer) {
     // IPv4 Private
     let address_5 = format!(
         "/ip4/192.168.{}.{}/tcp/{}",
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(0..255),
-        rand::thread_rng().gen_range(9400..9500)
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(0..255),
+        rand::rng().random_range(9400..9500)
     )
     .parse::<Multiaddr>()
     .unwrap();
     addresses.push(address_5);
     // IPv6 Loopback
-    let address_6 = format!("/ip6/::1/tcp/{}", rand::thread_rng().gen_range(9500..9600))
+    let address_6 = format!("/ip6/::1/tcp/{}", rand::rng().random_range(9500..9600))
         .parse::<Multiaddr>()
         .unwrap();
     addresses.push(address_6);
     // IPv6 Unspecified
-    let address_7 = format!("/ip6/::/tcp/{}", rand::thread_rng().gen_range(9600..9700))
+    let address_7 = format!("/ip6/::/tcp/{}", rand::rng().random_range(9600..9700))
         .parse::<Multiaddr>()
         .unwrap();
     addresses.push(address_7);
-    addresses.shuffle(&mut rand::thread_rng());
+    addresses.shuffle(&mut rand::rng());
 
     // Do not create a new PeerAddressSource with PeerIdentityClaim - use PeerAddressSource::Config - otherwise the
     // previous claims and associated addresses will be discarded.
@@ -580,7 +578,6 @@ pub fn create_peer_address_source_with_claim(
     peer_features: PeerFeatures,
 ) -> PeerAddressSource {
     use chrono::Utc;
-    use rand::rngs::OsRng;
     use tari_crypto::keys::SecretKey;
 
     use crate::{
@@ -589,7 +586,7 @@ pub fn create_peer_address_source_with_claim(
     };
 
     fn create_identity_signature(addresses: &[Multiaddr], peer_features: PeerFeatures) -> IdentitySignature {
-        let secret = CommsSecretKey::random(&mut OsRng);
+        let secret = CommsSecretKey::random(&mut rand::rng());
         let public_key = CommsPublicKey::from_secret_key(&secret);
         let updated_at = Utc::now();
         let identity = IdentitySignature::sign_new(&secret, peer_features, addresses, updated_at);

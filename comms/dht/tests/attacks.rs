@@ -23,7 +23,7 @@ mod harness;
 use std::{iter, time::Duration};
 
 use harness::*;
-use rand::{Rng, RngCore, rngs::OsRng};
+use rand::{Rng, RngExt};
 use tari_comms::{
     NodeIdentity,
     peer_manager::{IdentitySignature, PeerFeatures},
@@ -148,7 +148,7 @@ impl JoinMessage {
             public_key: node_identity.public_key().to_vec(),
             addresses: raw_addresses,
             peer_features: node_identity.features().bits(),
-            nonce: OsRng.next_u64(),
+            nonce: rand::rng().next_u64(),
             identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
         }
     }
@@ -166,17 +166,17 @@ impl From<&IdentitySignature> for IdentitySignatureProto {
 }
 
 fn random_port() -> u16 {
-    let mut rng = rand::thread_rng();
-    rng.gen_range(1024..=65535)
+    let mut rng = rand::rng();
+    rng.random_range(1024..=65535)
 }
 
 fn random_multiaddr_bytes() -> Vec<u8> {
     let port = random_port();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let mut bytes = Vec::with_capacity(7);
     bytes.push(4); // IP4 code
-    bytes.extend([rng.r#gen::<u8>(), rng.r#gen(), rng.r#gen(), rng.r#gen()]);
+    bytes.extend([rng.random::<u8>(), rng.random(), rng.random(), rng.random()]);
     bytes.push(6); // TCP code
     bytes.extend(&port.to_be_bytes());
 

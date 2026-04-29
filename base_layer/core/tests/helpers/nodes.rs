@@ -23,7 +23,6 @@
 #![allow(clippy::indexing_slicing)]
 use std::{path::Path, sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_comms::{
     CommsNode,
@@ -300,7 +299,7 @@ pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>
 pub fn random_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
-        &mut OsRng,
+        &mut rand::rng(),
         format!("/memory/{next_port}").parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
     ))

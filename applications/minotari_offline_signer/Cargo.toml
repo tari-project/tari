@@ -24,7 +24,8 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 keyring = { version = "^3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 chacha20poly1305 = "^0.10"
-argon2 = "^0.5"
+argon2 = { version = "0.6.0-rc.8", features = ["password-hash"] }
+phc = { version = "0.6.1"}
 rand = { workspace = true }
 zeroize = "^1"
 

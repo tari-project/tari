@@ -32,7 +32,6 @@ use std::{
 use minotari_app_utilities::identity_management::save_as_json;
 use minotari_node::{BaseNodeConfig, GrpcMethod, MetricsConfig, run_base_node};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use rand::rngs::OsRng;
 use tari_common::{
     MAX_GRPC_MESSAGE_SIZE,
     configuration::{CommonConfig, MultiaddrList},
@@ -136,7 +135,8 @@ pub async fn spawn_base_node_with_config(
             .join(format!("{}_grpc_port_{}", bn_name.clone(), grpc_port));
 
         let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{port}")).unwrap();
-        base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
+        base_node_identity =
+            NodeIdentity::random(&mut rand::rng(), base_node_address, PeerFeatures::COMMUNICATION_NODE);
         save_as_json(temp_dir_path.join("base_node.json"), &base_node_identity).unwrap();
     };
 
