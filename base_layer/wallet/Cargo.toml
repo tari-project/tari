@@ -52,13 +52,13 @@ borsh = { workspace = true }
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
-diesel = { version = "2.2.10", features = [
+diesel = { version = "2.3.8", features = [
     "sqlite",
     "serde_json",
     "chrono",
     "64-column-tables",
 ] }
-diesel_migrations = "2.2"
+diesel_migrations = "2.3"
 digest = "0.10"
 fs2 = "0.4.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
