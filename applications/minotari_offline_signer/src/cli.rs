@@ -186,7 +186,10 @@ fn init_with_keys(args: InitKeysArgs) -> Result<()> {
     keystore::init_keystore(&spend_key, &view_key, &passphrase)?;
 
     println!("✓ Offline signer initialized successfully!");
-    println!("  Keys have been encrypted and stored in the OS keystore.");
+    println!(
+        "  Keys have been encrypted and stored in {}.",
+        keystore::storage_description()
+    );
 
     Ok(())
 }
@@ -222,7 +225,10 @@ fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
     keystore::init_keystore(&spend_key, &view_key, &passphrase)?;
 
     println!("✓ Offline signer initialized successfully from seed words!");
-    println!("  Keys have been derived and encrypted in the OS keystore.");
+    println!(
+        "  Keys have been derived and encrypted in {}.",
+        keystore::storage_description()
+    );
 
     Ok(())
 }
@@ -295,7 +301,7 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
 fn check_status() -> Result<()> {
     if keystore::is_initialized() {
         println!("✓ Offline signer is initialized");
-        println!("  Keys are stored in the OS keystore");
+        println!("  Keys are stored in {}", keystore::storage_description());
     } else {
         println!("✗ Offline signer is not initialized");
         println!("  Run 'init keys' or 'init seed-words' command to set up keys");
