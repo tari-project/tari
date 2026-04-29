@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.3.1-pre.0](https://github.com/tari-project/tari/compare/v5.3.0-pre.12...v5.3.1-pre.0) (2026-04-29)
+
+
+### Features
+
+* add offline one-sided transaction signing cucumber test ([#7743](https://github.com/tari-project/tari/issues/7743)) ([66581fe](https://github.com/tari-project/tari/commit/66581fed8042deb541748d47019fac7608b107b5)), closes [#7736](https://github.com/tari-project/tari/issues/7736)
+
+
+### Bug Fixes
+
+* **deps:** update rustls-webpki for RUSTSEC-2026-0104 ([#7791](https://github.com/tari-project/tari/issues/7791)) ([e2d1e4c](https://github.com/tari-project/tari/commit/e2d1e4c7c68fe8583b2cf799341ef2d9c95d582d))
+* **deps:** upgrade diesel to 2.3.8 for RUSTSEC-2026-0111 ([#7790](https://github.com/tari-project/tari/issues/7790)) ([725ddf2](https://github.com/tari-project/tari/commit/725ddf2cd80236d4de1c3aa17515a6f5ccd119d3))
+* **deps:** upgrade rand to 0.10
+
 ## [5.3.0-pre.12](https://github.com/tari-project/tari/compare/v5.3.0-pre.11...v5.3.0-pre.12) (2026-04-23)
 
 ### Features
