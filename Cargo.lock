@@ -7785,7 +7785,6 @@ dependencies = [
  "bincode",
  "blake2 0.10.6",
  "borsh",
- "chacha20poly1305",
  "chrono",
  "config",
  "criterion",
