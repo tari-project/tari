@@ -90,8 +90,8 @@ minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/com
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "5.3.0-pre.12" }
 minotari_mcp_common = { path = "applications/minotari_mcp_common", version = "5.3.0-pre.12" }
 
-tari_utilities = { version = "0.8.1" }
-tari_crypto = { version = "0.22.2" }
+tari_utilities = { version = "0.10" }
+tari_crypto = { version = "0.23" }
 
 anyhow = { version = "1.0" }
 serde_json = "1"

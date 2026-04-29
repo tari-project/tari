@@ -7565,9 +7565,9 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs_plus"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2c7b6ca674b79bfd5cd289d4136cf443ca17f80559e46d5df909c5dc2458909"
+checksum = "4f2e5d22fc3d312561a24247689ac3ae180fb041e6ac11baf1317df3b1473ff8"
 dependencies = [
  "blake2 0.10.6",
  "byteorder",
@@ -7845,9 +7845,9 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.22.2"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcf1c51dc7138196d48511666d5ab69f950b0c29219217cc4f27e2abb37e0046"
+checksum = "330e2160d7d72970e8fc5f7074cdad1b041e32e996bbb6799215c9ccd03d5310"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8227,9 +8227,9 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.8.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b67c685a942b95a68c368603644223b7d5be5748bf8add16bd5042a7084e304d"
+checksum = "59020053bb363474087e5b170acbf0e1a848b1af5736e058a0332ce69b6dbf9e"
 dependencies = [
  "base58-monero",
  "base64 0.13.1",
