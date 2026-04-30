@@ -65,48 +65,11 @@ trait KeystoreBackend {
     fn description(&self) -> &'static str;
 }
 
-enum KeystoreBackendKind {
-    OsKeyring(OsKeyringBackend),
-    #[cfg(feature = "test-keystore")]
-    TestFile(test_keystore::TestFileBackend),
-}
 
-impl KeystoreBackend for KeystoreBackendKind {
-    fn store(&self, entry_name: &str, data: &EncryptedKeyData) -> Result<(), OfflineSignerError> {
-        match self {
-            Self::OsKeyring(backend) => backend.store(entry_name, data),
-            #[cfg(feature = "test-keystore")]
-            Self::TestFile(backend) => backend.store(entry_name, data),
-        }
-    }
 
-    fn retrieve(&self, entry_name: &str) -> Result<EncryptedKeyData, OfflineSignerError> {
-        match self {
-            Self::OsKeyring(backend) => backend.retrieve(entry_name),
-            #[cfg(feature = "test-keystore")]
-            Self::TestFile(backend) => backend.retrieve(entry_name),
-        }
-    }
-
-    fn delete(&self, entry_name: &str) -> Result<(), OfflineSignerError> {
-        match self {
-            Self::OsKeyring(backend) => backend.delete(entry_name),
-            #[cfg(feature = "test-keystore")]
-            Self::TestFile(backend) => backend.delete(entry_name),
-        }
-    }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::OsKeyring(backend) => backend.description(),
-            #[cfg(feature = "test-keystore")]
-            Self::TestFile(backend) => backend.description(),
-        }
-    }
-}
 
 pub struct Keystore {
-    backend: KeystoreBackendKind,
+    backend: Box<dyn KeystoreBackend>,
 }
 
 impl Keystore {
@@ -114,12 +77,12 @@ impl Keystore {
         #[cfg(feature = "test-keystore")]
         if let Some(path) = test_keystore::current_file() {
             return Self {
-                backend: KeystoreBackendKind::TestFile(test_keystore::TestFileBackend::new(path)),
+                backend: Box::new(test_keystore::TestFileBackend::new(path)),
             };
         }
 
         Self {
-            backend: KeystoreBackendKind::OsKeyring(OsKeyringBackend),
+            backend: Box::new(OsKeyringBackend),
         }
     }
 
@@ -129,6 +92,7 @@ impl Keystore {
         view_key: &PrivateKey,
         passphrase: &str,
     ) -> Result<(), OfflineSignerError> {
+
         let encrypted_spend = encrypt_key(spend_key, passphrase)?;
         let encrypted_view = encrypt_key(view_key, passphrase)?;
 
