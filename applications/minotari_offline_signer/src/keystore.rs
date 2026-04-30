@@ -27,7 +27,8 @@
 
 use argon2::{Argon2, password_hash::PasswordHasher};
 use chacha20poly1305::{
-    ChaCha20Poly1305, Nonce,
+    ChaCha20Poly1305,
+    Nonce,
     aead::{Aead, KeyInit},
 };
 use keyring::Entry;
@@ -65,9 +66,6 @@ trait KeystoreBackend {
     fn description(&self) -> &'static str;
 }
 
-
-
-
 pub struct Keystore {
     backend: Box<dyn KeystoreBackend>,
 }
@@ -92,7 +90,6 @@ impl Keystore {
         view_key: &PrivateKey,
         passphrase: &str,
     ) -> Result<(), OfflineSignerError> {
-
         let encrypted_spend = encrypt_key(spend_key, passphrase)?;
         let encrypted_view = encrypt_key(view_key, passphrase)?;
 
