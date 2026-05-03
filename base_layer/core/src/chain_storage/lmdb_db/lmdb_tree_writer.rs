@@ -71,8 +71,10 @@ impl<'a> LmdbTreeWriter<'a> {
 
     /// Build the LMDB key used in `jmt_node_data` for a given JMT NodeKey.
     /// Format: `[version_be_bytes (8) || borsh_serialised_nibble_path]`.
+    /// Capacity reserves space for the worst-case nibble path (64 nibbles + borsh length prefix)
+    /// plus the 8-byte version, avoiding reallocations for any reachable NodeKey.
     fn lmdb_node_key(node_key: &jmt::storage::NodeKey) -> anyhow::Result<Vec<u8>> {
-        let mut buf: Vec<u8> = Vec::with_capacity(8 + 16);
+        let mut buf: Vec<u8> = Vec::with_capacity(8 + 64);
         buf.extend_from_slice(&node_key.version().to_be_bytes());
         borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut buf)?;
         Ok(buf)

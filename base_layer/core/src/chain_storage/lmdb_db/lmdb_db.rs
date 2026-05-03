@@ -292,14 +292,6 @@ const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 const LMDB_DB_JMT_STALE_NODE_DATA: &str = "jmt_stale_node_data";
 
-/// How many block-versions of stale-JMT-node history to retain in `jmt_stale_node_data` before
-/// physically deleting from `jmt_node_data`. This bounds reorg depth — within this window, rewinds
-/// are lossless. Beyond it, stale nodes are dropped permanently.
-///
-/// Conservatively chosen to be larger than any plausible honest reorg. Can later be wired to a
-/// consensus constant (e.g. `pruning_horizon`) if reviewers prefer.
-pub(crate) const JMT_STALE_NODE_REORG_BUFFER: u64 = 1000;
-
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
 pub fn get_all_database_names() -> Vec<&'static str> {
@@ -1825,16 +1817,24 @@ impl LMDBDatabase {
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        // Buffer the stale-node indices the JMT crate just emitted, then drain any entries that
-        // are now older than the reorg buffer. This is the fix for #7745: previously the stale
-        // batch was silently dropped, causing `jmt_node_data` to grow unboundedly.
+        // Always buffer the stale-node indices the JMT crate just emitted. This is the fix for
+        // #7745: previously the stale batch was silently dropped, causing `jmt_node_data` to grow
+        // unboundedly. Buffering is cheap and lets us prune later if/when the node decides to.
         smt_writer
             .record_stale_nodes(&ops.stale_node_index_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        let prune_threshold = header.height.saturating_sub(JMT_STALE_NODE_REORG_BUFFER);
-        smt_writer
-            .prune_stale_nodes_finalised_before(prune_threshold)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        // Only physically delete buffered stale entries on pruned nodes. Archival nodes (where
+        // `pruning_horizon == 0`) retain full JMT history so historical Merkle proofs remain
+        // serviceable. On pruned nodes the threshold uses the chain-wide `pruning_horizon`
+        // consensus parameter so the deletion window matches the reorg/proof-availability
+        // window the rest of the storage layer already enforces.
+        let pruning_horizon = fetch_pruning_horizon(txn, &self.metadata_db)?;
+        if pruning_horizon > 0 {
+            let prune_threshold = header.height.saturating_sub(pruning_horizon);
+            smt_writer
+                .prune_stale_nodes_finalised_before(prune_threshold)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        }
 
         self.insert_block_accumulated_data(
             txn,
