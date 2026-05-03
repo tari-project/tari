@@ -290,6 +290,15 @@ const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
+const LMDB_DB_JMT_STALE_NODE_DATA: &str = "jmt_stale_node_data";
+
+/// How many block-versions of stale-JMT-node history to retain in `jmt_stale_node_data` before
+/// physically deleting from `jmt_node_data`. This bounds reorg depth — within this window, rewinds
+/// are lossless. Beyond it, stale nodes are dropped permanently.
+///
+/// Conservatively chosen to be larger than any plausible honest reorg. Can later be wired to a
+/// consensus constant (e.g. `pruning_horizon`) if reviewers prefer.
+pub(crate) const JMT_STALE_NODE_REORG_BUFFER: u64 = 1000;
 
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
@@ -330,6 +339,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_JMT_VALUE_DATA,
         LMDB_DB_JMT_NODE_DATA,
         LMDB_DB_JMT_UNIQUE_KEY_DATA,
+        LMDB_DB_JMT_STALE_NODE_DATA,
     ]
 }
 
@@ -391,6 +401,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         .add_database(LMDB_DB_JMT_VALUE_DATA, flags )
         .add_database(LMDB_DB_JMT_NODE_DATA, flags)
         .add_database(LMDB_DB_JMT_UNIQUE_KEY_DATA, flags)
+        .add_database(LMDB_DB_JMT_STALE_NODE_DATA, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{err}")))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -527,6 +538,8 @@ pub struct LMDBDatabase {
     jmt_value_data: DatabaseRef,
     jmt_node_data: DatabaseRef,
     jmt_unique_key_data: DatabaseRef,
+    /// Buffer of stale JMT NodeKeys awaiting deferred deletion. See `LmdbTreeWriter` for schema.
+    jmt_stale_node_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
@@ -589,6 +602,7 @@ impl LMDBDatabase {
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
             jmt_unique_key_data: get_database(store, LMDB_DB_JMT_UNIQUE_KEY_DATA)?,
+            jmt_stale_node_data: get_database(store, LMDB_DB_JMT_STALE_NODE_DATA)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -841,7 +855,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 35] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 36] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -893,6 +907,7 @@ impl LMDBDatabase {
             (LMDB_DB_JMT_VALUE_DATA, &self.jmt_value_data),
             (LMDB_DB_JMT_NODE_DATA, &self.jmt_node_data),
             (LMDB_DB_JMT_UNIQUE_KEY_DATA, &self.jmt_unique_key_data),
+            (LMDB_DB_JMT_STALE_NODE_DATA, &self.jmt_stale_node_data),
         ]
     }
 
@@ -1365,6 +1380,7 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_data.clone(),
         );
         smt_writer
             .delete_all_for_version(height)
@@ -1804,9 +1820,20 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_data.clone(),
         );
         smt_writer
             .write_node_batch(&ops.node_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        // Buffer the stale-node indices the JMT crate just emitted, then drain any entries that
+        // are now older than the reorg buffer. This is the fix for #7745: previously the stale
+        // batch was silently dropped, causing `jmt_node_data` to grow unboundedly.
+        smt_writer
+            .record_stale_nodes(&ops.stale_node_index_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        let prune_threshold = header.height.saturating_sub(JMT_STALE_NODE_REORG_BUFFER);
+        smt_writer
+            .prune_stale_nodes_finalised_before(prune_threshold)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         self.insert_block_accumulated_data(
@@ -2211,6 +2238,7 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_data.clone(),
         );
 
         // if the previous committed version is not contiguous with the new version,
@@ -2531,7 +2559,23 @@ impl LMDBDatabase {
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),
+            self.jmt_stale_node_data.clone(),
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn env_for_test(&self) -> &Environment {
+        self.env.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn jmt_node_data_for_test(&self) -> &DatabaseRef {
+        &self.jmt_node_data
+    }
+
+    #[cfg(test)]
+    pub(crate) fn jmt_stale_node_data_for_test(&self) -> &DatabaseRef {
+        &self.jmt_stale_node_data
     }
 }
 
