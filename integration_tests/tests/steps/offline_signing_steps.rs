@@ -20,17 +20,30 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{ffi::OsString, time::Duration};
 
 use cucumber::{then, when};
 use grpc::{PaymentRecipient, payment_recipient::PaymentType};
 use minotari_app_grpc::tari_rpc as grpc;
 use minotari_console_wallet::{CliCommands, SignOneSidedTransactionArgs};
+use minotari_offline_signer::cli::execute_from_args as execute_offline_signer_from_args;
 use tari_integration_tests::{
     TariWorld,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
+
+use crate::steps::get_saved_seed_words;
+
+const OFFLINE_SIGNER_TEST_PASSPHRASE: &str = "test";
+
+fn os_args<I, T>(args: I) -> Vec<OsString>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    args.into_iter().map(Into::into).collect()
+}
 
 #[when(
     expr = "I prepare an offline one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}"
@@ -146,6 +159,82 @@ async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_na
     assert!(!signed_json.is_empty(), "Signed transaction file is empty");
 
     println!("Transaction signed via wallet CLI: {} bytes of JSON", signed_json.len());
+    world.offline_signing_signed = Some(signed_json);
+}
+
+#[then(expr = "I initialize standalone offline signer {word} from wallet {word} seed words")]
+async fn initialize_standalone_offline_signer(world: &mut TariWorld, signer_name: String, wallet_name: String) {
+    let seed_words = get_saved_seed_words(world, &wallet_name).join(" ");
+    let signer_dir = world
+        .current_base_dir
+        .as_ref()
+        .expect("Base dir on world")
+        .join("offline_signers")
+        .join(&signer_name);
+    std::fs::create_dir_all(&signer_dir)
+        .unwrap_or_else(|e| panic!("Failed to create offline signer dir {signer_dir:?}: {e}"));
+    let keystore_file = signer_dir.join("keystore.json");
+    drop(std::fs::remove_file(&keystore_file));
+
+    execute_offline_signer_from_args(os_args([
+        OsString::from("minotari_offline_signer"),
+        OsString::from("--test-keystore-file"),
+        keystore_file.as_os_str().to_os_string(),
+        OsString::from("init"),
+        OsString::from("seed-words"),
+        OsString::from("--seed-words"),
+        OsString::from(seed_words),
+        OsString::from("--passphrase"),
+        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+    ]))
+    .unwrap_or_else(|e| panic!("Failed to initialize standalone offline signer: {e}"));
+
+    world.offline_signer_keystores.insert(signer_name, keystore_file);
+}
+
+#[then(expr = "I sign the prepared transaction using standalone offline signer {word}")]
+async fn sign_prepared_transaction_using_standalone_offline_signer(world: &mut TariWorld, signer_name: String) {
+    let prepared_json = world
+        .offline_signing_prepared
+        .as_ref()
+        .expect("No prepared transaction found — run the prepare step first")
+        .clone();
+    let keystore_file = world
+        .offline_signer_keystores
+        .get(&signer_name)
+        .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized"));
+    let signer_dir = keystore_file
+        .parent()
+        .unwrap_or_else(|| panic!("Keystore file {keystore_file:?} has no parent directory"));
+    let input_file = signer_dir.join("offline_signing_input.json");
+    let output_file = signer_dir.join("offline_signing_output.json");
+    drop(std::fs::remove_file(&output_file));
+    std::fs::write(&input_file, prepared_json).expect("Failed to write prepared transaction file");
+
+    execute_offline_signer_from_args(os_args([
+        OsString::from("minotari_offline_signer"),
+        OsString::from("--test-keystore-file"),
+        keystore_file.as_os_str().to_os_string(),
+        OsString::from("sign"),
+        OsString::from("--input-file"),
+        input_file.as_os_str().to_os_string(),
+        OsString::from("--output-file"),
+        output_file.as_os_str().to_os_string(),
+        OsString::from("--passphrase"),
+        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+        OsString::from("--network"),
+        OsString::from("localnet"),
+    ]))
+    .unwrap_or_else(|e| panic!("Failed to sign transaction with standalone offline signer: {e}"));
+
+    let signed_json =
+        std::fs::read_to_string(&output_file).unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
+    assert!(!signed_json.is_empty(), "Signed transaction file is empty");
+
+    println!(
+        "Transaction signed via standalone offline signer: {} bytes of JSON",
+        signed_json.len()
+    );
     world.offline_signing_signed = Some(signed_json);
 }
 
