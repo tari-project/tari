@@ -189,6 +189,7 @@ fn check_inputs_are_spendable<B: BlockchainBackend>(
     let mut output_hashes = None;
 
     for input in body.inputs() {
+        check_output_feature_rules_for_input(db, constants, current_height, input)?;
         // If spending a unique_id, a new output must contain the unique id
         match check_input_is_utxo(db, input) {
             Ok(_) => continue,
@@ -214,8 +215,6 @@ fn check_inputs_are_spendable<B: BlockchainBackend>(
                 return Err(err);
             },
         }
-
-        check_output_feature_rules_for_input(db, constants, current_height, input)?;
     }
 
     if !not_found_inputs.is_empty() {
