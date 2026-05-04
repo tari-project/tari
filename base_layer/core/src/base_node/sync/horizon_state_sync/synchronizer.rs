@@ -712,7 +712,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             },
             None => None,
         };
-        let (sync_start_height, mut jmt_version) = match checkpoint_height {
+        let (sync_start_height, _jmt_version) = match checkpoint_height {
             Some(h) => {
                 // Only the in-progress (first resumption) tranche may have partial output data.
                 let first_tranche_end = cmp::min(
@@ -976,7 +976,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .map(|(key, value)| HorizonStateTreeUpdate { key, value })
                 .collect::<Vec<_>>();
 
-            txn.apply_horizon_state_tree_updates(jmt_version, tranche_end_header.height, tranche_updates);
+            txn.apply_horizon_state_tree_updates(tranche_updates);
             for output in &inputs_to_delete {
                 if let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() &&
                     let Some(vn_reg) = sidechain_feature.validator_node_registration()
@@ -1002,7 +1002,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 });
             }
             txn.commit().await?;
-            jmt_version = tranche_end_height;
 
             debug!(
                 target: LOG_TARGET,
@@ -1019,7 +1018,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
 
         if let Err(e) = db
-            .verify_horizon_sync_output_root(to_header.height, to_header.output_mr)
+            .verify_horizon_sync_output_root(to_header.output_mr)
             .await
         {
             warn!(

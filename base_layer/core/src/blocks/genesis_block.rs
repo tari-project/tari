@@ -569,7 +569,7 @@ mod test {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
         let tempdb = TempDatabase::new();
-        let tree_reader = tempdb.create_smt_reader().unwrap();
+        let (tree_reader, current_version) = tempdb.create_smt_reader().unwrap();
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&tree_reader);
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
@@ -645,7 +645,7 @@ mod test {
             kernel_mr_hash_from_mmr(&kernel_mmr).unwrap().to_vec().to_hex(),
             block.header().kernel_mr.to_vec().to_hex()
         );
-        let (smt_root, _) = output_smt.put_value_set(smt_batch, 0).unwrap();
+        let (smt_root, _) = output_smt.put_value_set(smt_batch, current_version).unwrap();
         assert_eq!(smt_root.0.to_vec().to_hex(), block.header().output_mr.to_vec().to_hex(),);
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();

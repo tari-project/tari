@@ -546,13 +546,12 @@ impl BlockchainBackend for TempDatabase {
 
     fn verify_horizon_sync_output_root(
         &self,
-        version: u64,
         expected_root: HashOutput,
     ) -> Result<(), ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .verify_horizon_sync_output_root(version, expected_root)
+            .verify_horizon_sync_output_root(expected_root)
     }
 
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
@@ -681,7 +680,7 @@ impl BlockchainBackend for TempDatabase {
             .fetch_template_registrations(start_height, end_height)
     }
 
-    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
+    fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError> {
         self.db.as_ref().unwrap().create_smt_reader()
     }
 

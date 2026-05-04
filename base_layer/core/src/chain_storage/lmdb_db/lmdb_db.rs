@@ -100,7 +100,7 @@ use fs2::FileExt;
 use jmt::{
     JellyfishMerkleTree,
     KeyHash,
-    storage::{NibblePath, NodeKey, TreeReader, TreeWriter},
+    storage::{TreeWriter},
 };
 use lmdb_zero::{
     ConstTransaction,
@@ -288,8 +288,8 @@ const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
-const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
-const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
+const LMDB_DB_JMT_NODE_OLD_DATA: &str = "jmt_node_data";
+const LMDB_DB_JMT_NODE_NEW_DATA: &str = "jmt_nodes_data";
 
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
@@ -328,8 +328,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_TEMPLATE_REGISTRATIONS,
         LMDB_DB_UTXO_SMT,
         LMDB_DB_JMT_VALUE_DATA,
-        LMDB_DB_JMT_NODE_DATA,
-        LMDB_DB_JMT_UNIQUE_KEY_DATA,
+        LMDB_DB_JMT_NODE_NEW_DATA,
     ]
 }
 
@@ -396,8 +395,7 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .add_database(LMDB_DB_UTXO_SMT, flags)
         .add_database(LMDB_DB_JMT_VALUE_DATA, flags )
-        .add_database(LMDB_DB_JMT_NODE_DATA, flags)
-        .add_database(LMDB_DB_JMT_UNIQUE_KEY_DATA, flags)
+        .add_database(LMDB_DB_JMT_NODE_NEW_DATA, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{err}")))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -533,7 +531,6 @@ pub struct LMDBDatabase {
     utxo_smt: DatabaseRef,
     jmt_value_data: DatabaseRef,
     jmt_node_data: DatabaseRef,
-    jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
@@ -594,8 +591,7 @@ impl LMDBDatabase {
             template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
-            jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
-            jmt_unique_key_data: get_database(store, LMDB_DB_JMT_UNIQUE_KEY_DATA)?,
+            jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_NEW_DATA)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -809,11 +805,9 @@ impl LMDBDatabase {
                     )?;
                 },
                 ApplyHorizonStateTreeUpdates {
-                    previous_version,
-                    version,
                     updates,
                 } => {
-                    self.apply_horizon_state_tree_updates(&write_txn, *previous_version, *version, updates)?;
+                    self.apply_horizon_state_tree_updates(&write_txn, updates)?;
                 },
                 InsertBadBlock { hash, height, reason } => {
                     self.insert_bad_block_and_cleanup(&write_txn, hash, *height, reason.to_string())?;
@@ -848,7 +842,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 35] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 34] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -898,8 +892,7 @@ impl LMDBDatabase {
             (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
             (LMDB_DB_UTXO_SMT, &self.utxo_smt),
             (LMDB_DB_JMT_VALUE_DATA, &self.jmt_value_data),
-            (LMDB_DB_JMT_NODE_DATA, &self.jmt_node_data),
-            (LMDB_DB_JMT_UNIQUE_KEY_DATA, &self.jmt_unique_key_data),
+            (LMDB_DB_JMT_NODE_NEW_DATA, &self.jmt_node_data),
         ]
     }
 
@@ -1360,22 +1353,13 @@ impl LMDBDatabase {
             .fetch_height_from_hash(write_txn, block_hash)
             .or_not_found("Block", "hash", hash_hex)?;
         let next_height = height.saturating_add(1);
-        let prev_height = height.saturating_sub(1);
         if self.fetch_block_accumulated_data(write_txn, next_height)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to delete block at height {height} while next block still exists"
             )));
         }
 
-        let smt_writer = LmdbTreeWriter::new(
-            write_txn,
-            self.jmt_node_data.clone(),
-            self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
-        );
-        smt_writer
-            .delete_all_for_version(height)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+
         lmdb_delete(
             write_txn,
             &self.block_accumulated_data_db,
@@ -1385,27 +1369,10 @@ impl LMDBDatabase {
 
         self.delete_block_inputs_outputs(write_txn, block_hash, height)?;
 
-        let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
-        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
-        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
-        let root = jmt
-            .get_root_hash(new_tip_header.header().height)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
-        if root.0.as_slice() != new_tip_header.header().output_mr.as_slice() {
-            error!(
-                target: LOG_TARGET,
-                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
-                    hex::encode(root.0.as_slice()),
-                    new_tip_header.header().output_mr.to_hex(),
-            );
-            return Err(ChainStorageError::InvalidOperation(format!(
-                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
-                hex::encode(root.0.as_slice()),
-                new_tip_header.header().output_mr.to_hex(),
-            )));
-        }
+
+
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
         Ok(())
@@ -1418,16 +1385,28 @@ impl LMDBDatabase {
         block_hash: &HashOutput,
         height: u64,
     ) -> Result<(), ChainStorageError> {
+
+        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
+
+        let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         let output_rows =
             lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
         let inputs =
             lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
-
+        let mut batch = Vec::new();
         let constants = self.get_consensus_constants(height);
 
         for (_, utxo) in &output_rows {
+            let smt_key = KeyHash(
+                utxo.output
+                    .commitment()
+                    .as_bytes()
+                    .try_into()
+                    .expect("Key hash is always 32 bytes"),
+            );
+            batch.push((smt_key, None));
             let output_hash = utxo.hash;
             let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
             trace!(target: LOG_TARGET, "Deleting UTXO `{output_hash}` with payref `{payref}`");
@@ -1539,6 +1518,17 @@ impl LMDBDatabase {
                 }
             })?;
 
+            let smt_key = KeyHash(
+                utxo_mined_info.output
+                    .commitment
+                    .as_bytes()
+                    .try_into()
+                    .expect("Key hash is always 32 bytes"),
+            );
+
+            let smt_node = utxo_mined_info.output.smt_hash(utxo_mined_info.mined_height).to_vec();
+            batch.push((smt_key, Some(smt_node)));
+
             input.add_output_data(utxo_mined_info.output);
 
             lmdb_insert(
@@ -1550,6 +1540,41 @@ impl LMDBDatabase {
             )?;
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {input}");
         }
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())?{
+            Some(MetadataValue::JMTVersion(v)) => v+1,
+            _ => 0u64,
+        };
+
+        let prev_height = height.saturating_sub(1);
+        let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
+        let (root, ops) = output_smt
+            .put_value_set(batch, val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        if root.0.as_slice() != new_tip_header.header().output_mr.as_slice() {
+            error!(
+                target: LOG_TARGET,
+                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
+                    hex::encode(root.0.as_slice()),
+                    new_tip_header.header().output_mr.to_hex(),
+            );
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
+                hex::encode(root.0.as_slice()),
+                new_tip_header.header().output_mr.to_hex(),
+            )));
+        }
+        let smt_writer = LmdbTreeWriter::new(
+            txn,
+            self.jmt_node_data.clone(),
+            self.jmt_value_data.clone(),
+            self.metadata_db.clone(),
+        );
+        smt_writer
+            .write_node_batch(&ops.node_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        smt_writer.cleanup_stale(&ops.stale_node_index_batch).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+
         Ok(())
     }
 
@@ -1656,7 +1681,7 @@ impl LMDBDatabase {
         header: &BlockHeader,
         body: AggregateBody,
     ) -> Result<(), ChainStorageError> {
-        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
@@ -1784,10 +1809,15 @@ impl LMDBDatabase {
                 input_with_output_data,
             )?;
         }
-
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())?{
+            Some(MetadataValue::JMTVersion(v)) => v+1,
+            _ => 0u64,
+        };
         let (root, ops) = output_smt
-            .put_value_set(batch, header.height)
+            .put_value_set(batch, val)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+
 
         if header.output_mr.as_slice() != root.0.as_slice() {
             warn!(
@@ -1810,11 +1840,14 @@ impl LMDBDatabase {
             txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
+            self.metadata_db.clone()
         );
+
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        smt_writer.cleanup_stale(&ops.stale_node_index_batch).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+
 
         self.insert_block_accumulated_data(
             txn,
@@ -2208,35 +2241,17 @@ impl LMDBDatabase {
     fn apply_horizon_state_tree_updates(
         &self,
         write_txn: &WriteTransaction<'_>,
-        previous_version: u64,
-        version: u64,
         updates: &[HorizonStateTreeUpdate],
     ) -> Result<(), ChainStorageError> {
-        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let writer = LmdbTreeWriter::new(
             write_txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
+            self.metadata_db.clone(),
         );
 
-        // if the previous committed version is not contiguous with the new version,
-        // write a bridge root node at (version - 1) that copies the root from previous_version
-        if version > 0 && previous_version != version.saturating_sub(1) {
-            let empty_path: NibblePath = std::iter::empty().collect();
-            let prev_root_key = NodeKey::new(previous_version, empty_path.clone());
-            let bridge_key = NodeKey::new(version - 1, empty_path);
 
-            let old_root = reader
-                .get_node_option(&prev_root_key)
-                .map_err(|e| ChainStorageError::CriticalError(e.to_string()))?;
-
-            if let Some(root_node) = old_root {
-                writer
-                    .put_node(&bridge_key, &root_node)
-                    .map_err(|e| ChainStorageError::CriticalError(e.to_string()))?;
-            }
-        }
 
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let batch = updates
@@ -2244,13 +2259,19 @@ impl LMDBDatabase {
             .map(|update| (KeyHash(update.key.into_array()), update.value.map(|v| v.to_vec())))
             .collect::<Vec<_>>();
 
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(write_txn, &self.metadata_db, &k.as_u32())?{
+            Some(MetadataValue::JMTVersion(v)) => v+1,
+            _ => 0u64,
+        };
         let (_root, ops) = output_smt
-            .put_value_set(batch, version)
+            .put_value_set(batch, val)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        writer.cleanup_stale(&ops.stale_node_index_batch).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         Ok(())
     }
@@ -2537,7 +2558,7 @@ impl LMDBDatabase {
             txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
+            self.metadata_db.clone(),
         )
     }
 }
@@ -2572,12 +2593,17 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, ChainStorageError
 }
 
 impl BlockchainBackend for LMDBDatabase {
-    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
+    fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError> {
         let read_tx = self.read_transaction()?;
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(&read_tx, &self.metadata_db, &k.as_u32())?{
+            Some(MetadataValue::JMTVersion(v)) => v,
+            _ => 0u64,
+        };
         let smt_reader =
-            OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+            OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_value_data.clone());
 
-        Ok(smt_reader)
+        Ok((smt_reader, val))
     }
 
     fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
@@ -3459,18 +3485,23 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn verify_horizon_sync_output_root(
         &self,
-        version: u64,
         expected_root: HashOutput,
     ) -> Result<(), ChainStorageError> {
         let txn = self.read_transaction()?;
-        let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(&txn, &self.metadata_db, &k.as_u32())?{
+            Some(MetadataValue::JMTVersion(v)) => v+1,
+            _ => 0u64,
+        };
+
+        let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let root = output_smt
-            .get_root_hash(version)
+            .get_root_hash(val)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
         if root.0.as_slice() != expected_root.as_slice() {
             return Err(ChainStorageError::InvalidOperation(format!(
-                "Horizon sync output root mismatch at version {version}. Expected {}, got {}",
+                "Horizon sync output root mismatch at version {val}. Expected {}, got {}",
                 expected_root.to_hex(),
                 root.0.to_hex()
             )));
@@ -4101,6 +4132,7 @@ pub enum MetadataKey {
     AccumulatedDataCheckStatus,
     BlockchainConsistencyCheckStatus,
     HorizonSyncOutputCheckpoint,
+    JMTVersion,
 }
 
 impl MetadataKey {
@@ -4126,6 +4158,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::AccumulatedDataCheckStatus => write!(f, "Accumulated data check status"),
             MetadataKey::BlockchainConsistencyCheckStatus => write!(f, "Blockchain check status"),
             MetadataKey::HorizonSyncOutputCheckpoint => write!(f, "Horizon sync output checkpoint"),
+            MetadataKey::JMTVersion => write!(f, "JMT written version"),
         }
     }
 }
@@ -4317,6 +4350,7 @@ pub enum MetadataValue {
     AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus),
     BlockchainCheckStatus(BlockchainCheckStatus),
     HorizonSyncOutputCheckpoint(HorizonSyncOutputCheckpoint),
+    JMTVersion(u64),
 }
 
 impl fmt::Display for MetadataValue {
@@ -4344,6 +4378,7 @@ impl fmt::Display for MetadataValue {
                 "Horizon sync output checkpoint at height {} targeting height {}",
                 cp.checkpoint_height, cp.sync_target_height
             ),
+            MetadataValue::JMTVersion(version) => write!(f, "JMT version is {version}"),
         }
     }
 }
@@ -4917,7 +4952,8 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 Some(MetadataKey::AccumulatedDataRebuildStatus) |
                 Some(MetadataKey::AccumulatedDataCheckStatus) |
                 Some(MetadataKey::BlockchainConsistencyCheckStatus) |
-                Some(MetadataKey::HorizonSyncOutputCheckpoint) => {
+                Some(MetadataKey::HorizonSyncOutputCheckpoint) |
+                Some(MetadataKey::JMTVersion)=> {
                     warn!(
                         target: LOG_TARGET,
                         "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",
@@ -4990,6 +5026,7 @@ fn variant_name(v: &MetadataValue) -> &'static str {
         MetadataValue::AccumulatedDataRebuildStatus(_) => "AccumulatedDataRebuildStatus",
         MetadataValue::BlockchainCheckStatus(_) => "BlockchainCheckStatus",
         MetadataValue::HorizonSyncOutputCheckpoint(_) => "HorizonSyncOutputCheckpoint",
+        MetadataValue::JMTVersion(_) => "JMTVersion",
     }
 }
 
@@ -5009,5 +5046,6 @@ fn summarize_value(v: &MetadataValue) -> String {
         MetadataValue::HorizonSyncOutputCheckpoint(cp) => {
             format!("{} targeting {}", cp.checkpoint_height, cp.sync_target_height)
         },
+        MetadataValue::JMTVersion(v) => format!("{v}"),
     }
 }
