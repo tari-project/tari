@@ -3459,6 +3459,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::not_found(format!("Completed transaction not found: {e}")))?;
 
         let has_signature = completed_tx.transaction_signature != CompressedSignature::default();
+        let num_confirmations_required = self.wallet.config.transaction_service_config.num_confirmations_required;
+
+        debug_info.push(format!("Transaction status: {:?}", completed_tx.status));
+        debug_info.push(format!("Transaction direction: {:?}", completed_tx.direction));
+        debug_info.push(format!("Lock height: {}", completed_tx.lock_height));
 
         if has_signature {
             debug_info.push(format!(
@@ -3495,25 +3500,54 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 let num_confirmations = tip.saturating_sub(mined_height);
                                 debug_info.push(format!("Transaction is MINED at height {}", mined_height));
                                 debug_info.push(format!("Confirmations: {}", num_confirmations));
-                                if let Some(hash) = &response.mined_header_hash {
+                                if let Some(ref hash) = response.mined_header_hash {
                                     debug_info.push(format!("Mined in block: {}", hash.to_hex()));
                                 }
                                 if let Some(ts) = response.mined_timestamp {
                                     debug_info.push(format!("Mined timestamp: {}", ts));
                                 }
 
-                                let num_confirmations_required =
-                                    self.wallet.config.transaction_service_config.num_confirmations_required;
                                 let is_confirmed = num_confirmations >= num_confirmations_required;
-                                debug_info.push(format!("Confirmed: {}", is_confirmed));
+                                let is_locked = completed_tx.lock_height > tip;
+                                let expected_status = if is_confirmed {
+                                    if is_locked {
+                                        completed_tx.status.mined_confirm_locked()
+                                    } else {
+                                        completed_tx.status.mined_confirm()
+                                    }
+                                } else {
+                                    completed_tx.status.mined_unconfirm()
+                                };
 
-                                if completed_tx.mined_height == Some(mined_height) {
-                                    debug_info.push("Wallet mined_height matches chain".to_string());
+                                debug_info.push(format!("Confirmed: {}", is_confirmed));
+                                debug_info.push(format!("Locked: {}", is_locked));
+
+                                if completed_tx.status == expected_status {
+                                    debug_info.push(format!("OK: Status '{:?}' is correct", completed_tx.status));
                                 } else {
                                     debug_info.push(format!(
-                                        "Wallet stored mined_height ({:?}) differs from chain ({})",
-                                        completed_tx.mined_height, mined_height
+                                        "FIX: Status mismatch! Wallet has '{:?}', expected '{:?}'. Updating...",
+                                        completed_tx.status, expected_status
                                     ));
+                                    let mined_in_block = response
+                                        .mined_header_hash
+                                        .and_then(|h| FixedHash::try_from(h.as_slice()).ok())
+                                        .unwrap_or_default();
+                                    let mined_ts = response.mined_timestamp.unwrap_or(0);
+                                    match transaction_service
+                                        .set_transaction_mined_height(
+                                            tx_id,
+                                            mined_height,
+                                            mined_in_block,
+                                            mined_ts,
+                                            expected_status,
+                                            tip,
+                                        )
+                                        .await
+                                    {
+                                        Ok(()) => debug_info.push("Status updated successfully".to_string()),
+                                        Err(e) => debug_info.push(format!("Error updating status: {e}")),
+                                    }
                                 }
                             },
                             None => {
@@ -3522,11 +3556,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         }
                     } else {
                         debug_info.push(format!("Transaction is UNMINED (location: {:?})", response.location));
-                        if completed_tx.mined_height.is_some() {
+                        if completed_tx.status.is_mined() {
                             debug_info.push(format!(
-                                "WARNING: Wallet has mined_height {:?} but chain says unmined",
-                                completed_tx.mined_height
+                                "FIX: Wallet has status '{:?}' but chain says unmined. Updating...",
+                                completed_tx.status
                             ));
+                            match transaction_service.set_transaction_as_unmined(tx_id).await {
+                                Ok(()) => debug_info.push("Status updated to unmined".to_string()),
+                                Err(e) => debug_info.push(format!("Error updating status: {e}")),
+                            }
                         }
                     }
                 },
@@ -3568,26 +3606,47 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         debug_info.push(format!("Mined in block: {}", block_hash.to_hex()));
                         debug_info.push(format!("Confirmations: {}", num_confirmations));
 
-                        let num_confirmations_required =
-                            self.wallet.config.transaction_service_config.num_confirmations_required;
                         let is_confirmed = num_confirmations >= num_confirmations_required;
-                        debug_info.push(format!("Confirmed: {}", is_confirmed));
+                        let is_locked = completed_tx.lock_height > tip;
+                        let expected_status = if is_confirmed {
+                            if is_locked {
+                                completed_tx.status.mined_confirm_locked()
+                            } else {
+                                completed_tx.status.mined_confirm()
+                            }
+                        } else {
+                            completed_tx.status.mined_unconfirm()
+                        };
 
-                        if completed_tx.mined_height == Some(mined_height) {
-                            debug_info.push("Wallet mined_height matches output manager".to_string());
+                        debug_info.push(format!("Confirmed: {}", is_confirmed));
+                        debug_info.push(format!("Locked: {}", is_locked));
+
+                        if completed_tx.status == expected_status {
+                            debug_info.push(format!("OK: Status '{:?}' is correct", completed_tx.status));
                         } else {
                             debug_info.push(format!(
-                                "Wallet stored mined_height ({:?}) differs from output manager ({})",
-                                completed_tx.mined_height, mined_height
+                                "FIX: Status mismatch! Wallet has '{:?}', expected '{:?}'. Updating...",
+                                completed_tx.status, expected_status
                             ));
+                            match transaction_service
+                                .set_transaction_mined_height(tx_id, mined_height, block_hash, 0, expected_status, tip)
+                                .await
+                            {
+                                Ok(()) => debug_info.push("Status updated successfully".to_string()),
+                                Err(e) => debug_info.push(format!("Error updating status: {e}")),
+                            }
                         }
                     } else {
                         debug_info.push("Transaction outputs are NOT mined (not detected on chain)".to_string());
-                        if completed_tx.mined_height.is_some() {
+                        if completed_tx.status.is_mined() {
                             debug_info.push(format!(
-                                "WARNING: Wallet has mined_height {:?} but output manager says unmined",
-                                completed_tx.mined_height
+                                "FIX: Wallet has status '{:?}' but outputs not mined. Updating...",
+                                completed_tx.status
                             ));
+                            match transaction_service.set_transaction_as_unmined(tx_id).await {
+                                Ok(()) => debug_info.push("Status updated to unmined".to_string()),
+                                Err(e) => debug_info.push(format!("Error updating status: {e}")),
+                            }
                         }
                     }
                 },
@@ -3596,9 +3655,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             }
         }
-
-        debug_info.push(format!("Transaction status: {:?}", completed_tx.status));
-        debug_info.push(format!("Transaction direction: {:?}", completed_tx.direction));
 
         for info in &debug_info {
             debug!(target: LOG_TARGET, "validate_transaction: {}", info);

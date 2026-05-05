@@ -161,7 +161,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(err.into())
             },
             Ok(None) => {
-                error!(target: LOG_TARGET, "Error during handshake, server closed connection");
+                warn!(target: LOG_TARGET, "Error during handshake, server closed connection");
                 Err(RpcHandshakeError::ServerClosedRequest)
             },
             Err(_) => {

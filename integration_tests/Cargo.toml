@@ -25,6 +25,9 @@ tari_node_components = { path = "../base_layer/node_components" }
 minotari_console_wallet = { path = "../applications/minotari_console_wallet", features = [
     "grpc",
 ] }
+minotari_offline_signer = { path = "../applications/minotari_offline_signer", features = [
+    "test-keystore",
+] }
 tari_core = { path = "../base_layer/core" }
 minotari_miner = { path = "../applications/minotari_miner" }
 tari_p2p = { path = "../base_layer/p2p" }

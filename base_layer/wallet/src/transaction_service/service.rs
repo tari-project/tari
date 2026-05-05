@@ -1714,6 +1714,34 @@ where
                     proof: proof.map(Box::new),
                 })
                 .map_err(TransactionServiceError::TransactionStorageError),
+            TransactionServiceRequest::SetTransactionMinedHeight {
+                tx_id,
+                mined_height,
+                mined_in_block,
+                mined_timestamp,
+                status,
+                tip_height,
+            } => {
+                let num_confirmations = tip_height.saturating_sub(mined_height);
+                let must_be_confirmed = num_confirmations >= self.resources.config.num_confirmations_required;
+                self.db
+                    .set_transaction_mined_height(
+                        tx_id,
+                        mined_height,
+                        mined_in_block,
+                        mined_timestamp,
+                        must_be_confirmed,
+                        status,
+                        tip_height,
+                    )
+                    .map(|()| TransactionServiceResponse::TransactionStatusUpdated)
+                    .map_err(TransactionServiceError::TransactionStorageError)
+            },
+            TransactionServiceRequest::SetTransactionAsUnmined { tx_id } => self
+                .db
+                .set_transaction_as_unmined(tx_id)
+                .map(|()| TransactionServiceResponse::TransactionStatusUpdated)
+                .map_err(TransactionServiceError::TransactionStorageError),
         };
 
         // If the individual handlers did not already send the API response then do it here.

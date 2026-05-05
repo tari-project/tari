@@ -34,7 +34,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     payment_reference::PaymentReference,
     tari_address::TariAddress,
-    transaction::{LegacyImportStatus, TransactionDirection, TxId},
+    transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
@@ -314,6 +314,17 @@ pub enum TransactionServiceRequest {
     },
     GetBurnProof {
         output_hash: HashOutput,
+    },
+    SetTransactionMinedHeight {
+        tx_id: TxId,
+        mined_height: u64,
+        mined_in_block: FixedHash,
+        mined_timestamp: u64,
+        status: LegacyTransactionStatus,
+        tip_height: u64,
+    },
+    SetTransactionAsUnmined {
+        tx_id: TxId,
     },
 }
 
@@ -600,6 +611,12 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetBurnProof { output_hash } => {
                 write!(f, "GetBurnProof (output: {output_hash})")
             },
+            Self::SetTransactionMinedHeight { tx_id, .. } => {
+                write!(f, "SetTransactionMinedHeight({tx_id})")
+            },
+            Self::SetTransactionAsUnmined { tx_id } => {
+                write!(f, "SetTransactionAsUnmined({tx_id})")
+            },
         }
     }
 }
@@ -674,6 +691,7 @@ pub enum TransactionServiceResponse {
     GetBurnProof {
         proof: Option<Box<DbBurnProof>>,
     },
+    TransactionStatusUpdated,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -2085,6 +2103,49 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::GetBurnProof { proof } => Ok(proof.map(|p| *p)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::GetBurnProof".to_string(),
+            )),
+        }
+    }
+
+    pub async fn set_transaction_mined_height(
+        &mut self,
+        tx_id: TxId,
+        mined_height: u64,
+        mined_in_block: FixedHash,
+        mined_timestamp: u64,
+        status: LegacyTransactionStatus,
+        tip_height: u64,
+    ) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetTransactionMinedHeight {
+                tx_id,
+                mined_height,
+                mined_in_block,
+                mined_timestamp,
+                status,
+                tip_height,
+            })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetTransactionMinedHeight({e})"))??
+        {
+            TransactionServiceResponse::TransactionStatusUpdated => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SetTransactionMinedHeight".to_string(),
+            )),
+        }
+    }
+
+    pub async fn set_transaction_as_unmined(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetTransactionAsUnmined { tx_id })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SetTransactionAsUnmined({e})"))??
+        {
+            TransactionServiceResponse::TransactionStatusUpdated => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse(
+                "TransactionServiceRequest::SetTransactionAsUnmined".to_string(),
             )),
         }
     }
