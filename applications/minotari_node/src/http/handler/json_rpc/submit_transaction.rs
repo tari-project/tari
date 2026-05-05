@@ -35,6 +35,7 @@ use tari_transaction_components::{
 use tari_utilities::{ByteArray, hex::Hex};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc::submit_transaction";
+const MAX_TRANSACTION_SUMMARY_ITEMS: usize = 10;
 
 pub async fn handle<T: BlockchainBackend + 'static>(
     query_service: Arc<query_service::Service<T>>,
@@ -192,10 +193,12 @@ fn transaction_summary(transaction: &Transaction) -> String {
 }
 
 fn transaction_inputs(transaction: &Transaction) -> String {
+    let inputs_len = transaction.body.inputs().len();
     let inputs = transaction
         .body
         .inputs()
         .iter()
+        .take(MAX_TRANSACTION_SUMMARY_ITEMS)
         .map(|input| {
             let commitment = input
                 .commitment()
@@ -206,19 +209,29 @@ fn transaction_inputs(transaction: &Transaction) -> String {
         .collect::<Vec<_>>()
         .join("; ");
 
-    format!("inputs[{}]=[{}]", transaction.body.inputs().len(), inputs)
+    if inputs_len > MAX_TRANSACTION_SUMMARY_ITEMS {
+        format!("inputs[{}]=[{}; ...]", inputs_len, inputs)
+    } else {
+        format!("inputs[{}]=[{}]", inputs_len, inputs)
+    }
 }
 
 fn transaction_outputs(transaction: &Transaction) -> String {
+    let outputs_len = transaction.body.outputs().len();
     let outputs = transaction
         .body
         .outputs()
         .iter()
+        .take(MAX_TRANSACTION_SUMMARY_ITEMS)
         .map(|output| format!("hash={}, commitment={}", output.hash().to_hex(), output.commitment.to_hex()))
         .collect::<Vec<_>>()
         .join("; ");
 
-    format!("outputs[{}]=[{}]", transaction.body.outputs().len(), outputs)
+    if outputs_len > MAX_TRANSACTION_SUMMARY_ITEMS {
+        format!("outputs[{}]=[{}; ...]", outputs_len, outputs)
+    } else {
+        format!("outputs[{}]=[{}]", outputs_len, outputs)
+    }
 }
 
 fn transaction_kernel(transaction: &Transaction) -> String {
