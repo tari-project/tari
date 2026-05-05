@@ -3522,7 +3522,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 debug_info.push(format!("Confirmed: {}", is_confirmed));
                                 debug_info.push(format!("Locked: {}", is_locked));
 
-                                if completed_tx.status != expected_status {
+                                if completed_tx.status == expected_status {
+                                    debug_info.push(format!("OK: Status '{:?}' is correct", completed_tx.status));
+                                } else {
                                     debug_info.push(format!(
                                         "FIX: Status mismatch! Wallet has '{:?}', expected '{:?}'. Updating...",
                                         completed_tx.status, expected_status
@@ -3546,8 +3548,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                         Ok(()) => debug_info.push("Status updated successfully".to_string()),
                                         Err(e) => debug_info.push(format!("Error updating status: {e}")),
                                     }
-                                } else {
-                                    debug_info.push(format!("OK: Status '{:?}' is correct", completed_tx.status));
                                 }
                             },
                             None => {
@@ -3621,7 +3621,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         debug_info.push(format!("Confirmed: {}", is_confirmed));
                         debug_info.push(format!("Locked: {}", is_locked));
 
-                        if completed_tx.status != expected_status {
+                        if completed_tx.status == expected_status {
+                            debug_info.push(format!("OK: Status '{:?}' is correct", completed_tx.status));
+                        } else {
                             debug_info.push(format!(
                                 "FIX: Status mismatch! Wallet has '{:?}', expected '{:?}'. Updating...",
                                 completed_tx.status, expected_status
@@ -3633,8 +3635,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 Ok(()) => debug_info.push("Status updated successfully".to_string()),
                                 Err(e) => debug_info.push(format!("Error updating status: {e}")),
                             }
-                        } else {
-                            debug_info.push(format!("OK: Status '{:?}' is correct", completed_tx.status));
                         }
                     } else {
                         debug_info.push("Transaction outputs are NOT mined (not detected on chain)".to_string());

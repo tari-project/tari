@@ -2932,7 +2932,9 @@ pub async fn command_runner(
                                                     println!("Locked: {}", is_locked);
                                                     println!("Confirmed: {}", is_confirmed);
 
-                                                    if completed_tx.status != expected_status {
+                                                    if completed_tx.status == expected_status {
+                                                        println!("OK: Status '{}' is correct", completed_tx.status);
+                                                    } else {
                                                         println!(
                                                             "FIX: Status mismatch! Wallet has '{}', expected '{}'. \
                                                              Updating...",
@@ -2959,8 +2961,6 @@ pub async fn command_runner(
                                                                 eprintln!("Error updating status: {e}")
                                                             },
                                                         }
-                                                    } else {
-                                                        println!("OK: Status '{}' is correct", completed_tx.status);
                                                     }
                                                 } else {
                                                     println!("Transaction is reported as mined but has no height");
@@ -3027,7 +3027,9 @@ pub async fn command_runner(
                                         println!("Locked: {}", is_locked);
                                         println!("Confirmed: {}", is_confirmed);
 
-                                        if completed_tx.status != expected_status {
+                                        if completed_tx.status == expected_status {
+                                            println!("OK: Status '{}' is correct", completed_tx.status);
+                                        } else {
                                             println!(
                                                 "FIX: Status mismatch! Wallet has '{}', expected '{}'. Updating...",
                                                 completed_tx.status, expected_status
@@ -3046,8 +3048,6 @@ pub async fn command_runner(
                                                 Ok(()) => println!("Status updated successfully"),
                                                 Err(e) => eprintln!("Error updating status: {e}"),
                                             }
-                                        } else {
-                                            println!("OK: Status '{}' is correct", completed_tx.status);
                                         }
                                     } else {
                                         println!("Transaction outputs are NOT mined (not detected on chain)");
