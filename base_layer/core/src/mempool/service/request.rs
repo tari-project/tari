@@ -37,6 +37,7 @@ pub enum MempoolRequest {
     GetState,
     GetTxStateByExcessSig(CompressedSignature),
     SubmitTransaction(Transaction),
+    SubmitTransactionWithDetails(Transaction),
     GetFeePerGramStats { count: usize, tip_height: u64 },
     FilterOutputsInMempool(Vec<HashOutput>),
 }
@@ -55,6 +56,13 @@ impl Display for MempoolRequest {
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "No kernels!".to_string());
                 write!(f, "SubmitTransaction ({sig_hex})")
+            },
+            MempoolRequest::SubmitTransactionWithDetails(tx) => {
+                let sig_hex = tx
+                    .first_kernel_excess_sig()
+                    .map(|sig| sig.get_signature().to_hex())
+                    .unwrap_or_else(|| "No kernels!".to_string());
+                write!(f, "SubmitTransactionWithDetails ({sig_hex})")
             },
             MempoolRequest::GetFeePerGramStats { count, tip_height } => {
                 write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)

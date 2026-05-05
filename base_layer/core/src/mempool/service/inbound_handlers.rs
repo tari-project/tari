@@ -33,8 +33,7 @@ use crate::{
     base_node::comms_interface::{BlockEvent, BlockEvent::AddBlockErrored},
     chain_storage::BlockAddResult,
     mempool::{
-        Mempool,
-        TxStorageResponse,
+        Mempool, TxStorageResponse, TxStorageResponseWithDetails,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
     },
 };
@@ -62,12 +61,8 @@ impl MempoolInboundHandlers {
     pub async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "Handling remote request: {request}");
         use MempoolRequest::{
-            FilterOutputsInMempool,
-            GetFeePerGramStats,
-            GetState,
-            GetStats,
-            GetTxStateByExcessSig,
-            SubmitTransaction,
+            FilterOutputsInMempool, GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction,
+            SubmitTransactionWithDetails,
         };
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
@@ -86,6 +81,20 @@ impl MempoolInboundHandlers {
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
                 Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+            },
+            SubmitTransactionWithDetails(tx) => {
+                let first_tx_kernel_excess_sig = tx
+                    .first_kernel_excess_sig()
+                    .ok_or(MempoolServiceError::TransactionNoKernels)?
+                    .get_signature()
+                    .to_hex();
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction ({first_tx_kernel_excess_sig}) submitted using request with details."
+                );
+                Ok(MempoolResponse::TxStorageWithDetails(
+                    self.submit_transaction_with_details(tx, None).await?,
+                ))
             },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
@@ -127,6 +136,17 @@ impl MempoolInboundHandlers {
         tx: Transaction,
         source_peer: Option<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
+        Ok(self
+            .submit_transaction_with_details(tx, source_peer)
+            .await?
+            .into_response())
+    }
+
+    async fn submit_transaction_with_details(
+        &mut self,
+        tx: Transaction,
+        source_peer: Option<NodeId>,
+    ) -> Result<TxStorageResponseWithDetails, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {tx}");
 
         let tx = Arc::new(tx);
@@ -141,9 +161,9 @@ impl MempoolInboundHandlers {
                 target: LOG_TARGET,
                 "Mempool already has transaction: {kernel_excess_sig}"
             );
-            return Ok(tx_storage);
+            return Ok(tx_storage.into());
         }
-        match self.mempool.insert(tx.clone()).await {
+        match self.mempool.insert_with_details(tx.clone()).await {
             Ok(tx_storage) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
@@ -155,10 +175,11 @@ impl MempoolInboundHandlers {
 
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction inserted into mempool: {kernel_excess_sig}, pool: {tx_storage}"
+                    "Transaction inserted into mempool: {kernel_excess_sig}, pool: {}",
+                    tx_storage.response
                 );
                 // propagate the tx if it was accepted to the unconfirmed pool
-                if matches!(tx_storage, TxStorageResponse::UnconfirmedPool) {
+                if matches!(tx_storage.response, TxStorageResponse::UnconfirmedPool) {
                     debug!(
                         target: LOG_TARGET,
                         "Propagate transaction ({kernel_excess_sig}) to network."

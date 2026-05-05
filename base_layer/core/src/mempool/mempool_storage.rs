@@ -37,10 +37,7 @@ use crate::mempool::metrics;
 use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
-        MempoolConfig,
-        StateResponse,
-        StatsResponse,
-        TxStorageResponse,
+        MempoolConfig, StateResponse, StatsResponse, TxStorageResponse, TxStorageResponseWithDetails,
         error::MempoolError,
         reorg_pool::ReorgPool,
         unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
@@ -81,6 +78,14 @@ impl MempoolStorage {
 
     /// Insert an unconfirmed transaction into the Mempool.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
+        Ok(self.insert_with_details(tx)?.into_response())
+    }
+
+    /// Insert an unconfirmed transaction into the Mempool, including rejection details when validation fails.
+    pub fn insert_with_details(
+        &mut self,
+        tx: Arc<Transaction>,
+    ) -> Result<TxStorageResponseWithDetails, UnconfirmedPoolError> {
         let tx_id = tx
             .body
             .kernels()
@@ -93,13 +98,23 @@ impl MempoolStorage {
             Ok(fee) => fee,
             Err(e) => {
                 warn!(target: LOG_TARGET, "Invalid transaction: {e}");
-                return Ok(TxStorageResponse::NotStoredConsensus);
+                return Ok(TxStorageResponseWithDetails::new(
+                    TxStorageResponse::NotStoredConsensus,
+                    Some(format!("Transaction fee could not be calculated: {e}")),
+                ));
             },
         };
         // This check is almost free, so lets check this before we do any expensive validation.
         if tx_fee.as_u64() < self.unconfirmed_pool.config.min_fee {
             debug!(target: LOG_TARGET, "Tx: ({tx_id}) fee too low, rejecting");
-            return Ok(TxStorageResponse::NotStoredFeeTooLow);
+            return Ok(TxStorageResponseWithDetails::new(
+                TxStorageResponse::NotStoredFeeTooLow,
+                Some(format!(
+                    "Transaction fee {} is below the minimum fee per gram accepted by this mempool ({})",
+                    tx_fee.as_u64(),
+                    self.unconfirmed_pool.config.min_fee
+                )),
+            ));
         }
         match self.validator.validate(&tx) {
             Ok(()) => {
@@ -118,36 +133,63 @@ impl MempoolStorage {
                     tx_id,
                     timer.elapsed()
                 );
-                Ok(TxStorageResponse::UnconfirmedPool)
+                Ok(TxStorageResponse::UnconfirmedPool.into())
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
                 if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
                     let weight = self.get_transaction_weighting();
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
-                    Ok(TxStorageResponse::UnconfirmedPool)
+                    Ok(TxStorageResponse::UnconfirmedPool.into())
                 } else {
-                    Ok(TxStorageResponse::NotStoredOrphan)
+                    let details = dependent_outputs
+                        .iter()
+                        .map(|hash| hash.to_hex())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Ok(TxStorageResponseWithDetails::new(
+                        TxStorageResponse::NotStoredOrphan,
+                        Some(format!(
+                            "Transaction refers to {} input(s) that are not available to this node: {}",
+                            dependent_outputs.len(),
+                            details
+                        )),
+                    ))
                 }
             },
-            Err(ValidationError::ContainsSTxO) => {
+            Err(e @ ValidationError::ContainsSTxO { .. }) => {
                 info!(target: LOG_TARGET, "Validation failed due to already spent input");
-                Ok(TxStorageResponse::NotStoredAlreadySpent)
+                Ok(TxStorageResponseWithDetails::new(
+                    TxStorageResponse::NotStoredAlreadySpent,
+                    Some(e.to_string()),
+                ))
             },
-            Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
+            Err(e @ ValidationError::MaturityError) => Ok(TxStorageResponseWithDetails::new(
+                TxStorageResponse::NotStoredTimeLocked,
+                Some(e.to_string()),
+            )),
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {msg}");
-                Ok(TxStorageResponse::NotStoredConsensus)
+                Ok(TxStorageResponseWithDetails::new(
+                    TxStorageResponse::NotStoredConsensus,
+                    Some(msg),
+                ))
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
                     target: LOG_TARGET,
                     "Validation failed due to already mined kernel: {msg}"
                 );
-                Ok(TxStorageResponse::NotStoredAlreadyMined)
+                Ok(TxStorageResponseWithDetails::new(
+                    TxStorageResponse::NotStoredAlreadyMined,
+                    Some(msg),
+                ))
             },
             Err(e) => {
                 info!(target: LOG_TARGET, "Validation failed due to error: {e}");
-                Ok(TxStorageResponse::NotStored)
+                Ok(TxStorageResponseWithDetails::new(
+                    TxStorageResponse::NotStored,
+                    Some(e.to_string()),
+                ))
             },
         }
     }
@@ -393,16 +435,16 @@ impl MempoolStorage {
                     },
                     // Some kernels from the transaction have already been processed, and others exist in the
                     // unconfirmed pool, therefore this specific transaction has not been stored (already spent)
-                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::ReorgPool) |
-                    (TxStorageResponse::ReorgPool, TxStorageResponse::UnconfirmedPool) => {
+                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::ReorgPool)
+                    | (TxStorageResponse::ReorgPool, TxStorageResponse::UnconfirmedPool) => {
                         Some(TxStorageResponse::NotStoredAlreadySpent)
                     },
                     // All (so far) in reorg pool
                     (TxStorageResponse::ReorgPool, TxStorageResponse::ReorgPool) => Some(TxStorageResponse::ReorgPool),
                     // Not stored
-                    (TxStorageResponse::UnconfirmedPool, other) |
-                    (TxStorageResponse::ReorgPool, other) |
-                    (other, _) => Some(other),
+                    (TxStorageResponse::UnconfirmedPool, other)
+                    | (TxStorageResponse::ReorgPool, other)
+                    | (other, _) => Some(other),
                 }
             })
             .ok_or(MempoolError::TransactionNoKernels)

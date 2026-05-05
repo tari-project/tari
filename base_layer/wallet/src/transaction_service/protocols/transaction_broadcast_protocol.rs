@@ -109,9 +109,9 @@ where
                 },
             };
 
-            if !(completed_tx.status == LegacyTransactionStatus::Completed ||
-                completed_tx.status == LegacyTransactionStatus::Broadcast ||
-                completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
+            if !(completed_tx.status == LegacyTransactionStatus::Completed
+                || completed_tx.status == LegacyTransactionStatus::Broadcast
+                || completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
             {
                 debug!(
                     target: LOG_TARGET,
@@ -198,7 +198,10 @@ where
         }
 
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
-            let rejection_reason_details = response.rejection_reason_details.as_deref().unwrap_or("No details provided");
+            let rejection_reason_details = response
+                .rejection_reason_details
+                .as_deref()
+                .unwrap_or("No details provided");
             error!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) rejected by Base Node for reason: {}. Details: {}",
@@ -207,7 +210,8 @@ where
                 rejection_reason_details
             );
 
-            let (reason_error, reason) = match response.rejection_reason {
+            let rejection_reason = response.rejection_reason.clone();
+            let (fallback_error, reason) = match rejection_reason {
                 TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => (
                     TransactionServiceError::MempoolRejectionInvalidTransaction,
                     TxCancellationReason::InvalidTransaction,
@@ -233,6 +237,14 @@ where
                     TxCancellationReason::AlreadyMined,
                 ),
             };
+            let reason_error = response
+                .rejection_reason_details
+                .as_deref()
+                .filter(|details| !details.is_empty())
+                .map(|details| TransactionServiceError::MempoolRejection {
+                    reason: format!("{}: {details}", response.rejection_reason),
+                })
+                .unwrap_or(fallback_error);
 
             self.cancel_pending_transaction(reason).await;
 
@@ -249,7 +261,10 @@ where
 
             return Err(TransactionServiceProtocolError::new(self.tx_id, reason_error));
         } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
-            let rejection_reason_details = response.rejection_reason_details.as_deref().unwrap_or("No details provided");
+            let rejection_reason_details = response
+                .rejection_reason_details
+                .as_deref()
+                .unwrap_or("No details provided");
             info!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) is Already Mined according to Base Node. Details: {}. Will be completed by \
@@ -315,9 +330,9 @@ where
             );
             Ok(true)
         } else if response.location != TxLocation::InMempool {
-            if self.last_rejection.is_none() ||
-                self.last_rejection.unwrap().elapsed() >
-                    self.resources.config.transaction_mempool_resubmission_window
+            if self.last_rejection.is_none()
+                || self.last_rejection.unwrap().elapsed()
+                    > self.resources.config.transaction_mempool_resubmission_window
             {
                 info!(
                     target: LOG_TARGET,

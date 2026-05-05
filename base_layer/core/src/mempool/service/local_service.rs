@@ -25,9 +25,7 @@ use tari_service_framework::{Service, reply_channel::SenderService};
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::mempool::{
-    StateResponse,
-    StatsResponse,
-    TxStorageResponse,
+    StateResponse, StatsResponse, TxStorageResponse, TxStorageResponseWithDetails,
     service::{MempoolRequest, MempoolResponse, MempoolServiceError},
 };
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
@@ -84,6 +82,20 @@ impl LocalMempoolService {
         }
     }
 
+    pub async fn submit_transaction_with_details(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<TxStorageResponseWithDetails, MempoolServiceError> {
+        match self
+            .request_sender
+            .call(MempoolRequest::SubmitTransactionWithDetails(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorageWithDetails(s) => Ok(s),
+            _ => Err(MempoolServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_transaction_state_by_excess_sig(
         &mut self,
         sig: CompressedSignature,
@@ -106,8 +118,7 @@ mod test {
     use tokio::task;
 
     use crate::mempool::{
-        MempoolServiceError,
-        StatsResponse,
+        MempoolServiceError, StatsResponse,
         service::{MempoolRequest, MempoolResponse, local_service::LocalMempoolService},
     };
 

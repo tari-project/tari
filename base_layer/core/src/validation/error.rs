@@ -23,8 +23,7 @@ use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_node_components::blocks::{BlockHeaderValidationError, BlockValidationError};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
-    BanPeriod,
-    BanReason,
+    BanPeriod, BanReason,
     tari_proof_of_work::{DifficultyError, PowError},
     transaction_components::{OutputType, TransactionError, covenants::CovenantError},
     validation::AggregatedBodyValidationError,
@@ -62,8 +61,8 @@ pub enum ValidationError {
          commitments."
     )]
     InvalidAccountingBalance,
-    #[error("Transaction contains already spent inputs")]
-    ContainsSTxO,
+    #[error("Transaction contains already spent input commitment {commitment} with output hash {output_hash}")]
+    ContainsSTxO { commitment: String, output_hash: String },
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
@@ -160,54 +159,54 @@ impl ValidationError {
     pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             ValidationError::ProofOfWorkError(e) => e.get_ban_reason(),
-            err @ ValidationError::SerializationError(_) |
-            err @ ValidationError::BlockHeaderError(_) |
-            err @ ValidationError::BlockError(_) |
-            err @ ValidationError::MaturityError |
-            err @ ValidationError::BlockTooLarge { .. } |
-            err @ ValidationError::UnknownInputs(_) |
-            err @ ValidationError::UnknownInput |
-            err @ ValidationError::TransactionError(_) |
-            err @ ValidationError::InvalidAccountingBalance |
-            err @ ValidationError::ContainsSTxO |
-            err @ ValidationError::ContainsDuplicateUtxoCommitment |
-            err @ ValidationError::ChainBalanceValidationFailed(_) |
-            err @ ValidationError::ValidatingGenesis |
-            err @ ValidationError::UnsortedOrDuplicateInput |
-            err @ ValidationError::UnsortedOrDuplicateOutput |
-            err @ ValidationError::MaxTransactionWeightExceeded |
-            err @ ValidationError::IncorrectHeight { .. } |
-            err @ ValidationError::IncorrectPreviousHash { .. } |
-            err @ ValidationError::BadBlockFound { .. } |
-            err @ ValidationError::ConsensusError(_) |
-            err @ ValidationError::DuplicateKernelError(_) |
-            err @ ValidationError::CovenantError(_) |
-            err @ ValidationError::InvalidBlockchainVersion { .. } |
-            err @ ValidationError::InvalidBurnError(_) |
-            err @ ValidationError::DifficultyError(_) |
-            err @ ValidationError::CoinbaseExceedsMaxLimit |
-            err @ ValidationError::InvalidSerializedPublicKey(_) |
-            err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
-            err @ ValidationError::SidechainProofInvalid(_) |
-            err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
-            err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
-            err @ ValidationError::ValidatorNodeNotRegistered { .. } |
-            err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
-            err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
-            err @ ValidationError::AggregatedBodyValidationError(_) |
-            err @ ValidationError::CuckarooPowError(_) |
-            err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
+            err @ ValidationError::SerializationError(_)
+            | err @ ValidationError::BlockHeaderError(_)
+            | err @ ValidationError::BlockError(_)
+            | err @ ValidationError::MaturityError
+            | err @ ValidationError::BlockTooLarge { .. }
+            | err @ ValidationError::UnknownInputs(_)
+            | err @ ValidationError::UnknownInput
+            | err @ ValidationError::TransactionError(_)
+            | err @ ValidationError::InvalidAccountingBalance
+            | err @ ValidationError::ContainsSTxO { .. }
+            | err @ ValidationError::ContainsDuplicateUtxoCommitment
+            | err @ ValidationError::ChainBalanceValidationFailed(_)
+            | err @ ValidationError::ValidatingGenesis
+            | err @ ValidationError::UnsortedOrDuplicateInput
+            | err @ ValidationError::UnsortedOrDuplicateOutput
+            | err @ ValidationError::MaxTransactionWeightExceeded
+            | err @ ValidationError::IncorrectHeight { .. }
+            | err @ ValidationError::IncorrectPreviousHash { .. }
+            | err @ ValidationError::BadBlockFound { .. }
+            | err @ ValidationError::ConsensusError(_)
+            | err @ ValidationError::DuplicateKernelError(_)
+            | err @ ValidationError::CovenantError(_)
+            | err @ ValidationError::InvalidBlockchainVersion { .. }
+            | err @ ValidationError::InvalidBurnError(_)
+            | err @ ValidationError::DifficultyError(_)
+            | err @ ValidationError::CoinbaseExceedsMaxLimit
+            | err @ ValidationError::InvalidSerializedPublicKey(_)
+            | err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. }
+            | err @ ValidationError::SidechainProofInvalid(_)
+            | err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. }
+            | err @ ValidationError::ValidatorNodeAlreadyRegistered { .. }
+            | err @ ValidationError::ValidatorNodeNotRegistered { .. }
+            | err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. }
+            | err @ ValidationError::OutputTypeNotMatchSidechainData { .. }
+            | err @ ValidationError::AggregatedBodyValidationError(_)
+            | err @ ValidationError::CuckarooPowError(_)
+            | err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
-            ValidationError::FatalStorageError(_) |
-            ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
-            ValidationError::MissingKernelError(_) |
-            ValidationError::MissingOutputError(_) |
-            ValidationError::InputSpentBeforeMined(_) |
-            ValidationError::HeaderHashMismatch(_) |
-            ValidationError::HeaderHeightMismatch(_) => None,
+            ValidationError::FatalStorageError(_)
+            | ValidationError::IncorrectNumberOfTimestampsProvided { .. }
+            | ValidationError::MissingKernelError(_)
+            | ValidationError::MissingOutputError(_)
+            | ValidationError::InputSpentBeforeMined(_)
+            | ValidationError::HeaderHashMismatch(_)
+            | ValidationError::HeaderHeightMismatch(_) => None,
         }
     }
 }

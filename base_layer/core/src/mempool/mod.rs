@@ -105,6 +105,38 @@ pub enum TxStorageResponse {
     NotStoredFeeTooLow,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxStorageResponseWithDetails {
+    pub response: TxStorageResponse,
+    pub rejection_reason: Option<String>,
+}
+
+impl TxStorageResponseWithDetails {
+    pub fn new(response: TxStorageResponse, rejection_reason: Option<String>) -> Self {
+        Self {
+            response,
+            rejection_reason,
+        }
+    }
+
+    pub fn is_stored(&self) -> bool {
+        self.response.is_stored()
+    }
+
+    pub fn into_response(self) -> TxStorageResponse {
+        self.response
+    }
+}
+
+impl From<TxStorageResponse> for TxStorageResponseWithDetails {
+    fn from(response: TxStorageResponse) -> Self {
+        Self {
+            response,
+            rejection_reason: None,
+        }
+    }
+}
+
 impl TxStorageResponse {
     pub fn is_stored(&self) -> bool {
         matches!(self, Self::UnconfirmedPool | Self::ReorgPool)
