@@ -132,6 +132,7 @@ impl BaseNodeWalletRpcMockState {
                 accepted: true,
                 rejection_reason: TxSubmissionRejectionReason::None,
                 is_synced: true,
+                rejection_detail: None,
             })),
             transaction_query_response: Arc::new(Mutex::new(TxQueryResponse {
                 location: TxLocation::InMempool,
@@ -921,6 +922,7 @@ mod test {
             accepted: false,
             rejection_reason: TxSubmissionRejectionReason::TimeLocked,
             is_synced: true,
+            rejection_detail: None,
         });
 
         let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default());

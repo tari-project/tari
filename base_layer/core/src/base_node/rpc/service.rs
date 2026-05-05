@@ -191,27 +191,32 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 accepted: true,
                 rejection_reason: TxSubmissionRejectionReason::None.into(),
                 is_synced,
+                rejection_detail: None,
             },
 
             TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::Orphan.into(),
                 is_synced,
+                rejection_detail: None,
             },
             TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::FeeTooLow.into(),
                 is_synced,
+                rejection_detail: None,
             },
             TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
                 is_synced,
+                rejection_detail: None,
             },
             TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::ValidationFailed.into(),
                 is_synced,
+                rejection_detail: None,
             },
             TxStorageResponse::NotStoredAlreadySpent |
             TxStorageResponse::ReorgPool |
@@ -222,6 +227,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                         accepted: false,
                         rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
                         is_synced,
+                        rejection_detail: None,
                     },
                     Some(s) => {
                         // Check to see if the kernel exists in the blockchain db in which case this exact transaction
@@ -236,11 +242,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                                 accepted: false,
                                 rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
                                 is_synced,
+                                rejection_detail: None,
                             },
                             Some(_) => TxSubmissionResponse {
                                 accepted: false,
                                 rejection_reason: TxSubmissionRejectionReason::AlreadyMined.into(),
                                 is_synced,
+                                rejection_detail: None,
                             },
                         }
                     },

@@ -131,6 +131,7 @@ impl MempoolServiceMock {
             GetStats,
             GetTxStateByExcessSig,
             SubmitTransaction,
+            SubmitTransactionDetailed,
         };
 
         self.state.inc_call_count();
@@ -142,6 +143,10 @@ impl MempoolServiceMock {
             )),
             SubmitTransaction(_) => Ok(MempoolResponse::TxStorage(
                 self.state.submit_transaction.lock().await.clone(),
+            )),
+            SubmitTransactionDetailed(_) => Ok(MempoolResponse::TxStorageDetailed(
+                self.state.submit_transaction.lock().await.clone(),
+                None,
             )),
             GetFeePerGramStats { .. } => {
                 unimplemented!()

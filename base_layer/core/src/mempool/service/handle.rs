@@ -80,6 +80,20 @@ impl MempoolHandle {
         }
     }
 
+    pub async fn submit_transaction_detailed(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<(TxStorageResponse, Option<String>), MempoolServiceError> {
+        match self
+            .inner
+            .call(MempoolRequest::SubmitTransactionDetailed(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorageDetailed(response, detail) => Ok((response, detail)),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
+        }
+    }
+
     pub async fn get_fee_per_gram_stats(
         &mut self,
         count: usize,

@@ -68,6 +68,7 @@ impl MempoolInboundHandlers {
             GetStats,
             GetTxStateByExcessSig,
             SubmitTransaction,
+            SubmitTransactionDetailed,
         };
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
@@ -86,6 +87,19 @@ impl MempoolInboundHandlers {
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
                 Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+            },
+            SubmitTransactionDetailed(tx) => {
+                let first_tx_kernel_excess_sig = tx
+                    .first_kernel_excess_sig()
+                    .ok_or(MempoolServiceError::TransactionNoKernels)?
+                    .get_signature()
+                    .to_hex();
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction ({first_tx_kernel_excess_sig}) submitted using detailed request."
+                );
+                let (response, detail) = self.submit_transaction_detailed(tx, None).await?;
+                Ok(MempoolResponse::TxStorageDetailed(response, detail))
             },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
@@ -168,6 +182,58 @@ impl MempoolInboundHandlers {
                         .await?;
                 }
                 Ok(tx_storage)
+            },
+            Err(e) => Err(MempoolServiceError::MempoolError(e)),
+        }
+    }
+
+    /// Submits a transaction to the mempool with detailed rejection info, and propagates valid transactions.
+    async fn submit_transaction_detailed(
+        &mut self,
+        tx: Transaction,
+        source_peer: Option<NodeId>,
+    ) -> Result<(TxStorageResponse, Option<String>), MempoolServiceError> {
+        trace!(target: LOG_TARGET, "submit_transaction_detailed: {tx}");
+
+        let tx = Arc::new(tx);
+        let tx_storage = self.mempool.has_transaction(tx.clone()).await?;
+        let kernel_excess_sig = tx
+            .first_kernel_excess_sig()
+            .ok_or(MempoolServiceError::TransactionNoKernels)?
+            .get_signature()
+            .to_hex();
+        if tx_storage.is_stored() {
+            debug!(
+                target: LOG_TARGET,
+                "Mempool already has transaction: {kernel_excess_sig}"
+            );
+            return Ok((tx_storage, None));
+        }
+        match self.mempool.insert_detailed(tx.clone()).await {
+            Ok((tx_storage, detail)) => {
+                #[cfg(feature = "metrics")]
+                if tx_storage.is_stored() {
+                    metrics::inbound_transactions().inc();
+                } else {
+                    metrics::rejected_inbound_transactions().inc();
+                }
+                self.update_pool_size_metrics().await;
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction inserted into mempool: {kernel_excess_sig}, pool: {tx_storage}"
+                );
+                // propagate the tx if it was accepted to the unconfirmed pool
+                if matches!(tx_storage, TxStorageResponse::UnconfirmedPool) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Propagate transaction ({kernel_excess_sig}) to network."
+                    );
+                    self.outbound_service
+                        .propagate_tx(tx, source_peer.into_iter().collect())
+                        .await?;
+                }
+                Ok((tx_storage, detail))
             },
             Err(e) => Err(MempoolServiceError::MempoolError(e)),
         }

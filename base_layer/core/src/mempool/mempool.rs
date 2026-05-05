@@ -68,6 +68,20 @@ impl Mempool {
         self.with_write_access(|storage| {
             storage
                 .insert(tx)
+                .map(|(resp, _)| resp)
+                .map_err(|e| MempoolError::InternalError(e.to_string()))
+        })
+        .await
+    }
+
+    /// Insert an unconfirmed transaction into the Mempool, returning detailed rejection info.
+    pub async fn insert_detailed(
+        &self,
+        tx: Arc<Transaction>,
+    ) -> Result<(TxStorageResponse, Option<String>), MempoolError> {
+        self.with_write_access(|storage| {
+            storage
+                .insert(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))
         })
         .await
@@ -79,6 +93,7 @@ impl Mempool {
             for tx in transactions {
                 storage
                     .insert(tx)
+                    .map(|_| ())
                     .map_err(|e| MempoolError::InternalError(e.to_string()))?;
             }
 

@@ -111,6 +111,7 @@ impl TryFrom<proto::TxSubmissionResponse> for TxSubmissionResponse {
                     .map_err(|_| "Invalid or unrecognised `TxSubmissionRejectionReason` enum".to_string())?,
             )?,
             is_synced: value.is_synced,
+            rejection_detail: None,
         })
     }
 }

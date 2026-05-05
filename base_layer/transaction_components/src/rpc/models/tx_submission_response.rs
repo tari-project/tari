@@ -29,6 +29,8 @@ pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
     pub is_synced: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejection_detail: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

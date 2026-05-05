@@ -48,35 +48,40 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
-    let res = match mempool_service.submit_transaction(transaction).await {
-        Ok(response) => {
+    let res = match mempool_service.submit_transaction_detailed(transaction).await {
+        Ok((response, detail)) => {
             debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
             match response {
                 TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
                     accepted: true,
                     rejection_reason: TxSubmissionRejectionReason::None,
                     is_synced,
+                    rejection_detail: None,
                 },
 
                 TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::Orphan,
                     is_synced,
+                    rejection_detail: detail,
                 },
                 TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
                     is_synced,
+                    rejection_detail: detail,
                 },
                 TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::TimeLocked,
                     is_synced,
+                    rejection_detail: detail,
                 },
                 TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
                     is_synced,
+                    rejection_detail: detail,
                 },
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
@@ -84,6 +89,7 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
                     is_synced,
+                    rejection_detail: detail,
                 },
             }
         },
