@@ -43,6 +43,7 @@ use minotari_app_grpc::tari_rpc::{
 };
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::Empty;
+use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
     DEFAULT_TIMEOUT,
@@ -465,6 +466,63 @@ pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String
     } else {
         Ok(())
     }
+}
+
+#[when(expr = "I submit transaction {word} to {word} using HTTP and rejection details contain {word}")]
+pub async fn submit_failed_transaction_to_http_with_details(
+    world: &mut TariWorld,
+    tx_name: String,
+    node: String,
+    expected_detail: String,
+) -> anyhow::Result<()> {
+    let tx = world
+        .transactions
+        .get(&tx_name)
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
+    let http_port = world
+        .base_nodes
+        .get(&node)
+        .unwrap_or_else(|| panic!("Couldn't find base node {node}"))
+        .http_port;
+
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{http_port}/json_rpc"))
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "submit_transaction",
+            "params": {
+                "transaction": tx,
+            }
+        }))
+        .send()
+        .await?
+        .json::<serde_json::Value>()
+        .await?;
+
+    let result = response
+        .get("result")
+        .ok_or_else(|| anyhow::anyhow!("HTTP submit response did not include result: {response}"))?;
+    let accepted = result
+        .get("accepted")
+        .and_then(|accepted| accepted.as_bool())
+        .ok_or_else(|| anyhow::anyhow!("HTTP submit response did not include accepted: {response}"))?;
+    let rejection_details = result
+        .get("rejection_details")
+        .and_then(|details| details.as_str())
+        .ok_or_else(|| anyhow::anyhow!("HTTP submit response did not include rejection_details: {response}"))?;
+
+    if accepted {
+        anyhow::bail!("Transaction {tx_name} was accepted by {node}, but should have been rejected");
+    }
+    if !rejection_details.contains(&expected_detail) {
+        anyhow::bail!(
+            "Expected HTTP rejection details for transaction {tx_name} to contain '{expected_detail}', got \
+             '{rejection_details}'"
+        );
+    }
+
+    Ok(())
 }
 
 #[when(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]

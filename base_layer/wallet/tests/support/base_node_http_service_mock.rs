@@ -176,6 +176,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         Ok(TxSubmissionResponse {
             accepted: true,
             rejection_reason: models::TxSubmissionRejectionReason::None,
+            rejection_details: None,
             is_synced: true,
         })
     }

@@ -28,6 +28,8 @@ use serde::{Deserialize, Serialize};
 pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejection_details: Option<String>,
     pub is_synced: bool,
 }
 
@@ -53,5 +55,37 @@ impl Display for TxSubmissionRejectionReason {
             TxSubmissionRejectionReason::ValidationFailed => write!(f, "Validation Failed"),
             TxSubmissionRejectionReason::FeeTooLow => write!(f, "Fee Too Low"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tx_submission_response_deserializes_without_rejection_details() {
+        let response = serde_json::from_str::<TxSubmissionResponse>(
+            r#"{"accepted":false,"rejection_reason":"ValidationFailed","is_synced":true}"#,
+        )
+        .unwrap();
+
+        assert_eq!(response.rejection_details, None);
+    }
+
+    #[test]
+    fn tx_submission_response_serializes_rejection_details_when_present() {
+        let response = TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+            rejection_details: Some("Invalid range proof for output commitment abc".to_string()),
+            is_synced: true,
+        };
+
+        let json = serde_json::to_value(response).unwrap();
+
+        assert_eq!(
+            json.get("rejection_details").and_then(|value| value.as_str()),
+            Some("Invalid range proof for output commitment abc")
+        );
     }
 }

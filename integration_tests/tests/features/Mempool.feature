@@ -184,7 +184,7 @@ Feature: Mempool
     When I mine a block on BN1 with coinbase CB1
     When I mine 2 blocks on BN1
     When I create a custom locked transaction TX1 spending CB1 to UTX1 with lockheight 5
-    When I submit transaction TX1 to BN1 and it does not succeed
+    When I submit transaction TX1 to BN1 using HTTP and rejection details contain time
     Then BN1 has TX1 in NOT_STORED state
     When I mine 4 blocks on BN1
     When I submit transaction TX1 to BN1

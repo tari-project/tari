@@ -93,7 +93,9 @@ impl MempoolStorage {
             Ok(fee) => fee,
             Err(e) => {
                 warn!(target: LOG_TARGET, "Invalid transaction: {e}");
-                return Ok(TxStorageResponse::NotStoredConsensus);
+                return Ok(TxStorageResponse::NotStoredWithReason(format!(
+                    "Invalid transaction fee: {e}"
+                )));
             },
         };
         // This check is almost free, so lets check this before we do any expensive validation.
@@ -136,7 +138,9 @@ impl MempoolStorage {
             Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {msg}");
-                Ok(TxStorageResponse::NotStoredConsensus)
+                Ok(TxStorageResponse::NotStoredWithReason(format!(
+                    "Consensus rule violation: {msg}"
+                )))
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
@@ -147,7 +151,7 @@ impl MempoolStorage {
             },
             Err(e) => {
                 info!(target: LOG_TARGET, "Validation failed due to error: {e}");
-                Ok(TxStorageResponse::NotStored)
+                Ok(TxStorageResponse::NotStoredWithReason(format!("Validation failed: {e}")))
             },
         }
     }

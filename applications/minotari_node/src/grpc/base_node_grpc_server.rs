@@ -1908,6 +1908,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredConsensus |
+            TxStorageResponse::NotStoredWithReason(_) |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
@@ -1990,6 +1991,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredConsensus |
+            TxStorageResponse::NotStoredWithReason(_) |
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredTimeLocked |

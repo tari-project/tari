@@ -29,9 +29,10 @@ use tari_core::{
     mempool::{TxStorageResponse, service::MempoolHandle},
 };
 use tari_transaction_components::{
-    rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse},
+    rpc::models::{Signature, TxLocation, TxSubmissionRejectionReason, TxSubmissionResponse},
     transaction_components::Transaction,
 };
+use tari_utilities::{ByteArray, hex::Hex};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc::submit_transaction";
 
@@ -48,48 +49,223 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
-    let res = match mempool_service.submit_transaction(transaction).await {
+    let res = match mempool_service.submit_transaction(transaction.clone()).await {
         Ok(response) => {
             debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
-            match response {
-                TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
-                    accepted: true,
-                    rejection_reason: TxSubmissionRejectionReason::None,
-                    is_synced,
-                },
-
-                TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::Orphan,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::TimeLocked,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
-                    is_synced,
-                },
+            let mined_location = match response {
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
-                TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
-                    is_synced,
-                },
-            }
+                TxStorageResponse::NotStoredAlreadyMined => transaction_location(query_service.as_ref(), &transaction)
+                    .await
+                    .map_err(|e| {
+                        error!(target: LOG_TARGET, "Failed to query transaction location: {e}");
+                        anyhow::anyhow!("Failed to query transaction location: {e}")
+                    })?,
+                _ => TxLocation::None,
+            };
+            build_response(response, &transaction, is_synced, mined_location)
         },
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to submit transaction: {e}"));
         },
     };
     Ok(res)
+}
+
+async fn transaction_location<T: BlockchainBackend + 'static>(
+    query_service: &query_service::Service<T>,
+    transaction: &Transaction,
+) -> Result<TxLocation, query_service::Error> {
+    let Some(signature) = transaction.first_kernel_excess_sig() else {
+        return Ok(TxLocation::None);
+    };
+
+    let response = query_service
+        .transaction_query(Signature {
+            public_nonce: signature.get_compressed_public_nonce().as_bytes().to_vec(),
+            signature: signature.get_signature().as_bytes().to_vec(),
+        })
+        .await?;
+
+    Ok(response.location)
+}
+
+fn build_response(
+    response: TxStorageResponse,
+    transaction: &Transaction,
+    is_synced: bool,
+    mined_location: TxLocation,
+) -> TxSubmissionResponse {
+    let (accepted, rejection_reason, rejection_details) = match response {
+        TxStorageResponse::UnconfirmedPool => (true, TxSubmissionRejectionReason::None, None),
+        TxStorageResponse::NotStoredOrphan => (
+            false,
+            TxSubmissionRejectionReason::Orphan,
+            Some(format!(
+                "Orphan transaction: one or more inputs are unknown to the base node and are not present in the \
+                 mempool. {}",
+                transaction_inputs(transaction)
+            )),
+        ),
+        TxStorageResponse::NotStoredFeeTooLow => (
+            false,
+            TxSubmissionRejectionReason::FeeTooLow,
+            Some(format!(
+                "Transaction fee {} is below the minimum accepted by this mempool.",
+                transaction
+                    .body
+                    .get_total_fee()
+                    .map(|fee| fee.as_u64().to_string())
+                    .unwrap_or_else(|e| format!("could not be calculated ({e})"))
+            )),
+        ),
+        TxStorageResponse::NotStoredTimeLocked => (
+            false,
+            TxSubmissionRejectionReason::TimeLocked,
+            Some(format!(
+                "Transaction is time locked or spends inputs that are not mature yet. max_kernel_timelock={}, \
+                 min_spendable_height={}.",
+                transaction.max_kernel_timelock(),
+                transaction
+                    .min_spendable_height()
+                    .map(|height| height.to_string())
+                    .unwrap_or_else(|e| format!("unknown ({e})"))
+            )),
+        ),
+        TxStorageResponse::NotStoredWithReason(reason) => (
+            false,
+            TxSubmissionRejectionReason::ValidationFailed,
+            Some(format!("{reason}. {}", transaction_summary(transaction))),
+        ),
+        TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => (
+            false,
+            TxSubmissionRejectionReason::ValidationFailed,
+            Some(format!(
+                "Mempool validation failed for this transaction. {}",
+                transaction_summary(transaction)
+            )),
+        ),
+        TxStorageResponse::NotStoredAlreadyMined => (
+            false,
+            TxSubmissionRejectionReason::AlreadyMined,
+            Some(format!(
+                "Transaction kernel was already mined. {}",
+                transaction_kernel(transaction)
+            )),
+        ),
+        TxStorageResponse::NotStoredAlreadySpent | TxStorageResponse::ReorgPool => match mined_location {
+            TxLocation::Mined => (
+                false,
+                TxSubmissionRejectionReason::AlreadyMined,
+                Some(format!(
+                    "Transaction kernel was already mined. {}",
+                    transaction_kernel(transaction)
+                )),
+            ),
+            _ => (
+                false,
+                TxSubmissionRejectionReason::DoubleSpend,
+                Some(format!(
+                    "Transaction double-spends at least one input already spent on-chain or by another mempool \
+                     transaction. {}",
+                    transaction_inputs(transaction)
+                )),
+            ),
+        },
+    };
+
+    TxSubmissionResponse {
+        accepted,
+        rejection_reason,
+        rejection_details,
+        is_synced,
+    }
+}
+
+fn transaction_summary(transaction: &Transaction) -> String {
+    format!(
+        "{} {} {}",
+        transaction_inputs(transaction),
+        transaction_outputs(transaction),
+        transaction_kernel(transaction)
+    )
+}
+
+fn transaction_inputs(transaction: &Transaction) -> String {
+    let inputs = transaction
+        .body
+        .inputs()
+        .iter()
+        .map(|input| {
+            let commitment = input
+                .commitment()
+                .map(|commitment| format!(", commitment={}", commitment.to_hex()))
+                .unwrap_or_default();
+            format!("output_hash={}{}", input.output_hash().to_hex(), commitment)
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    format!("inputs[{}]=[{}]", transaction.body.inputs().len(), inputs)
+}
+
+fn transaction_outputs(transaction: &Transaction) -> String {
+    let outputs = transaction
+        .body
+        .outputs()
+        .iter()
+        .map(|output| format!("hash={}, commitment={}", output.hash().to_hex(), output.commitment.to_hex()))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    format!("outputs[{}]=[{}]", transaction.body.outputs().len(), outputs)
+}
+
+fn transaction_kernel(transaction: &Transaction) -> String {
+    transaction.first_kernel_excess_sig().map_or_else(
+        || "kernel_signature=<none>".to_string(),
+        |signature| format!("kernel_signature={}", signature.get_signature().to_hex()),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_transaction_components::transaction_components::Transaction;
+
+    use super::*;
+
+    fn empty_transaction() -> Transaction {
+        Transaction::new(vec![], vec![], vec![], Default::default(), Default::default())
+    }
+
+    #[test]
+    fn response_includes_mempool_validation_detail() {
+        let response = build_response(
+            TxStorageResponse::NotStoredWithReason("Invalid range proof for output commitment abc".to_string()),
+            &empty_transaction(),
+            true,
+            TxLocation::None,
+        );
+
+        assert!(!response.accepted);
+        assert_eq!(response.rejection_reason, TxSubmissionRejectionReason::ValidationFailed);
+        assert!(response.rejection_details.unwrap().contains("Invalid range proof"));
+    }
+
+    #[test]
+    fn already_spent_response_distinguishes_double_spend_from_already_mined() {
+        let transaction = empty_transaction();
+
+        let double_spend = build_response(
+            TxStorageResponse::NotStoredAlreadySpent,
+            &transaction,
+            true,
+            TxLocation::NotStored,
+        );
+        let already_mined =
+            build_response(TxStorageResponse::NotStoredAlreadySpent, &transaction, true, TxLocation::Mined);
+
+        assert_eq!(double_spend.rejection_reason, TxSubmissionRejectionReason::DoubleSpend);
+        assert_eq!(already_mined.rejection_reason, TxSubmissionRejectionReason::AlreadyMined);
+    }
 }

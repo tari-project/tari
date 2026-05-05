@@ -1302,7 +1302,7 @@ async fn consensus_validation_large_tx() {
 
     let response = mempool.insert(Arc::new(tx)).await.unwrap();
     // make sure the tx was not accepted into the mempool
-    assert!(matches!(response, TxStorageResponse::NotStored));
+    assert!(matches!(response, TxStorageResponse::NotStoredWithReason(_)));
 }
 
 #[tokio::test]
