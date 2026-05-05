@@ -166,7 +166,12 @@ impl KeystoreBackend for OsKeyringBackend {
 
         entry
             .delete_credential()
-            .map_err(|e| OfflineSignerError::KeystoreError(format!("Failed to delete from keyring: {}", e)))?;
+            .map_err(|e| {
+                if format!("{}", e).contains("The specified item could not be found") {
+                    return Ok(());
+                }
+                OfflineSignerError::KeystoreError(format!("Failed to delete from keyring: {}", e))
+            })?;
 
         Ok(())
     }
