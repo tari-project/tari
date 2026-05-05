@@ -33,12 +33,12 @@ tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }
 tower = "0.4.11"
-hickory-resolver = { version = "0.26.0", features = [
+hickory-resolver = { version = "0.26.1", features = [
     "tokio",
     "tls-ring",
     "rustls-platform-verifier",
 ] }
-hickory-proto = { version = "0.26.0" }
+hickory-proto = { version = "0.26.1" }
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }
