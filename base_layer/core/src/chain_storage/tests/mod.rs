@@ -21,4 +21,5 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod blockchain_database;
+mod lmdb_tests;
 pub mod temp_db;
