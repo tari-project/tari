@@ -28,12 +28,12 @@ impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
     type Error = String;
 
     fn try_from(tx_storage: proto::TxStorageResponse) -> Result<Self, Self::Error> {
-        use proto::TxStorageResponse::{None, NotStored, ReorgPool, UnconfirmedPool};
+        use proto::TxStorageResponse::{NotStored, ReorgPool, UnconfirmedPool};
         Ok(match tx_storage {
-            None => return Err("TxStorageResponse not provided".to_string()),
+            proto::TxStorageResponse::None => return Err("TxStorageResponse not provided".to_string()),
             UnconfirmedPool => TxStorageResponse::UnconfirmedPool,
             ReorgPool => TxStorageResponse::ReorgPool,
-            NotStored => TxStorageResponse::NotStored,
+            NotStored => TxStorageResponse::NotStored(None),
         })
     }
 }
@@ -45,11 +45,11 @@ impl From<TxStorageResponse> for proto::TxStorageResponse {
         match response {
             UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,
             ReorgPool => proto::TxStorageResponse::ReorgPool,
-            NotStored => proto::TxStorageResponse::NotStored,
+            NotStored(_) => proto::TxStorageResponse::NotStored,
             NotStoredOrphan => proto::TxStorageResponse::NotStored,
             NotStoredTimeLocked => proto::TxStorageResponse::NotStored,
             NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
-            NotStoredConsensus => proto::TxStorageResponse::NotStored,
+            NotStoredConsensus(_) => proto::TxStorageResponse::NotStored,
             NotStoredAlreadyMined => proto::TxStorageResponse::NotStored,
             NotStoredFeeTooLow => proto::TxStorageResponse::NotStored,
         }
