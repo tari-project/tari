@@ -170,18 +170,18 @@ fn build_chain_from_json(data: &TestChainData) -> BlockchainDatabase<TempDatabas
 /// Populate `db` with the blocks from `data`, performing the reorg, and return it.
 fn populate_chain(db: BlockchainDatabase<TempDatabase>, data: &TestChainData) -> BlockchainDatabase<TempDatabase> {
     // Add shared blocks B1..B5 (canonical indices 1..=5)
-    for block in data.canonical_blocks[1..=5].iter() {
+    for block in &data.canonical_blocks[1..=5] {
         db.add_block(Arc::new(block.clone())).unwrap().assert_added();
     }
 
     // Add original main-chain blocks B6..B10 (these will be reorged out later)
-    for block in data.reorged_blocks.iter() {
+    for block in &data.reorged_blocks {
         db.add_block(Arc::new(block.clone())).unwrap().assert_added();
     }
 
     // Add fork blocks F6'..F15' (canonical indices 6..=15) - triggers the reorg
     let mut reorg_happened = false;
-    for block in data.canonical_blocks[6..].iter() {
+    for block in &data.canonical_blocks[6..] {
         let result = db.add_block(Arc::new(block.clone())).unwrap();
         if result.is_chain_reorg() {
             reorg_happened = true;
@@ -256,6 +256,7 @@ static SHARED_STATE: Lazy<SharedTestState> = Lazy::new(|| {
 /// ```
 #[test]
 #[ignore = "Run manually to regenerate test fixtures"]
+#[allow(clippy::too_many_lines)]
 fn generate_fixtures() {
     use tari_common_types::{payment_reference::generate_payment_reference, tari_address::TariAddress};
     use tari_transaction_components::{
@@ -343,14 +344,14 @@ fn generate_fixtures() {
     // Fork chain
     let fork_db = create_new_blockchain();
     let fork_key_manager = KeyManager::new_random().unwrap();
-    for block in shared_blocks.iter() {
+    for block in &shared_blocks {
         fork_db.add_block(block.clone()).unwrap().assert_added();
     }
     let (fork_blocks, _) = add_chained_blocks(10, &fork_db, &fork_key_manager);
 
     // Trigger reorg
     let mut reorg_happened = false;
-    for fork_block in fork_blocks.iter() {
+    for fork_block in &fork_blocks {
         let result = db.add_block(fork_block.clone()).unwrap();
         if result.is_chain_reorg() {
             reorg_happened = true;
@@ -369,7 +370,7 @@ fn generate_fixtures() {
 
     // --- Build expected query results ---
     let mut expected = Vec::with_capacity(canonical_blocks.len());
-    for block in canonical_blocks.iter() {
+    for block in &canonical_blocks {
         let block_hash = block.hash();
         let output_hashes: Vec<FixedHash> = block.body.outputs().iter().map(|o| o.hash()).collect();
         let output_commitments: Vec<CompressedCommitment> =
@@ -536,10 +537,9 @@ fn ensure_reference_fixture_exists() {
         let gz_path = fixture_dir.join("data.mdb.gz");
         assert!(
             gz_path.exists(),
-            "Reference LMDB fixture not found at {}.\n\
-             Run the generator and commit the result:\n\
-             cargo test -p tari_core --lib --features sqlite_bundled \
-             -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+            "Reference LMDB fixture not found at {}.\nRun the generator and commit the result:\ncargo test -p \
+             tari_core --lib --features sqlite_bundled -- \
+             chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
             gz_path.display()
         );
 
@@ -790,10 +790,10 @@ mod write_tests {
             assert_eq!(
                 fresh_pairs.len(),
                 ref_pairs.len(),
-                "Database `{}` has {} kv-pairs in fresh build but {} in reference fixture. \
-                 If this change is intentional, regenerate the reference fixture with:\n\
-                 cargo test -p tari_core --lib --features sqlite_bundled \
-                 -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+                "Database `{}` has {} kv-pairs in fresh build but {} in reference fixture. If this change is \
+                 intentional, regenerate the reference fixture with:\ncargo test -p tari_core --lib --features \
+                 sqlite_bundled -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored \
+                 --nocapture",
                 fresh_name,
                 fresh_pairs.len(),
                 ref_pairs.len(),
@@ -802,14 +802,11 @@ mod write_tests {
             for (idx, ((fk, fv), (rk, rv))) in fresh_pairs.iter().zip(ref_pairs.iter()).enumerate() {
                 if fk != rk || fv != rv {
                     panic!(
-                        "Database `{}` diverges at kv-pair index {}.\n\
-                         Fresh    key: {:02x?} ({} bytes)\n\
-                         Reference key: {:02x?} ({} bytes)\n\
-                         Fresh    val: {:02x?} ({} bytes)\n\
-                         Reference val: {:02x?} ({} bytes)\n\
-                         If this change is intentional, regenerate the reference fixture with:\n\
-                         cargo test -p tari_core --lib --features sqlite_bundled \
-                         -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+                        "Database `{}` diverges at kv-pair index {}.\nFresh    key: {:02x?} ({} bytes)\nReference \
+                         key: {:02x?} ({} bytes)\nFresh    val: {:02x?} ({} bytes)\nReference val: {:02x?} ({} \
+                         bytes)\nIf this change is intentional, regenerate the reference fixture with:\ncargo test -p \
+                         tari_core --lib --features sqlite_bundled -- \
+                         chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
                         fresh_name,
                         idx,
                         fk,
@@ -835,10 +832,9 @@ fn decompress_reference_to(dest_dir: &Path) {
     let gz_path = reference_lmdb_dir().join("data.mdb.gz");
     assert!(
         gz_path.exists(),
-        "Reference fixture not found at {}.\n\
-         Run the generator and commit the result:\n\
-         cargo test -p tari_core --lib --features sqlite_bundled \
-         -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
+        "Reference fixture not found at {}.\nRun the generator and commit the result:\ncargo test -p tari_core --lib \
+         --features sqlite_bundled -- chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture \
+         --ignored --nocapture",
         gz_path.display()
     );
     fs::create_dir_all(dest_dir).unwrap();
