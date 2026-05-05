@@ -176,7 +176,15 @@ pub async fn run_base_node_with_cli(
 
     readiness_grpc_shutdown.trigger();
     if let Some(task) = readiness_task {
-        match timeout(std::time::Duration::from_secs(1), task).await {
+        // The readiness gRPC server listens on the same address as the main gRPC server,
+        // so we MUST ensure its socket is fully released before binding the main server,
+        // otherwise the main bind will fail with EADDRINUSE.
+        const READINESS_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+        // Keep an abort handle so that on timeout we can cancel the task and await its
+        // termination, which guarantees the listener is dropped before we continue. Simply
+        // dropping the JoinHandle does NOT cancel the task.
+        let abort_handle = task.abort_handle();
+        match timeout(READINESS_SHUTDOWN_TIMEOUT, task).await {
             Ok(Ok(Ok(()))) => {
                 info!(target: LOG_TARGET, "Readiness gRPC server shutdown successfully");
             },
@@ -186,8 +194,16 @@ pub async fn run_base_node_with_cli(
             Ok(Err(e)) => {
                 error!(target: LOG_TARGET, "Readiness gRPC server task failed: {e}");
             },
-            Err(_) => {
-                error!(target: LOG_TARGET, "Readiness gRPC server shutdown timed out after 1 second");
+            Err(_elapsed) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Readiness gRPC server shutdown did not complete in {:?}; aborting it to release the listener",
+                    READINESS_SHUTDOWN_TIMEOUT
+                );
+                abort_handle.abort();
+                // Yield once so the abort is observed and the task's listener is dropped
+                // before we attempt to bind the main gRPC server on the same address.
+                tokio::task::yield_now().await;
             },
         }
     }
@@ -196,13 +212,42 @@ pub async fn run_base_node_with_cli(
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
 
     if config.base_node.grpc_enabled {
-        task::spawn(run_grpc(
+        // Spawn the main gRPC server and keep its handle so a bind failure (e.g. EADDRINUSE)
+        // is surfaced as a fatal startup error rather than silently disabling gRPC for the
+        // lifetime of the process.
+        let grpc_handle = task::spawn(run_grpc(
             grpc,
             grpc_address.clone(),
             auth.clone(),
             tls_identity,
             shutdown.to_signal(),
         ));
+
+        // Give the server a brief window to either bind successfully or fail. tonic does the
+        // bind inside the future, so a successful bind means the future is still pending after
+        // this short wait. A bind error returns essentially immediately.
+        match timeout(std::time::Duration::from_millis(500), grpc_handle).await {
+            Err(_still_running) => {
+                // Still running after the wait → bind succeeded.
+            },
+            Ok(Ok(Ok(()))) => {
+                // Server returned Ok before we even got here — only possible on immediate
+                // shutdown signal, which would be unusual at this stage but is not an error.
+                info!(target: LOG_TARGET, "GRPC server returned during startup window");
+            },
+            Ok(Ok(Err(e))) => {
+                return Err(ExitError::new(
+                    ExitCode::GrpcError,
+                    format!("Failed to start gRPC server on {grpc_address}: {e}"),
+                ));
+            },
+            Ok(Err(e)) => {
+                return Err(ExitError::new(
+                    ExitCode::GrpcError,
+                    format!("gRPC server task panicked during startup: {e}"),
+                ));
+            },
+        }
     }
 
     // Start the built-in XMRig proxy if enabled
