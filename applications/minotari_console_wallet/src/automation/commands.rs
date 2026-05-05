@@ -2885,7 +2885,10 @@ pub async fn command_runner(
                 match transaction_service.get_completed_transaction(tx_id).await {
                     Ok(completed_tx) => {
                         let has_signature = completed_tx.transaction_signature != CompressedSignature::default();
+                        let num_confirmations_required = config.transaction_service_config.num_confirmations_required;
                         println!("--- Validate Transaction {} ---", tx_id);
+                        println!("Current status: {}", completed_tx.status);
+                        println!("Lock height: {}", completed_tx.lock_height);
                         if has_signature {
                             println!("Transaction has a signature, validating via base node query...");
                             let client = wallet.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
@@ -2907,17 +2910,74 @@ pub async fn command_runner(
                                                     let num_confirmations = tip.saturating_sub(mined_height);
                                                     println!("Transaction is MINED at height {}", mined_height);
                                                     println!("Confirmations: {}", num_confirmations);
-                                                    if let Some(hash) = response.mined_header_hash {
+                                                    if let Some(ref hash) = response.mined_header_hash {
                                                         println!("Mined in block: {}", hash.to_hex());
                                                     }
                                                     if let Some(ts) = response.mined_timestamp {
                                                         println!("Mined timestamp: {}", ts);
+                                                    }
+
+                                                    let is_confirmed = num_confirmations >= num_confirmations_required;
+                                                    let is_locked = completed_tx.lock_height > tip;
+                                                    let expected_status = if is_confirmed {
+                                                        if is_locked {
+                                                            completed_tx.status.mined_confirm_locked()
+                                                        } else {
+                                                            completed_tx.status.mined_confirm()
+                                                        }
+                                                    } else {
+                                                        completed_tx.status.mined_unconfirm()
+                                                    };
+
+                                                    println!("Locked: {}", is_locked);
+                                                    println!("Confirmed: {}", is_confirmed);
+
+                                                    if completed_tx.status != expected_status {
+                                                        println!(
+                                                            "FIX: Status mismatch! Wallet has '{}', expected '{}'. \
+                                                             Updating...",
+                                                            completed_tx.status, expected_status
+                                                        );
+                                                        let mined_in_block = response
+                                                            .mined_header_hash
+                                                            .and_then(|h| FixedHash::try_from(h.as_slice()).ok())
+                                                            .unwrap_or_default();
+                                                        let mined_ts = response.mined_timestamp.unwrap_or(0);
+                                                        match transaction_service
+                                                            .set_transaction_mined_height(
+                                                                tx_id,
+                                                                mined_height,
+                                                                mined_in_block,
+                                                                mined_ts,
+                                                                expected_status,
+                                                                tip,
+                                                            )
+                                                            .await
+                                                        {
+                                                            Ok(()) => println!("Status updated successfully"),
+                                                            Err(e) => {
+                                                                eprintln!("Error updating status: {e}")
+                                                            },
+                                                        }
+                                                    } else {
+                                                        println!("OK: Status '{}' is correct", completed_tx.status);
                                                     }
                                                 } else {
                                                     println!("Transaction is reported as mined but has no height");
                                                 }
                                             } else {
                                                 println!("Transaction is UNMINED (not found on chain)");
+                                                if completed_tx.status.is_mined() {
+                                                    println!(
+                                                        "FIX: Wallet has status '{}' but chain says unmined. \
+                                                         Updating...",
+                                                        completed_tx.status
+                                                    );
+                                                    match transaction_service.set_transaction_as_unmined(tx_id).await {
+                                                        Ok(()) => println!("Status updated to unmined"),
+                                                        Err(e) => eprintln!("Error updating status: {e}"),
+                                                    }
+                                                }
                                             }
                                         },
                                         Err(e) => eprintln!("Error querying base node: {e}"),
@@ -2951,10 +3011,56 @@ pub async fn command_runner(
                                         println!("Mined in block: {}", block_hash.to_hex());
                                         println!("Confirmations: {}", num_confirmations);
                                         println!("Current tip: {}", tip);
-                                        let is_confirmed = num_confirmations >= 3;
+
+                                        let is_confirmed = num_confirmations >= num_confirmations_required;
+                                        let is_locked = completed_tx.lock_height > tip;
+                                        let expected_status = if is_confirmed {
+                                            if is_locked {
+                                                completed_tx.status.mined_confirm_locked()
+                                            } else {
+                                                completed_tx.status.mined_confirm()
+                                            }
+                                        } else {
+                                            completed_tx.status.mined_unconfirm()
+                                        };
+
+                                        println!("Locked: {}", is_locked);
                                         println!("Confirmed: {}", is_confirmed);
+
+                                        if completed_tx.status != expected_status {
+                                            println!(
+                                                "FIX: Status mismatch! Wallet has '{}', expected '{}'. Updating...",
+                                                completed_tx.status, expected_status
+                                            );
+                                            match transaction_service
+                                                .set_transaction_mined_height(
+                                                    tx_id,
+                                                    mined_height,
+                                                    block_hash,
+                                                    0,
+                                                    expected_status,
+                                                    tip,
+                                                )
+                                                .await
+                                            {
+                                                Ok(()) => println!("Status updated successfully"),
+                                                Err(e) => eprintln!("Error updating status: {e}"),
+                                            }
+                                        } else {
+                                            println!("OK: Status '{}' is correct", completed_tx.status);
+                                        }
                                     } else {
                                         println!("Transaction outputs are NOT mined (not detected on chain)");
+                                        if completed_tx.status.is_mined() {
+                                            println!(
+                                                "FIX: Wallet has status '{}' but outputs not mined. Updating...",
+                                                completed_tx.status
+                                            );
+                                            match transaction_service.set_transaction_as_unmined(tx_id).await {
+                                                Ok(()) => println!("Status updated to unmined"),
+                                                Err(e) => eprintln!("Error updating status: {e}"),
+                                            }
+                                        }
                                     }
                                 },
                                 Err(e) => eprintln!("Error getting output info: {e}"),
