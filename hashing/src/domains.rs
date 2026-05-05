@@ -88,3 +88,12 @@ hash_domain!(
 hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
 
 hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);
+
+// Hash domain for the offline signing JSON payload integrity signature.
+// The view wallet signs the serialised payload bytes under this domain so
+// the offline signer can verify authenticity before committing the spend keys.
+hash_domain!(
+    OfflineSigningPayloadHashDomain,
+    "com.tari.base_layer.wallet.offline_signing.payload_integrity",
+    1
+);

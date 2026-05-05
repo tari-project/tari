@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash},
 };
 
 use crate::{
@@ -32,7 +32,10 @@ use crate::{
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, TransactionError, WalletOutput},
 };
 
-const SUPPORTED_VERSION: &str = "4.0.0";
+/// Version 4 had no payload integrity signature.
+/// Version 5 adds `payload_signature` to all `Prepare*` results so the offline
+/// signer can verify the payload was not tampered with in transit.
+const SUPPORTED_VERSION: &str = "5.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
     vec![Version::parse(SUPPORTED_VERSION).unwrap()]
@@ -72,6 +75,40 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
     fn to_json(&self) -> Result<String, TransactionError> {
         serde_json::to_string(&self).map_err(|e| TransactionError::SerializationError(e.to_string()))
     }
+}
+
+/// A domain-separated Schnorr signature produced by the view wallet over the canonical
+/// JSON bytes of the `Prepare*` payload.  The offline signer verifies this before using
+/// the spend key, ensuring that any in-transit tampering (recipient swap, amount change,
+/// input substitution, …) is detected and the signing operation is aborted.
+///
+/// The `view_public_key` field lets the offline signer cross-check that the payload
+/// was produced by the expected wallet instance (the one whose view key matches the
+/// key stored in the offline signer's keystore).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PayloadIntegritySignature {
+    /// The view public key of the wallet that prepared this payload.
+    pub view_public_key: CompressedPublicKey,
+    /// Schnorr signature over the canonical payload bytes (all JSON fields except
+    /// `payload_signature` itself), produced with the view private key.
+    pub signature: CompressedSignature,
+}
+
+/// Returns the canonical bytes of a serialised `Prepare*` JSON payload that are
+/// covered by the [`PayloadIntegritySignature`].
+///
+/// Concretely: deserialise `json_str` as a JSON object, remove the
+/// `payload_signature` key (so the signed data is stable regardless of whether
+/// the field is present), and re-serialise to bytes.  Using `serde_json::Value`
+/// as an intermediary guarantees key-ordering is preserved exactly as the
+/// serialiser produced it for all other fields.
+pub fn canonical_payload_bytes(json_str: &str) -> Result<Vec<u8>, TransactionError> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("payload_signature");
+    }
+    serde_json::to_vec(&value).map_err(|e| TransactionError::SerializationError(e.to_string()))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -152,6 +189,9 @@ pub struct PrepareOneSidedTransactionForSigningResult {
     pub version: Version,
     pub tx_id: TxId,
     pub info: OneSidedTransactionInfo,
+    /// Integrity signature produced by the online view wallet over the canonical
+    /// payload bytes.  The offline signer MUST verify this before signing.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
@@ -167,6 +207,9 @@ pub struct PrepareDepositMultisigTransactionResult {
     pub version: Version,
     pub tx_id: TxId,
     pub info: OneSidedMultisigTransactionInfo,
+    /// Integrity signature produced by the online view wallet over the canonical
+    /// payload bytes.  The offline signer MUST verify this before signing.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for PrepareDepositMultisigTransactionResult {}
@@ -182,6 +225,9 @@ pub struct PrepareWithdrawMultisigTransactionResult {
     pub version: Version,
     pub tx_id: TxId,
     pub info: OneSidedTransactionInfo,
+    /// Integrity signature produced by the online view wallet over the canonical
+    /// payload bytes.  The offline signer MUST verify this before signing.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for PrepareWithdrawMultisigTransactionResult {}
