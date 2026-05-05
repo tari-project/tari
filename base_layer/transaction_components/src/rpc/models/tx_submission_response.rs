@@ -28,6 +28,8 @@ use serde::{Deserialize, Serialize};
 pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejection_reason_details: Option<String>,
     pub is_synced: bool,
 }
 
@@ -40,6 +42,41 @@ pub enum TxSubmissionRejectionReason {
     TimeLocked,
     ValidationFailed,
     FeeTooLow,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn deserializes_submission_response_without_details() {
+        let response = serde_json::json!({
+            "accepted": false,
+            "rejection_reason": "TimeLocked",
+            "is_synced": true
+        });
+
+        let response = serde_json::from_value::<TxSubmissionResponse>(response).unwrap();
+
+        assert!(!response.accepted);
+        assert_eq!(response.rejection_reason, TxSubmissionRejectionReason::TimeLocked);
+        assert!(response.rejection_reason_details.is_none());
+        assert!(response.is_synced);
+    }
+
+    #[test]
+    fn serializes_submission_response_details_when_present() {
+        let response = TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::DoubleSpend,
+            rejection_reason_details: Some("Transaction spends an output that is already spent.".to_string()),
+            is_synced: true,
+        };
+
+        let value = serde_json::to_value(response).unwrap();
+
+        assert_eq!(value["rejection_reason_details"], "Transaction spends an output that is already spent.");
+    }
 }
 
 impl Display for TxSubmissionRejectionReason {

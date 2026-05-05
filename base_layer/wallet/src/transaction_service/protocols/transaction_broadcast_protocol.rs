@@ -198,9 +198,13 @@ where
         }
 
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
+            let rejection_reason_details = response.rejection_reason_details.as_deref().unwrap_or("No details provided");
             error!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
+                "Transaction (TxId: {}) rejected by Base Node for reason: {}. Details: {}",
+                self.tx_id,
+                response.rejection_reason,
+                rejection_reason_details
             );
 
             let (reason_error, reason) = match response.rejection_reason {
@@ -245,11 +249,13 @@ where
 
             return Err(TransactionServiceProtocolError::new(self.tx_id, reason_error));
         } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
+            let rejection_reason_details = response.rejection_reason_details.as_deref().unwrap_or("No details provided");
             info!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) is Already Mined according to Base Node. Will be completed by transaction \
-                 validation protocol.",
-                self.tx_id
+                "Transaction (TxId: {}) is Already Mined according to Base Node. Details: {}. Will be completed by \
+                 transaction validation protocol.",
+                self.tx_id,
+                rejection_reason_details
             );
         } else {
             info!(
