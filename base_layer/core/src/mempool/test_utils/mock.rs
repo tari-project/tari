@@ -30,10 +30,7 @@ use tari_service_framework::reply_channel;
 use tokio::{sync::Mutex, task};
 
 use crate::mempool::{
-    MempoolServiceError,
-    StateResponse,
-    StatsResponse,
-    TxStorageResponse,
+    MempoolServiceError, StateResponse, StatsResponse, TxStorageResponse,
     service::{MempoolHandle, MempoolRequest, MempoolResponse},
 };
 
@@ -125,12 +122,8 @@ impl MempoolServiceMock {
 
     async fn handle_request(&self, req: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         use MempoolRequest::{
-            FilterOutputsInMempool,
-            GetFeePerGramStats,
-            GetState,
-            GetStats,
-            GetTxStateByExcessSig,
-            SubmitTransaction,
+            FilterOutputsInMempool, GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction,
+            SubmitTransactionWithDetails,
         };
 
         self.state.inc_call_count();
@@ -142,6 +135,9 @@ impl MempoolServiceMock {
             )),
             SubmitTransaction(_) => Ok(MempoolResponse::TxStorage(
                 self.state.submit_transaction.lock().await.clone(),
+            )),
+            SubmitTransactionWithDetails(_) => Ok(MempoolResponse::TxStorageWithDetails(
+                self.state.submit_transaction.lock().await.clone().into(),
             )),
             GetFeePerGramStats { .. } => {
                 unimplemented!()

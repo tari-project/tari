@@ -30,15 +30,8 @@ use minotari_wallet::client::http_client_factory::HttpClientFactory;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
-        self,
-        BlockHeader,
-        BlockUtxoInfo,
-        FeePerGramStat,
-        GenerateKernelMerkleProofResponse,
-        GetUtxosDeletedInfoResponse,
-        GetUtxosMinedInfoResponse,
-        SyncUtxosByBlockResponseV0,
-        TxSubmissionResponse,
+        self, BlockHeader, BlockUtxoInfo, FeePerGramStat, GenerateKernelMerkleProofResponse,
+        GetUtxosDeletedInfoResponse, GetUtxosMinedInfoResponse, SyncUtxosByBlockResponseV0, TxSubmissionResponseV1,
     },
     transaction_components::{Transaction, TransactionOutput},
 };
@@ -172,8 +165,8 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         todo!()
     }
 
-    async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
-        Ok(TxSubmissionResponse {
+    async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponseV1, Error> {
+        Ok(TxSubmissionResponseV1 {
             accepted: true,
             rejection_reason: models::TxSubmissionRejectionReason::None,
             rejection_reason_details: None,

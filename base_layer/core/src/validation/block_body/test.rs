@@ -38,11 +38,7 @@ use tari_transaction_components::{
     tari_proof_of_work::Difficulty,
     test_helpers::schema_to_transaction,
     transaction_components::{
-        EncryptedData,
-        MemoField,
-        RangeProofType,
-        TransactionError,
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        EncryptedData, MemoField, RangeProofType, TransactionError, encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     },
     txn_schema,
     validation::AggregatedBodyValidationError,
@@ -314,7 +310,7 @@ async fn it_checks_double_spends() {
     );
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::ContainsSTxO));
+    assert!(matches!(err, ValidationError::ContainsSTxO { .. }));
 }
 
 #[tokio::test]
@@ -596,12 +592,14 @@ mod orphan_validator {
                         (OutputType::Standard, vec![RangeProofType::RevealedValue]),
                         (OutputType::Coinbase, vec![RangeProofType::RevealedValue]),
                         (OutputType::Burn, vec![RangeProofType::RevealedValue]),
-                        (OutputType::ValidatorNodeRegistration, vec![
-                            RangeProofType::RevealedValue,
-                        ]),
-                        (OutputType::CodeTemplateRegistration, vec![
-                            RangeProofType::RevealedValue,
-                        ]),
+                        (
+                            OutputType::ValidatorNodeRegistration,
+                            vec![RangeProofType::RevealedValue],
+                        ),
+                        (
+                            OutputType::CodeTemplateRegistration,
+                            vec![RangeProofType::RevealedValue],
+                        ),
                     ])
                     .with_coinbase_lockheight(0)
                     .build(),
@@ -633,12 +631,14 @@ mod orphan_validator {
                         (OutputType::Standard, vec![RangeProofType::BulletProofPlus]),
                         (OutputType::Coinbase, vec![RangeProofType::BulletProofPlus]),
                         (OutputType::Burn, vec![RangeProofType::BulletProofPlus]),
-                        (OutputType::ValidatorNodeRegistration, vec![
-                            RangeProofType::BulletProofPlus,
-                        ]),
-                        (OutputType::CodeTemplateRegistration, vec![
-                            RangeProofType::BulletProofPlus,
-                        ]),
+                        (
+                            OutputType::ValidatorNodeRegistration,
+                            vec![RangeProofType::BulletProofPlus],
+                        ),
+                        (
+                            OutputType::CodeTemplateRegistration,
+                            vec![RangeProofType::BulletProofPlus],
+                        ),
                     ])
                     .with_coinbase_lockheight(0)
                     .build(),
@@ -663,9 +663,10 @@ mod orphan_validator {
         let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types(vec![(OutputType::CodeTemplateRegistration, vec![
-                        RangeProofType::BulletProofPlus,
-                    ])])
+                    .with_permitted_range_proof_types(vec![(
+                        OutputType::CodeTemplateRegistration,
+                        vec![RangeProofType::BulletProofPlus],
+                    )])
                     .with_coinbase_lockheight(0)
                     .build(),
             )

@@ -25,10 +25,7 @@ use tari_service_framework::{Service, reply_channel::TrySenderService};
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 
 use crate::mempool::{
-    MempoolServiceError,
-    StateResponse,
-    StatsResponse,
-    TxStorageResponse,
+    MempoolServiceError, StateResponse, StatsResponse, TxStorageResponse, TxStorageResponseWithDetails,
     service::{MempoolRequest, MempoolResponse},
 };
 
@@ -76,6 +73,20 @@ impl MempoolHandle {
             .await??
         {
             MempoolResponse::TxStorage(response) => Ok(response),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
+        }
+    }
+
+    pub async fn submit_transaction_with_details(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<TxStorageResponseWithDetails, MempoolServiceError> {
+        match self
+            .inner
+            .call(MempoolRequest::SubmitTransactionWithDetails(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorageWithDetails(response) => Ok(response),
             _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }

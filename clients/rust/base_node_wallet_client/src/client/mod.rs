@@ -7,19 +7,14 @@ use serde::{Deserialize, Serialize};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
-        self,
-        BlockHeader,
-        FeePerGramStat,
-        GenerateKernelMerkleProofResponse,
-        GetUtxosDeletedInfoResponse,
-        GetUtxosMinedInfoResponse,
-        SyncUtxosByBlockResponseV0,
+        self, BlockHeader, FeePerGramStat, GenerateKernelMerkleProofResponse, GetUtxosDeletedInfoResponse,
+        GetUtxosMinedInfoResponse, SyncUtxosByBlockResponseV0,
     },
     transaction_components::{Transaction, TransactionOutput},
 };
 use tokio::sync::mpsc;
 
-use crate::client::models::TxSubmissionResponse;
+use crate::client::models::TxSubmissionResponseV1;
 
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]
@@ -58,7 +53,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
         must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, Error>;
 
-    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, Error>;
+    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponseV1, Error>;
 
     async fn transaction_query(
         &self,

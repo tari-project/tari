@@ -31,12 +31,8 @@ use tokio::task;
 use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
-        MempoolConfig,
-        StateResponse,
-        StatsResponse,
-        TxStorageResponse,
-        error::MempoolError,
-        mempool_storage::MempoolStorage,
+        MempoolConfig, StateResponse, StatsResponse, TxStorageResponse, TxStorageResponseWithDetails,
+        error::MempoolError, mempool_storage::MempoolStorage,
     },
     validation::TransactionValidator,
 };
@@ -65,9 +61,17 @@ impl Mempool {
 
     /// Insert an unconfirmed transaction into the Mempool.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        Ok(self.insert_with_details(tx).await?.into_response())
+    }
+
+    /// Insert an unconfirmed transaction into the Mempool, including rejection details when validation fails.
+    pub async fn insert_with_details(
+        &self,
+        tx: Arc<Transaction>,
+    ) -> Result<TxStorageResponseWithDetails, MempoolError> {
         self.with_write_access(|storage| {
             storage
-                .insert(tx)
+                .insert_with_details(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))
         })
         .await

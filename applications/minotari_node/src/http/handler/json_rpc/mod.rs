@@ -26,6 +26,7 @@ use axum::{Extension, Json, http::StatusCode};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use tari_core::{base_node::rpc::query_service, chain_storage::BlockchainBackend, mempool::service::MempoolHandle};
+use tari_transaction_components::rpc::models::{TxSubmissionResponse, TxSubmissionResponseV1};
 
 use crate::http::handler::ErrorResponse;
 
@@ -50,9 +51,15 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             })?;
             let transaction = serde_json::from_value(tx.clone())
                 .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
+            let version = request
+                .params
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .map(|version| if version == 0 { 0 } else { 1 })
+                .unwrap_or_default();
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => Ok(Json(JsonRpcResponse {
-                    result: serde_json::to_value(response).unwrap_or_else(|e| {
+                    result: submit_transaction_response_value(response, version).unwrap_or_else(|e| {
                         warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
                         serde_json::Value::Null
                     }),
@@ -77,6 +84,16 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     }
 }
 
+fn submit_transaction_response_value(
+    response: TxSubmissionResponseV1,
+    version: u8,
+) -> Result<serde_json::Value, serde_json::Error> {
+    match version {
+        0 => serde_json::to_value(TxSubmissionResponse::from(response)),
+        _ => serde_json::to_value(response),
+    }
+}
+
 #[derive(Deserialize, Debug, Serialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
@@ -91,4 +108,33 @@ pub struct JsonRpcResponse {
     pub result: serde_json::Value,
     pub error: Option<String>,
     pub id: String,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tari_transaction_components::rpc::models::TxSubmissionRejectionReason;
+
+    fn response_with_details() -> TxSubmissionResponseV1 {
+        TxSubmissionResponseV1 {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+            rejection_reason_details: Some("specific validation error".to_string()),
+            is_synced: true,
+        }
+    }
+
+    #[test]
+    fn submit_transaction_response_version_zero_omits_details() {
+        let value = submit_transaction_response_value(response_with_details(), 0).unwrap();
+
+        assert!(value.get("rejection_reason_details").is_none());
+    }
+
+    #[test]
+    fn submit_transaction_response_version_one_includes_details() {
+        let value = submit_transaction_response_value(response_with_details(), 1).unwrap();
+
+        assert_eq!(value["rejection_reason_details"], "specific validation error");
+    }
 }

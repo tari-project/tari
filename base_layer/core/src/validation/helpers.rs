@@ -40,12 +40,8 @@ use crate::{
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
-        AchievedTargetDifficulty,
-        cuckaroo_pow::cuckaroo_difficulty,
-        monero_randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        tari_randomx_difficulty,
+        AchievedTargetDifficulty, cuckaroo_pow::cuckaroo_difficulty, monero_randomx_difficulty,
+        randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty,
     },
     validation::ValidationError,
 };
@@ -82,9 +78,9 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
         EpochTime::from(
             u64::try_from(
-                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64()) +
-                    u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
-                    2,
+                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64())
+                    + u128::from(timestamps.get(mid_index).expect("Already checked").as_u64()))
+                    / 2,
             )
             .unwrap_or(u64::MAX),
         )
@@ -198,7 +194,10 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         );
         // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
         // been Some
-        return Err(ValidationError::ContainsSTxO);
+        return Err(ValidationError::ContainsSTxO {
+            commitment: input.commitment()?.to_hex(),
+            output_hash: output_hash.to_hex(),
+        });
     }
 
     debug!(

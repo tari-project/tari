@@ -26,10 +26,10 @@ use log::{debug, error};
 use tari_core::{
     base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
-    mempool::{TxStorageResponse, service::MempoolHandle},
+    mempool::{TxStorageResponse, TxStorageResponseWithDetails, service::MempoolHandle},
 };
 use tari_transaction_components::{
-    rpc::models::{Signature, TxLocation, TxSubmissionRejectionReason, TxSubmissionResponse},
+    rpc::models::{Signature, TxLocation, TxSubmissionRejectionReason, TxSubmissionResponseV1},
     transaction_components::Transaction,
 };
 use tari_utilities::ByteArray;
@@ -40,7 +40,7 @@ pub async fn handle<T: BlockchainBackend + 'static>(
     query_service: Arc<query_service::Service<T>>,
     mempool_service: &mut MempoolHandle,
     transaction: Transaction,
-) -> Result<TxSubmissionResponse, anyhow::Error> {
+) -> Result<TxSubmissionResponseV1, anyhow::Error> {
     let transaction_signature = transaction.first_kernel_excess_sig().map(|excess_sig| Signature {
         public_nonce: excess_sig.get_compressed_public_nonce().as_bytes().to_vec(),
         signature: excess_sig.get_signature().as_bytes().to_vec(),
@@ -54,10 +54,15 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
-    let res = match mempool_service.submit_transaction(transaction).await {
+    let res = match mempool_service.submit_transaction_with_details(transaction).await {
         Ok(response) => {
             debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
-            match response {
+            let TxStorageResponseWithDetails {
+                response: tx_storage_response,
+                rejection_reason,
+            } = response;
+
+            match tx_storage_response {
                 TxStorageResponse::UnconfirmedPool => {
                     submission_response(true, TxSubmissionRejectionReason::None, is_synced, None)
                 },
@@ -66,37 +71,52 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     false,
                     TxSubmissionRejectionReason::Orphan,
                     is_synced,
-                    Some("Transaction refers to inputs that are not available to this node."),
+                    rejection_reason.as_deref().or(Some(
+                        "Transaction refers to inputs that are not available to this node.",
+                    )),
                 ),
                 TxStorageResponse::NotStoredFeeTooLow => submission_response(
                     false,
                     TxSubmissionRejectionReason::FeeTooLow,
                     is_synced,
-                    Some("Transaction fee is below the minimum fee per gram accepted by this mempool."),
+                    rejection_reason.as_deref().or(Some(
+                        "Transaction fee is below the minimum fee per gram accepted by this mempool.",
+                    )),
                 ),
                 TxStorageResponse::NotStoredTimeLocked => submission_response(
                     false,
                     TxSubmissionRejectionReason::TimeLocked,
                     is_synced,
-                    Some("Transaction is timelocked and cannot be accepted at the current chain height."),
+                    rejection_reason.as_deref().or(Some(
+                        "Transaction is timelocked and cannot be accepted at the current chain height.",
+                    )),
                 ),
                 TxStorageResponse::NotStoredConsensus => submission_response(
                     false,
                     TxSubmissionRejectionReason::ValidationFailed,
                     is_synced,
-                    Some("Transaction failed consensus validation rules."),
+                    rejection_reason
+                        .as_deref()
+                        .or(Some("Transaction failed consensus validation rules.")),
                 ),
                 TxStorageResponse::NotStored => submission_response(
                     false,
                     TxSubmissionRejectionReason::ValidationFailed,
                     is_synced,
-                    Some("Transaction was not stored by the mempool."),
+                    rejection_reason
+                        .as_deref()
+                        .or(Some("Transaction was not stored by the mempool.")),
                 ),
                 response @ (TxStorageResponse::NotStoredAlreadySpent
                 | TxStorageResponse::ReorgPool
                 | TxStorageResponse::NotStoredAlreadyMined) => {
-                    already_spent_or_mined_response(query_service.as_ref(), transaction_signature, is_synced, response)
-                        .await
+                    already_spent_or_mined_response(
+                        query_service.as_ref(),
+                        transaction_signature,
+                        is_synced,
+                        TxStorageResponseWithDetails::new(response, rejection_reason.clone()),
+                    )
+                    .await
                 },
             }
         },
@@ -112,8 +132,8 @@ fn submission_response(
     rejection_reason: TxSubmissionRejectionReason,
     is_synced: bool,
     rejection_reason_details: Option<&str>,
-) -> TxSubmissionResponse {
-    TxSubmissionResponse {
+) -> TxSubmissionResponseV1 {
+    TxSubmissionResponseV1 {
         accepted,
         rejection_reason,
         rejection_reason_details: rejection_reason_details.map(ToString::to_string),
@@ -125,12 +145,13 @@ async fn already_spent_or_mined_response<T: BlockchainBackend + 'static>(
     query_service: &query_service::Service<T>,
     signature: Option<Signature>,
     is_synced: bool,
-    tx_storage_response: TxStorageResponse,
-) -> TxSubmissionResponse {
+    tx_storage_response: TxStorageResponseWithDetails,
+) -> TxSubmissionResponseV1 {
     let Some(signature) = signature else {
         return default_already_spent_or_mined_response(tx_storage_response, is_synced);
     };
 
+    let fallback_detail = tx_storage_response.rejection_reason.clone();
     let response = match query_service.transaction_query(signature).await {
         Ok(response) => response,
         Err(e) => {
@@ -144,45 +165,62 @@ async fn already_spent_or_mined_response<T: BlockchainBackend + 'static>(
             false,
             TxSubmissionRejectionReason::AlreadyMined,
             is_synced,
-            Some("Transaction kernel was found in the blockchain; this exact transaction has already been mined."),
+            fallback_detail.as_deref().or(Some(
+                "Transaction kernel was found in the blockchain; this exact transaction has already been mined.",
+            )),
         ),
         TxLocation::InMempool => submission_response(
             false,
             TxSubmissionRejectionReason::DoubleSpend,
             is_synced,
-            Some("Transaction conflicts with an existing transaction already in the mempool."),
+            fallback_detail.as_deref().or(Some(
+                "Transaction conflicts with an existing transaction already in the mempool.",
+            )),
         ),
         TxLocation::None | TxLocation::NotStored => submission_response(
             false,
             TxSubmissionRejectionReason::DoubleSpend,
             is_synced,
-            Some("Transaction spends an output that is already spent or conflicts with another transaction."),
+            fallback_detail.as_deref().or(Some(
+                "Transaction spends an output that is already spent or conflicts with another transaction.",
+            )),
         ),
     }
 }
 
 fn default_already_spent_or_mined_response(
-    tx_storage_response: TxStorageResponse,
+    tx_storage_response: TxStorageResponseWithDetails,
     is_synced: bool,
-) -> TxSubmissionResponse {
-    match tx_storage_response {
+) -> TxSubmissionResponseV1 {
+    let TxStorageResponseWithDetails {
+        response,
+        rejection_reason,
+    } = tx_storage_response;
+    let fallback_detail = rejection_reason.as_deref();
+    match response {
         TxStorageResponse::NotStoredAlreadySpent => submission_response(
             false,
             TxSubmissionRejectionReason::DoubleSpend,
             is_synced,
-            Some("Transaction spends an output that is already spent or conflicts with another transaction."),
+            fallback_detail.or(Some(
+                "Transaction spends an output that is already spent or conflicts with another transaction.",
+            )),
         ),
         TxStorageResponse::ReorgPool | TxStorageResponse::NotStoredAlreadyMined => submission_response(
             false,
             TxSubmissionRejectionReason::AlreadyMined,
             is_synced,
-            Some("Transaction was rejected because it was already mined or is currently in the reorg pool."),
+            fallback_detail.or(Some(
+                "Transaction was rejected because it was already mined or is currently in the reorg pool.",
+            )),
         ),
         _ => submission_response(
             false,
             TxSubmissionRejectionReason::AlreadyMined,
             is_synced,
-            Some("Transaction was rejected because its outputs were already spent or it was already mined."),
+            fallback_detail.or(Some(
+                "Transaction was rejected because its outputs were already spent or it was already mined.",
+            )),
         ),
     }
 }
@@ -219,15 +257,31 @@ mod test {
 
     #[test]
     fn default_already_spent_response_returns_double_spend() {
-        let response = default_already_spent_or_mined_response(TxStorageResponse::NotStoredAlreadySpent, true);
+        let response = default_already_spent_or_mined_response(TxStorageResponse::NotStoredAlreadySpent.into(), true);
 
         assert_eq!(response.rejection_reason, TxSubmissionRejectionReason::DoubleSpend);
     }
 
     #[test]
     fn default_already_mined_response_returns_already_mined() {
-        let response = default_already_spent_or_mined_response(TxStorageResponse::NotStoredAlreadyMined, true);
+        let response = default_already_spent_or_mined_response(TxStorageResponse::NotStoredAlreadyMined.into(), true);
 
         assert_eq!(response.rejection_reason, TxSubmissionRejectionReason::AlreadyMined);
+    }
+
+    #[test]
+    fn default_already_spent_response_uses_mempool_detail() {
+        let response = default_already_spent_or_mined_response(
+            TxStorageResponseWithDetails::new(
+                TxStorageResponse::NotStoredAlreadySpent,
+                Some("Transaction contains already spent input commitment abc with output hash def".to_string()),
+            ),
+            true,
+        );
+
+        assert_eq!(
+            response.rejection_reason_details.as_deref(),
+            Some("Transaction contains already spent input commitment abc with output hash def")
+        );
     }
 }

@@ -13,16 +13,9 @@ use tari_transaction_components::{
     rpc::{
         models,
         models::{
-            BlockHeader,
-            FeePerGramStat,
-            GenerateKernelMerkleProofResponse,
-            GetUtxosDeletedInfoResponse,
-            GetUtxosMinedInfoResponse,
-            SyncUtxosByBlockResponseV0,
-            SyncUtxosByBlockResponseV1,
-            TipInfoResponse,
-            TxQueryResponse,
-            TxSubmissionResponse,
+            BlockHeader, FeePerGramStat, GenerateKernelMerkleProofResponse, GetUtxosDeletedInfoResponse,
+            GetUtxosMinedInfoResponse, SyncUtxosByBlockResponseV0, SyncUtxosByBlockResponseV1, TipInfoResponse,
+            TxQueryResponse, TxSubmissionResponseV1,
         },
     },
     transaction_components::{Transaction, TransactionOutput},
@@ -454,7 +447,7 @@ impl BaseNodeWalletClient for Client {
         Ok(res.json::<Option<TransactionOutput>>().await?)
     }
 
-    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, anyhow::Error> {
+    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponseV1, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {server_address}");
         let target_url = server_address.join("/json_rpc")?;
@@ -464,6 +457,7 @@ impl BaseNodeWalletClient for Client {
             "method": "submit_transaction",
             "params": {
                 "transaction": transaction,
+                "version": 1,
             }
         });
 
@@ -485,7 +479,7 @@ impl BaseNodeWalletClient for Client {
             ));
         }
         info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {server_address}");
-        let response = res.json::<JsonRpcResponse<TxSubmissionResponse>>().await?;
+        let response = res.json::<JsonRpcResponse<TxSubmissionResponseV1>>().await?;
         match response.result {
             Some(result) => {
                 debug!(target: LOG_TARGET, "Transaction submission response: {result:?}");
@@ -602,10 +596,13 @@ impl BaseNodeWalletClient for Client {
         excess_sig: &[u8],
     ) -> Result<GenerateKernelMerkleProofResponse, anyhow::Error> {
         let resp = self
-            .send_get_request("/generate_kernel_merkle_proof", &[
-                ("excess_sig_public_nonce", to_hex(excess_sig_nonce)),
-                ("excess_sig_signature", to_hex(excess_sig)),
-            ])
+            .send_get_request(
+                "/generate_kernel_merkle_proof",
+                &[
+                    ("excess_sig_public_nonce", to_hex(excess_sig_nonce)),
+                    ("excess_sig_signature", to_hex(excess_sig)),
+                ],
+            )
             .await?;
 
         Ok(resp)
