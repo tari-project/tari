@@ -116,7 +116,7 @@ pub async fn run_recovery(
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory);
     let validators = Validators::new(
-        BlockBodyFullValidator::new(rules.clone(), true),
+        BlockBodyFullValidator::new(rules.clone(), node_config.bypass_range_proof_verification,),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         BlockBodyInternalConsistencyValidator::new(
             rules.clone(),

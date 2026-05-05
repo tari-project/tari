@@ -239,7 +239,7 @@ async fn build_node_context(
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory.clone());
     let validators = Validators::new(
-        BlockBodyFullValidator::new(rules.clone(), true),
+        BlockBodyFullValidator::new(rules.clone(), app_config.base_node.bypass_range_proof_verification),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         BlockBodyInternalConsistencyValidator::new(
             rules.clone(),
