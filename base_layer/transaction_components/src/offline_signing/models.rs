@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use borsh::{BorshDeserialize, BorshSerialize};
 use semver::Version;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tari_common_types::{
@@ -77,47 +78,62 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
     }
 }
 
-/// A domain-separated Schnorr signature produced by the view wallet over the canonical
-/// JSON bytes of the `Prepare*` payload.  The offline signer verifies this before using
-/// the spend key, ensuring that any in-transit tampering (recipient swap, amount change,
-/// input substitution, …) is detected and the signing operation is aborted.
+/// A domain-separated Schnorr signature produced by the view wallet over the Borsh-encoded
+/// payload data.  The offline signer verifies this before using the spend key, ensuring
+/// that any in-transit tampering (recipient swap, amount change, input substitution, …)
+/// is detected and the signing operation is aborted.
 ///
-/// The `view_public_key` field lets the offline signer cross-check that the payload
-/// was produced by the expected wallet instance (the one whose view key matches the
-/// key stored in the offline signer's keystore).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// The challenge binds the nonce public key R, the view public key P, and the canonical
+/// Borsh bytes of the transaction payload: `H_domain(R || P || borsh_bytes)`.  Both
+/// wallets share the same view key, so the verifier derives P locally rather than
+/// trusting a key embedded in the payload.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct PayloadIntegritySignature {
-    /// The view public key of the wallet that prepared this payload.
-    pub view_public_key: CompressedPublicKey,
-    /// Schnorr signature over the canonical payload bytes (all JSON fields except
-    /// `payload_signature` itself), produced with the view private key.
+    /// Schnorr signature produced with the view private key.
+    /// The signature nonce R is embedded in this value and is used when
+    /// recomputing the challenge on the verification side.
     pub signature: CompressedSignature,
 }
 
-/// Returns the canonical bytes of a serialised `Prepare*` JSON payload that are
-/// covered by the [`PayloadIntegritySignature`].
+/// Canonical Borsh bytes for a one-sided transaction payload covering all
+/// security-relevant fields (`version`, `tx_id`, and the full `info` struct).
+/// Used for both signing (prepare side) and integrity verification (sign side).
 ///
-/// Concretely: deserialise `json_str` as a JSON object, remove the
-/// `payload_signature` key (so the signed data is stable regardless of whether
-/// the field is present), and re-serialise to bytes.  Using `serde_json::Value`
-/// as an intermediary guarantees key-ordering is preserved exactly as the
-/// serialiser produced it for all other fields.
-pub fn canonical_payload_bytes(json_str: &str) -> Result<Vec<u8>, TransactionError> {
-    // serde_json::Value uses BTreeMap (sorted keys) by default, giving stable
-    // byte output regardless of the order in which fields appear in `json_str`.
-    // NOTE: if the `preserve_order` feature of serde_json is ever enabled this
-    // invariant still holds because both the prepare side and the sign side call
-    // this function on JSON produced by the same `to_json()` serialiser, so the
-    // field ordering is identical on both sides.
-    let mut value: serde_json::Value =
-        serde_json::from_str(json_str).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    if let Some(obj) = value.as_object_mut() {
-        obj.remove("payload_signature");
-    }
-    serde_json::to_vec(&value).map_err(|e| TransactionError::SerializationError(e.to_string()))
+/// `OneSidedTransactionInfo` is serialised directly via its `BorshSerialize` impl;
+/// for `WalletOutput` entries the impl commits to the consensus output hash, which
+/// covers ALL output fields, so tampering with any field is detectable.
+pub fn borsh_canonical_one_sided(
+    version: &Version,
+    tx_id: TxId,
+    info: &OneSidedTransactionInfo,
+) -> Result<Vec<u8>, TransactionError> {
+    let mut buf = Vec::new();
+    BorshSerialize::serialize(&version.to_string(), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(info, &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    Ok(buf)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// Canonical Borsh bytes for a multisig transaction payload.
+pub fn borsh_canonical_multisig(
+    version: &Version,
+    tx_id: TxId,
+    info: &OneSidedMultisigTransactionInfo,
+) -> Result<Vec<u8>, TransactionError> {
+    let mut buf = Vec::new();
+    BorshSerialize::serialize(&version.to_string(), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(info, &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    Ok(buf)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct PaymentRecipient {
     pub amount: MicroMinotari,
     pub output_features: OutputFeatures,
@@ -138,13 +154,13 @@ pub struct TransactionMetadata {
     pub burn_commitment: Option<CompressedCommitment>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize)]
 pub struct OneSidedTransactionInfo {
     /// Payment ID
     pub payment_id: MemoField,
     /// Recipient
     pub recipients: Vec<PaymentRecipient>,
-    /// All transaction inputs inputs.
+    /// All transaction inputs.
     pub inputs: Vec<WalletOutput>,
     /// The recipient's outputs.
     pub outputs: Vec<WalletOutput>,
@@ -154,7 +170,7 @@ pub struct OneSidedTransactionInfo {
     pub sender_address: TariAddress,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize)]
 pub struct OneSidedMultisigTransactionInfo {
     #[serde(flatten)]
     pub base: OneSidedTransactionInfo,

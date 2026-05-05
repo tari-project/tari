@@ -862,3 +862,17 @@ impl Debug for WalletOutput {
             .finish()
     }
 }
+
+/// Borsh serialisation for `WalletOutput` — used when hashing the payload of an
+/// offline-signing request to detect in-transit tampering.
+///
+/// `output_hash` is the consensus hash over ALL output fields; binding the
+/// signature to it is equivalent to binding it to the complete output content.
+/// Serialising `value` alongside it provides an easily human-verifiable
+/// cross-check of the amount without recomputing the full hash.
+impl borsh::BorshSerialize for WalletOutput {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.output_hash, writer)?;
+        borsh::BorshSerialize::serialize(&self.value, writer)
+    }
+}

@@ -534,6 +534,20 @@ impl<'de> Deserialize<'de> for TariAddress {
     }
 }
 
+impl borsh::BorshSerialize for TariAddress {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.to_vec(), writer)
+    }
+}
+
+impl borsh::BorshDeserialize for TariAddress {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> Result<Self, borsh::io::Error> {
+        let bytes: Vec<u8> = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        TariAddress::from_bytes(&bytes)
+            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, e.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]

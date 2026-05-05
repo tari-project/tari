@@ -25,13 +25,14 @@ use tari_common::configuration::Network;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::OfflineSigningPayloadHashDomain;
+use tari_utilities::ByteArray;
 
 use crate::{
     MicroMinotari,
     TransactionBuilder,
     TransactionBuilderError,
     consensus::ConsensusConstants,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::TransactionKeyManagerInterface,
     offline_signing::{
         models::{
             OneSidedMultisigTransactionInfo,
@@ -44,8 +45,8 @@ use crate::{
             SignedOneSidedDepositMultisigTransactionResult,
             SignedOneSidedTransactionResult,
             SignedOneSidedWithdrawMultisigTransactionResult,
-            TransactionResult,
-            canonical_payload_bytes,
+            borsh_canonical_multisig,
+            borsh_canonical_one_sided,
             get_latest_version,
         },
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
@@ -58,69 +59,58 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// Computes the 64-byte challenge used to sign or verify an offline-signing
-/// payload.  The challenge is a domain-separated Blake2b-512 hash of the
-/// canonical payload bytes (the full JSON with the `payload_signature` field
-/// stripped out so the signed data is stable).
-fn payload_challenge(canonical: &[u8]) -> [u8; 64] {
-    let hash = DomainSeparatedHasher::<Blake2b<U64>, OfflineSigningPayloadHashDomain>::new_with_label(
-        "offline_signing_payload",
-    )
-    .chain_update(canonical)
-    .finalize();
+/// payload.  The challenge is a domain-separated Blake2b-512 hash that binds
+/// the nonce public key R, the view public key P, and the canonical Borsh bytes
+/// of the transaction data: `H_domain(R || P || canonical_borsh_bytes)`.
+///
+/// Binding R and P into the challenge prevents key-substitution attacks and
+/// ensures the signature cannot be replayed under a different nonce or key.
+fn payload_challenge(nonce_bytes: &[u8], view_pub_bytes: &[u8], canonical: &[u8]) -> [u8; 64] {
+    let hash = DomainSeparatedHasher::<Blake2b<U64>, OfflineSigningPayloadHashDomain>::new()
+        .chain_update(nonce_bytes)
+        .chain_update(view_pub_bytes)
+        .chain_update(canonical)
+        .finalize();
     let mut challenge = [0u8; 64];
     challenge.copy_from_slice(hash.as_ref());
     challenge
 }
 
-/// Signs the serialised `Prepare*` payload with the wallet's view private key.
+/// Signs the Borsh-serialised `Prepare*` payload with the wallet's view private key.
 ///
-/// The caller is responsible for passing the *serialised-without-signature*
-/// bytes as `canonical`.  The resulting [`PayloadIntegritySignature`] must be
-/// embedded into the struct before it is handed to the offline signer.
+/// The challenge binds the nonce public key R and view public key P so that neither
+/// can be substituted after signing.
 fn sign_payload<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     canonical: &[u8],
 ) -> Result<PayloadIntegritySignature, TransactionBuilderError> {
-    let challenge = payload_challenge(canonical);
     let view_key = key_manager.get_view_key();
     let nonce_key = key_manager.get_random_key(None, None)?;
+    let challenge = payload_challenge(nonce_key.pub_key.as_bytes(), view_key.pub_key.as_bytes(), canonical);
     let signature = key_manager.sign_with_nonce_and_challenge(&view_key.key_id, &nonce_key.key_id, &challenge)?;
-    let view_public_key = key_manager.get_public_key_at_key_id(&view_key.key_id)?;
-    Ok(PayloadIntegritySignature {
-        view_public_key,
-        signature,
-    })
+    Ok(PayloadIntegritySignature { signature })
 }
 
 /// Verifies the [`PayloadIntegritySignature`] embedded in a `Prepare*` result.
 ///
-/// Returns `Ok(())` when:
-/// 1. The `view_public_key` in the payload matches the key manager's own view public key.
-/// 2. The Schnorr signature over the canonical payload bytes is valid.
-///
-/// Returns an error if either check fails, and the caller MUST abort signing.
+/// The nonce public key R is recovered from the embedded signature; the view
+/// public key P is obtained from the offline signer's own key manager (both
+/// wallets share the same view key, so no key needs to be transmitted in the
+/// payload).  The challenge is reconstructed as `H_domain(R || P || canonical)`
+/// and the Schnorr verification is performed.
 fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     payload_sig: &PayloadIntegritySignature,
     canonical: &[u8],
 ) -> Result<(), TransactionBuilderError> {
-    // 1. Key identity check — ensure the payload was prepared by *this* wallet's
-    //    view key, not by some other key the attacker injected.
-    let expected_view_pub = key_manager.get_public_key_at_key_id(&TariKeyId::ViewKey)?;
-    if payload_sig.view_public_key != expected_view_pub {
-        return Err(TransactionBuilderError::Other(
-            "Offline payload integrity check failed: view public key in payload does not match this wallet's view key. \
-             The payload may have been tampered with in transit."
-                .to_string(),
-        ));
-    }
-
-    // 2. Signature check — verify the Schnorr signature over the canonical bytes.
-    let challenge = payload_challenge(canonical);
-    let pub_key = payload_sig
-        .view_public_key
+    let view_key = key_manager.get_view_key();
+    // R is the nonce public key embedded in the signature.
+    let nonce_bytes = payload_sig.signature.get_compressed_public_nonce().as_bytes();
+    let challenge = payload_challenge(nonce_bytes, view_key.pub_key.as_bytes(), canonical);
+    let pub_key = view_key
+        .pub_key
         .to_public_key()
-        .map_err(|e| TransactionBuilderError::Other(format!("Invalid view public key in payload: {e}")))?;
+        .map_err(|e| TransactionBuilderError::Other(format!("Invalid view public key: {e}")))?;
     let sig = payload_sig
         .signature
         .to_schnorr_signature()
@@ -132,19 +122,7 @@ fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
                 .to_string(),
         ));
     }
-
     Ok(())
-}
-
-/// Serialises `result` (which must already contain a valid `payload_signature`)
-/// to JSON, strips the signature field, and returns the canonical bytes that
-/// were originally signed.  Used by `verify_payload_signature`.
-fn canonical_bytes_of<T: TransactionResult>(result: &T) -> Result<Vec<u8>, TransactionBuilderError> {
-    let json = result
-        .to_json()
-        .map_err(|e| TransactionBuilderError::Other(format!("Failed to serialise result for verification: {e}")))?;
-    canonical_payload_bytes(&json)
-        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -180,30 +158,18 @@ pub fn prepare_one_sided_transaction_for_signing<TKeyManagerInterface: Transacti
         sender_address,
     };
 
-    // Build an incomplete result (placeholder signature) so we can serialise it
-    // to obtain the canonical bytes that will be signed.
-    let placeholder_sig = PayloadIntegritySignature {
-        view_public_key: CompressedPublicKey::default(),
-        signature: Default::default(),
-    };
-    let partial = PrepareOneSidedTransactionForSigningResult {
-        version: get_latest_version(),
-        tx_id,
-        info,
-        payload_signature: placeholder_sig,
-    };
-
-    // Serialise → strip signature field → hash → sign.
-    let json = partial
-        .to_json()
-        .map_err(|e| TransactionBuilderError::Other(format!("Serialisation failed: {e}")))?;
-    let canonical = canonical_payload_bytes(&json)
-        .map_err(|e| TransactionBuilderError::Other(format!("canonical_payload_bytes failed: {e}")))?;
+    let version = get_latest_version();
+    // Borsh-serialise version + tx_id + info to get the canonical bytes to sign.
+    // The payload_signature field is excluded by construction (it covers only the data).
+    let canonical = borsh_canonical_one_sided(&version, tx_id, &info)
+        .map_err(|e| TransactionBuilderError::Other(format!("borsh_canonical_one_sided failed: {e}")))?;
     let payload_signature = sign_payload(tx_builder.key_manager(), &canonical)?;
 
     Ok(PrepareOneSidedTransactionForSigningResult {
+        version,
+        tx_id,
+        info,
         payload_signature,
-        ..partial
     })
 }
 
@@ -251,27 +217,16 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
         public_keys,
     };
 
-    let placeholder_sig = PayloadIntegritySignature {
-        view_public_key: CompressedPublicKey::default(),
-        signature: Default::default(),
-    };
-    let partial = PrepareDepositMultisigTransactionResult {
-        version: get_latest_version(),
-        tx_id,
-        info,
-        payload_signature: placeholder_sig,
-    };
-
-    let json = partial
-        .to_json()
-        .map_err(|e| TransactionBuilderError::Other(format!("Serialisation failed: {e}")))?;
-    let canonical = canonical_payload_bytes(&json)
-        .map_err(|e| TransactionBuilderError::Other(format!("canonical_payload_bytes failed: {e}")))?;
+    let version = get_latest_version();
+    let canonical = borsh_canonical_multisig(&version, tx_id, &info)
+        .map_err(|e| TransactionBuilderError::Other(format!("borsh_canonical_multisig failed: {e}")))?;
     let payload_signature = sign_payload(tx_builder.key_manager(), &canonical)?;
 
     Ok(PrepareDepositMultisigTransactionResult {
+        version,
+        tx_id,
+        info,
         payload_signature,
-        ..partial
     })
 }
 
@@ -312,27 +267,16 @@ pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKe
         sender_address: sender,
     };
 
-    let placeholder_sig = PayloadIntegritySignature {
-        view_public_key: CompressedPublicKey::default(),
-        signature: Default::default(),
-    };
-    let partial = PrepareWithdrawMultisigTransactionResult {
-        version: get_latest_version(),
-        tx_id,
-        info,
-        payload_signature: placeholder_sig,
-    };
-
-    let json = partial
-        .to_json()
-        .map_err(|e| TransactionBuilderError::Other(format!("Serialisation failed: {e}")))?;
-    let canonical = canonical_payload_bytes(&json)
-        .map_err(|e| TransactionBuilderError::Other(format!("canonical_payload_bytes failed: {e}")))?;
+    let version = get_latest_version();
+    let canonical = borsh_canonical_one_sided(&version, tx_id, &info)
+        .map_err(|e| TransactionBuilderError::Other(format!("borsh_canonical_one_sided failed: {e}")))?;
     let payload_signature = sign_payload(tx_builder.key_manager(), &canonical)?;
 
     Ok(PrepareWithdrawMultisigTransactionResult {
+        version,
+        tx_id,
+        info,
         payload_signature,
-        ..partial
     })
 }
 
@@ -347,7 +291,8 @@ pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
     request: PrepareOneSidedTransactionForSigningResult,
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
-    let canonical = canonical_bytes_of(&request)?;
+    let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
     verify_payload_signature(key_manager, &request.payload_signature, &canonical)?;
 
     let signed_transaction =
@@ -367,7 +312,8 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
     request: PrepareDepositMultisigTransactionResult,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
-    let canonical = canonical_bytes_of(&request)?;
+    let canonical = borsh_canonical_multisig(&request.version, request.tx_id, &request.info)
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
     verify_payload_signature(key_manager, &request.payload_signature, &canonical)?;
 
     let signed_transaction =
@@ -387,7 +333,8 @@ pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterf
     request: PrepareWithdrawMultisigTransactionResult,
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
-    let canonical = canonical_bytes_of(&request)?;
+    let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
     verify_payload_signature(key_manager, &request.payload_signature, &canonical)?;
 
     let signed_transaction =
