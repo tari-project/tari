@@ -103,6 +103,12 @@ pub struct PayloadIntegritySignature {
 /// as an intermediary guarantees key-ordering is preserved exactly as the
 /// serialiser produced it for all other fields.
 pub fn canonical_payload_bytes(json_str: &str) -> Result<Vec<u8>, TransactionError> {
+    // serde_json::Value uses BTreeMap (sorted keys) by default, giving stable
+    // byte output regardless of the order in which fields appear in `json_str`.
+    // NOTE: if the `preserve_order` feature of serde_json is ever enabled this
+    // invariant still holds because both the prepare side and the sign side call
+    // this function on JSON produced by the same `to_json()` serialiser, so the
+    // field ordering is identical on both sides.
     let mut value: serde_json::Value =
         serde_json::from_str(json_str).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     if let Some(obj) = value.as_object_mut() {
