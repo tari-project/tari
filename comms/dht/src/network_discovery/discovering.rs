@@ -118,15 +118,42 @@ impl Discovering {
             }
         }
 
+        if self.stats.num_succeeded == 0 && !self.stats.sync_peers.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "Discovering: Round completed with 0/{} successful peer syncs",
+                self.stats.sync_peers.len(),
+            );
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Discovering: Round completed with {}/{} successful peer syncs",
+                self.stats.num_succeeded,
+                self.stats.sync_peers.len(),
+            );
+        }
+
         StateEvent::DiscoveryComplete(self.stats.clone())
     }
 
     async fn request_from_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
+        if !conn.is_connected() {
+            debug!(
+                target: LOG_TARGET,
+                "Discovering: Skipping sync peer '{}' because connection is no longer active",
+                conn.peer_node_id(),
+            );
+            return Err(NetworkDiscoveryError::PeerConnectionClosed {
+                peer: conn.peer_node_id().to_hex(),
+                reason: "Connection closed before RPC connect".to_string(),
+            });
+        }
+
         let rpc_connect_timeout = self.config().network_discovery.bootstrap_rpc_connect_timeout;
         let client = match tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<DhtClient>()).await {
             Ok(Ok(client)) => client,
             Ok(Err(e)) => {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Discovering: Failed to connect RPC client to sync peer {}: {}",
                     conn.peer_node_id(),
@@ -366,7 +393,8 @@ impl Discovering {
                     NetworkDiscoveryError::ConnectivityError(_) |
                     NetworkDiscoveryError::PeerValidationError(_) |
                     NetworkDiscoveryError::JoinError(_) |
-                    NetworkDiscoveryError::Timeout { .. } => {},
+                    NetworkDiscoveryError::Timeout { .. } |
+                    NetworkDiscoveryError::PeerConnectionClosed { .. } => {},
                 }
                 Err(err)
             },

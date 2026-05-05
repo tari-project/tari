@@ -59,6 +59,8 @@ pub enum NetworkDiscoveryError {
         peer: String,
         duration: String,
     },
+    #[error("Peer connection to {peer} closed: {reason}")]
+    PeerConnectionClosed { peer: String, reason: String },
 }
 
 // Custom PartialEq implementation that only compares the discriminant (variant type)
@@ -75,7 +77,8 @@ impl PartialEq for NetworkDiscoveryError {
                 (Self::EmptyPeerMessageReceived, Self::EmptyPeerMessageReceived) |
                 (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
                 (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
-                (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_))
+                (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_)) |
+                (Self::PeerConnectionClosed { .. }, Self::PeerConnectionClosed { .. })
         )
     }
 }
