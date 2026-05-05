@@ -1572,16 +1572,16 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             )
             .load::<CompletedTransactionSql>(&mut conn)?;
 
-        if txs.is_empty() {
-            return Ok(());
-        }
-
         info!(
             target: LOG_TARGET,
             "check_lock_height_status: Found {} confirmed transactions with lock_height > tip ({}), updating to locked",
             txs.len(),
             tip_height
         );
+
+        if txs.is_empty() {
+            return Ok(());
+        }
 
         for tx in txs {
             let status =
