@@ -83,7 +83,9 @@ pub const LEDGER_KEY_BRANCH: &str = "ledger_key";
 /// Display/parse form: `"code-template-author"`
 pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(
+    Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq, borsh::BorshSerialize, borsh::BorshDeserialize,
+)]
 /// Identifiers for different logical key types used by Tari components.
 ///
 /// A `TariKeyId` is an enum that captures the purpose and derivation context of a
@@ -305,7 +307,7 @@ impl fmt::Display for TariKeyId {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct SerializedKeyString {
     inner: String,
 }

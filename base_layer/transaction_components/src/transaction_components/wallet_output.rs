@@ -60,7 +60,7 @@ use crate::{
 
 /// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, borsh::BorshSerialize)]
 pub struct WalletOutput {
     version: TransactionOutputVersion,
     value: MicroMinotari,
@@ -80,8 +80,10 @@ pub struct WalletOutput {
     output_hash: FixedHash,
     commitment: CompressedCommitment,
     #[serde(skip)]
+    #[borsh(skip)]
     input: OnceLock<TransactionInput>,
     #[serde(skip)]
+    #[borsh(skip)]
     output: OnceLock<TransactionOutput>,
 }
 
@@ -863,16 +865,3 @@ impl Debug for WalletOutput {
     }
 }
 
-/// Borsh serialisation for `WalletOutput` — used when hashing the payload of an
-/// offline-signing request to detect in-transit tampering.
-///
-/// `output_hash` is the consensus hash over ALL output fields; binding the
-/// signature to it is equivalent to binding it to the complete output content.
-/// Serialising `value` alongside it provides an easily human-verifiable
-/// cross-check of the amount without recomputing the full hash.
-impl borsh::BorshSerialize for WalletOutput {
-    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
-        borsh::BorshSerialize::serialize(&self.output_hash, writer)?;
-        borsh::BorshSerialize::serialize(&self.value, writer)
-    }
-}

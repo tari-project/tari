@@ -65,10 +65,13 @@ use crate::{
 ///
 /// Binding R and P into the challenge prevents key-substitution attacks and
 /// ensures the signature cannot be replayed under a different nonce or key.
-fn payload_challenge(nonce_bytes: &[u8], view_pub_bytes: &[u8], canonical: &[u8]) -> [u8; 64] {
+///
+/// Both keys are taken as typed `&CompressedPublicKey` so the caller cannot
+/// accidentally pass an arbitrary byte slice in place of a public key.
+fn payload_challenge(nonce_pub: &CompressedPublicKey, view_pub: &CompressedPublicKey, canonical: &[u8]) -> [u8; 64] {
     let hash = DomainSeparatedHasher::<Blake2b<U64>, OfflineSigningPayloadHashDomain>::new()
-        .chain_update(nonce_bytes)
-        .chain_update(view_pub_bytes)
+        .chain_update(nonce_pub.as_bytes())
+        .chain_update(view_pub.as_bytes())
         .chain_update(canonical)
         .finalize();
     let mut challenge = [0u8; 64];
@@ -86,7 +89,7 @@ fn sign_payload<KM: TransactionKeyManagerInterface>(
 ) -> Result<PayloadIntegritySignature, TransactionBuilderError> {
     let view_key = key_manager.get_view_key();
     let nonce_key = key_manager.get_random_key(None, None)?;
-    let challenge = payload_challenge(nonce_key.pub_key.as_bytes(), view_key.pub_key.as_bytes(), canonical);
+    let challenge = payload_challenge(&nonce_key.pub_key, &view_key.pub_key, canonical);
     let signature = key_manager.sign_with_nonce_and_challenge(&view_key.key_id, &nonce_key.key_id, &challenge)?;
     Ok(PayloadIntegritySignature { signature })
 }
@@ -105,8 +108,8 @@ fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
 ) -> Result<(), TransactionBuilderError> {
     let view_key = key_manager.get_view_key();
     // R is the nonce public key embedded in the signature.
-    let nonce_bytes = payload_sig.signature.get_compressed_public_nonce().as_bytes();
-    let challenge = payload_challenge(nonce_bytes, view_key.pub_key.as_bytes(), canonical);
+    let nonce_pub = payload_sig.signature.get_compressed_public_nonce();
+    let challenge = payload_challenge(nonce_pub, &view_key.pub_key, canonical);
     let pub_key = view_key
         .pub_key
         .to_public_key()
