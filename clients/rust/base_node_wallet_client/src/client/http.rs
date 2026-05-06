@@ -464,6 +464,7 @@ impl BaseNodeWalletClient for Client {
             "method": "submit_transaction",
             "params": {
                 "transaction": transaction,
+                "version": 2,
             }
         });
 
