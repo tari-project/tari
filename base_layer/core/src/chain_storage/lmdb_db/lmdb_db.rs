@@ -337,8 +337,15 @@ pub fn get_all_database_names() -> Vec<&'static str> {
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
 type CodeTemplateRegistrationKey = CompositeKey<40>;
-/// Core database creation logic shared between public functions
-fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDBStore, File), ChainStorageError> {
+/// Core database creation logic shared between public functions.
+///
+/// Exposed `pub(crate)` so tests can open an LMDB at a known path with the exact same
+/// database list and flags as the production code path — used by the byte-level fixture
+/// comparison test in `chain_storage::tests::lmdb_unit_tests`.
+pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
+    path: P,
+    config: LMDBConfig,
+) -> Result<(LMDBStore, File), ChainStorageError> {
     let flags = db::CREATE;
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
     fs::create_dir_all(&path)?;
