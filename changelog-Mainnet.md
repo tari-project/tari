@@ -2,6 +2,25 @@ All notable changes to this project will be documented in this file. See [standa
 
 # Changelog
 
+## [5.3.1](https://github.com/tari-project/tari/compare/v5.3.1...v5.3.0) (2026-05-07)
+
+
+### Features
+
+* add LMDB unit tests for BlockchainBackend read methods ([#7741](https://github.com/tari-project/tari/issues/7741)) ([b7cf7f1](https://github.com/tari-project/tari/commit/b7cf7f1121d85eef672d4a3a82edbd64dcd7cf32)), closes [#7715](https://github.com/tari-project/tari/issues/7715)
+* add offline one-sided transaction signing cucumber test ([#7743](https://github.com/tari-project/tari/issues/7743)) ([66581fe](https://github.com/tari-project/tari/commit/66581fed8042deb541748d47019fac7608b107b5)), closes [#7736](https://github.com/tari-project/tari/issues/7736)
+
+
+### Bug Fixes
+
+* prevent EADDRINUSE race on gRPC handoff from readiness server ([#7815](https://github.com/tari-project/tari/issues/7815)) ([61b364e](https://github.com/tari-project/tari/commit/61b364eaaa17e64ff9dd293f757cd2b76015edc4))
+* check sidechain validation rules ([#7801](https://github.com/tari-project/tari/issues/7801)) ([1c23b6f](https://github.com/tari-project/tari/commit/1c23b6f0b206d1fc046e34cdd7fc5a6497f0a9ac))
+* clean up network start logs ([#7809](https://github.com/tari-project/tari/issues/7809)) ([9b2fa62](https://github.com/tari-project/tari/commit/9b2fa629acc5a19040e2217f5a608b65f9776c14))
+* validate tx to look at lock status ([#7808](https://github.com/tari-project/tari/issues/7808)) ([c32026d](https://github.com/tari-project/tari/commit/c32026d739114e3b04034e02a05a730c011c8d8f))
+* **deps:** update rustls-webpki for RUSTSEC-2026-0104 ([#7791](https://github.com/tari-project/tari/issues/7791)) ([e2d1e4c](https://github.com/tari-project/tari/commit/e2d1e4c7c68fe8583b2cf799341ef2d9c95d582d))
+* **deps:** upgrade diesel to 2.3.8 for RUSTSEC-2026-0111 ([#7790](https://github.com/tari-project/tari/issues/7790)) ([725ddf2](https://github.com/tari-project/tari/commit/725ddf2cd80236d4de1c3aa17515a6f5ccd119d3))
+* **deps:** upgrade rand to 0.10
+
 ## [5.2.1](https://github.com/tari-project/tari/compare/v5.2.1...v5.3.0) (2026-04-28)
 
 
