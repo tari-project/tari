@@ -29,6 +29,7 @@ use crate::mempool::{
     StateResponse,
     StatsResponse,
     TxStorageResponse,
+    TxStorageResponseWithRejectionReason,
     service::{MempoolRequest, MempoolResponse},
 };
 
@@ -76,6 +77,20 @@ impl MempoolHandle {
             .await??
         {
             MempoolResponse::TxStorage(response) => Ok(response),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
+        }
+    }
+
+    pub async fn submit_transaction_with_rejection_reason(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<TxStorageResponseWithRejectionReason, MempoolServiceError> {
+        match self
+            .inner
+            .call(MempoolRequest::SubmitTransactionWithRejectionReason(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorageWithRejectionReason(response) => Ok(response),
             _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }

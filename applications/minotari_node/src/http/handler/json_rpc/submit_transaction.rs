@@ -26,7 +26,7 @@ use log::{debug, error};
 use tari_core::{
     base_node::rpc::{BaseNodeWalletQueryService, query_service},
     chain_storage::BlockchainBackend,
-    mempool::{TxStorageResponse, service::MempoolHandle},
+    mempool::{TxStorageResponse, TxStorageResponseWithRejectionReason, service::MempoolHandle},
 };
 use tari_transaction_components::{
     rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse},
@@ -48,48 +48,104 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
-    let res = match mempool_service.submit_transaction(transaction).await {
+    let res = match mempool_service
+        .submit_transaction_with_rejection_reason(transaction)
+        .await
+    {
         Ok(response) => {
             debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
-            match response {
-                TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
-                    accepted: true,
-                    rejection_reason: TxSubmissionRejectionReason::None,
-                    is_synced,
-                },
-
-                TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::Orphan,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::TimeLocked,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredAlreadySpent |
-                TxStorageResponse::ReorgPool |
-                TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
-                    is_synced,
-                },
-            }
+            tx_submission_response_from_mempool_response(response, is_synced)
         },
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to submit transaction: {e}"));
         },
     };
     Ok(res)
+}
+
+fn tx_submission_response_from_mempool_response(
+    response: TxStorageResponseWithRejectionReason,
+    is_synced: bool,
+) -> TxSubmissionResponse {
+    match response.storage_response {
+        TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
+            accepted: true,
+            rejection_reason: TxSubmissionRejectionReason::None,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+        TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::Orphan,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+        TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+        TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::TimeLocked,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+        TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+        TxStorageResponse::NotStoredAlreadySpent => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::DoubleSpend,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+        TxStorageResponse::ReorgPool | TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
+            rejection_reason_details: response.rejection_reason,
+            is_synced,
+        },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn includes_detailed_rejection_reason_in_http_response() {
+        let detail = "Consensus rule violation: range proof verification failed".to_string();
+        let response = tx_submission_response_from_mempool_response(
+            TxStorageResponseWithRejectionReason::rejected(TxStorageResponse::NotStoredConsensus, detail.clone()),
+            true,
+        );
+
+        assert!(!response.accepted);
+        assert_eq!(response.rejection_reason, TxSubmissionRejectionReason::ValidationFailed);
+        assert_eq!(response.rejection_reason_details, Some(detail));
+        assert!(response.is_synced);
+    }
+
+    #[test]
+    fn maps_already_spent_to_double_spend_for_http_wallet_feedback() {
+        let response = tx_submission_response_from_mempool_response(
+            TxStorageResponseWithRejectionReason::rejected(
+                TxStorageResponse::NotStoredAlreadySpent,
+                "Transaction contains input(s) that have already been spent".to_string(),
+            ),
+            true,
+        );
+
+        assert!(!response.accepted);
+        assert_eq!(response.rejection_reason, TxSubmissionRejectionReason::DoubleSpend);
+        assert_eq!(
+            response.rejection_reason_details.as_deref(),
+            Some("Transaction contains input(s) that have already been spent")
+        );
+    }
 }

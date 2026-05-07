@@ -35,6 +35,7 @@ use crate::{
     mempool::{
         Mempool,
         TxStorageResponse,
+        TxStorageResponseWithRejectionReason,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
     },
 };
@@ -68,6 +69,7 @@ impl MempoolInboundHandlers {
             GetStats,
             GetTxStateByExcessSig,
             SubmitTransaction,
+            SubmitTransactionWithRejectionReason,
         };
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
@@ -86,6 +88,20 @@ impl MempoolInboundHandlers {
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
                 Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+            },
+            SubmitTransactionWithRejectionReason(tx) => {
+                let first_tx_kernel_excess_sig = tx
+                    .first_kernel_excess_sig()
+                    .ok_or(MempoolServiceError::TransactionNoKernels)?
+                    .get_signature()
+                    .to_hex();
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction ({first_tx_kernel_excess_sig}) submitted using detailed request."
+                );
+                Ok(MempoolResponse::TxStorageWithRejectionReason(
+                    self.submit_transaction_with_rejection_reason(tx, None).await?,
+                ))
             },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
@@ -127,6 +143,17 @@ impl MempoolInboundHandlers {
         tx: Transaction,
         source_peer: Option<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
+        Ok(self
+            .submit_transaction_with_rejection_reason(tx, source_peer)
+            .await?
+            .storage_response)
+    }
+
+    async fn submit_transaction_with_rejection_reason(
+        &mut self,
+        tx: Transaction,
+        source_peer: Option<NodeId>,
+    ) -> Result<TxStorageResponseWithRejectionReason, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {tx}");
 
         let tx = Arc::new(tx);
@@ -141,10 +168,11 @@ impl MempoolInboundHandlers {
                 target: LOG_TARGET,
                 "Mempool already has transaction: {kernel_excess_sig}"
             );
-            return Ok(tx_storage);
+            return Ok(TxStorageResponseWithRejectionReason::accepted(tx_storage));
         }
-        match self.mempool.insert(tx.clone()).await {
-            Ok(tx_storage) => {
+        match self.mempool.insert_with_rejection_reason(tx.clone()).await {
+            Ok(response) => {
+                let tx_storage = response.storage_response.clone();
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
                     metrics::inbound_transactions().inc();
@@ -167,7 +195,7 @@ impl MempoolInboundHandlers {
                         .propagate_tx(tx, source_peer.into_iter().collect())
                         .await?;
                 }
-                Ok(tx_storage)
+                Ok(response)
             },
             Err(e) => Err(MempoolServiceError::MempoolError(e)),
         }

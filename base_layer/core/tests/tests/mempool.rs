@@ -1437,9 +1437,17 @@ async fn validation_reject_min_fee() {
     let validator =
         TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
     validator.validate(&tx, None, None, u64::MAX).unwrap();
-    let response = mempool.insert(Arc::new(tx)).await.unwrap();
+    let response = mempool.insert_with_rejection_reason(Arc::new(tx)).await.unwrap();
     // make sure the tx was not accepted into the mempool
-    assert!(matches!(response, TxStorageResponse::NotStoredFeeTooLow));
+    assert!(matches!(
+        response.storage_response,
+        TxStorageResponse::NotStoredFeeTooLow
+    ));
+    assert!(response
+        .rejection_reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("below this mempool's minimum fee"));
 }
 
 #[tokio::test]

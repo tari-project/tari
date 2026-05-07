@@ -28,6 +28,8 @@ use serde::{Deserialize, Serialize};
 pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejection_reason_details: Option<String>,
     pub is_synced: bool,
 }
 

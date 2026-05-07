@@ -32,7 +32,7 @@ use tari_common_types::{
     types::CompressedSignature,
 };
 use tari_transaction_components::{
-    rpc::models::{TxLocation, TxSubmissionRejectionReason},
+    rpc::models::{TxLocation, TxSubmissionRejectionReason, TxSubmissionResponse},
     transaction_components::Transaction,
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
@@ -109,9 +109,9 @@ where
                 },
             };
 
-            if !(completed_tx.status == LegacyTransactionStatus::Completed ||
-                completed_tx.status == LegacyTransactionStatus::Broadcast ||
-                completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
+            if !(completed_tx.status == LegacyTransactionStatus::Completed
+                || completed_tx.status == LegacyTransactionStatus::Broadcast
+                || completed_tx.status == LegacyTransactionStatus::MinedUnconfirmed)
             {
                 debug!(
                     target: LOG_TARGET,
@@ -197,38 +197,11 @@ where
             return Ok(false);
         }
 
-        if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
+        if let Some((rejection_reason, reason_error, reason)) = rejection_error_and_cancellation_reason(&response) {
             error!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
+                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, rejection_reason
             );
-
-            let (reason_error, reason) = match response.rejection_reason {
-                TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => (
-                    TransactionServiceError::MempoolRejectionInvalidTransaction,
-                    TxCancellationReason::InvalidTransaction,
-                ),
-                TxSubmissionRejectionReason::DoubleSpend => (
-                    TransactionServiceError::MempoolRejectionDoubleSpend,
-                    TxCancellationReason::DoubleSpend,
-                ),
-                TxSubmissionRejectionReason::Orphan => (
-                    TransactionServiceError::MempoolRejectionOrphan,
-                    TxCancellationReason::Orphan,
-                ),
-                TxSubmissionRejectionReason::TimeLocked => (
-                    TransactionServiceError::MempoolRejectionTimeLocked,
-                    TxCancellationReason::TimeLocked,
-                ),
-                TxSubmissionRejectionReason::FeeTooLow => (
-                    TransactionServiceError::MempoolRejectionFeeTooLow,
-                    TxCancellationReason::FeeTooLow,
-                ),
-                TxSubmissionRejectionReason::AlreadyMined => (
-                    TransactionServiceError::MempoolRejectionAlreadyMined,
-                    TxCancellationReason::AlreadyMined,
-                ),
-            };
 
             self.cancel_pending_transaction(reason).await;
 
@@ -309,9 +282,9 @@ where
             );
             Ok(true)
         } else if response.location != TxLocation::InMempool {
-            if self.last_rejection.is_none() ||
-                self.last_rejection.unwrap().elapsed() >
-                    self.resources.config.transaction_mempool_resubmission_window
+            if self.last_rejection.is_none()
+                || self.last_rejection.unwrap().elapsed()
+                    > self.resources.config.transaction_mempool_resubmission_window
             {
                 info!(
                     target: LOG_TARGET,
@@ -406,8 +379,65 @@ where
     }
 }
 
+fn rejection_error_and_cancellation_reason(
+    response: &TxSubmissionResponse,
+) -> Option<(String, TransactionServiceError, TxCancellationReason)> {
+    if response.accepted || response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
+        return None;
+    }
+
+    let rejection_reason = response
+        .rejection_reason_details
+        .clone()
+        .unwrap_or_else(|| response.rejection_reason.to_string());
+
+    let reason = match response.rejection_reason {
+        TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => {
+            TxCancellationReason::InvalidTransaction
+        },
+        TxSubmissionRejectionReason::DoubleSpend => TxCancellationReason::DoubleSpend,
+        TxSubmissionRejectionReason::Orphan => TxCancellationReason::Orphan,
+        TxSubmissionRejectionReason::TimeLocked => TxCancellationReason::TimeLocked,
+        TxSubmissionRejectionReason::FeeTooLow => TxCancellationReason::FeeTooLow,
+        TxSubmissionRejectionReason::AlreadyMined => return None,
+    };
+
+    Some((
+        rejection_reason.clone(),
+        TransactionServiceError::MempoolRejection {
+            reason: rejection_reason,
+        },
+        reason,
+    ))
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TxBroadcastMode {
     TransactionSubmission,
     TransactionQuery,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn rejection_error_prefers_detail_text_for_wallet_feedback() {
+        let detail = "Validation failed: input already spent by transaction abc123".to_string();
+        let response = TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+            rejection_reason_details: Some(detail.clone()),
+            is_synced: true,
+        };
+
+        let (reason_text, error, cancellation_reason) = rejection_error_and_cancellation_reason(&response).unwrap();
+
+        assert_eq!(reason_text, detail);
+        assert_eq!(cancellation_reason, TxCancellationReason::InvalidTransaction);
+        match error {
+            TransactionServiceError::MempoolRejection { reason } => assert_eq!(reason, detail),
+            err => panic!("unexpected error: {err:?}"),
+        }
+    }
 }

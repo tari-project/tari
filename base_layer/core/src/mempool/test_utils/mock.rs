@@ -34,6 +34,7 @@ use crate::mempool::{
     StateResponse,
     StatsResponse,
     TxStorageResponse,
+    TxStorageResponseWithRejectionReason,
     service::{MempoolHandle, MempoolRequest, MempoolResponse},
 };
 
@@ -51,6 +52,7 @@ pub struct MempoolMockState {
     get_state: Arc<Mutex<StateResponse>>,
     get_tx_state_by_excess_sig: Arc<Mutex<TxStorageResponse>>,
     submit_transaction: Arc<Mutex<TxStorageResponse>>,
+    submit_transaction_with_rejection_reason: Arc<Mutex<TxStorageResponseWithRejectionReason>>,
     calls: Arc<AtomicUsize>,
 }
 
@@ -68,6 +70,9 @@ impl Default for MempoolMockState {
             })),
             get_tx_state_by_excess_sig: Arc::new(Mutex::new(TxStorageResponse::NotStored)),
             submit_transaction: Arc::new(Mutex::new(TxStorageResponse::NotStored)),
+            submit_transaction_with_rejection_reason: Arc::new(Mutex::new(
+                TxStorageResponseWithRejectionReason::accepted(TxStorageResponse::NotStored),
+            )),
             calls: Arc::new(Default::default()),
         }
     }
@@ -88,6 +93,13 @@ impl MempoolMockState {
 
     pub async fn set_submit_transaction_response(&self, resp: TxStorageResponse) {
         *self.submit_transaction.lock().await = resp;
+    }
+
+    pub async fn set_submit_transaction_with_rejection_reason_response(
+        &self,
+        resp: TxStorageResponseWithRejectionReason,
+    ) {
+        *self.submit_transaction_with_rejection_reason.lock().await = resp;
     }
 
     fn inc_call_count(&self) {
@@ -131,6 +143,7 @@ impl MempoolServiceMock {
             GetStats,
             GetTxStateByExcessSig,
             SubmitTransaction,
+            SubmitTransactionWithRejectionReason,
         };
 
         self.state.inc_call_count();
@@ -142,6 +155,13 @@ impl MempoolServiceMock {
             )),
             SubmitTransaction(_) => Ok(MempoolResponse::TxStorage(
                 self.state.submit_transaction.lock().await.clone(),
+            )),
+            SubmitTransactionWithRejectionReason(_) => Ok(MempoolResponse::TxStorageWithRejectionReason(
+                self.state
+                    .submit_transaction_with_rejection_reason
+                    .lock()
+                    .await
+                    .clone(),
             )),
             GetFeePerGramStats { .. } => {
                 unimplemented!()

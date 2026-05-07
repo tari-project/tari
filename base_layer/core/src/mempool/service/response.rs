@@ -27,7 +27,7 @@ use tari_transaction_components::rpc::models::FeePerGramStat;
 
 use crate::{
     common::RequestKey,
-    mempool::{StateResponse, StatsResponse, TxStorageResponse},
+    mempool::{StateResponse, StatsResponse, TxStorageResponse, TxStorageResponseWithRejectionReason},
 };
 
 /// API Response enum for Mempool responses.
@@ -36,17 +36,21 @@ pub enum MempoolResponse {
     Stats(StatsResponse),
     State(StateResponse),
     TxStorage(TxStorageResponse),
+    TxStorageWithRejectionReason(TxStorageResponseWithRejectionReason),
     FeePerGramStats { response: Vec<FeePerGramStat> },
     FilteredOutputs(Vec<HashOutput>),
 }
 
 impl fmt::Display for MempoolResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use MempoolResponse::{FeePerGramStats, FilteredOutputs, State, Stats, TxStorage};
+        use MempoolResponse::{
+            FeePerGramStats, FilteredOutputs, State, Stats, TxStorage, TxStorageWithRejectionReason,
+        };
         match &self {
             Stats(_) => write!(f, "Stats"),
             State(_) => write!(f, "State"),
             TxStorage(_) => write!(f, "TxStorage"),
+            TxStorageWithRejectionReason(_) => write!(f, "TxStorageWithRejectionReason"),
             FeePerGramStats { response } => write!(f, "FeePerGramStats({} item(s))", response.len()),
             FilteredOutputs(outputs) => write!(f, "FilteredOutputs({} item(s))", outputs.len()),
         }

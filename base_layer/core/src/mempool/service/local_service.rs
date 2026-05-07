@@ -28,6 +28,7 @@ use crate::mempool::{
     StateResponse,
     StatsResponse,
     TxStorageResponse,
+    TxStorageResponseWithRejectionReason,
     service::{MempoolRequest, MempoolResponse, MempoolServiceError},
 };
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
@@ -80,6 +81,20 @@ impl LocalMempoolService {
             .await??
         {
             MempoolResponse::TxStorage(s) => Ok(s),
+            _ => Err(MempoolServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_transaction_with_rejection_reason(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<TxStorageResponseWithRejectionReason, MempoolServiceError> {
+        match self
+            .request_sender
+            .call(MempoolRequest::SubmitTransactionWithRejectionReason(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorageWithRejectionReason(s) => Ok(s),
             _ => Err(MempoolServiceError::UnexpectedApiResponse),
         }
     }

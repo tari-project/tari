@@ -35,6 +35,7 @@ use crate::{
         StateResponse,
         StatsResponse,
         TxStorageResponse,
+        TxStorageResponseWithRejectionReason,
         error::MempoolError,
         mempool_storage::MempoolStorage,
     },
@@ -65,9 +66,16 @@ impl Mempool {
 
     /// Insert an unconfirmed transaction into the Mempool.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        Ok(self.insert_with_rejection_reason(tx).await?.storage_response)
+    }
+
+    pub async fn insert_with_rejection_reason(
+        &self,
+        tx: Arc<Transaction>,
+    ) -> Result<TxStorageResponseWithRejectionReason, MempoolError> {
         self.with_write_access(|storage| {
             storage
-                .insert(tx)
+                .insert_with_rejection_reason(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))
         })
         .await
