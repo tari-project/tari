@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.3.1-pre.2](https://github.com/tari-project/tari/compare/v5.3.1-pre.1...v5.3.1-pre.2) (2026-05-07)
+
+
+### Features
+
+* add LMDB unit tests for BlockchainBackend read methods ([#7741](https://github.com/tari-project/tari/issues/7741)) ([b7cf7f1](https://github.com/tari-project/tari/commit/b7cf7f1121d85eef672d4a3a82edbd64dcd7cf32)), closes [#7715](https://github.com/tari-project/tari/issues/7715)
+
+
+### Bug Fixes
+
+* prevent EADDRINUSE race on gRPC handoff from readiness server ([#7815](https://github.com/tari-project/tari/issues/7815)) ([61b364e](https://github.com/tari-project/tari/commit/61b364eaaa17e64ff9dd293f757cd2b76015edc4))
+
 ### [5.3.1-pre.1](https://github.com/tari-project/tari/compare/v5.3.1-pre.0...v5.3.1-pre.1) (2026-05-05)
 
 
