@@ -113,6 +113,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         tx_id: TxId,
         reason: TxCancellationReason,
+        details: Option<String>,
     ) -> Result<(), TransactionStorageError>;
     /// Set cancellation on Pending transaction, this will update the transaction status
     fn set_pending_transaction_cancellation_status(
@@ -795,8 +796,9 @@ where T: TransactionBackend + 'static
         &self,
         tx_id: TxId,
         reason: TxCancellationReason,
+        details: Option<String>,
     ) -> Result<(), TransactionStorageError> {
-        self.db.reject_completed_transaction(tx_id, reason)
+        self.db.reject_completed_transaction(tx_id, reason, details)
     }
 
     pub fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {

@@ -726,11 +726,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         tx_id: TxId,
         reason: TxCancellationReason,
+        details: Option<String>,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        match CompletedTransactionSql::reject_completed_transaction(tx_id, reason, &mut conn) {
+        match CompletedTransactionSql::reject_completed_transaction(tx_id, reason, details, &mut conn) {
             Ok(_) => {},
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -2223,6 +2224,7 @@ pub struct CompletedTransactionSql {
     pub change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
     lock_height: Option<i64>,
+    rejection_reason: Option<String>,
 }
 
 impl CompletedTransactionSql {
@@ -2380,6 +2382,7 @@ impl CompletedTransactionSql {
     pub fn reject_completed_transaction(
         tx_id: TxId,
         reason: TxCancellationReason,
+        details: Option<String>,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
         diesel::update(
@@ -2390,6 +2393,7 @@ impl CompletedTransactionSql {
         .set(UpdateCompletedTransactionSql {
             cancelled: Some(Some(reason as i32)),
             status: Some(LegacyTransactionStatus::Rejected as i32),
+            rejection_reason: Some(details),
             ..Default::default()
         })
         .execute(conn)
@@ -2664,6 +2668,7 @@ impl CompletedTransactionSql {
             received_output_hashes: Some(fixedhash_vec_to_bytes(&c.received_output_hashes)),
             change_output_hashes: Some(fixedhash_vec_to_bytes(&c.change_output_hashes)),
             lock_height: Some(c.lock_height as i64),
+            rejection_reason: c.rejection_reason.clone(),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2803,6 +2808,7 @@ impl CompletedTransaction {
             received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
             change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
             lock_height,
+            rejection_reason: c.rejection_reason.clone(),
         };
 
         // zeroize sensitive data
@@ -2832,6 +2838,7 @@ pub struct UpdateCompletedTransactionSql {
     received_output_hashes: Option<Option<Vec<u8>>>,
     change_output_hashes: Option<Option<Vec<u8>>>,
     lock_height: Option<Option<i64>>,
+    rejection_reason: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

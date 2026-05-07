@@ -120,7 +120,7 @@ where
                 return Ok(self.tx_id);
             }
             if let Err(e) = check_transaction_size(&completed_tx.transaction, self.tx_id) {
-                self.cancel_pending_transaction(TxCancellationReason::Oversized).await;
+                self.cancel_pending_transaction(TxCancellationReason::Oversized, None).await;
                 return Err(e);
             }
 
@@ -240,7 +240,7 @@ where
                 ),
             };
 
-            self.cancel_pending_transaction(reason).await;
+            self.cancel_pending_transaction(reason, response.details.clone()).await;
 
             let _size = self
                 .resources
@@ -336,7 +336,7 @@ where
                     "Transaction (TxId: {}) has been {}, cancelling transaction",
                     self.tx_id, reason,
                 );
-                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction)
+                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction, None)
                     .await;
 
                 let _size = self
@@ -394,7 +394,7 @@ where
         }
     }
 
-    async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason) {
+    async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason, details: Option<String>) {
         if let Err(e) = self
             .resources
             .output_manager_service
@@ -407,7 +407,7 @@ where
                 self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason) {
+        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason, details) {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel pending TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
