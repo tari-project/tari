@@ -53,11 +53,10 @@ pub async fn handle<B: BlockchainBackend + 'static>(
                 .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
             // Version defaults to 1 for backward compatibility with older wallets.
             // V2 adds the optional `details` field in the response.
-            let version: u8 = request
+            let version: u64 = request
                 .params
                 .get("version")
                 .and_then(|v| v.as_u64())
-                .map(|v| v as u8)
                 .unwrap_or(1);
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => {
