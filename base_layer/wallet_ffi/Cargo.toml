@@ -42,7 +42,7 @@ zeroize = "1"
 serde_json = { workspace = true }
 
 [target.'cfg(target_os="android")'.dependencies]
-openssl = { version = "0.10.78", features = ["vendored"] }
+openssl = { version = "0.10.79", features = ["vendored"] }
 
 [lib]
 crate-type = ["staticlib", "cdylib"]
