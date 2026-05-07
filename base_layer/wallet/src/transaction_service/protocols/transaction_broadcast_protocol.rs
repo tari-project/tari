@@ -198,10 +198,20 @@ where
         }
 
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
-            );
+            if let Some(ref details) = response.details {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) rejected by Base Node for reason: {} (details: {})",
+                    self.tx_id,
+                    response.rejection_reason,
+                    details
+                );
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
+                );
+            }
 
             let (reason_error, reason) = match response.rejection_reason {
                 TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => (
