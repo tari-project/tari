@@ -112,8 +112,7 @@ pub fn borsh_canonical_one_sided(
         .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
         .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    BorshSerialize::serialize(info, &mut buf)
-        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     Ok(buf)
 }
 
@@ -128,8 +127,7 @@ pub fn borsh_canonical_multisig(
         .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
         .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-    BorshSerialize::serialize(info, &mut buf)
-        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     Ok(buf)
 }
 

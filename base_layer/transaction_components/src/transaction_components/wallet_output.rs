@@ -864,4 +864,3 @@ impl Debug for WalletOutput {
             .finish()
     }
 }
-

@@ -120,8 +120,8 @@ fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
         .map_err(|e| TransactionBuilderError::Other(format!("Invalid signature in payload: {e}")))?;
     if !sig.verify_raw_uniform(&pub_key, &challenge[..]) {
         return Err(TransactionBuilderError::Other(
-            "Offline payload integrity check failed: payload signature is invalid. \
-             The payload was tampered with in transit or is corrupt."
+            "Offline payload integrity check failed: payload signature is invalid. The payload was tampered with in \
+             transit or is corrupt."
                 .to_string(),
         ));
     }
