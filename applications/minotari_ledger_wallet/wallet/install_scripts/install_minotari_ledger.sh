@@ -16,20 +16,35 @@ fi
 PYTHON_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo "   Found Python $PYTHON_VER"
 
-# macOS: install brew dependencies if needed
+# Detect missing system libraries and *advise* the user instead of running
+# `sudo apt-get install` blindly. Calling `sudo` from a launcher script is
+# disruptive (prompts for a password mid-flow, fails outright in
+# non-interactive contexts like CI) and `|| true` would mask real failures
+# that surface later as cryptic Python import errors.
+
+advise_install() {
+  echo
+  echo "  System library '$1' was not found."
+  echo "  Please install it before continuing, e.g.:"
+  echo "    $2"
+  echo
+}
+
 if [[ "$(uname)" == "Darwin" ]]; then
-  if command -v brew &>/dev/null; then
-    echo "\U0001f37a Installing system dependencies via Homebrew..."
-    brew install libusb 2>/dev/null || true
+  if ! pkg-config --exists libusb-1.0 2>/dev/null && ! [[ -f /opt/homebrew/lib/libusb-1.0.dylib ]] && ! [[ -f /usr/local/lib/libusb-1.0.dylib ]]; then
+    advise_install "libusb" "brew install libusb"
   fi
 fi
 
-# Linux: install libusb if missing
 if [[ "$(uname)" == "Linux" ]]; then
-  if command -v apt-get &>/dev/null; then
-    sudo apt-get install -y libhidapi-dev libusb-1.0-0-dev 2>/dev/null || true
-  elif command -v dnf &>/dev/null; then
-    sudo dnf install -y hidapi-devel libusb-devel 2>/dev/null || true
+  if ! pkg-config --exists libusb-1.0 2>/dev/null; then
+    if command -v apt-get &>/dev/null; then
+      advise_install "libusb / hidapi" "sudo apt-get install -y libhidapi-dev libusb-1.0-0-dev"
+    elif command -v dnf &>/dev/null; then
+      advise_install "libusb / hidapi" "sudo dnf install -y hidapi-devel libusb-devel"
+    else
+      advise_install "libusb / hidapi" "(use your distribution's package manager)"
+    fi
   fi
 fi
 

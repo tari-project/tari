@@ -4,13 +4,14 @@ A single cross-platform installer that automatically detects your connected Ledg
 
 ## Supported Ledger Models
 
-| Model | Detected via |
-|---|---|
-| Nano S | USB HID (PID 0x0001 / 0x1000) |
-| Nano S Plus | USB HID (PID 0x0004 / 0x4000) |
-| Nano X | USB HID (PID 0x0005 / 0x5000) |
-| Stax | USB HID (PID 0x0006 / 0x6000) |
-| Flex | USB HID (PID 0x0007 / 0x7000) |
+> Minotari does not ship an app for the original Nano S, only the Nano S Plus. The original Nano S is intentionally **not** detected by this installer.
+
+| Model | Slug | Detected via |
+|---|---|---|
+| Nano S Plus | `nanos+` | USB HID (PID 0x0004 / 0x4000) |
+| Nano X | `nanox` | USB HID (PID 0x0005 / 0x5000) |
+| Stax | `stax` | USB HID (PID 0x0006 / 0x6000) |
+| Flex | `flex` | USB HID (PID 0x0007 / 0x7000) |
 
 ## Requirements
 
@@ -40,11 +41,11 @@ python3 install_minotari_ledger.py
 
 ## What it does
 
-1. Installs Python dependencies (`ledgerctl`, `hid`, etc.) into an isolated virtual environment
-2. Detects the connected Ledger model via USB HID (with `ledgerctl info` as fallback)
-3. Fetches the latest Minotari release from GitHub
-4. Downloads and extracts the correct firmware zip for your model
-5. Installs the app onto the Ledger via `ledgerctl install`
+1. Installs Python dependencies (`ledgerwallet`, `protobuf`, `ecdsa`) into an isolated virtual environment. `hidapi` is pulled in transitively by `ledgerwallet`.
+2. Detects the connected Ledger model via USB HID (with `python -m ledgerwallet info` as fallback).
+3. Fetches the latest Minotari release from GitHub.
+4. Downloads and extracts the correct firmware zip for your model.
+5. Installs the app onto the Ledger via `python -m ledgerwallet install`.
 
 ## Troubleshooting
 

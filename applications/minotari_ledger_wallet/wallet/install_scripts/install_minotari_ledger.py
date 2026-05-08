@@ -2,8 +2,11 @@
 """
 Unified Minotari Ledger Wallet Installer
 
-Automatically detects the connected Ledger model (Nano S, Nano S Plus, Nano X,
-Stax, Flex) and installs the correct Minotari app firmware — no user input needed.
+Automatically detects the connected Ledger model (Nano S Plus, Nano X, Stax,
+Flex) and installs the correct Minotari app firmware — no user input needed.
+
+The original Nano S is **not** supported by Minotari and is intentionally
+omitted here.
 
 Supports: macOS, Windows, Linux
 Requires: Python 3.8+, pip
@@ -15,7 +18,6 @@ import subprocess
 import platform
 import json
 import tempfile
-import shutil
 import urllib.request
 import urllib.error
 import zipfile
@@ -27,15 +29,16 @@ import zipfile
 # All Ledger devices share vendor ID 0x2c97
 LEDGER_VENDOR_ID = 0x2C97
 
+# Slugs match the asset names in `ledger_app.toml` and the published release
+# bundles (`minotari_ledger_wallet-<slug>...zip`, `app_<slug>.json`). In
+# particular Nano S Plus is `nanos+`, NOT `nanosplus`.
+#
 # Some firmware versions expose different product IDs per transport;
 # we keep a broader map covering all known values.
 LEDGER_PRODUCT_IDS: dict = {
-    # Nano S
-    0x0001: "nanos",
-    0x1000: "nanos",
     # Nano S Plus
-    0x0004: "nanosplus",
-    0x4000: "nanosplus",
+    0x0004: "nanos+",
+    0x4000: "nanos+",
     # Nano X
     0x0005: "nanox",
     0x4005: "nanox",
@@ -83,7 +86,12 @@ def run(cmd, **kwargs):
 
 def ensure_dependencies():
     print("\n\U0001f4e6 Installing Python dependencies...")
-    packages = ["hid", "protobuf", "setuptools", "ecdsa", "ledgerwallet", "ledgerctl"]
+    # NOTE: ``ledgerctl`` is *not* a standalone PyPI package — the
+    # ``ledgerctl`` command is provided by ``ledgerwallet``. Likewise
+    # ``hid`` is pulled in transitively (as ``hidapi``) by ``ledgerwallet``,
+    # so we don't request it directly: doing so used to install a
+    # different, unrelated ``hid`` package and break import order.
+    packages = ["ledgerwallet", "protobuf", "ecdsa"]
     run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], capture_output=True)
     run([sys.executable, "-m", "pip", "install"] + packages)
     success("Dependencies installed")
@@ -113,22 +121,35 @@ def detect_ledger_model():
     except Exception as exc:
         warn(f"hid enumeration failed ({exc}) — falling back to ledgerctl.")
 
-    # Fallback: ask ledgerctl for device info
+    # Fallback: ask ledgerctl (via ledgerwallet) for device info.
+    #
+    # Match against full model names rather than slug substrings \u2014 the raw
+    # output is something like "Connected to Ledger Nano S Plus", and a
+    # naive substring check on "nanos" would mis-classify a Nano S Plus
+    # as a Nano S. Order doesn't matter once we use full names.
+    detection_map = {
+        "nano s plus": "nanos+",
+        "nano x": "nanox",
+        "flex": "flex",
+        "stax": "stax",
+    }
     try:
         result = subprocess.run(
-            ["ledgerctl", "info"],
+            [sys.executable, "-m", "ledgerwallet", "info"],
             capture_output=True, text=True, timeout=10
         )
-        output = result.stdout + result.stderr
-        for slug in ["flex", "stax", "nanosplus", "nanox", "nanos"]:
-            if slug in output.lower():
-                success(f"Detected Ledger {slug} via ledgerctl")
+        output = (result.stdout + result.stderr).lower()
+        for pattern, slug in detection_map.items():
+            if pattern in output:
+                success(f"Detected Ledger {pattern} via ledgerctl (slug={slug})")
                 return slug
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
     raise RuntimeError(
-        "No Ledger device detected.\n"
+        "No supported Ledger device detected.\n"
+        "Minotari supports Nano S Plus, Nano X, Stax, and Flex (the original "
+        "Nano S is not supported).\n"
         "Make sure the device is:\n"
         "  \u2022 Connected via USB\n"
         "  \u2022 Unlocked (PIN entered)\n"
@@ -233,7 +254,13 @@ def install_app(app_json):
     print("   \u2022 Ledger is connected via USB")
     print("   \u2022 Device is unlocked")
     print("   \u2022 Developer Mode is enabled\n")
-    run(["ledgerctl", "install", app_json])
+    # Use ``sys.executable -m ledgerwallet`` rather than a bare
+    # ``ledgerctl`` invocation: the latter relies on the active venv's
+    # console-scripts being on PATH, which is unreliable when this script
+    # is run from a non-interactive subprocess (CI, double-click launcher,
+    # etc.). Going through the interpreter pins the same Python install
+    # we used for ``ensure_dependencies``.
+    run([sys.executable, "-m", "ledgerwallet", "install", app_json])
 
 
 # ---------------------------------------------------------------------------
@@ -263,17 +290,19 @@ def main():
         error(str(exc))
         sys.exit(1)
 
-    # Download + extract into a temp dir
-    tmp_dir = tempfile.mkdtemp(prefix="minotari_ledger_")
-    try:
-        download_and_extract(url, filename, tmp_dir)
-        app_json = find_app_json(model, tmp_dir)
-        install_app(app_json)
-    except RuntimeError as exc:
-        error(str(exc))
-        sys.exit(1)
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    # Download + extract into a temp dir. Using ``TemporaryDirectory`` as a
+    # context manager guarantees cleanup even if the script is interrupted
+    # or an unexpected (non-RuntimeError) exception bubbles up — the manual
+    # mkdtemp / shutil.rmtree pair previously leaked the directory in those
+    # cases.
+    with tempfile.TemporaryDirectory(prefix="minotari_ledger_") as tmp_dir:
+        try:
+            download_and_extract(url, filename, tmp_dir)
+            app_json = find_app_json(model, tmp_dir)
+            install_app(app_json)
+        except RuntimeError as exc:
+            error(str(exc))
+            sys.exit(1)
 
     print()
     success("Minotari Ledger Wallet installed successfully!")
