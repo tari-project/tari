@@ -43,7 +43,7 @@ use minotari_wallet::{
     },
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
 };
-use rpassword::prompt_password_stdout;
+use rpassword::prompt_password as rpassword_prompt;
 use rustyline::Editor;
 use tari_common::{
     configuration::{MultiaddrList, bootstrap::prompt},
@@ -201,7 +201,7 @@ fn display_password_feedback(passphrase: &SafePassword) -> bool {
 }
 
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
-    let password = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+    let password = rpassword_prompt(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
 
     Ok(SafePassword::from(password))
 }
