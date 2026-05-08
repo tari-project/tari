@@ -21,4 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod blockchain_database;
+// `lmdb_unit_tests` exercises a static JSON/LMDB fixture generated against the testnet
+// (esmeralda) consensus parameters; the precomputed block / output / kernel hashes only
+// match when the build's target network feature is testnet, so we gate the module
+// accordingly. Mainnet, nextnet and stagenet builds skip the module entirely.
+#[cfg(tari_target_network_testnet)]
+mod lmdb_unit_tests;
 pub mod temp_db;

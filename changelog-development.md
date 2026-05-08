@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.3.1-pre.2](https://github.com/tari-project/tari/compare/v5.3.1-pre.1...v5.3.1-pre.2) (2026-05-07)
+
+
+### Features
+
+* add LMDB unit tests for BlockchainBackend read methods ([#7741](https://github.com/tari-project/tari/issues/7741)) ([b7cf7f1](https://github.com/tari-project/tari/commit/b7cf7f1121d85eef672d4a3a82edbd64dcd7cf32)), closes [#7715](https://github.com/tari-project/tari/issues/7715)
+
+
+### Bug Fixes
+
+* prevent EADDRINUSE race on gRPC handoff from readiness server ([#7815](https://github.com/tari-project/tari/issues/7815)) ([61b364e](https://github.com/tari-project/tari/commit/61b364eaaa17e64ff9dd293f757cd2b76015edc4))
+
+### [5.3.1-pre.1](https://github.com/tari-project/tari/compare/v5.3.1-pre.0...v5.3.1-pre.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* check sidechain validation rules ([#7801](https://github.com/tari-project/tari/issues/7801)) ([1c23b6f](https://github.com/tari-project/tari/commit/1c23b6f0b206d1fc046e34cdd7fc5a6497f0a9ac))
+* clean up network start logs ([#7809](https://github.com/tari-project/tari/issues/7809)) ([9b2fa62](https://github.com/tari-project/tari/commit/9b2fa629acc5a19040e2217f5a608b65f9776c14))
+* validate tx to look at lock status ([#7808](https://github.com/tari-project/tari/issues/7808)) ([c32026d](https://github.com/tari-project/tari/commit/c32026d739114e3b04034e02a05a730c011c8d8f))
+
 ### [5.3.1-pre.0](https://github.com/tari-project/tari/compare/v5.3.0-pre.12...v5.3.1-pre.0) (2026-04-29)
 
 

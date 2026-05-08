@@ -144,6 +144,28 @@ pub fn create_store_with_consensus_and_validators_and_config(
     .unwrap()
 }
 
+/// Like `create_new_blockchain` but with a custom `LMDBConfig`. Useful for generating small
+/// reference fixtures without pre-allocating hundreds of MB of LMDB map space.
+pub fn create_new_blockchain_with_lmdb_config(lmdb_config: LMDBConfig) -> BlockchainDatabase<TempDatabase> {
+    let rules = create_consensus_rules();
+    let temp_path = tari_test_utils::paths::create_temporary_data_path();
+    let backend = TempDatabase::from_path_with_lmdb_config(&temp_path, lmdb_config);
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let config = BlockchainDatabaseConfig::default();
+    BlockchainDatabase::start_new(
+        backend,
+        rules.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(rules, Default::default()),
+    )
+    .unwrap()
+}
+
 pub fn create_store_with_consensus(rules: BaseNodeConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
@@ -160,6 +182,33 @@ pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
 
 pub fn create_test_db() -> TempDatabase {
     TempDatabase::new()
+}
+
+/// Open an existing LMDB database at the given path and wrap it in a `BlockchainDatabase`.
+///
+/// This uses mock validators and disables orphan/bad-block cleanup at startup so that the
+/// database contents are preserved exactly as-is. Useful for opening pre-built test fixtures.
+pub fn open_blockchain_db_from_path<P: AsRef<Path>>(path: P) -> BlockchainDatabase<TempDatabase> {
+    let rules = create_consensus_rules();
+    let backend = TempDatabase::from_path(path);
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let config = BlockchainDatabaseConfig {
+        cleanup_orphans_at_startup: false,
+        clear_bad_blocks_at_startup: false,
+        ..Default::default()
+    };
+    BlockchainDatabase::start_new(
+        backend,
+        rules.clone(),
+        validators,
+        config,
+        DifficultyCalculator::new(rules, Default::default()),
+    )
+    .unwrap()
 }
 
 pub struct TempDatabase {
@@ -189,6 +238,16 @@ impl TempDatabase {
         }
     }
 
+    /// Like `from_path` but with a custom `LMDBConfig` (e.g. a small map size for test fixtures).
+    pub fn from_path_with_lmdb_config<P: AsRef<Path>>(temp_path: P, lmdb_config: LMDBConfig) -> Self {
+        let rules = create_consensus_rules();
+        Self {
+            db: Some(create_lmdb_database(&temp_path, lmdb_config, rules).unwrap()),
+            path: temp_path.as_ref().to_path_buf(),
+            delete_on_drop: true,
+        }
+    }
+
     pub fn disable_delete_on_drop(&mut self) -> &mut Self {
         self.delete_on_drop = false;
         self
@@ -196,6 +255,11 @@ impl TempDatabase {
 
     pub fn db(&self) -> &LMDBDatabase {
         self.db.as_ref().unwrap()
+    }
+
+    /// Returns the filesystem path to the underlying LMDB database directory.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 
