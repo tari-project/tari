@@ -562,8 +562,23 @@ impl CompletedTransaction {
 
 impl Display for CompletedTransaction {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        match self.cancelled {
-            Some(cancelled_reason) => write!(
+        let rejection = self.rejection_reason.as_deref().unwrap_or("");
+        match (&self.cancelled, self.rejection_reason.is_some()) {
+            (Some(cancelled_reason), true) if !rejection.is_empty() => write!(
+                fmt,
+                "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Cancelled: \
+                 {}, Rejection: {}",
+                self.tx_id,
+                self.source_address,
+                self.destination_address,
+                self.amount,
+                self.fee,
+                self.status,
+                self.timestamp,
+                cancelled_reason,
+                rejection,
+            ),
+            (Some(cancelled_reason), _) => write!(
                 fmt,
                 "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Cancelled: \
                  {}",
@@ -576,7 +591,20 @@ impl Display for CompletedTransaction {
                 self.timestamp,
                 cancelled_reason,
             ),
-            None => write!(
+            (None, true) if !rejection.is_empty() => write!(
+                fmt,
+                "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Rejection: \
+                 {}",
+                self.tx_id,
+                self.source_address,
+                self.destination_address,
+                self.amount,
+                self.fee,
+                self.status,
+                self.timestamp,
+                rejection,
+            ),
+            _ => write!(
                 fmt,
                 "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}",
                 self.tx_id,

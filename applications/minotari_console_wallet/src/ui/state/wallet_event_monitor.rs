@@ -118,7 +118,7 @@ impl WalletEventMonitor {
                                     notifier.transaction_mined(tx_id);
                                     self.add_notification(format!("Transaction Confirmed - TxId: {tx_id}")).await;
                                 },
-                                TransactionEvent::TransactionCancelled(tx_id, _) => {
+                                TransactionEvent::TransactionCancelled(tx_id, _, _) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     notifier.transaction_cancelled(tx_id);
