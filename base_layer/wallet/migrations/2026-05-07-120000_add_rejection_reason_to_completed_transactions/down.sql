@@ -1,7 +1,11 @@
 -- Reverse the addition of rejection_reason column from up.sql.
 -- SQLite does not support DROP COLUMN; recreate the table without the column.
 
-CREATE TABLE completed_transactions_new (
+-- 1. Rename current table to keep data safe
+ALTER TABLE completed_transactions RENAME TO completed_transactions_old;
+
+-- 2. Create table without rejection_reason
+CREATE TABLE completed_transactions (
     tx_id                       BIGINT PRIMARY KEY NOT NULL,
     source_address              BLOB               NOT NULL,
     destination_address         BLOB               NOT NULL,
@@ -28,15 +32,15 @@ CREATE TABLE completed_transactions_new (
     lock_height                 BIGINT             NULL DEFAULT NULL
 );
 
-INSERT INTO completed_transactions_new SELECT
+-- 3. Copy data from old table (excluding rejection_reason)
+INSERT INTO completed_transactions SELECT
     tx_id, source_address, destination_address, amount, fee, transaction_protocol,
     status, timestamp, cancelled, direction, send_count, last_send_timestamp,
     confirmations, mined_height, mined_in_block, mined_timestamp,
     transaction_signature_nonce, transaction_signature_key, payment_id,
     sent_output_hashes, received_output_hashes, change_output_hashes, user_payment_id,
     lock_height
-FROM completed_transactions;
+FROM completed_transactions_old;
 
-DROP TABLE completed_transactions;
-
-ALTER TABLE completed_transactions_new RENAME TO completed_transactions;
+-- 4. Drop the old table
+DROP TABLE completed_transactions_old;
