@@ -245,7 +245,11 @@ where
             let _size = self
                 .resources
                 .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id, reason)))
+                .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.tx_id,
+                reason,
+                response.details.clone().unwrap_or_default(),
+            )))
                 .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -345,6 +349,7 @@ where
                     .send(Arc::new(TransactionEvent::TransactionCancelled(
                         self.tx_id,
                         TxCancellationReason::InvalidTransaction,
+                        reason.clone(),
                     )))
                     .inspect_err(|e| {
                         trace!(

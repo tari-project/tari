@@ -3734,6 +3734,7 @@ where
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 tx_id,
                 TxCancellationReason::UserCancelled,
+                "User cancelled".to_string(),
             )))
             .inspect_err(|e| {
                 trace!(
@@ -3796,6 +3797,7 @@ where
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 tx_id,
                 TxCancellationReason::UserCancelled,
+                "User cancelled".to_string(),
             )))
             .inspect_err(|e| {
                 trace!(
