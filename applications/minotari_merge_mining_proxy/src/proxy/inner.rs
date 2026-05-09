@@ -54,7 +54,12 @@ use url::Url;
 use crate::{
     block_template_data::BlockTemplateRepository,
     block_template_manager::{BlockTemplateManager, MoneroMiningData},
-    common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
+    common::{
+        json_rpc,
+        monero_rpc::{CoreRpcErrorCode, TARI_MERGE_MINING_TAG_SIZE},
+        proxy,
+        proxy::convert_json_to_hyper_json_response,
+    },
     config::MergeMiningProxyConfig,
     error::MmProxyError,
     proxy::{
@@ -68,7 +73,6 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy::inner";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
 const BUSY_QUALIFYING: &str = "BusyQualifyingMonerodUrl";
-const TARI_MERGE_MINING_DATA_SIZE: u64 = 35;
 
 #[derive(Debug, Clone)]
 pub struct InnerService {
@@ -433,7 +437,9 @@ impl InnerService {
         // We must shift the reserved_offset so the miner writes its nonce in the correct place,
         // preventing coinbase corruption.
         if let Some(offset) = monerod_resp["result"]["reserved_offset"].as_u64() {
-            monerod_resp["result"]["reserved_offset"] = (offset + TARI_MERGE_MINING_DATA_SIZE).into();
+            let tag_size = u64::try_from(TARI_MERGE_MINING_TAG_SIZE)
+                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
+            monerod_resp["result"]["reserved_offset"] = (offset + tag_size).into();
         }
 
         let tari_difficulty = final_block_template_data.template.tari_difficulty;
@@ -788,18 +794,17 @@ impl InnerService {
             .map(|s| s.to_string())
         {
             // XMRig sent `extra_nonce`. Append hex zeroes to force weight calculation.
-            let padding = "0".repeat(
-                usize::try_from(TARI_MERGE_MINING_DATA_SIZE * 2)
-                    .map_err(|err| MmProxyError::ConversionError(err.to_string()))?,
-            );
+            let padding = "0".repeat(TARI_MERGE_MINING_TAG_SIZE * 2);
             let new_extra_nonce = format!("{}{}", extra_nonce, padding);
             params.insert("extra_nonce".to_string(), serde_json::json!(new_extra_nonce));
             params.remove("reserve_size");
         } else {
+            let tag_size = u64::try_from(TARI_MERGE_MINING_TAG_SIZE)
+                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
             let current_reserve = params.get("reserve_size").and_then(|v| v.as_u64()).unwrap_or(0);
             params.insert(
                 "reserve_size".to_string(),
-                serde_json::json!(current_reserve + TARI_MERGE_MINING_DATA_SIZE),
+                serde_json::json!(current_reserve + tag_size),
             );
         }
 
