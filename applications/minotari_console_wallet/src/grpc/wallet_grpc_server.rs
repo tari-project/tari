@@ -4286,7 +4286,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
-                rejected_reason: tx.cancelled.map(|r| r.to_string()).unwrap_or_default(),
+                rejected_reason: tx.rejection_reason.clone().unwrap_or_else(|| tx.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: tx.lock_height,
             }
         },
