@@ -243,7 +243,7 @@ where
                 .as_deref()
                 .filter(|details| !details.is_empty())
                 .map(|details| TransactionServiceError::MempoolRejection {
-                    reason: format!("{}: {details}", response.rejection_reason),
+                    reason: format!("{fallback_error}: {details}"),
                 })
                 .unwrap_or(fallback_error);
 

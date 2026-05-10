@@ -46,8 +46,8 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     match request.method.as_str() {
         "submit_transaction" => {
-            let submit_request = serde_json::from_value::<SubmitTransactionRequest>(request.params.clone())
-                .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
+            let submit_request = submit_transaction_request_from_params(request.params)
+                .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e))))?;
             let SubmitTransactionRequest { transaction, version } = submit_request;
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => Ok(Json(JsonRpcResponse {
@@ -73,6 +73,42 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse::new("Method not found".to_string())),
         )),
+    }
+}
+
+fn submit_transaction_request_from_params(params: serde_json::Value) -> Result<SubmitTransactionRequest, String> {
+    match params {
+        serde_json::Value::Object(_) => {
+            serde_json::from_value(params).map_err(|e| format!("Invalid submit_transaction params: {e}"))
+        },
+        serde_json::Value::Array(mut values) => {
+            if values.is_empty() {
+                return Err("Missing transaction parameter".to_string());
+            }
+
+            let first = values.remove(0);
+            if first.get("transaction").is_some() {
+                let mut request = serde_json::from_value::<SubmitTransactionRequest>(first)
+                    .map_err(|e| format!("Invalid submit_transaction params: {e}"))?;
+                if let Some(version) = values.first() {
+                    request.version = serde_json::from_value(version.clone())
+                        .map_err(|e| format!("Invalid submit_transaction version: {e}"))?;
+                }
+                return Ok(request);
+            }
+
+            let transaction =
+                serde_json::from_value(first).map_err(|e| format!("Invalid submit_transaction transaction: {e}"))?;
+            let version = values
+                .first()
+                .map(|version| serde_json::from_value(version.clone()))
+                .transpose()
+                .map_err(|e| format!("Invalid submit_transaction version: {e}"))?
+                .unwrap_or_default();
+
+            Ok(SubmitTransactionRequest { transaction, version })
+        },
+        _ => Err("submit_transaction params must be an object or array".to_string()),
     }
 }
 
@@ -112,7 +148,12 @@ pub struct JsonRpcResponse {
 #[cfg(test)]
 mod test {
     use super::*;
+    use tari_common_types::types::PrivateKey;
     use tari_transaction_components::rpc::models::TxSubmissionRejectionReason;
+
+    fn empty_transaction() -> Transaction {
+        Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default())
+    }
 
     fn response_with_details() -> TxSubmissionResponseV1 {
         TxSubmissionResponseV1 {
@@ -135,5 +176,26 @@ mod test {
         let value = submit_transaction_response_value(response_with_details(), 1).unwrap();
 
         assert_eq!(value["rejection_reason_details"], "specific validation error");
+    }
+
+    #[test]
+    fn submit_transaction_params_accepts_object_params() {
+        let params = serde_json::json!({
+            "transaction": empty_transaction(),
+            "version": 1,
+        });
+
+        let request = submit_transaction_request_from_params(params).unwrap();
+
+        assert_eq!(request.version, 1);
+    }
+
+    #[test]
+    fn submit_transaction_params_accepts_positional_params() {
+        let params = serde_json::json!([empty_transaction(), 1]);
+
+        let request = submit_transaction_request_from_params(params).unwrap();
+
+        assert_eq!(request.version, 1);
     }
 }

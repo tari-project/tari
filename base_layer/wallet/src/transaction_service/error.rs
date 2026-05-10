@@ -155,7 +155,7 @@ pub enum TransactionServiceError {
     MempoolRejectionFeeTooLow,
     #[error("Transaction detected as rejected by mempool due to already mined")]
     MempoolRejectionAlreadyMined,
-    #[error("Transaction detected as rejected by mempool")]
+    #[error("Transaction detected as rejected by mempool: {reason}")]
     MempoolRejection { reason: String },
     #[error("Mempool response key does not match on that is expected")]
     UnexpectedMempoolResponse,
