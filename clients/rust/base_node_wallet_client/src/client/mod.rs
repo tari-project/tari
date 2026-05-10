@@ -8,13 +8,11 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
         self, BlockHeader, FeePerGramStat, GenerateKernelMerkleProofResponse, GetUtxosDeletedInfoResponse,
-        GetUtxosMinedInfoResponse, SyncUtxosByBlockResponseV0,
+        GetUtxosMinedInfoResponse, SyncUtxosByBlockResponseV0, TxSubmissionResponseV1,
     },
     transaction_components::{Transaction, TransactionOutput},
 };
 use tokio::sync::mpsc;
-
-use crate::client::models::TxSubmissionResponseV1;
 
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]

@@ -46,6 +46,7 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
+const MAX_UNKNOWN_INPUT_DETAILS: usize = 10;
 
 /// The Mempool consists of an Unconfirmed Transaction Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
@@ -141,17 +142,12 @@ impl MempoolStorage {
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool.into())
                 } else {
-                    let details = dependent_outputs
-                        .iter()
-                        .map(|hash| hash.to_hex())
-                        .collect::<Vec<_>>()
-                        .join(", ");
                     Ok(TxStorageResponseWithDetails::new(
                         TxStorageResponse::NotStoredOrphan,
                         Some(format!(
                             "Transaction refers to {} input(s) that are not available to this node: {}",
                             dependent_outputs.len(),
-                            details
+                            format_unknown_input_details(&dependent_outputs)
                         )),
                     ))
                 }
@@ -482,5 +478,50 @@ impl MempoolStorage {
             .max_block_transaction_weight();
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
+    }
+}
+
+fn format_unknown_input_details(dependent_outputs: &[HashOutput]) -> String {
+    let details = dependent_outputs
+        .iter()
+        .take(MAX_UNKNOWN_INPUT_DETAILS)
+        .map(|hash| hash.to_hex())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    if dependent_outputs.len() > MAX_UNKNOWN_INPUT_DETAILS {
+        format!("{} (showing first {MAX_UNKNOWN_INPUT_DETAILS})", details)
+    } else {
+        details
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::HashOutput;
+
+    use super::*;
+
+    #[test]
+    fn format_unknown_input_details_limits_output() {
+        let hashes = (0u8..12)
+            .map(|n| HashOutput::from([n; HashOutput::byte_size()]))
+            .collect::<Vec<_>>();
+
+        let details = format_unknown_input_details(&hashes);
+
+        assert!(details.contains(&HashOutput::from([0; HashOutput::byte_size()]).to_hex()));
+        assert!(details.contains(&HashOutput::from([9; HashOutput::byte_size()]).to_hex()));
+        assert!(!details.contains(&HashOutput::from([10; HashOutput::byte_size()]).to_hex()));
+        assert!(details.ends_with("(showing first 10)"));
+    }
+
+    #[test]
+    fn format_unknown_input_details_returns_all_when_short() {
+        let hashes = vec![HashOutput::from([7; HashOutput::byte_size()])];
+
+        let details = format_unknown_input_details(&hashes);
+
+        assert_eq!(details, HashOutput::from([7; HashOutput::byte_size()]).to_hex());
     }
 }

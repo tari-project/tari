@@ -217,6 +217,9 @@ pub struct CompletedTransaction {
     /// For outbound transactions this is 0 (change only), for inbound it reflects
     /// when the received outputs become spendable.
     pub lock_height: u64,
+    /// The detailed rejection reason returned by the base node, if this transaction was rejected.
+    #[serde(default)]
+    pub rejection_reason: Option<String>,
 }
 
 impl CompletedTransaction {
@@ -265,6 +268,7 @@ impl CompletedTransaction {
             received_output_hashes: Vec::new(),
             change_output_hashes: Vec::new(),
             lock_height,
+            rejection_reason: None,
         })
     }
 
@@ -466,6 +470,7 @@ impl CompletedTransaction {
             received_output_hashes,
             change_output_hashes,
             lock_height,
+            rejection_reason: None,
         })
     }
 
@@ -551,14 +556,29 @@ impl CompletedTransaction {
             received_output_hashes: Vec::new(),
             change_output_hashes,
             lock_height: 0,
+            rejection_reason: None,
         }
     }
 }
 
 impl Display for CompletedTransaction {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        match self.cancelled {
-            Some(cancelled_reason) => write!(
+        match (&self.cancelled, self.rejection_reason.as_deref()) {
+            (Some(cancelled_reason), Some(rejection_reason)) if !rejection_reason.is_empty() => write!(
+                fmt,
+                "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Cancelled: \
+                 {}, Rejection reason: {}",
+                self.tx_id,
+                self.source_address,
+                self.destination_address,
+                self.amount,
+                self.fee,
+                self.status,
+                self.timestamp,
+                cancelled_reason,
+                rejection_reason,
+            ),
+            (Some(cancelled_reason), _) => write!(
                 fmt,
                 "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}, Cancelled: \
                  {}",
@@ -571,7 +591,7 @@ impl Display for CompletedTransaction {
                 self.timestamp,
                 cancelled_reason,
             ),
-            None => write!(
+            (None, _) => write!(
                 fmt,
                 "TxId: {}, Source: {}, Destination: {}, Amount: {}, Fee: {}, Status: {:?}, Timestamp: {}",
                 self.tx_id,
@@ -653,6 +673,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             received_output_hashes: tx.received_output_hashes,
             change_output_hashes: Vec::new(),
             lock_height: 0,
+            rejection_reason: None,
         }
     }
 }
@@ -881,6 +902,7 @@ mod test {
             received_output_hashes: vec![],
             change_output_hashes: vec![],
             lock_height: 0,
+            rejection_reason: None,
         }
     }
 

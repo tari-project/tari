@@ -26,7 +26,10 @@ use axum::{Extension, Json, http::StatusCode};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use tari_core::{base_node::rpc::query_service, chain_storage::BlockchainBackend, mempool::service::MempoolHandle};
-use tari_transaction_components::rpc::models::{TxSubmissionResponse, TxSubmissionResponseV1};
+use tari_transaction_components::{
+    rpc::models::{TxSubmissionResponse, TxSubmissionResponseV1},
+    transaction_components::Transaction,
+};
 
 use crate::http::handler::ErrorResponse;
 
@@ -43,20 +46,9 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     match request.method.as_str() {
         "submit_transaction" => {
-            let tx = request.params.get("transaction").ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse::new("Missing transaction parameter".to_string())),
-                )
-            })?;
-            let transaction = serde_json::from_value(tx.clone())
+            let submit_request = serde_json::from_value::<SubmitTransactionRequest>(request.params.clone())
                 .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
-            let version = request
-                .params
-                .get("version")
-                .and_then(serde_json::Value::as_u64)
-                .map(|version| if version == 0 { 0 } else { 1 })
-                .unwrap_or_default();
+            let SubmitTransactionRequest { transaction, version } = submit_request;
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => Ok(Json(JsonRpcResponse {
                     result: submit_transaction_response_value(response, version).unwrap_or_else(|e| {
@@ -86,7 +78,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
 fn submit_transaction_response_value(
     response: TxSubmissionResponseV1,
-    version: u8,
+    version: u64,
 ) -> Result<serde_json::Value, serde_json::Error> {
     match version {
         0 => serde_json::to_value(TxSubmissionResponse::from(response)),
@@ -100,6 +92,13 @@ pub struct JsonRpcRequest {
     pub id: String,
     pub method: String,
     pub params: serde_json::Value,
+}
+
+#[derive(Deserialize, Debug)]
+struct SubmitTransactionRequest {
+    transaction: Transaction,
+    #[serde(default)]
+    version: u64,
 }
 
 #[derive(Serialize, Debug)]
