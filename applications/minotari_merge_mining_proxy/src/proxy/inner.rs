@@ -437,8 +437,7 @@ impl InnerService {
         // We must shift the reserved_offset so the miner writes its nonce in the correct place,
         // preventing coinbase corruption.
         if let Some(offset) = monerod_resp["result"]["reserved_offset"].as_u64() {
-            let tag_size = u64::try_from(TARI_MERGE_MINING_TAG_SIZE)
-                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
+            let tag_size = TARI_MERGE_MINING_TAG_SIZE as u64;
             monerod_resp["result"]["reserved_offset"] = (offset + tag_size).into();
         }
 
@@ -799,8 +798,7 @@ impl InnerService {
             params.insert("extra_nonce".to_string(), serde_json::json!(new_extra_nonce));
             params.remove("reserve_size");
         } else {
-            let tag_size = u64::try_from(TARI_MERGE_MINING_TAG_SIZE)
-                .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
+            let tag_size = TARI_MERGE_MINING_TAG_SIZE as u64;
             let current_reserve = params.get("reserve_size").and_then(|v| v.as_u64()).unwrap_or(0);
             params.insert(
                 "reserve_size".to_string(),
