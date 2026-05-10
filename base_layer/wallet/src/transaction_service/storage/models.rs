@@ -217,6 +217,8 @@ pub struct CompletedTransaction {
     /// For outbound transactions this is 0 (change only), for inbound it reflects
     /// when the received outputs become spendable.
     pub lock_height: u64,
+    /// Human-readable reason the mempool gave when rejecting this transaction, if any.
+    pub rejection_detail: Option<String>,
 }
 
 impl CompletedTransaction {
@@ -265,6 +267,7 @@ impl CompletedTransaction {
             received_output_hashes: Vec::new(),
             change_output_hashes: Vec::new(),
             lock_height,
+            rejection_detail: None,
         })
     }
 
@@ -466,6 +469,7 @@ impl CompletedTransaction {
             received_output_hashes,
             change_output_hashes,
             lock_height,
+            rejection_detail: None,
         })
     }
 
@@ -551,6 +555,7 @@ impl CompletedTransaction {
             received_output_hashes: Vec::new(),
             change_output_hashes,
             lock_height: 0,
+            rejection_detail: None,
         }
     }
 }
@@ -653,6 +658,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             received_output_hashes: tx.received_output_hashes,
             change_output_hashes: Vec::new(),
             lock_height: 0,
+            rejection_detail: None,
         }
     }
 }
@@ -881,6 +887,7 @@ mod test {
             received_output_hashes: vec![],
             change_output_hashes: vec![],
             lock_height: 0,
+            rejection_detail: None,
         }
     }
 

@@ -230,7 +230,7 @@ where
                 ),
             };
 
-            self.cancel_pending_transaction(reason).await;
+            self.cancel_pending_transaction_with_detail(reason, response.rejection_detail).await;
 
             let _size = self
                 .resources
@@ -385,6 +385,14 @@ where
     }
 
     async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason) {
+        self.cancel_pending_transaction_with_detail(reason, None).await;
+    }
+
+    async fn cancel_pending_transaction_with_detail(
+        &mut self,
+        reason: TxCancellationReason,
+        rejection_detail: Option<String>,
+    ) {
         if let Err(e) = self
             .resources
             .output_manager_service
@@ -397,7 +405,11 @@ where
                 self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason) {
+        if let Err(e) = self
+            .resources
+            .db
+            .reject_completed_transaction(self.tx_id, reason, rejection_detail)
+        {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel pending TxId: {} after failed sending attempt with error {:?}", self.tx_id, e

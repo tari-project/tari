@@ -66,8 +66,8 @@ impl Default for MempoolMockState {
                 unconfirmed_pool: vec![],
                 reorg_pool: vec![],
             })),
-            get_tx_state_by_excess_sig: Arc::new(Mutex::new(TxStorageResponse::NotStored)),
-            submit_transaction: Arc::new(Mutex::new(TxStorageResponse::NotStored)),
+            get_tx_state_by_excess_sig: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
+            submit_transaction: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
             calls: Arc::new(Default::default()),
         }
     }

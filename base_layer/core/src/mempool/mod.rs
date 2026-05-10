@@ -99,8 +99,10 @@ pub enum TxStorageResponse {
     NotStoredOrphan,
     NotStoredTimeLocked,
     NotStoredAlreadySpent,
-    NotStoredConsensus,
-    NotStored,
+    /// Transaction was rejected due to a consensus rule violation. Contains the specific reason.
+    NotStoredConsensus(Option<String>),
+    /// Transaction was rejected for a general validation reason. Contains the specific reason.
+    NotStored(Option<String>),
     NotStoredAlreadyMined,
     NotStoredFeeTooLow,
 }
@@ -113,18 +115,23 @@ impl TxStorageResponse {
 
 impl Display for TxStorageResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        let storage = match self {
-            TxStorageResponse::UnconfirmedPool => "Unconfirmed pool",
-            TxStorageResponse::ReorgPool => "Reorg pool",
-            TxStorageResponse::NotStoredOrphan => "Not stored orphan transaction",
-            TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction",
-            TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
-            TxStorageResponse::NotStoredConsensus => "Not stored due to consensus rule",
-            TxStorageResponse::NotStored => "Not stored",
-            TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined",
-            TxStorageResponse::NotStoredFeeTooLow => "Not stored tx fee is below the minimum accepted by this mempool",
-        };
-        fmt.write_str(storage)
+        match self {
+            TxStorageResponse::UnconfirmedPool => fmt.write_str("Unconfirmed pool"),
+            TxStorageResponse::ReorgPool => fmt.write_str("Reorg pool"),
+            TxStorageResponse::NotStoredOrphan => fmt.write_str("Not stored orphan transaction"),
+            TxStorageResponse::NotStoredTimeLocked => fmt.write_str("Not stored time locked transaction"),
+            TxStorageResponse::NotStoredAlreadySpent => fmt.write_str("Not stored output already spent"),
+            TxStorageResponse::NotStoredConsensus(Some(reason)) => {
+                write!(fmt, "Not stored due to consensus rule: {reason}")
+            },
+            TxStorageResponse::NotStoredConsensus(None) => fmt.write_str("Not stored due to consensus rule"),
+            TxStorageResponse::NotStored(Some(reason)) => write!(fmt, "Not stored: {reason}"),
+            TxStorageResponse::NotStored(None) => fmt.write_str("Not stored"),
+            TxStorageResponse::NotStoredAlreadyMined => fmt.write_str("Not stored tx already mined"),
+            TxStorageResponse::NotStoredFeeTooLow => {
+                fmt.write_str("Not stored tx fee is below the minimum accepted by this mempool")
+            },
+        }
     }
 }
 impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {

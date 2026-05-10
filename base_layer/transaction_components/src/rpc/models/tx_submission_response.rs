@@ -29,6 +29,12 @@ pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
     pub is_synced: bool,
+    /// Human-readable detail about why the transaction was rejected.
+    /// Only present when `rejection_reason` is `ValidationFailed`.
+    /// Older wallet clients that do not deserialize this field are unaffected (backward-compatible).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub rejection_detail: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

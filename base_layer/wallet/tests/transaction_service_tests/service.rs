@@ -1750,6 +1750,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
         lock_height: 0,
+        rejection_detail: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -2267,6 +2268,7 @@ fn create_mock_completed_transaction(
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
         lock_height: 0,
+        rejection_detail: None,
     }
 }
 
@@ -2564,5 +2566,92 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
         ),
         "Expected OutputManagerError, got: {:?}",
         err
+    );
+}
+
+/// Verifies that when the base node mempool rejects a transaction with a ValidationFailed reason and a
+/// human-readable detail string, that detail is persisted in the CompletedTransaction record so the
+/// wallet can surface it to the user.
+#[tokio::test]
+async fn test_rejection_detail_stored_on_mempool_rejection() {
+    use tari_transaction_components::rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse};
+
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
+
+    // Fund the wallet with a UTXO so we can build a real coin-split transaction.
+    let initial_value = 20 * T;
+    let uo = make_input(
+        &mut rand::rng(),
+        initial_value,
+        &OutputFeatures::default(),
+        interface.key_manager_handle.key_manager(),
+    );
+    interface.output_manager_service_handle.add_output(uo.clone(), None).await.unwrap();
+    interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    // Configure the base-node mock to reject with a specific detail message before submitting.
+    let rejection_reason = "double-spend of commitment abc123".to_string();
+    interface
+        .base_node_mock
+        .set_submit_transaction_response(TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+            is_synced: true,
+            rejection_detail: Some(rejection_reason.clone()),
+        })
+        .await
+        .unwrap();
+
+    // Build a coin-split transaction and submit it to the wallet service.
+    let (tx_id, coin_split_tx, amount) = interface
+        .output_manager_service_handle
+        .create_coin_split(vec![], MicroMinotari::from(1_000_000), 2, MicroMinotari::from(5))
+        .await
+        .unwrap();
+
+    interface
+        .transaction_service_handle
+        .submit_transaction(
+            tx_id,
+            coin_split_tx,
+            amount,
+            MemoField::new_open_from_string("rejection detail test", TxType::CoinSplit).unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Wait for the broadcast protocol to process the rejection and emit TransactionCancelled.
+    let mut event_stream = interface.transaction_service_handle.get_event_stream();
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(30);
+    loop {
+        assert!(tokio::time::Instant::now() < deadline, "Timed out waiting for TransactionCancelled event");
+        match tokio::time::timeout(tokio::time::Duration::from_millis(500), event_stream.recv()).await {
+            Ok(Ok(event)) => {
+                if let TransactionEvent::TransactionCancelled(id, _) = event.as_ref() {
+                    if *id == tx_id {
+                        break;
+                    }
+                }
+            },
+            _ => {},
+        }
+    }
+
+    // Verify the rejection detail was persisted on the transaction record.
+    let completed_tx = interface
+        .transaction_service_handle
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("completed transaction should exist after rejection");
+
+    assert_eq!(
+        completed_tx.rejection_detail.as_deref(),
+        Some(rejection_reason.as_str()),
+        "rejection_detail should be stored on the cancelled transaction"
     );
 }

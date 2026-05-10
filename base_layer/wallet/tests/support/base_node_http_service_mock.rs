@@ -56,6 +56,7 @@ struct State {
     online: bool,
     http_address: Option<String>,
     last_request_latency: Option<Duration>,
+    submit_transaction_response: Option<TxSubmissionResponse>,
 }
 
 impl State {
@@ -81,6 +82,10 @@ impl State {
 
     fn set_last_request_latency(&mut self, last_request_latency: Duration) {
         self.last_request_latency = Some(last_request_latency);
+    }
+
+    fn set_submit_transaction_response(&mut self, response: TxSubmissionResponse) {
+        self.submit_transaction_response = Some(response);
     }
 }
 
@@ -129,6 +134,12 @@ impl HttpBaseNodeMock {
         state.set_last_request_latency(last_request_latency);
         Ok(())
     }
+
+    pub async fn set_submit_transaction_response(&self, response: TxSubmissionResponse) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        state.set_submit_transaction_response(response);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -173,10 +184,15 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     }
 
     async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
+        let state = self.state.read().await;
+        if let Some(response) = &state.submit_transaction_response {
+            return Ok(response.clone());
+        }
         Ok(TxSubmissionResponse {
             accepted: true,
             rejection_reason: models::TxSubmissionRejectionReason::None,
             is_synced: true,
+            rejection_detail: None,
         })
     }
 
