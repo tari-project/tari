@@ -27,6 +27,7 @@ use log::*;
 use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo, pow_algo::PowAlgos};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
+use monero::blockdata::transaction::{ExtraField, RawExtraField, SubField};
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
     AuxChainHashes,
@@ -44,7 +45,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
-    common::merge_mining,
+    common::{merge_mining, monero_rpc::TARI_MERGE_MINING_TAG_SIZE},
     config::MergeMiningProxyConfig,
     error::MmProxyError,
 };
@@ -301,6 +302,7 @@ fn add_monero_data(
     debug!(target: LOG_TARGET, "Insert aux chain merkle root (merge_mining_hash) into Monero block");
     let aux_chain_mr = calculate_aux_chain_merkle_root(aux_chain_hashes.clone())?.0;
     monero_rx::insert_aux_chain_mr_and_info_into_block(&mut monero_block, aux_chain_mr.to_bytes(), 1, 0)?;
+    remove_reserved_merge_mining_tag_space(&mut monero_block.miner_tx.prefix.extra)?;
 
     debug!(target: LOG_TARGET, "Create blockhashing blob from blocktemplate blob",);
     // Must be done after the aux_chain_mr is inserted since it will affect the hash of the miner tx
@@ -326,6 +328,33 @@ fn add_monero_data(
         aux_chain_mr: AuxChainMr::try_from(aux_chain_mr.to_bytes().to_vec())
             .map_err(|e| MmProxyError::ConversionError(e.to_string()))?,
     })
+}
+
+/// Remove the placeholder bytes that were added to the Monero extra nonce so the final block weight matches the
+/// template weight used by monerod to calculate the reward.
+fn remove_reserved_merge_mining_tag_space(extra: &mut RawExtraField) -> Result<(), MmProxyError> {
+    let mut extra_field = ExtraField::try_parse(extra)
+        .map_err(|_| MmProxyError::ConversionError("Invalid Monero coinbase extra field".to_string()))?;
+    let nonce = extra_field
+        .0
+        .iter_mut()
+        .find_map(|field| match field {
+            SubField::Nonce(nonce) => Some(nonce),
+            _ => None,
+        })
+        .ok_or_else(|| MmProxyError::MissingDataError("Monero coinbase extra nonce field not found".to_string()))?;
+
+    if nonce.len() < TARI_MERGE_MINING_TAG_SIZE {
+        return Err(MmProxyError::InvalidMonerodResponse(format!(
+            "Monero coinbase extra nonce field is too small to contain the reserved merge mining tag space: {} < {}",
+            nonce.len(),
+            TARI_MERGE_MINING_TAG_SIZE,
+        )));
+    }
+
+    nonce.truncate(nonce.len() - TARI_MERGE_MINING_TAG_SIZE);
+    *extra = extra_field.into();
+    Ok(())
 }
 
 /// Private convenience container struct for new template data
@@ -360,4 +389,53 @@ pub(crate) struct MoneroMiningData {
     pub seed_hash: FixedByteArray,
     pub blocktemplate_blob: String,
     pub difficulty: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use monero::{Hash, VarInt};
+
+    use super::*;
+
+    fn extra_with_nonce(nonce: Vec<u8>) -> RawExtraField {
+        ExtraField(vec![
+            SubField::MergeMining(VarInt(0), Hash::default()),
+            SubField::Nonce(nonce),
+        ])
+        .into()
+    }
+
+    #[test]
+    fn it_removes_the_proxy_reserved_merge_mining_tag_space() {
+        let miner_nonce = vec![1, 2, 3, 4];
+        let mut reserved_nonce = miner_nonce.clone();
+        reserved_nonce.extend([0; TARI_MERGE_MINING_TAG_SIZE]);
+        let mut extra = extra_with_nonce(reserved_nonce);
+
+        remove_reserved_merge_mining_tag_space(&mut extra).unwrap();
+
+        let extra_field = ExtraField::try_parse(&extra).unwrap();
+        assert!(
+            extra_field
+                .0
+                .iter()
+                .any(|field| matches!(field, SubField::MergeMining(_, _)))
+        );
+        let nonce = extra_field
+            .0
+            .iter()
+            .find_map(|field| match field {
+                SubField::Nonce(nonce) => Some(nonce),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(nonce, &miner_nonce);
+    }
+
+    #[test]
+    fn it_rejects_nonce_fields_smaller_than_the_proxy_reservation() {
+        let mut extra = extra_with_nonce(vec![0; TARI_MERGE_MINING_TAG_SIZE - 1]);
+
+        assert!(remove_reserved_merge_mining_tag_space(&mut extra).is_err());
+    }
 }
