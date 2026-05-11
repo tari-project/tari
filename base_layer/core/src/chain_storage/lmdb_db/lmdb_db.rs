@@ -97,11 +97,7 @@ use std::{
 };
 
 use fs2::FileExt;
-use jmt::{
-    JellyfishMerkleTree,
-    KeyHash,
-    storage::{TreeWriter},
-};
+use jmt::{JellyfishMerkleTree, KeyHash, storage::TreeWriter};
 use lmdb_zero::{
     ConstTransaction,
     Database,
@@ -804,9 +800,7 @@ impl LMDBDatabase {
                         &MetadataValue::HorizonData(horizon_data.clone()),
                     )?;
                 },
-                ApplyHorizonStateTreeUpdates {
-                    updates,
-                } => {
+                ApplyHorizonStateTreeUpdates { updates } => {
                     self.apply_horizon_state_tree_updates(&write_txn, updates)?;
                 },
                 InsertBadBlock { hash, height, reason } => {
@@ -920,13 +914,23 @@ impl LMDBDatabase {
 
         // Generate PayRef and add to index
         let payref = Self::generate_payment_reference_for_output(header_hash, &output_hash);
-        lmdb_insert(
-            txn,
-            &self.payref_to_output_index,
-            payref.as_slice(),
-            &output_hash,
-            "payref_to_output_index",
-        )?;
+        let payref_needs_to_be_inserted = if header_height == 0 {
+            // this is a special edge case where we are reinserting genesis outputs that where spent, their payref might
+            // already exist, so let's delete it first, then we can readd it safely
+            let exists = lmdb_exists(txn, &self.payref_to_output_index, payref.as_slice())?;
+            !exists
+        } else {
+            true
+        };
+        if payref_needs_to_be_inserted {
+            lmdb_insert(
+                txn,
+                &self.payref_to_output_index,
+                payref.as_slice(),
+                &output_hash,
+                "payref_to_output_index",
+            )?;
+        }
 
         lmdb_insert(
             txn,
@@ -1359,7 +1363,6 @@ impl LMDBDatabase {
             )));
         }
 
-
         lmdb_delete(
             write_txn,
             &self.block_accumulated_data_db,
@@ -1368,10 +1371,6 @@ impl LMDBDatabase {
         )?;
 
         self.delete_block_inputs_outputs(write_txn, block_hash, height)?;
-
-
-
-
 
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
@@ -1385,7 +1384,6 @@ impl LMDBDatabase {
         block_hash: &HashOutput,
         height: u64,
     ) -> Result<(), ChainStorageError> {
-
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
 
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
@@ -1519,7 +1517,8 @@ impl LMDBDatabase {
             })?;
 
             let smt_key = KeyHash(
-                utxo_mined_info.output
+                utxo_mined_info
+                    .output
                     .commitment
                     .as_bytes()
                     .try_into()
@@ -1541,8 +1540,8 @@ impl LMDBDatabase {
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {input}");
         }
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())?{
-            Some(MetadataValue::JMTVersion(v)) => v+1,
+        let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v + 1,
             _ => 0u64,
         };
 
@@ -1573,7 +1572,9 @@ impl LMDBDatabase {
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        smt_writer.cleanup_stale(&ops.stale_node_index_batch).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        smt_writer
+            .cleanup_stale(&ops.stale_node_index_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         Ok(())
     }
@@ -1810,14 +1811,13 @@ impl LMDBDatabase {
             )?;
         }
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())?{
-            Some(MetadataValue::JMTVersion(v)) => v+1,
+        let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v + 1,
             _ => 0u64,
         };
         let (root, ops) = output_smt
             .put_value_set(batch, val)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-
 
         if header.output_mr.as_slice() != root.0.as_slice() {
             warn!(
@@ -1840,14 +1840,15 @@ impl LMDBDatabase {
             txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.metadata_db.clone()
+            self.metadata_db.clone(),
         );
 
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        smt_writer.cleanup_stale(&ops.stale_node_index_batch).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-
+        smt_writer
+            .cleanup_stale(&ops.stale_node_index_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         self.insert_block_accumulated_data(
             txn,
@@ -2126,7 +2127,7 @@ impl LMDBDatabase {
         output_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
         let payref = Self::generate_payment_reference_for_output(header_hash, output_hash);
-        debug!(target: LOG_TARGET, "Pruning output from 'payref_to_output_index': key '{}'", payref.to_hex());
+        trace!(target: LOG_TARGET, "Pruning output from 'payref_to_output_index': key '{}'", payref.to_hex());
         match lmdb_delete(
             write_txn,
             &self.payref_to_output_index,
@@ -2154,7 +2155,7 @@ impl LMDBDatabase {
             let input = input_data.input;
             // From 'utxo_commitment_index::utxo_commitment_index'
             if let SpentOutput::OutputData { commitment, .. } = input.spent_output.clone() {
-                debug!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
+                trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
                 lmdb_delete(
                     write_txn,
                     &self.utxo_commitment_index,
@@ -2169,13 +2170,13 @@ impl LMDBDatabase {
             {
                 let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
                 let key = OutputKey::new(&header_hash, &output_hash)?;
-                debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
+                trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
 
                 self.delete_payref_index_entry(write_txn, &header_hash, &output_hash)?;
             };
             // From 'txos_hash_to_index_db::utxos_db'
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Pruning output from 'txos_hash_to_index_db': key '{}'",
                 output_hash.to_hex()
@@ -2201,7 +2202,7 @@ impl LMDBDatabase {
         match lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
             Some(key_bytes) => {
                 if !matches!(output_type, OutputType::Burn) {
-                    debug!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
+                    trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
                     lmdb_delete(
                         write_txn,
                         &self.utxo_commitment_index,
@@ -2209,7 +2210,7 @@ impl LMDBDatabase {
                         "utxo_commitment_index",
                     )?;
                 }
-                debug!(target: LOG_TARGET, "Pruning output from 'txos_hash_to_index_db': key '{}'", output_hash.to_hex());
+                trace!(target: LOG_TARGET, "Pruning output from 'txos_hash_to_index_db': key '{}'", output_hash.to_hex());
                 lmdb_delete(
                     write_txn,
                     &self.txos_hash_to_index_db,
@@ -2219,9 +2220,8 @@ impl LMDBDatabase {
 
                 let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
                 let key = OutputKey::new(&header_hash, output_hash)?;
-                debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
+                trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
-
                 self.delete_payref_index_entry(write_txn, &header_hash, output_hash)?;
             },
             None => {
@@ -2251,8 +2251,6 @@ impl LMDBDatabase {
             self.metadata_db.clone(),
         );
 
-
-
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let batch = updates
             .iter()
@@ -2260,8 +2258,8 @@ impl LMDBDatabase {
             .collect::<Vec<_>>();
 
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(write_txn, &self.metadata_db, &k.as_u32())?{
-            Some(MetadataValue::JMTVersion(v)) => v+1,
+        let val = match lmdb_get(write_txn, &self.metadata_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v + 1,
             _ => 0u64,
         };
         let (_root, ops) = output_smt
@@ -2271,7 +2269,9 @@ impl LMDBDatabase {
         writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        writer.cleanup_stale(&ops.stale_node_index_batch).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        writer
+            .cleanup_stale(&ops.stale_node_index_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         Ok(())
     }
@@ -2596,12 +2596,11 @@ impl BlockchainBackend for LMDBDatabase {
     fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError> {
         let read_tx = self.read_transaction()?;
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(&read_tx, &self.metadata_db, &k.as_u32())?{
+        let val = match lmdb_get(&read_tx, &self.metadata_db, &k.as_u32())? {
             Some(MetadataValue::JMTVersion(v)) => v,
             _ => 0u64,
         };
-        let smt_reader =
-            OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_value_data.clone());
+        let smt_reader = OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_value_data.clone());
 
         Ok((smt_reader, val))
     }
@@ -3483,14 +3482,11 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn verify_horizon_sync_output_root(
-        &self,
-        expected_root: HashOutput,
-    ) -> Result<(), ChainStorageError> {
+    fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError> {
         let txn = self.read_transaction()?;
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(&txn, &self.metadata_db, &k.as_u32())?{
-            Some(MetadataValue::JMTVersion(v)) => v+1,
+        let val = match lmdb_get(&txn, &self.metadata_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v,
             _ => 0u64,
         };
 
@@ -4953,7 +4949,7 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 Some(MetadataKey::AccumulatedDataCheckStatus) |
                 Some(MetadataKey::BlockchainConsistencyCheckStatus) |
                 Some(MetadataKey::HorizonSyncOutputCheckpoint) |
-                Some(MetadataKey::JMTVersion)=> {
+                Some(MetadataKey::JMTVersion) => {
                     warn!(
                         target: LOG_TARGET,
                         "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",

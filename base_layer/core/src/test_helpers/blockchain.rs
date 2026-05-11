@@ -544,14 +544,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_horizon_sync_output_checkpoint()
     }
 
-    fn verify_horizon_sync_output_root(
-        &self,
-        expected_root: HashOutput,
-    ) -> Result<(), ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .verify_horizon_sync_output_root(expected_root)
+    fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError> {
+        self.db.as_ref().unwrap().verify_horizon_sync_output_root(expected_root)
     }
 
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {

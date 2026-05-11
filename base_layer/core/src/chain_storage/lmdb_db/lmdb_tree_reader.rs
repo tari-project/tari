@@ -27,8 +27,7 @@ use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
 use tari_storage::lmdb_store::DatabaseRef;
 
-use crate::chain_storage::lmdb_db::lmdb::{lmdb_get};
-
+use crate::chain_storage::lmdb_db::lmdb::lmdb_get;
 
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
@@ -53,7 +52,7 @@ impl<'a> LmdbTreeReader<'a> {
 impl TreeReader for LmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
         let mut lmdb_key: Vec<u8> = vec![];
-       //lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
+        // lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
         BorshSerialize::serialize(node_key, &mut lmdb_key)?;
         let node = lmdb_get(self.txn, &self.node_db, &lmdb_key)?;
         Ok(node)
@@ -65,7 +64,7 @@ impl TreeReader for LmdbTreeReader<'_> {
         key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
         let mut lmdb_key: Vec<u8> = vec![];
-        //lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
+        // lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
         lmdb_key.extend_from_slice(&key_hash.0);
         let existing = lmdb_get(self.txn, &self.value_db, &lmdb_key)?;
 
@@ -86,11 +85,7 @@ pub struct OwnedLmdbTreeReader<'a> {
 
 impl<'a> OwnedLmdbTreeReader<'a> {
     pub fn new(txn: ReadTransaction<'a>, node_db: DatabaseRef, value_db: DatabaseRef) -> Self {
-        Self {
-            txn,
-            node_db,
-            value_db,
-        }
+        Self { txn, node_db, value_db }
     }
 }
 

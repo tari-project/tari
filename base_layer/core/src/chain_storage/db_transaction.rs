@@ -319,13 +319,9 @@ impl DbTransaction {
         self
     }
 
-    pub fn apply_horizon_state_tree_updates(
-        &mut self,
-        updates: Vec<HorizonStateTreeUpdate>,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::ApplyHorizonStateTreeUpdates {
-            updates,
-        });
+    pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
+        self.operations
+            .push(WriteOperation::ApplyHorizonStateTreeUpdates { updates });
         self
     }
 
@@ -532,11 +528,7 @@ impl fmt::Display for WriteOperation {
             },
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             ApplyHorizonStateTreeUpdates { updates, .. } => {
-                write!(
-                    f,
-                    "Apply horizon state tree updates ({} updates)",
-                    updates.len()
-                )
+                write!(f, "Apply horizon state tree updates ({} updates)", updates.len())
             },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),

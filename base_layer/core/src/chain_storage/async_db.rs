@@ -378,12 +378,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn apply_horizon_state_tree_updates(
-        &mut self,
-        updates: Vec<HorizonStateTreeUpdate>,
-    ) -> &mut Self {
-        self.transaction
-            .apply_horizon_state_tree_updates( updates);
+    pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
+        self.transaction.apply_horizon_state_tree_updates(updates);
         self
     }
 

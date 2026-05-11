@@ -151,7 +151,11 @@ pub async fn create_network_with_multiple_nodes(
         panic!("Must have at least 2 nodes");
     }
     let network = Network::LocalNet;
-    let temp_dir = tempdir().unwrap();
+    // Leak the temp dir so it outlives this function. The nodes hold open SQLite connections to
+    // `peers.db` under this path; if the `TempDir` drops when this function returns, SQLite's
+    // background journal/WAL writes fail with "no such table: peers" / "disk I/O error" and the
+    // entire sync stack collapses with `NoMoreSyncPeers`. The OS cleans `/tmp` between runs.
+    let temp_dir = tempdir().unwrap().into_path();
     let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
     let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager);
@@ -172,7 +176,7 @@ pub async fn create_network_with_multiple_nodes(
         blockchain_db_configs,
         vec![P2pConfig::default(); num_nodes],
         consensus_manager,
-        temp_dir.path().to_str().unwrap(),
+        temp_dir.to_str().unwrap(),
         network,
     )
     .await;

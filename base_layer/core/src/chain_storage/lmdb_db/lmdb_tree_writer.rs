@@ -27,9 +27,13 @@ use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
 use super::lmdb::{lmdb_get, lmdb_insert, lmdb_replace};
-use crate::chain_storage::Optional;
-use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete};
-use crate::chain_storage::lmdb_db::lmdb_db::{MetadataKey, MetadataValue};
+use crate::chain_storage::{
+    Optional,
+    lmdb_db::{
+        lmdb::lmdb_delete,
+        lmdb_db::{MetadataKey, MetadataValue},
+    },
+};
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
@@ -55,51 +59,32 @@ impl<'a> LmdbTreeWriter<'a> {
         }
     }
 
-    // pub fn delete_all_for_version(&self, version: u64) -> anyhow::Result<()> {
-    //     let key = version.to_be_bytes();
-    //     let nodes = lmdb_delete_keys_starting_with::<Node>(self.txn, &self.node_db, &key)?;
-    //     warn!(target: LOG_TARGET, "Deleted {} nodes for version {}", nodes.len(), version);
-    //     let values = lmdb_delete_keys_starting_with::<Vec<u8>>(self.txn, &self.value_db, &key)?;
-    //     warn!(target: LOG_TARGET, "Deleted {} values for version {}", values.len(), version);
-    //
-    //     for (value_key, _) in values {
-    //         let mut lmdb_key: Vec<u8> = vec![];
-    //         lmdb_key.extend_from_slice(value_key.get(8..).ok_or(anyhow::anyhow!("Value key is too short"))?);
-    //         lmdb_key.extend_from_slice(value_key.get(0..8).ok_or(anyhow::anyhow!("Value key is too short"))?);
-    //         match lmdb_delete(self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table") {
-    //             Ok(_) => {
-    //                 debug!(target: LOG_TARGET, "Deleted unique key {} for version {}", lmdb_key.to_hex(), version);
-    //             },
-    //             Err(e) => {
-    //                 debug!(target: LOG_TARGET, "Failed to delete unique key {} for version {}: {}", lmdb_key.to_hex(), version, e);
-    //             },
-    //         }
-    //     }
-    //
-    //     Ok(())
-    // }
-
     pub fn put_node(&self, node_key: &jmt::storage::NodeKey, node: &jmt::storage::Node) -> anyhow::Result<()> {
         let mut lmdb_key: Vec<u8> = vec![];
-        //lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
+        // lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
         borsh::BorshSerialize::serialize(node_key, &mut lmdb_key)?;
-        match node{
+        match node {
             jmt::storage::Node::Null => {
                 trace!(target: LOG_TARGET, "Deleting node with key {}", lmdb_key.to_hex());
                 lmdb_delete(self.txn, &self.node_db, &lmdb_key, "jmt_node_table").optional()?;
             },
             _ => {
                 lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, "jmt_node_table")?;
-            }
-
+            },
         }
         let k = MetadataKey::JMTVersion;
-        lmdb_replace(self.txn, &self.metabase_db, &k.as_u32(), &MetadataValue::JMTVersion(node_key.version()), None)?;
+        lmdb_replace(
+            self.txn,
+            &self.metabase_db,
+            &k.as_u32(),
+            &MetadataValue::JMTVersion(node_key.version()),
+            None,
+        )?;
         Ok(())
     }
 
     pub fn cleanup_stale(&self, stale: &StaleNodeIndexBatch) -> anyhow::Result<()> {
-        for index in stale{
+        for index in stale {
             let mut lmdb_key: Vec<u8> = vec![];
             // lmdb_key.extend_from_slice(&index.node_key.version().to_be_bytes());
             borsh::BorshSerialize::serialize(&index.node_key, &mut lmdb_key)?;
@@ -121,41 +106,44 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                     lmdb_delete(self.txn, &self.node_db, &lmdb_key, "jmt_node_table").optional()?;
                 },
                 _ => {
-                    //dbg!(&node);
                     lmdb_delete(self.txn, &self.node_db, &lmdb_key, "jmt_node_table").optional()?;
                     lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, "jmt_node_table")?;
-                }
+                },
             }
         }
         // let mut duplicates = HashMap::new();
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
-            //lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
+            // lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
             lmdb_key.extend_from_slice(&value_key.1.0);
-            match value{
+            match value {
                 Some(_v) => {
-                    let existing:Option<Vec<u8>> = lmdb_get(self.txn, &self.value_db, &lmdb_key)?;
+                    let existing: Option<Vec<u8>> = lmdb_get(self.txn, &self.value_db, &lmdb_key)?;
                     if existing.is_some() {
-                        trace!(target: LOG_TARGET, "Found existing unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
+                        warn!(target: LOG_TARGET, "Found existing unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
                         return Err(anyhow::anyhow!("Duplicate value key found in batch"));
                     }
                     let val_bytes = bincode::serialize(value)?;
 
                     lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, "jmt_value_table")?;
-                }
+                },
                 None => {
-
                     lmdb_delete(self.txn, &self.value_db, &lmdb_key, "jmt_value_table").optional()?;
-                }
+                },
             }
         }
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(self.txn, &self.metabase_db, &k.as_u32())?{
-            Some(MetadataValue::JMTVersion(v)) => v+1,
+        let val = match lmdb_get(self.txn, &self.metabase_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v + 1,
             _ => 0u64,
         };
-        lmdb_replace(self.txn, &self.metabase_db, &k.as_u32(), &MetadataValue::JMTVersion(val), None)?;
-
+        lmdb_replace(
+            self.txn,
+            &self.metabase_db,
+            &k.as_u32(),
+            &MetadataValue::JMTVersion(val),
+            None,
+        )?;
 
         trace!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())
@@ -203,7 +191,6 @@ mod test {
         );
     }
 
-
     #[test]
     fn test_jmt_insert_delete() {
         let db = TempDatabase::new();
@@ -234,7 +221,6 @@ mod test {
         tree_writer.cleanup_stale(&updates.stale_node_index_batch).unwrap();
         txn.commit().unwrap();
 
-
         // // Try again for new version.
         let reader = db.db().create_smt_reader().unwrap().0;
 
@@ -242,14 +228,16 @@ mod test {
         assert_eq!(jmt.get_leaf_count(1).unwrap(), 2);
         assert!(jmt.get(smt_key_0, 1).unwrap().is_some());
         assert!(jmt.get(smt_key_1, 1).unwrap().is_some());
-         // Try again for new version.
-         let txn = db.db().create_write_txn();
-         let tree_writer = db.db().create_lmdb_tree_writer(&txn);
-         let reader = db.db().create_smt_reader().unwrap().0;
+        // Try again for new version.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap().0;
 
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
-         let (_root, updates) = jmt.put_value_set(vec![(smt_key_2, Some(value_2.clone())), (smt_key_0, None)], 2).unwrap();
+        let (_root, updates) = jmt
+            .put_value_set(vec![(smt_key_2, Some(value_2.clone())), (smt_key_0, None)], 2)
+            .unwrap();
         tree_writer.write_node_batch(&updates.node_batch).unwrap();
         tree_writer.cleanup_stale(&updates.stale_node_index_batch).unwrap();
         txn.commit().unwrap();
@@ -262,13 +250,15 @@ mod test {
         assert!(jmt.get(smt_key_1, 5).unwrap().is_some());
         assert!(jmt.get(smt_key_2, 5).unwrap().is_some());
 
-            // Try again for new version.
-            let txn = db.db().create_write_txn();
-            let tree_writer = db.db().create_lmdb_tree_writer(&txn);
-            let reader = db.db().create_smt_reader().unwrap().0;
+        // Try again for new version.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap().0;
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
-        let (root2, updates) = jmt.put_value_set(vec![(smt_key_2, None), (smt_key_0, Some(value_0))], 3).unwrap();
+        let (root2, updates) = jmt
+            .put_value_set(vec![(smt_key_2, None), (smt_key_0, Some(value_0))], 3)
+            .unwrap();
         tree_writer.write_node_batch(&updates.node_batch).unwrap();
         tree_writer.cleanup_stale(&updates.stale_node_index_batch).unwrap();
         txn.commit().unwrap();

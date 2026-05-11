@@ -338,135 +338,204 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(conn)
     }
 
+    async fn calculate_output_sync_start_stop(
+        &self,
+        sync_to_header: &BlockHeader,
+    ) -> Result<(u64, BlockHeader), HorizonSyncError> {
+        let stored_checkpoint = self.db.fetch_horizon_sync_output_checkpoint().await?;
+        if stored_checkpoint.is_none() {
+            debug!(target: LOG_TARGET, "No stored checkpoint, starting output sync from scratch");
+            return Ok((1, sync_to_header.clone()));
+        }
+        let stored_checkpoint = stored_checkpoint.expect("Already checked");
+        debug!(target: LOG_TARGET, "We have a stored checkpoint, with height {} and hash {}", stored_checkpoint.checkpoint_height, stored_checkpoint.checkpoint_hash.to_hex());
+        let checkpoint_sync_to_header = if let Some(header) = self.db.fetch_header(stored_checkpoint.sync_target_height).await? {
+            header
+        } else {
+            warn!(target: LOG_TARGET, "Horizon sync target at height {} is no longer on the canonical chain (reorg detected). Discarding checkpoint and restarting output sync from scratch.", stored_checkpoint.sync_target_height);
+            self.db
+                .write_transaction()
+                .clear_horizon_sync_output_checkpoint()
+                .commit()
+                .await?;
+            return Ok((1, sync_to_header.clone()));
+        };
+        if stored_checkpoint.sync_target_hash == sync_to_header.hash() {
+            info!(target: LOG_TARGET, "Resuming output sync from checkpoint at height {}, target unchanged", stored_checkpoint.checkpoint_height);
+            return Ok((stored_checkpoint.checkpoint_height+1, sync_to_header.clone()));
+        }
+        // we have a checkpoint, its target is not the syncing target, so we have two choices, delete it and start over,
+        // or sync to a lower height.
+        if sync_to_header.height < stored_checkpoint.checkpoint_height {
+            // new target is less, so we have to start over
+            debug!(target: LOG_TARGET, "New target is less than stored checkpoint, starting output sync from scratch");
+            self.db
+                .write_transaction()
+                .clear_horizon_sync_output_checkpoint()
+                .commit()
+                .await?;
+            return Ok((1, sync_to_header.clone()));
+        }
+        if sync_to_header
+            .height
+            .saturating_sub(stored_checkpoint.checkpoint_height) >
+            50_000
+        {
+            // we can sync to the checkpoint height first, and then do block sync from there
+            debug!(target: LOG_TARGET, "New target is greater than stored checkpoint, but within 50_000 blocks, resuming output sync from checkpoint");
+            return Ok((stored_checkpoint.checkpoint_height+1, checkpoint_sync_to_header));
+        }
+        debug!(target: LOG_TARGET, "New target is too far away, starting over");
+        self.db
+            .write_transaction()
+            .clear_horizon_sync_output_checkpoint()
+            .commit()
+            .await?;
+        Ok((1, sync_to_header.clone()))
+    }
+
     async fn sync_kernels_and_outputs(
         &mut self,
         sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
-        to_header: &BlockHeader,
+        sync_to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
+        let (start_height, to_header) = self.calculate_output_sync_start_stop(sync_to_header).await?;
         // Note: We do not need to rewind kernels if the sync fails due to it being validated when inserted into
         //       the database. Furthermore, these kernels will also be successfully removed when we need to rewind
         //       the blockchain for whatever reason.
         debug!(target: LOG_TARGET, "Synchronizing kernels");
-        self.synchronize_kernels(sync_peer.clone(), client, to_header).await?;
+        self.synchronize_kernels(sync_peer.clone(), client, &to_header).await?;
+
         debug!(target: LOG_TARGET, "Synchronizing outputs");
         // let cloned_backup_smt = self.db.inner().smt_read_access()?.clone();
-        match self.synchronize_outputs(sync_peer, client, to_header).await {
+        match self
+            .synchronize_outputs(sync_peer, client, &to_header, start_height)
+            .await
+        {
             Ok(_) => Ok(()),
             Err(err) => {
                 // We need to clean up the outputs
-                let _ = self.clean_up_failed_output_sync(to_header).await;
+                let clean_up_height = match self.db.fetch_horizon_sync_output_checkpoint().await? {
+                    Some(checkpoint) => checkpoint.checkpoint_height.saturating_add(1),
+                    None => 1,
+                };
+                match self.clean_up_stale_synced_outputs(clean_up_height).await {
+                    Ok(()) => {},
+                    Err(e) => warn!(target: LOG_TARGET, "Failed to clean up after failed output sync: {}", e),
+                };
                 // let mut smt = self.db.inner().smt_write_access()?;
                 // *smt = cloned_backup_smt;
+                debug!(target: LOG_TARGET, "Finished clearing failed output sync");
                 Err(err)
             },
         }
     }
 
     /// Cleanup stops at the last committed checkpoint so that previously-completed tranches are not disturbed.
-    async fn clean_up_failed_output_sync(&mut self, to_header: &BlockHeader) {
+    async fn clean_up_stale_synced_outputs(&mut self, start_height: u64) -> Result<(), ChainStorageError> {
         // Determine where to stop cleaning. If a tranche checkpoint exists, stop at the checkpoint block
         // Otherwise fall back to the current chain tip.
-        let stop_hash = match self.db.fetch_horizon_sync_output_checkpoint().await {
-            Ok(Some(cp)) => match self.db.fetch_header(cp.checkpoint_height).await {
-                Ok(Some(header)) => Some(header.hash()),
-                _ => None,
-            },
-            _ => None,
-        };
-        let stop_hash = match stop_hash {
-            Some(h) => h,
-            None => match self.db.fetch_header(0).await {
-                Ok(Some(header)) => header.hash(),
-                _ => return,
-            },
-        };
 
-        let db = self.db().clone();
-        let mut txn = db.write_transaction();
-        let mut current_header = to_header.clone();
-        loop {
-            if let Ok(outputs) = self.db.fetch_outputs_in_block(current_header.hash()).await {
-                for (count, output) in (1..=outputs.len()).zip(outputs.iter()) {
-                    txn.prune_output_from_all_dbs(
-                        output.hash(),
-                        output.commitment.clone(),
-                        output.features.output_type,
-                    );
-                    if (count % 100 == 0 || count == outputs.len()) &&
-                        let Err(e) = txn.commit().await
-                    {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Clean up failed sync - commit prune outputs for header '{}': {}",
-                            current_header.hash(), e
+        let stop_height = self.db.fetch_last_header().await?.height;
+
+        let mut current_height = start_height;
+        let mut txn = self.db.write_transaction();
+        let mut state_tree_updates = BTreeMap::<FixedHash, Option<FixedHash>>::new();
+        let mut reporting_counter = 0;
+        debug!(target: LOG_TARGET, "Cleaning up failed output sync, {}->{}", current_height, stop_height);
+        while let Some(current_header) = self.db.fetch_header(current_height).await? {
+            reporting_counter += 1;
+            if reporting_counter % 1000 == 0 {
+                debug!(target: LOG_TARGET, "Cleaning up failed output sync, progress: {}->{}",current_height, stop_height);
+            }
+
+            match self.db.fetch_outputs_in_block(current_header.hash()).await {
+                Ok(outputs) => {
+                    for (count, output) in (1..=outputs.len()).zip(outputs.iter()) {
+                        txn.prune_output_from_all_dbs(
+                            output.hash(),
+                            output.commitment.clone(),
+                            output.features.output_type,
                         );
+                        if !output.is_burned() {
+                            let key_bytes: [u8; 32] =
+                                output.commitment.as_bytes().try_into().expect("Malformed commitment");
+                            let smt_key = FixedHash::from(key_bytes);
+                            state_tree_updates.insert(smt_key, None);
+                        }
+                        if (count % 100 == 0 || count == outputs.len()) &&
+                            let Err(e) = txn.commit().await
+                        {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Clean up failed sync - commit prune outputs for header '{}': {}",
+                                current_header.hash(), e
+                            );
+                        }
+                    }
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Could not clean up failed output sync, error fetching outputs: {}", e);
+                },
+            }
+            current_height += 1;
+        }
+        debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}, proceeding to reinsert genesis outputs", stop_height);
+        // Restore genesis-block outputs that an earlier horizon sync spent: `prune_output_from_all_dbs`
+        // purged them from the UTXO LMDB tables when their STXO marker streamed in. If we don't
+        // restore them after rewinding past their spend height, the next sync can't resolve the
+        // STXO commitment Bob streams for the genesis-spending block and bans the peer with
+        // "Peer sent unknown commitment hash".
+        let genesis_block = self.db.fetch_genesis_block();
+        let genesis_header_hash = *genesis_block.hash();
+        let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
+        for output in genesis_block.block().body.outputs() {
+            if output.is_burned() {
+                continue;
+            }
+            let present = self
+                .db
+                .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                .await?
+                .is_some();
+            if present {
+                debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
+                continue;
+            }
+            let spent = self.db.fetch_inputs_mined_info(vec![output.hash()]).await?;
+            if !spent.is_empty() {
+                if let Some(spent_status) = &spent[0] {
+                    if spent_status.spent_height == 0 {
+                        debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state, it was spent in block {}", output.hash(), output.commitment.to_hex(), spent_status.spent_height);
+                        continue;
                     }
                 }
             }
+            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+            let smt_key = FixedHash::from(key_bytes);
+            let smt_node = output.smt_hash(0);
+            state_tree_updates.insert(smt_key, Some(smt_node));
+            // first make sure its deleted everywhere so we can cleanly reinsert it.
+            debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
 
-            if let Ok(header) = db.fetch_header_by_block_hash(current_header.prev_hash).await {
-                if let Some(previous_header) = header {
-                    current_header = previous_header;
-                } else {
-                    warn!(target: LOG_TARGET, "Could not clean up failed output sync, previous_header link missing from db");
-                    break;
-                }
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not clean up failed output sync, header '{}' not in db",
-                    current_header.prev_hash.to_hex()
-                );
-                break;
-            }
-            if current_header.hash() == stop_hash {
-                debug!(target: LOG_TARGET, "Reached stop point while cleaning up failed output sync");
-                break;
-            }
-        }
-
-        if let Err(e) = txn.commit().await {
-            warn!(
-                target: LOG_TARGET,
-                "Clean up failed output sync - final commit failed: {}",
-                e
+            txn.prune_output_from_all_dbs(
+                output.hash(),
+                output.commitment.clone(),
+                output.features.output_type,
             );
+            txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
         }
-    }
 
-    /// Removes any outputs stored in the given block height range from the database.
-    /// On a fresh start all `fetch_outputs_in_block` calls return empty, so this is a no-op.
-    async fn clean_up_height_range(&mut self, start_height: u64, end_height: u64) -> Result<(), HorizonSyncError> {
-        let db = self.db().clone();
-        let mut txn = db.write_transaction();
-        let mut count: u64 = 0;
-        for height in start_height..=end_height {
-            let header = db
-                .fetch_header(height)
-                .await?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "Header",
-                    field: "height",
-                    value: height.to_string(),
-                })?;
-            let outputs = db.fetch_outputs_in_block(header.hash()).await?;
-            for output in outputs {
-                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
-                count += 1;
-                if count.is_multiple_of(PROGRESS_REPORT_INTERVAL) {
-                    txn.commit().await?;
-                    txn = db.write_transaction();
-                }
-            }
-        }
+        let tranche_updates = state_tree_updates
+            .into_iter()
+            .map(|(key, value)| HorizonStateTreeUpdate { key, value })
+            .collect::<Vec<_>>();
+
+        txn.apply_horizon_state_tree_updates(tranche_updates);
+
         txn.commit().await?;
-        if count > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "Cleaned up {} partial output(s) from height range {}-{}", count, start_height, end_height
-            );
-        }
+        debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}, genesis outputs restored", stop_height);
         Ok(())
     }
 
@@ -661,72 +730,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         mut sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
+        sync_start_height: u64,
     ) -> Result<(), HorizonSyncError> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
-
-        let stored_checkpoint = db.fetch_horizon_sync_output_checkpoint().await?;
-
-        let checkpoint_height = match stored_checkpoint {
-            Some(ref cp) if cp.sync_target_height == to_header.height && cp.sync_target_hash == to_header.hash() => {
-                match db.fetch_header(cp.checkpoint_height).await? {
-                    Some(header) if header.hash() == cp.checkpoint_hash => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Resuming output sync from checkpoint at height {}, target unchanged",
-                            cp.checkpoint_height
-                        );
-                        Some(cp.checkpoint_height)
-                    },
-                    _ => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Horizon sync checkpoint at height {} is no longer on the canonical chain (reorg \
-                             detected). Discarding checkpoint and restarting output sync from scratch.",
-                            cp.checkpoint_height
-                        );
-                        db.write_transaction()
-                            .clear_horizon_sync_output_checkpoint()
-                            .commit()
-                            .await?;
-                        None
-                    },
-                }
-            },
-            Some(ref cp) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Horizon sync target changed from height {} to {}. Discarding checkpoint and cleaning up \
-                     partial outputs.",
-                    cp.sync_target_height,
-                    to_header.height
-                );
-                db.write_transaction()
-                    .clear_horizon_sync_output_checkpoint()
-                    .commit()
-                    .await?;
-                if let Ok(Some(cleanup_header)) = db.fetch_header(cp.checkpoint_height).await {
-                    self.clean_up_failed_output_sync(&cleanup_header).await;
-                }
-                None
-            },
-            None => None,
-        };
-        let (sync_start_height, _jmt_version) = match checkpoint_height {
-            Some(h) => {
-                // Only the in-progress (first resumption) tranche may have partial output data.
-                let first_tranche_end = cmp::min(
-                    (h + 1).saturating_add(HORIZON_SYNC_TRANCHE_SIZE).saturating_sub(1),
-                    to_header.height,
-                );
-                self.clean_up_height_range(h + 1, first_tranche_end).await?;
-                (h + 1, h)
-            },
-            None => {
-                self.clean_up_height_range(0, to_header.height).await?;
-                (0, 0)
-            },
-        };
+        self.clean_up_stale_synced_outputs(sync_start_height).await?;
 
         if sync_start_height > to_header.height {
             info!(
@@ -740,9 +748,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         self.num_outputs = to_header.output_smt_size;
 
+        // Progress is reported in block heights: unambiguous, monotonic and resume-correct.
+        // The wire stream sends every output ever created in the range (then deletes spent ones
+        // via STXO markers), so an output count would overshoot `output_smt_size`. Block heights
+        // also preserve visible progress across a resume from a tranche checkpoint.
         let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
-            current: 0,
-            total: self.num_outputs,
+            current: sync_start_height,
+            total: to_header.height,
             sync_peer: sync_peer.clone(),
         });
         self.hooks.call_on_progress_horizon_hooks(info);
@@ -769,8 +781,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         while tranche_start_height <= to_header.height {
             let tranche_end_height = cmp::min(
                 tranche_start_height
-                    .saturating_add(HORIZON_SYNC_TRANCHE_SIZE)
-                    .saturating_sub(1),
+                    .saturating_add(HORIZON_SYNC_TRANCHE_SIZE),
                 to_header.height,
             );
 
@@ -799,7 +810,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 "Syncing output tranche heights {}-{} ({} blocks) from peer {}",
                 tranche_start_height,
                 tranche_end_height,
-                tranche_end_height - tranche_start_height + 1,
+                tranche_end_height.saturating_sub(tranche_start_height) + 1,
                 sync_peer.node_id(),
             );
 
@@ -829,7 +840,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let mut inputs_to_delete = Vec::new();
             let mut batch_op_counter = 0;
             let mut last_mined_header: Option<FixedHash> = None;
-
+            let mut current_header_hash = tranche_start_header.hash();
+            let mut current_header = self
+                .db()
+                .fetch_header_by_block_hash(current_header_hash)
+                .await?
+                .ok_or_else(|| HorizonSyncError::IncorrectResponse("Starting header missing".into()))?;
             while let Some(response) = output_stream.next().await {
                 let latency = last_sync_timer.elapsed();
                 avg_latency.add_sample(latency);
@@ -839,29 +855,47 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     HorizonSyncError::IncorrectResponse(format!("Peer sent invalid mined header: {}", e))
                 })?;
                 last_mined_header = Some(output_header_hash);
-                let current_header = self
-                    .db()
-                    .fetch_header_by_block_hash(output_header_hash)
-                    .await?
-                    .ok_or_else(|| {
-                        HorizonSyncError::IncorrectResponse("Peer sent mined header we do not know of".into())
-                    })?;
+                if output_header_hash != current_header_hash {
+                    current_header = self
+                        .db()
+                        .fetch_header_by_block_hash(output_header_hash)
+                        .await?
+                        .ok_or_else(|| {
+                            HorizonSyncError::IncorrectResponse("Peer sent mined header we do not know of".into())
+                        })?;
+                    current_header_hash = output_header_hash;
+
+                    debug!(
+                        target: LOG_TARGET,
+                        "Output sync reached new header( height: {}), synced {} outputs, spent {} inputs, \
+                         latency: {:.2?}",
+                        current_header.height,
+                        utxo_counter,
+                        stxo_counter,
+                        latency
+                    );
+                }
 
                 let proto_output = res.txo.ok_or_else(|| {
                     HorizonSyncError::IncorrectResponse("Peer sent no transaction output data".into())
                 })?;
                 match proto_output {
                     Txo::Output(output) => {
+                        if current_header.height == 0 {
+                            continue;
+                        }
                         let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
                         if !output.is_burned() {
                             utxo_counter += 1;
                             let output_hash = output.hash();
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
-                                "UTXO `{}` received from sync peer ({} of {})",
+                                "UTXO `{}` received from sync peer at height {} (tranche {}-{}, {} in tranche)",
                                 output_hash,
-                                total_utxo_counter + utxo_counter,
-                                self.num_outputs,
+                                current_header.height,
+                                tranche_start_height,
+                                tranche_end_height,
+                                utxo_counter,
                             );
                             let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().map_err(|e| {
                                 HorizonSyncError::IncorrectResponse(format!("Peer sent malformed commitment: {}", e))
@@ -901,7 +935,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             .await?
                         {
                             Some(output_hash) => {
-                                debug!(
+                                trace!(
                                     target: LOG_TARGET,
                                     "STXO hash `{output_hash}` received from sync peer ({stxo_counter})",
                                 );
@@ -938,10 +972,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                 items_processed += 1;
                 if items_processed.is_multiple_of(PROGRESS_REPORT_INTERVAL) {
-                    let utxo_progress = total_utxo_counter + utxo_counter;
                     let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
-                        current: utxo_progress,
-                        total: self.num_outputs,
+                        current: current_header.height,
+                        total: to_header.height,
                         sync_peer: sync_peer.clone(),
                     });
                     self.hooks.call_on_progress_horizon_hooks(info);
@@ -951,6 +984,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     txn.commit().await?;
                     txn = db.write_transaction();
                     batch_op_counter = 0;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Committed batch of {} output updates at height {} (tranche {}-{}, {} total in tranche)",
+                        HORIZON_SYNC_BATCH_SIZE,
+                        current_header.height,
+                        tranche_start_height,
+                        tranche_end_height,
+                        utxo_counter + stxo_counter,
+                    );
                 }
 
                 sync_peer.set_latency(latency);
@@ -1017,10 +1059,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             tranche_start_height = tranche_end_height + 1;
         }
 
-        if let Err(e) = db
-            .verify_horizon_sync_output_root(to_header.output_mr)
-            .await
-        {
+        if let Err(e) = db.verify_horizon_sync_output_root(to_header.output_mr).await {
             warn!(
                 target: LOG_TARGET,
                 "Final JMT root verification failed! The entire synced state is poisoned. Clearing checkpoint."
@@ -1189,5 +1228,139 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     #[inline]
     fn db(&self) -> &AsyncBlockchainDb<B> {
         &self.db
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_comms::test_utils::mocks::create_connectivity_mock;
+    use tari_transaction_components::crypto_factories::CryptoFactories;
+
+    use super::*;
+    use crate::{
+        chain_storage::{BlockchainDatabase, DbTransaction, HorizonSyncOutputCheckpoint},
+        test_helpers::{
+            blockchain::{TempDatabase, create_main_chain, create_new_blockchain},
+            create_consensus_rules,
+        },
+        validation::mocks::MockValidator,
+    };
+
+    fn build_synchronizer<'a>(
+        db: BlockchainDatabase<TempDatabase>,
+        sync_peers: &'a mut Vec<SyncPeer>,
+        horizon_sync_height: u64,
+    ) -> HorizonStateSynchronization<'a, TempDatabase> {
+        let (connectivity, _mock) = create_connectivity_mock();
+        let rules = create_consensus_rules();
+        let prover = CryptoFactories::default().range_proof;
+        let validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> = Arc::new(MockValidator::new(true));
+        HorizonStateSynchronization::new(
+            BlockchainSyncConfig::default(),
+            db.into(),
+            connectivity,
+            rules,
+            sync_peers,
+            horizon_sync_height,
+            prover,
+            validator,
+        )
+    }
+
+    #[tokio::test]
+    async fn calculate_start_no_checkpoint_starts_from_height_one() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
+        let target = chain.get("3").unwrap().header().clone();
+        let target_hash = target.hash();
+
+        let mut peers: Vec<SyncPeer> = vec![];
+        let sync = build_synchronizer(db, &mut peers, target.height);
+
+        let (start, stop_header) = sync.calculate_output_sync_start_stop(&target).await.unwrap();
+        assert_eq!(start, 1);
+        assert_eq!(stop_header.hash(), target_hash);
+    }
+
+    #[tokio::test]
+    async fn calculate_start_resumes_when_target_unchanged() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
+        let target = chain.get("3").unwrap().header().clone();
+        let target_hash = target.hash();
+        let checkpoint_block = chain.get("2").unwrap();
+
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: 2,
+            checkpoint_hash: *checkpoint_block.hash(),
+            sync_target_height: target.height,
+            sync_target_hash: target_hash,
+        });
+        db.write(txn).unwrap();
+
+        let mut peers: Vec<SyncPeer> = vec![];
+        let sync = build_synchronizer(db, &mut peers, target.height);
+
+        let (start, stop_header) = sync.calculate_output_sync_start_stop(&target).await.unwrap();
+        assert_eq!(start, 3);
+        assert_eq!(stop_header.hash(), target_hash);
+    }
+
+    #[tokio::test]
+    async fn calculate_start_discards_checkpoint_after_reorg() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
+        let target = chain.get("3").unwrap().header().clone();
+        let target_hash = target.hash();
+
+        // Store a checkpoint at a height that no longer exists on the canonical chain
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: 99,
+            checkpoint_hash: FixedHash::zero(),
+            sync_target_height: 120,
+            sync_target_hash: FixedHash::zero(),
+        });
+        db.write(txn).unwrap();
+
+        let db_clone = db.clone();
+        let mut peers: Vec<SyncPeer> = vec![];
+        let sync = build_synchronizer(db, &mut peers, target.height);
+
+        let (start, stop_header) = sync.calculate_output_sync_start_stop(&target).await.unwrap();
+        assert_eq!(start, 1);
+        assert_eq!(stop_header.hash(), target_hash);
+        assert!(
+            db_clone.fetch_horizon_sync_output_checkpoint().unwrap().is_none(),
+            "stale checkpoint must be cleared"
+        );
+    }
+
+    #[tokio::test]
+    async fn clean_up_stale_synced_outputs_prunes_outputs_above_start_height() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
+
+        // Pick an output from a block above start_height (we'll clean from height 1)
+        let block2 = chain.get("2").unwrap();
+        let outputs = db.fetch_outputs_in_block(*block2.hash()).unwrap();
+        assert!(!outputs.is_empty(), "block 2 must have outputs");
+        let output_hash = outputs[0].hash();
+        assert!(
+            db.fetch_output(output_hash).unwrap().is_some(),
+            "output must exist before cleanup"
+        );
+
+        let db_clone = db.clone();
+        let mut peers: Vec<SyncPeer> = vec![];
+        let mut sync = build_synchronizer(db, &mut peers, 3);
+
+        sync.clean_up_stale_synced_outputs(1).await.unwrap();
+
+        assert!(
+            db_clone.fetch_output(output_hash).unwrap().is_none(),
+            "output above start_height must be pruned"
+        );
     }
 }

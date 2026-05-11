@@ -63,7 +63,7 @@ impl HorizonSyncInfo {
                 total,
                 ref sync_peer,
             } => format!(
-                "Syncing outputs: {}/{} ({:.0}%) from {}{} Latency: {:.2?}",
+                "Syncing outputs: block {}/{} ({:.0}%) from {}{} Latency: {:.2?}",
                 current,
                 total,
                 current as f64 / total as f64 * 100.0,
@@ -107,7 +107,7 @@ impl Display for HorizonSyncInfo {
             } => {
                 write!(
                     f,
-                    "Horizon syncing outputs: {}/{} from {} (latency: {:.2?})",
+                    "Horizon syncing outputs: block {}/{} from {} (latency: {:.2?})",
                     current,
                     total,
                     sync_peer.node_id(),

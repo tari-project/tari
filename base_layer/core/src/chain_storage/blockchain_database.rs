@@ -2157,12 +2157,9 @@ where B: BlockchainBackend
         db.fetch_horizon_sync_output_checkpoint()
     }
 
-    pub fn verify_horizon_sync_output_root(
-        &self,
-        expected_root: HashOutput,
-    ) -> Result<(), ChainStorageError> {
+    pub fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError> {
         let db = self.db_read_access()?;
-        db.verify_horizon_sync_output_root( expected_root)
+        db.verify_horizon_sync_output_root(expected_root)
     }
 
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
@@ -2429,9 +2426,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let block_output_mr = block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?;
 
-
     let (output_smt_root, changes) = output_smt
-        .put_value_set(batch, current_version+1)
+        .put_value_set(batch, current_version + 1)
         .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
     let mut size = tip_header.output_smt_size;
