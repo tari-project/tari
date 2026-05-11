@@ -204,12 +204,24 @@ def download_and_extract(url, filename, dest_dir):
     zip_path = os.path.join(dest_dir, filename)
     print(f"\n\u2b07\ufe0f  Downloading {filename}...")
 
-    def progress(count, block_size, total_size):
-        if total_size > 0:
-            pct = min(100, count * block_size * 100 // total_size)
-            print(f"\r   {pct}%", end="", flush=True)
-
-    urllib.request.urlretrieve(url, zip_path, reporthook=progress)
+    # ``urlopen`` is the supported modern API; ``urlretrieve`` is in the
+    # legacy interface section of the urllib.request docs and is
+    # discouraged. Stream the response body to disk in chunks so we
+    # can also render a percentage indicator without pulling the whole
+    # archive into memory.
+    chunk_size = 64 * 1024
+    with urllib.request.urlopen(url) as response, open(zip_path, "wb") as out:
+        total = int(response.headers.get("Content-Length") or 0)
+        downloaded = 0
+        while True:
+            chunk = response.read(chunk_size)
+            if not chunk:
+                break
+            out.write(chunk)
+            downloaded += len(chunk)
+            if total > 0:
+                pct = min(100, downloaded * 100 // total)
+                print(f"\r   {pct}%", end="", flush=True)
     print()  # newline after progress
 
     print(f"\U0001f4e6 Extracting {filename}...")
