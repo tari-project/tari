@@ -978,4 +978,189 @@ mod test {
             .is_err()
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Payload integrity tests (issue #7796)
+    // -----------------------------------------------------------------------
+
+    /// Verify that `sign_locked_transaction` rejects a payload whose recipient
+    /// address was swapped after `prepare_one_sided_transaction_for_signing`
+    /// produced the integrity signature.  This is the exact attack vector
+    /// from the disclosure report: MITM swaps `recipients[0].address` from
+    /// Bob to Mallory, then hands the tampered JSON to the offline signer.
+    #[test]
+    fn sign_locked_transaction_rejects_tampered_recipient() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let mallory_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap()
+            .with_input(input2)
+            .unwrap();
+
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let mallory_address = TariAddress::new_dual_address(
+            mallory_key_manager.get_view_key().pub_key,
+            mallory_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(5000),
+            output_features: OutputFeatures::default(),
+            address: bob_address,
+            payment_id: MemoField::new_empty(),
+        }];
+
+        // Prepare the transaction — the payload is signed by alice's view key.
+        let mut prepared = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+
+        // Simulate MITM: swap recipient from Bob to Mallory.
+        prepared.info.recipients[0].address = mallory_address;
+
+        // The offline signer must detect the tamper and refuse to sign.
+        let result = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert!(
+            result.is_err(),
+            "sign_locked_transaction should reject a payload with a tampered recipient"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("tampered") || err_msg.contains("integrity") || err_msg.contains("invalid"),
+            "Expected an integrity-check error message, got: {err_msg}"
+        );
+    }
+
+    /// Verify that a payload signed by a *different* wallet's view key is
+    /// rejected even if the payload content is otherwise intact.  This
+    /// prevents a payload produced by wallet A from being signed by wallet B's
+    /// offline signer.
+    #[test]
+    fn sign_locked_transaction_rejects_wrong_view_key() {
+        let rules = create_consensus_manager();
+        // Alice prepares the transaction.
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+
+        // Bob is an unrelated wallet that happens to receive the JSON.
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+
+        let recipient_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(1000),
+            output_features: OutputFeatures::default(),
+            address: recipient_address,
+            payment_id: MemoField::new_empty(),
+        }];
+
+        // Alice prepares the payload (signed with alice's view key).
+        let prepared = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+
+        // Bob's offline signer receives this JSON.  Bob's view key does not
+        // match alice's view key in the payload — this must be rejected.
+        let result = sign_locked_transaction(
+            &bob_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert!(
+            result.is_err(),
+            "sign_locked_transaction must reject a payload whose view key does not match the signer's wallet"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("view public key") || err_msg.contains("integrity") || err_msg.contains("tampered"),
+            "Expected a view-key mismatch error, got: {err_msg}"
+        );
+    }
 }

@@ -123,6 +123,13 @@ where KM: TransactionKeyManagerInterface
         self.fee_per_gram
     }
 
+    /// Returns a reference to the key manager embedded in this builder.
+    /// Used by the offline signing prepare functions to sign the payload
+    /// for integrity verification.
+    pub fn key_manager(&self) -> &KM {
+        &self.key_manager
+    }
+
     pub fn with_lock_height(&mut self, lock_height: u64) -> &mut Self {
         self.lock_height = lock_height;
         self

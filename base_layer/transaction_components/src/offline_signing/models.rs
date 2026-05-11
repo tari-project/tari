@@ -19,12 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use borsh::{BorshDeserialize, BorshSerialize};
 use semver::Version;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash},
 };
 
 use crate::{
@@ -32,7 +33,10 @@ use crate::{
     transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, TransactionError, WalletOutput},
 };
 
-const SUPPORTED_VERSION: &str = "4.0.0";
+/// Version 4 had no payload integrity signature.
+/// Version 5 adds `payload_signature` to all `Prepare*` results so the offline
+/// signer can verify the payload was not tampered with in transit.
+const SUPPORTED_VERSION: &str = "5.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
     vec![Version::parse(SUPPORTED_VERSION).unwrap()]
@@ -74,7 +78,60 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// A domain-separated Schnorr signature produced by the view wallet over the Borsh-encoded
+/// payload data.  The offline signer verifies this before using the spend key, ensuring
+/// that any in-transit tampering (recipient swap, amount change, input substitution, …)
+/// is detected and the signing operation is aborted.
+///
+/// The challenge binds the nonce public key R, the view public key P, and the canonical
+/// Borsh bytes of the transaction payload: `H_domain(R || P || borsh_bytes)`.  Both
+/// wallets share the same view key, so the verifier derives P locally rather than
+/// trusting a key embedded in the payload.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
+pub struct PayloadIntegritySignature {
+    /// Schnorr signature produced with the view private key.
+    /// The signature nonce R is embedded in this value and is used when
+    /// recomputing the challenge on the verification side.
+    pub signature: CompressedSignature,
+}
+
+/// Canonical Borsh bytes for a one-sided transaction payload covering all
+/// security-relevant fields (`version`, `tx_id`, and the full `info` struct).
+/// Used for both signing (prepare side) and integrity verification (sign side).
+///
+/// `OneSidedTransactionInfo` is serialised directly via its `BorshSerialize` impl;
+/// for `WalletOutput` entries the impl commits to the consensus output hash, which
+/// covers ALL output fields, so tampering with any field is detectable.
+pub fn borsh_canonical_one_sided(
+    version: &Version,
+    tx_id: TxId,
+    info: &OneSidedTransactionInfo,
+) -> Result<Vec<u8>, TransactionError> {
+    let mut buf = Vec::new();
+    BorshSerialize::serialize(&version.to_string(), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    Ok(buf)
+}
+
+/// Canonical Borsh bytes for a multisig transaction payload.
+pub fn borsh_canonical_multisig(
+    version: &Version,
+    tx_id: TxId,
+    info: &OneSidedMultisigTransactionInfo,
+) -> Result<Vec<u8>, TransactionError> {
+    let mut buf = Vec::new();
+    BorshSerialize::serialize(&version.to_string(), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
+        .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    Ok(buf)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct PaymentRecipient {
     pub amount: MicroMinotari,
     pub output_features: OutputFeatures,
@@ -95,13 +152,13 @@ pub struct TransactionMetadata {
     pub burn_commitment: Option<CompressedCommitment>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize)]
 pub struct OneSidedTransactionInfo {
     /// Payment ID
     pub payment_id: MemoField,
     /// Recipient
     pub recipients: Vec<PaymentRecipient>,
-    /// All transaction inputs inputs.
+    /// All transaction inputs.
     pub inputs: Vec<WalletOutput>,
     /// The recipient's outputs.
     pub outputs: Vec<WalletOutput>,
@@ -111,7 +168,7 @@ pub struct OneSidedTransactionInfo {
     pub sender_address: TariAddress,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize)]
 pub struct OneSidedMultisigTransactionInfo {
     #[serde(flatten)]
     pub base: OneSidedTransactionInfo,
@@ -152,6 +209,9 @@ pub struct PrepareOneSidedTransactionForSigningResult {
     pub version: Version,
     pub tx_id: TxId,
     pub info: OneSidedTransactionInfo,
+    /// Integrity signature produced by the online view wallet over the canonical
+    /// payload bytes.  The offline signer MUST verify this before signing.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
@@ -167,6 +227,9 @@ pub struct PrepareDepositMultisigTransactionResult {
     pub version: Version,
     pub tx_id: TxId,
     pub info: OneSidedMultisigTransactionInfo,
+    /// Integrity signature produced by the online view wallet over the canonical
+    /// payload bytes.  The offline signer MUST verify this before signing.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for PrepareDepositMultisigTransactionResult {}
@@ -182,6 +245,9 @@ pub struct PrepareWithdrawMultisigTransactionResult {
     pub version: Version,
     pub tx_id: TxId,
     pub info: OneSidedTransactionInfo,
+    /// Integrity signature produced by the online view wallet over the canonical
+    /// payload bytes.  The offline signer MUST verify this before signing.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for PrepareWithdrawMultisigTransactionResult {}

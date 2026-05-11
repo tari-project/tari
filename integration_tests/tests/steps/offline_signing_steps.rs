@@ -238,6 +238,92 @@ async fn sign_prepared_transaction_using_standalone_offline_signer(world: &mut T
     world.offline_signing_signed = Some(signed_json);
 }
 
+/// Tamper the prepared offline signing payload by incrementing the `tx_id` field.
+///
+/// Any modification to the signed content (every field except `payload_signature`
+/// itself, which is stripped before hashing) invalidates the integrity signature
+/// that the view wallet embedded when it called `prepare_one_sided_transaction_for_signing`.
+/// This step simulates the MITM attack described in issue #7796.
+#[when(expr = "I tamper with the prepared offline signing payload")]
+async fn tamper_offline_signing_payload(world: &mut TariWorld) {
+    let prepared_json = world
+        .offline_signing_prepared
+        .as_ref()
+        .expect("No prepared transaction found — run the prepare step first")
+        .clone();
+
+    let mut value: serde_json::Value =
+        serde_json::from_str(&prepared_json).expect("Failed to parse prepared transaction JSON");
+
+    // Increment tx_id by 1.  This produces a structurally valid JSON document
+    // that deserialises without error, but whose canonical bytes differ from those
+    // that were signed — so the Schnorr integrity check inside sign_locked_transaction
+    // will fail and signing will be aborted.
+    if let Some(tx_id) = value.get_mut("tx_id") {
+        let original = tx_id.as_u64().unwrap_or(0);
+        *tx_id = serde_json::Value::Number((original.wrapping_add(1)).into());
+    }
+
+    world.offline_signing_prepared =
+        Some(serde_json::to_string(&value).expect("Failed to re-serialise tampered payload"));
+    println!("Tampered prepared offline signing payload (incremented tx_id by 1)");
+}
+
+/// Attempt to sign the tampered payload using the standalone offline signer and
+/// assert that the operation fails with a payload integrity error.
+///
+/// The signer must NOT produce an output file: writing signed material to disk
+/// for a tampered payload would constitute a security bypass.
+#[then(expr = "signing the tampered payload using standalone offline signer {word} fails with an integrity error")]
+async fn sign_tampered_payload_fails_integrity_check(world: &mut TariWorld, signer_name: String) {
+    let prepared_json = world
+        .offline_signing_prepared
+        .as_ref()
+        .expect("No prepared transaction found")
+        .clone();
+    let keystore_file = world
+        .offline_signer_keystores
+        .get(&signer_name)
+        .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized"))
+        .clone();
+    let signer_dir = keystore_file
+        .parent()
+        .unwrap_or_else(|| panic!("Keystore file {keystore_file:?} has no parent directory"))
+        .to_path_buf();
+    let input_file = signer_dir.join("offline_signing_tampered_input.json");
+    let output_file = signer_dir.join("offline_signing_tampered_output.json");
+    drop(std::fs::remove_file(&output_file));
+    std::fs::write(&input_file, prepared_json).expect("Failed to write tampered transaction file");
+
+    let result = execute_offline_signer_from_args(os_args([
+        OsString::from("minotari_offline_signer"),
+        OsString::from("--test-keystore-file"),
+        keystore_file.as_os_str().to_os_string(),
+        OsString::from("sign"),
+        OsString::from("--input-file"),
+        input_file.as_os_str().to_os_string(),
+        OsString::from("--output-file"),
+        output_file.as_os_str().to_os_string(),
+        OsString::from("--passphrase"),
+        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+        OsString::from("--network"),
+        OsString::from("localnet"),
+    ]));
+
+    assert!(
+        result.is_err(),
+        "Expected the standalone offline signer to reject the tampered payload, but it succeeded"
+    );
+    assert!(
+        !output_file.exists(),
+        "Offline signer wrote a signed output for a tampered payload — integrity check was bypassed"
+    );
+    println!(
+        "Standalone offline signer correctly rejected the tampered payload: {:?}",
+        result.unwrap_err()
+    );
+}
+
 #[when(expr = "I broadcast the signed transaction via wallet {word}")]
 async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String) {
     let signed_json = world

@@ -60,7 +60,7 @@ use crate::{
 
 /// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, borsh::BorshSerialize)]
 pub struct WalletOutput {
     version: TransactionOutputVersion,
     value: MicroMinotari,
@@ -80,8 +80,10 @@ pub struct WalletOutput {
     output_hash: FixedHash,
     commitment: CompressedCommitment,
     #[serde(skip)]
+    #[borsh(skip)]
     input: OnceLock<TransactionInput>,
     #[serde(skip)]
+    #[borsh(skip)]
     output: OnceLock<TransactionOutput>,
 }
 

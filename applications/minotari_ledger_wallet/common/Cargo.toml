@@ -9,5 +9,6 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+borsh = { version = "1.5.7", default-features = false, features = ["derive"] }
 bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }
 serde = { version = "1",  default-features = false, features = ["derive"] }
