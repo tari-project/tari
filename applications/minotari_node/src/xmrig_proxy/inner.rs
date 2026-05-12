@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use tari_common_types::{
     tari_address::TariAddress,
     types::{
+        BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
@@ -84,6 +85,12 @@ pub struct InnerService {
     pub range_proof_type: RangeProofType,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ChainTip {
+    height: u64,
+    top_hash: BlockHash,
+}
+
 impl InnerService {
     /// Handle a JSON-RPC request from XMRig.
     pub async fn handle(&self, body: Bytes) -> Result<Response<ProxyBody>, XmrigProxyError> {
@@ -94,6 +101,8 @@ impl InnerService {
             "getblocktemplate" => self.handle_get_block_template(&json).await,
             "submitblock" => self.handle_submit_block(&json).await,
             "getblockcount" | "get_height" => self.handle_get_height(&json).await,
+            "getheight" => self.handle_get_height_hash().await,
+            "getinfo" => self.handle_get_info(&json).await,
             _ => {
                 debug!(target: LOG_TARGET, "Unknown method: {method}");
                 json_response(
@@ -108,24 +117,66 @@ impl InnerService {
         }
     }
 
-    /// Handle a GET /get_height request (some mining software uses this).
+    /// Fetch the current chain tip height and block hash from the node.
+    async fn get_chain_tip(&self) -> Result<ChainTip, XmrigProxyError> {
+        let mut handler = self.node_service.clone();
+        let meta = handler.get_metadata().await?;
+        Ok(ChainTip {
+            height: meta.best_block_height(),
+            top_hash: *meta.best_block_hash(),
+        })
+    }
+    
+    /// Handle GET /get_height, /getinfo, /getheight requests (some mining software uses these).
     pub async fn handle_get(&self, path: &str) -> Result<Response<ProxyBody>, XmrigProxyError> {
         match path {
             "/get_height" | "/getblockcount" => self.handle_get_height(&json!({})).await,
+            "/getheight" => self.handle_get_height_hash().await,
+            "/getinfo" | "/get_info" => self.handle_get_info(&json!({})).await,
             _ => json_response(StatusCode::NOT_FOUND, &json!({"error": "Not found"})),
         }
     }
-
+    
     async fn handle_get_height(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
-        let mut handler = self.node_service.clone();
-        let meta = handler.get_metadata().await?;
-        let height = meta.best_block_height();
+        let tip = self.get_chain_tip().await?;
         json_response(
             StatusCode::OK,
             &json_rpc_success(
                 req["id"].get("id").map(|v| v.as_i64()).unwrap_or_default(),
-                json!({ "count": height, "status": "OK" }),
+                json!({ "count": tip.height, "status": "OK" }),
             ),
+        )
+    }
+
+    async fn handle_get_height_hash(&self) -> Result<Response<ProxyBody>, XmrigProxyError> {
+        let tip = self.get_chain_tip().await?;
+        json_response(
+            StatusCode::OK,
+            &json!({
+                "height": tip.height,
+                "hash": format!("{}", tip.top_hash),
+                "status": "OK",
+            }),
+        )
+    }
+
+    async fn handle_get_info(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
+        let tip = self.get_chain_tip().await?;
+        json_response(
+            StatusCode::OK,
+            &json!({
+                "id": req["id"].get("id").and_then(|v| v.as_i64()).unwrap_or(-1),
+                "jsonrpc": "2.0",
+                "response": {
+                    "top_hash": hex::encode(tip.top_hash),
+                    "height": tip.height,
+                    "height_no_orphans": tip.height,
+                    "target": 60,
+                    "target_height": tip.height,
+                    "unlocked": true,
+                    "status": "OK",
+                },
+            }),
         )
     }
 
