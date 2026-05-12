@@ -2712,9 +2712,19 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
+        let tip_height = self.fetch_chain_metadata()?.best_block_height();
         Ok(match key {
-            DbKey::HeaderHeight(k) => lmdb_exists(&txn, &self.headers_db, k)?,
-            DbKey::HeaderHash(h) => lmdb_exists(&txn, &self.block_hashes_db, h.deref())?,
+            DbKey::HeaderHeight(k) => {
+                let exist = lmdb_exists(&txn, &self.headers_db, k)?;
+                exist & (tip_height <= *k)
+            },
+            DbKey::HeaderHash(h) => {
+                let height: u64 = match lmdb_get(&txn, &self.block_hashes_db, h.deref())? {
+                    Some(height) => height,
+                    None => return Ok(false),
+                };
+                height <= tip_height
+            },
             DbKey::OrphanBlock(k) => lmdb_exists(&txn, &self.orphans_db, k.deref())?,
         })
     }
