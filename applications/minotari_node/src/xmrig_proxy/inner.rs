@@ -92,7 +92,7 @@ struct ChainTip {
 }
 
 impl InnerService {
-    /// Handle a JSON-RPC request from XMRig.
+    /// Handle a JSON-RPC request from the miner.
     pub async fn handle(&self, body: Bytes) -> Result<Response<ProxyBody>, XmrigProxyError> {
         let json: Value = serde_json::from_slice(&body)?;
         let method = json.get("method").and_then(Value::as_str).unwrap_or("");
@@ -102,7 +102,7 @@ impl InnerService {
             "submitblock" => self.handle_submit_block(&json).await,
             "getblockcount" | "get_height" => self.handle_get_height(&json).await,
             "getheight" => self.handle_get_height_hash().await,
-            "getinfo" => self.handle_get_info(&json).await,
+            "getinfo" => self.handle_get_info().await,
             _ => {
                 debug!(target: LOG_TARGET, "Unknown method: {method}");
                 json_response(
@@ -132,7 +132,7 @@ impl InnerService {
         match path {
             "/get_height" | "/getblockcount" => self.handle_get_height(&json!({})).await,
             "/getheight" => self.handle_get_height_hash().await,
-            "/getinfo" | "/get_info" => self.handle_get_info(&json!({})).await,
+            "/getinfo" | "/get_info" => self.handle_get_info().await,
             _ => json_response(StatusCode::NOT_FOUND, &json!({"error": "Not found"})),
         }
     }
@@ -160,22 +160,14 @@ impl InnerService {
         )
     }
 
-    async fn handle_get_info(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
+    async fn handle_get_info(&self) -> Result<Response<ProxyBody>, XmrigProxyError> {
         let tip = self.get_chain_tip().await?;
         json_response(
             StatusCode::OK,
             &json!({
-                "id": req["id"].get("id").and_then(|v| v.as_i64()).unwrap_or(-1),
-                "jsonrpc": "2.0",
-                "response": {
-                    "top_hash": hex::encode(tip.top_hash),
-                    "height": tip.height,
-                    "height_no_orphans": tip.height,
-                    "target": 60,
-                    "target_height": tip.height,
-                    "unlocked": true,
-                    "status": "OK",
-                },
+                "top_block_hash": format!("{}", tip.top_hash),
+                "height": tip.height,
+                "status": "OK",
             }),
         )
     }
