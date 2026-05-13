@@ -36,17 +36,22 @@ pub enum MempoolResponse {
     Stats(StatsResponse),
     State(StateResponse),
     TxStorage(TxStorageResponse),
+    /// Extended response carrying rejection details for wallet feedback.
+    TxStorageWithDetails {
+        response: TxStorageResponse,
+        rejection_details: Option<String>,
+    },
     FeePerGramStats { response: Vec<FeePerGramStat> },
     FilteredOutputs(Vec<HashOutput>),
 }
 
 impl fmt::Display for MempoolResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use MempoolResponse::{FeePerGramStats, FilteredOutputs, State, Stats, TxStorage};
+        use MempoolResponse::{FeePerGramStats, FilteredOutputs, State, Stats, TxStorage, TxStorageWithDetails};
         match &self {
             Stats(_) => write!(f, "Stats"),
             State(_) => write!(f, "State"),
-            TxStorage(_) => write!(f, "TxStorage"),
+            TxStorage(_) | TxStorageWithDetails { .. } => write!(f, "TxStorage"),
             FeePerGramStats { response } => write!(f, "FeePerGramStats({} item(s))", response.len()),
             FilteredOutputs(outputs) => write!(f, "FilteredOutputs({} item(s))", outputs.len()),
         }

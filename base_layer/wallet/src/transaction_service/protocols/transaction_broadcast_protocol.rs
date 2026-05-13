@@ -198,9 +198,15 @@ where
         }
 
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
+            let details_msg = response
+                .rejection_details
+                .as_ref()
+                .map(|d| format!(" — details: {d}"))
+                .unwrap_or_default();
             error!(
                 target: LOG_TARGET,
-                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
+                "Transaction (TxId: {}) rejected by Base Node for reason: {}{}",
+                self.tx_id, response.rejection_reason, details_msg
             );
 
             let (reason_error, reason) = match response.rejection_reason {

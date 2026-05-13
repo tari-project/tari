@@ -80,7 +80,15 @@ impl MempoolStorage {
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
+    /// Returns a `TxStorageResponse` and optional rejection details for feedback to the wallet.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
+        let (resp, _details) = self.insert_with_details(tx)?;
+        Ok(resp)
+    }
+
+    /// Insert an unconfirmed transaction into the Mempool, returning both the storage response
+    /// and optional human-readable rejection details for wallet feedback.
+    pub fn insert_with_details(&mut self, tx: Arc<Transaction>) -> Result<(TxStorageResponse, Option<String>), UnconfirmedPoolError> {
         let tx_id = tx
             .body
             .kernels()
@@ -93,13 +101,16 @@ impl MempoolStorage {
             Ok(fee) => fee,
             Err(e) => {
                 warn!(target: LOG_TARGET, "Invalid transaction: {e}");
-                return Ok(TxStorageResponse::NotStoredConsensus);
+                return Ok((TxStorageResponse::NotStoredConsensus, Some(e.to_string())));
             },
         };
         // This check is almost free, so lets check this before we do any expensive validation.
         if tx_fee.as_u64() < self.unconfirmed_pool.config.min_fee {
             debug!(target: LOG_TARGET, "Tx: ({tx_id}) fee too low, rejecting");
-            return Ok(TxStorageResponse::NotStoredFeeTooLow);
+            return Ok((
+                TxStorageResponse::NotStoredFeeTooLow,
+                Some(format!("Transaction fee {} is below minimum {}", tx_fee, self.unconfirmed_pool.config.min_fee)),
+            ));
         }
         match self.validator.validate(&tx) {
             Ok(()) => {
@@ -118,36 +129,47 @@ impl MempoolStorage {
                     tx_id,
                     timer.elapsed()
                 );
-                Ok(TxStorageResponse::UnconfirmedPool)
+                Ok((TxStorageResponse::UnconfirmedPool, None))
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
                 if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
                     let weight = self.get_transaction_weighting();
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
-                    Ok(TxStorageResponse::UnconfirmedPool)
+                    Ok((TxStorageResponse::UnconfirmedPool, None))
                 } else {
-                    Ok(TxStorageResponse::NotStoredOrphan)
+                    let details = format!(
+                        "Orphan transaction: {} unknown input(s) [{}]",
+                        dependent_outputs.len(),
+                        dependent_outputs.iter().take(3).map(|h| h.to_hex()).collect::<Vec<_>>().join(", ")
+                    );
+                    Ok((TxStorageResponse::NotStoredOrphan, Some(details)))
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
                 info!(target: LOG_TARGET, "Validation failed due to already spent input");
-                Ok(TxStorageResponse::NotStoredAlreadySpent)
+                Ok((
+                    TxStorageResponse::NotStoredAlreadySpent,
+                    Some("Double spend detected: transaction references already spent input(s)".to_string()),
+                ))
             },
-            Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
+            Err(ValidationError::MaturityError) => Ok((
+                TxStorageResponse::NotStoredTimeLocked,
+                Some("Transaction is time-locked: inputs or kernel maturity height not yet reached".to_string()),
+            )),
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {msg}");
-                Ok(TxStorageResponse::NotStoredConsensus)
+                Ok((TxStorageResponse::NotStoredConsensus, Some(format!("Consensus rule violation: {msg}"))))
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
                     target: LOG_TARGET,
                     "Validation failed due to already mined kernel: {msg}"
                 );
-                Ok(TxStorageResponse::NotStoredAlreadyMined)
+                Ok((TxStorageResponse::NotStoredAlreadyMined, Some(format!("Transaction already mined: {msg}"))))
             },
             Err(e) => {
                 info!(target: LOG_TARGET, "Validation failed due to error: {e}");
-                Ok(TxStorageResponse::NotStored)
+                Ok((TxStorageResponse::NotStored, Some(format!("Validation failed: {e}"))))
             },
         }
     }

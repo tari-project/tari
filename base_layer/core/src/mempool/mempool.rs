@@ -73,6 +73,17 @@ impl Mempool {
         .await
     }
 
+    /// Insert an unconfirmed transaction into the Mempool, returning rejection details
+    /// for diagnostic feedback to the wallet.
+    pub async fn insert_with_details(&self, tx: Arc<Transaction>) -> Result<(TxStorageResponse, Option<String>), MempoolError> {
+        self.with_write_access(|storage| {
+            storage
+                .insert_with_details(tx)
+                .map_err(|e| MempoolError::InternalError(e.to_string()))
+        })
+        .await
+    }
+
     /// Inserts all transactions into the mempool.
     pub async fn insert_all(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
         self.with_write_access(|storage| {

@@ -29,6 +29,12 @@ pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
     pub is_synced: bool,
+    /// Optional human-readable details about why the transaction was rejected.
+    /// When present, contains the specific failure reason (e.g. which commitment was
+    /// double-spent, which consensus rule was violated).
+    /// Older wallets that don't understand this field will safely ignore it.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub rejection_details: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

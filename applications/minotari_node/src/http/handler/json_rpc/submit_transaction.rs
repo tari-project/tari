@@ -48,47 +48,51 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
-    let res = match mempool_service.submit_transaction(transaction).await {
-        Ok(response) => {
-            debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
-            match response {
-                TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
-                    accepted: true,
-                    rejection_reason: TxSubmissionRejectionReason::None,
-                    is_synced,
-                },
-
-                TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::Orphan,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::TimeLocked,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
-                    is_synced,
-                },
-                TxStorageResponse::NotStoredAlreadySpent |
-                TxStorageResponse::ReorgPool |
-                TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
-                    is_synced,
-                },
-            }
-        },
+    let (response, rejection_details) = match mempool_service.submit_transaction_with_details(transaction).await {
+        Ok((response, details)) => (response, details),
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to submit transaction: {e}"));
+        },
+    };
+    let res = match response {
+        TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
+            accepted: true,
+            rejection_reason: TxSubmissionRejectionReason::None,
+            is_synced,
+            rejection_details: None,
+        },
+
+        TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::Orphan,
+            is_synced,
+            rejection_details,
+        },
+        TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
+            is_synced,
+            rejection_details,
+        },
+        TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::TimeLocked,
+            is_synced,
+            rejection_details,
+        },
+        TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+            is_synced,
+            rejection_details,
+        },
+        TxStorageResponse::NotStoredAlreadySpent |
+        TxStorageResponse::ReorgPool |
+        TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
+            is_synced,
+            rejection_details,
         },
     };
     Ok(res)
