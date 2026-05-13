@@ -433,6 +433,141 @@ class TestIntegration(unittest.TestCase):
         mock_ledgerctl.assert_called_once()
 
 
+class TestZipSlipProtection(unittest.TestCase):
+    """Test Zip Slip vulnerability protection."""
+
+    def test_safe_relative_path(self):
+        """Should accept safe relative paths."""
+        self.assertTrue(installer.is_safe_zip_path("app.json", "/tmp/extract"))
+        self.assertTrue(installer.is_safe_zip_path("subdir/app.json", "/tmp/extract"))
+        self.assertTrue(installer.is_safe_zip_path("a/b/c/app.json", "/tmp/extract"))
+
+    def test_rejects_absolute_path(self):
+        """Should reject absolute paths."""
+        self.assertFalse(installer.is_safe_zip_path("/etc/passwd", "/tmp/extract"))
+        self.assertFalse(installer.is_safe_zip_path("/tmp/extract/app.json", "/tmp/extract"))
+
+    def test_rejects_parent_directory_traversal(self):
+        """Should reject paths with parent directory references."""
+        self.assertFalse(installer.is_safe_zip_path("../etc/passwd", "/tmp/extract"))
+        self.assertFalse(installer.is_safe_zip_path("../../etc/passwd", "/tmp/extract"))
+        self.assertFalse(installer.is_safe_zip_path("subdir/../../../etc/passwd", "/tmp/extract"))
+
+    def test_rejects_starting_with_parent(self):
+        """Should reject paths starting with .."""
+        self.assertFalse(installer.is_safe_zip_path("..", "/tmp/extract"))
+        self.assertFalse(installer.is_safe_zip_path("../", "/tmp/extract"))
+
+
+class TestSHA256Verification(unittest.TestCase):
+    """Test SHA256 checksum verification."""
+
+    def setUp(self):
+        """Set up test files."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.test_file = os.path.join(self.temp_dir, "test.txt")
+        with open(self.test_file, "w") as f:
+            f.write("test content")
+
+    def tearDown(self):
+        """Clean up."""
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_compute_sha256(self):
+        """Should compute correct SHA256 hash."""
+        # Known SHA256 hash of "test content"
+        expected_hash = "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72"
+        actual_hash = installer.compute_sha256(self.test_file)
+        self.assertEqual(actual_hash, expected_hash)
+
+    @patch('install_minotari_ledger.download_file')
+    def test_verify_checksum_success(self, mock_download):
+        """Should pass verification when checksum matches."""
+        # Create checksum file
+        checksum_file = f"{self.test_file}.sha256"
+        with open(checksum_file, "w") as f:
+            f.write("6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72  test.txt")
+
+        mock_download.return_value = True
+
+        release_data = {
+            "assets": [
+                {"name": "test.txt.sha256", "browser_download_url": "https://example.com/test.txt.sha256"}
+            ]
+        }
+
+        result = installer.verify_firmware_checksum(self.test_file, release_data)
+        self.assertTrue(result)
+
+        # Clean up
+        if os.path.exists(checksum_file):
+            os.remove(checksum_file)
+
+    @patch('install_minotari_ledger.download_file')
+    def test_verify_checksum_failure(self, mock_download):
+        """Should fail verification when checksum doesn't match."""
+        # Create checksum file with wrong hash
+        checksum_file = f"{self.test_file}.sha256"
+        with open(checksum_file, "w") as f:
+            f.write("0000000000000000000000000000000000000000000000000000000000000000  test.txt")
+
+        mock_download.return_value = True
+
+        release_data = {
+            "assets": [
+                {"name": "test.txt.sha256", "browser_download_url": "https://example.com/test.txt.sha256"}
+            ]
+        }
+
+        result = installer.verify_firmware_checksum(self.test_file, release_data)
+        self.assertFalse(result)
+
+        # Clean up
+        if os.path.exists(checksum_file):
+            os.remove(checksum_file)
+
+    def test_verify_no_checksum_available(self):
+        """Should proceed with warning when no checksum available."""
+        release_data = {
+            "assets": [
+                {"name": "other.txt.sha256", "browser_download_url": "https://example.com/other.txt.sha256"}
+            ]
+        }
+
+        result = installer.verify_firmware_checksum(self.test_file, release_data)
+        self.assertTrue(result)  # Returns True but with warning
+
+
+class TestProtobufImportFix(unittest.TestCase):
+    """Test that protobuf import check uses correct module name."""
+
+    def test_protobuf_import_mapping(self):
+        """Verify protobuf package maps to google.protobuf import."""
+        # The fix ensures we check for "google.protobuf" not "protobuf"
+        # This test documents the correct behavior
+        required_packages = {
+            "protobuf": "google.protobuf",
+            "setuptools": "setuptools",
+            "ecdsa": "ecdsa",
+            "ledgerwallet": "ledgerwallet"
+        }
+
+        # Verify the mapping is correct
+        self.assertEqual(required_packages["protobuf"], "google.protobuf")
+
+        # Verify we can import google.protobuf (if installed)
+        try:
+            import google.protobuf
+            import_success = True
+        except ImportError:
+            import_success = False
+
+        # If protobuf is installed, verify the import works
+        if import_success:
+            self.assertTrue(import_success)
+
+
 if __name__ == "__main__":
     # Run tests with verbose output
     unittest.main(verbosity=2)

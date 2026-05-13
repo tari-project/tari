@@ -22,6 +22,7 @@ import tempfile
 import shutil
 import zipfile
 import platform
+import hashlib
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from urllib.request import urlopen, Request
@@ -84,25 +85,31 @@ def check_python_version() -> bool:
 
 def install_dependencies() -> bool:
     """Install required Python packages."""
-    required_packages = ["protobuf", "setuptools", "ecdsa", "ledgerwallet"]
+    # Map package names to their import names (may differ from pip name)
+    required_packages = {
+        "protobuf": "google.protobuf",
+        "setuptools": "setuptools",
+        "ecdsa": "ecdsa",
+        "ledgerwallet": "ledgerwallet"
+    }
     
     print_info("Checking Python dependencies...")
     
-    for package in required_packages:
+    for pip_name, import_name in required_packages.items():
         try:
-            __import__(package)
-            print_success(f"{package} already installed")
+            __import__(import_name)
+            print_success(f"{pip_name} already installed")
         except ImportError:
-            print_info(f"Installing {package}...")
+            print_info(f"Installing {pip_name}...")
             try:
                 subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", "-q", package],
+                    [sys.executable, "-m", "pip", "install", "-q", pip_name],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-                print_success(f"{package} installed")
+                print_success(f"{pip_name} installed")
             except subprocess.CalledProcessError as e:
-                print_error(f"Failed to install {package}: {e}")
+                print_error(f"Failed to install {pip_name}: {e}")
                 return False
     
     return True
@@ -293,6 +300,154 @@ def download_file(url: str, dest_path: str, show_progress: bool = True) -> bool:
         return False
 
 
+def compute_sha256(file_path: str) -> str:
+    """Compute SHA256 hash of a file."""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            sha256_hash.update(chunk)
+    return sha256_hash.hexdigest()
+
+
+def verify_firmware_checksum(zip_path: str, release_data: Dict) -> bool:
+    """
+    Verify firmware integrity using SHA256 checksum from GitHub releases.
+    
+    Args:
+        zip_path: Path to the downloaded firmware zip file
+        release_data: GitHub release data containing assets
+        
+    Returns:
+        True if verification passes or no checksum available, False if verification fails
+    """
+    filename = os.path.basename(zip_path)
+    checksum_filename = f"{filename}.sha256"
+    
+    # Find checksum asset
+    checksum_asset = None
+    for asset in release_data.get("assets", []):
+        if asset.get("name") == checksum_filename:
+            checksum_asset = asset
+            break
+    
+    if not checksum_asset:
+        print_warning(f"No checksum file found ({checksum_filename})")
+        print_warning("Proceeding without verification (security risk)")
+        return True
+    
+    print_info("Verifying firmware integrity...")
+    
+    # Download checksum file
+    checksum_url = checksum_asset["browser_download_url"]
+    checksum_path = f"{zip_path}.sha256"
+    
+    if not download_file(checksum_url, checksum_path, show_progress=False):
+        print_warning("Failed to download checksum file")
+        print_warning("Proceeding without verification (security risk)")
+        return True
+    
+    try:
+        # Read expected checksum
+        with open(checksum_path, "r") as f:
+            checksum_content = f.read().strip()
+            # Handle format: "hash filename" or just "hash"
+            expected_hash = checksum_content.split()[0].lower()
+        
+        # Compute actual checksum
+        actual_hash = compute_sha256(zip_path)
+        
+        if actual_hash == expected_hash:
+            print_success("Firmware integrity verified (SHA256)")
+            return True
+        else:
+            print_error("Firmware integrity check FAILED!")
+            print_error(f"Expected: {expected_hash}")
+            print_error(f"Actual:   {actual_hash}")
+            print_error("The downloaded firmware may be corrupted or tampered with.")
+            return False
+            
+    except Exception as e:
+        print_warning(f"Error verifying checksum: {e}")
+        print_warning("Proceeding without verification (security risk)")
+        return True
+    finally:
+        # Clean up checksum file
+        if os.path.exists(checksum_path):
+            os.remove(checksum_path)
+
+
+def is_safe_zip_path(member_path: str, extract_dir: str) -> bool:
+    """
+    Validate that a zip member path is safe (no Zip Slip vulnerability).
+    
+    Args:
+        member_path: The path of the zip member
+        extract_dir: The target extraction directory
+        
+    Returns:
+        True if the path is safe, False otherwise
+    """
+    # Normalize paths
+    member_path = os.path.normpath(member_path)
+    extract_dir = os.path.normpath(extract_dir)
+    
+    # Reject absolute paths
+    if os.path.isabs(member_path):
+        return False
+    
+    # Reject paths starting with .. or containing ..
+    if member_path.startswith("..") or ".." in member_path.split(os.sep):
+        return False
+    
+    # Compute full path and ensure it's within extract_dir
+    full_path = os.path.join(extract_dir, member_path)
+    full_path = os.path.normpath(full_path)
+    
+    # Ensure the resolved path starts with extract_dir
+    try:
+        Path(full_path).relative_to(Path(extract_dir))
+        return True
+    except ValueError:
+        return False
+
+
+def extract_firmware(zip_path: str, extract_dir: str) -> Optional[str]:
+    """
+    Extract firmware zip and find app.json.
+    
+    Implements Zip Slip protection to prevent path traversal attacks.
+    """
+    print_info("Extracting firmware...")
+    
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            # Validate all members before extraction (Zip Slip protection)
+            for member in zip_ref.namelist():
+                if not is_safe_zip_path(member, extract_dir):
+                    print_error(f"Security alert: Zip Slip attack detected!")
+                    print_error(f"  Malicious path: {member}")
+                    print_error("  Aborting extraction.")
+                    return None
+            
+            # All paths validated, proceed with extraction
+            zip_ref.extractall(extract_dir)
+        
+        # Find app_*.json file
+        for root, dirs, files in os.walk(extract_dir):
+            for file in files:
+                if file.startswith("app_") and file.endswith(".json"):
+                    app_json_path = os.path.join(root, file)
+                    print_success(f"Found app manifest: {file}")
+                    return app_json_path
+        
+        print_error("No app_*.json found in firmware archive")
+        return None
+        
+    except zipfile.BadZipFile:
+        print_error("Invalid zip file")
+        return None
+
+
 def download_firmware(model: str, release_data: Dict, temp_dir: str) -> Optional[str]:
     """Download firmware for the detected model."""
     asset = find_asset_for_model(release_data, model)
@@ -318,31 +473,18 @@ def download_firmware(model: str, release_data: Dict, temp_dir: str) -> Optional
         return None
     
     print_success(f"Downloaded to {zip_path}")
+    
+    # Verify firmware integrity with SHA256 checksum
+    if not verify_firmware_checksum(zip_path, release_data):
+        print_error("Firmware verification failed. Deleting corrupted file.")
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        return None
+    
     return zip_path
 
 
-def extract_firmware(zip_path: str, extract_dir: str) -> Optional[str]:
-    """Extract firmware zip and find app.json."""
-    print_info("Extracting firmware...")
-    
-    try:
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(extract_dir)
-        
-        # Find app_*.json file
-        for root, dirs, files in os.walk(extract_dir):
-            for file in files:
-                if file.startswith("app_") and file.endswith(".json"):
-                    app_json_path = os.path.join(root, file)
-                    print_success(f"Found app manifest: {file}")
-                    return app_json_path
-        
-        print_error("No app_*.json found in firmware archive")
-        return None
-        
-    except zipfile.BadZipFile:
-        print_error("Invalid zip file")
-        return None
+
 
 
 def install_app(app_json_path: str) -> bool:
