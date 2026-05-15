@@ -7,6 +7,35 @@
 
 set -euo pipefail
 
+# -------------------------
+# CLI options
+# -------------------------
+
+RELEASE_TAG=""
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [-t TAG]
+
+Options:
+  -t, --tag TAG    Install a specific release tag (e.g. v5.2.0-pre.7), including
+                   pre-releases. Defaults to the latest published release.
+  -h, --help       Show this help and exit.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -t|--tag)
+      [[ $# -ge 2 ]] || { echo "❌ $1 requires a value"; usage; exit 1; }
+      RELEASE_TAG="$2"; shift 2 ;;
+    -h|--help)
+      usage; exit 0 ;;
+    *)
+      echo "❌ Unknown argument: $1"; usage; exit 1 ;;
+  esac
+done
+
 echo "🚀 Installing Minotari Ledger Wallet (Flex)"
 
 # -------------------------
@@ -64,10 +93,15 @@ cd "$DOWNLOAD_DIR"
 # Download latest release
 # -------------------------
 
-echo "🌐 Fetching latest Minotari Ledger release info..."
+if [[ -n "$RELEASE_TAG" ]]; then
+  echo "🌐 Fetching Minotari Ledger release info for tag '$RELEASE_TAG'..."
+  RELEASE_API="https://api.github.com/repos/tari-project/tari/releases/tags/${RELEASE_TAG}"
+else
+  echo "🌐 Fetching latest Minotari Ledger release info..."
+  RELEASE_API="https://api.github.com/repos/tari-project/tari/releases/latest"
+fi
 
-
-ASSET_URL=$(curl -fsSL https://api.github.com/repos/tari-project/tari/releases/latest \
+ASSET_URL=$(curl -fsSL "$RELEASE_API" \
   | jq -r '
       .assets[]
       | select(.name | test("minotari_ledger_wallet-flex.*\\.zip$"))
