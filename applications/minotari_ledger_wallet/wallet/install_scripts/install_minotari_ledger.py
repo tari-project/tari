@@ -80,7 +80,7 @@ def success(msg):
 
 
 def step(msg):
-    print(f"\n\u{1f4cd} {msg}")
+    print(f"\n\U0001F4CD {msg}")
 
 
 def die(msg):
@@ -305,7 +305,10 @@ def download_and_extract(download_url, asset_name, download_dir):
 
     zip_path = download_dir / asset_name
     try:
-        urllib.request.urlretrieve(download_url, zip_path)
+        req = urllib.request.Request(download_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60) as response:
+        with open(zip_path, "wb") as f:
+            f.write(response.read())
     except Exception as e:
         die(f"Download failed: {e}")
 
@@ -382,7 +385,7 @@ def install_app(ledgerctl_path, app_json_path):
 
 
 def main():
-    print("\u{1f680} Minotari Ledger Wallet Installer")
+    print("\U0001F680 Minotari Ledger Wallet Installer")
     print("=" * 50)
 
     require_python_version()

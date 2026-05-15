@@ -48,5 +48,5 @@ if (-not (Test-Path $InstallerPy)) {
 }
 
 # Run the Python installer
-& $Python $InstallerPy @args
+& "$InstallerPy" @args
 exit $LASTEXITCODE
