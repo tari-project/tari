@@ -283,10 +283,12 @@ const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_que
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
-const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
-#[allow(dead_code)] // Retained for upcoming JMT data migration.
-const LMDB_DB_JMT_NODE_OLD_DATA: &str = "jmt_node_data";
-const LMDB_DB_JMT_NODE_NEW_DATA: &str = "jmt_nodes_data";
+const LMDB_DB_JMT_VALUE_DATA_v1: &str = "jmt_value_data";
+const LMDB_DB_JMT_VALUE_DATA_V2: &str = "jmt_values_data";
+const LMDB_DB_JMT_NODE_DATA_V1: &str = "jmt_node_data";
+const LMDB_DB_JMT_NODE_DATA_V2: &str = "jmt_nodes_data";
+const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
+
 
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
@@ -324,8 +326,8 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_VALIDATOR_NODES_EXIT,
         LMDB_DB_TEMPLATE_REGISTRATIONS,
         LMDB_DB_UTXO_SMT,
-        LMDB_DB_JMT_VALUE_DATA,
-        LMDB_DB_JMT_NODE_NEW_DATA,
+        LMDB_DB_JMT_VALUE_DATA_V2,
+        LMDB_DB_JMT_NODE_DATA_V1,
     ]
 }
 
@@ -391,8 +393,8 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .add_database(LMDB_DB_UTXO_SMT, flags)
-        .add_database(LMDB_DB_JMT_VALUE_DATA, flags )
-        .add_database(LMDB_DB_JMT_NODE_NEW_DATA, flags)
+        .add_database(LMDB_DB_JMT_VALUE_DATA_V2, flags )
+        .add_database(LMDB_DB_JMT_NODE_DATA_V2, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{err}")))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -587,8 +589,8 @@ impl LMDBDatabase {
             validator_nodes_exit_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_EXIT)?,
             template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
-            jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
-            jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_NEW_DATA)?,
+            jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA_V2)?,
+            jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA_V2)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -886,8 +888,8 @@ impl LMDBDatabase {
             (LMDB_DB_VALIDATOR_NODES_EXIT, &self.validator_nodes_exit_queue),
             (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
             (LMDB_DB_UTXO_SMT, &self.utxo_smt),
-            (LMDB_DB_JMT_VALUE_DATA, &self.jmt_value_data),
-            (LMDB_DB_JMT_NODE_NEW_DATA, &self.jmt_node_data),
+            (LMDB_DB_JMT_VALUE_DATA_V2, &self.jmt_value_data),
+            (LMDB_DB_JMT_NODE_DATA_V2, &self.jmt_node_data),
         ]
     }
 
