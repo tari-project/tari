@@ -3,7 +3,25 @@ set -e
 
 # The order is important. Dependencies must be published before the crates that depend on them.
 PACKAGES=(
-
+    "tari_storage"
+    "tari_shutdown"
+    "tari_metrics"
+    "tari_max_size"
+    "tari_script"
+    "tari_hashing"
+    "tari_jellyfish"
+    "tari_comms_rpc_macros"
+    "tari_common_sqlite"
+    "tari_features"
+    "tari_test_utils"
+    "tari_common"
+    "tari_comms"
+    "tari_comms_dht"
+    "minotari_ledger_wallet_common"
+    "tari_common_types"
+    "tari_sidechain"
+    "minotari_ledger_wallet_comms"
+    "tari_service_framework"
     "tari_transaction_components"
     "tari_transaction_key_manager"
     "tari_node_components"
