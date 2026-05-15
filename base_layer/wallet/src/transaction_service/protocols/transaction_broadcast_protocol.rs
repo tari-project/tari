@@ -120,7 +120,8 @@ where
                 return Ok(self.tx_id);
             }
             if let Err(e) = check_transaction_size(&completed_tx.transaction, self.tx_id) {
-                self.cancel_pending_transaction(TxCancellationReason::Oversized).await;
+                self.cancel_pending_transaction(TxCancellationReason::Oversized, None)
+                    .await;
                 return Err(e);
             }
 
@@ -198,10 +199,20 @@ where
         }
 
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
-            );
+            if let Some(ref details) = response.details {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) rejected by Base Node for reason: {} (details: {})",
+                    self.tx_id,
+                    response.rejection_reason,
+                    details
+                );
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
+                );
+            }
 
             let (reason_error, reason) = match response.rejection_reason {
                 TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => (
@@ -230,12 +241,16 @@ where
                 ),
             };
 
-            self.cancel_pending_transaction(reason).await;
+            self.cancel_pending_transaction(reason, response.details.clone()).await;
 
             let _size = self
                 .resources
                 .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id, reason)))
+                .send(Arc::new(TransactionEvent::TransactionCancelled(
+                    self.tx_id,
+                    reason,
+                    response.details.clone().unwrap_or_default(),
+                )))
                 .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -326,7 +341,7 @@ where
                     "Transaction (TxId: {}) has been {}, cancelling transaction",
                     self.tx_id, reason,
                 );
-                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction)
+                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction, None)
                     .await;
 
                 let _size = self
@@ -335,6 +350,7 @@ where
                     .send(Arc::new(TransactionEvent::TransactionCancelled(
                         self.tx_id,
                         TxCancellationReason::InvalidTransaction,
+                        reason.clone(),
                     )))
                     .inspect_err(|e| {
                         trace!(
@@ -384,7 +400,7 @@ where
         }
     }
 
-    async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason) {
+    async fn cancel_pending_transaction(&mut self, reason: TxCancellationReason, details: Option<String>) {
         if let Err(e) = self
             .resources
             .output_manager_service
@@ -397,7 +413,11 @@ where
                 self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason) {
+        if let Err(e) = self
+            .resources
+            .db
+            .reject_completed_transaction(self.tx_id, reason, details)
+        {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel pending TxId: {} after failed sending attempt with error {:?}", self.tx_id, e

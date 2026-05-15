@@ -158,7 +158,7 @@ async fn test_insert_and_process_published_block() {
             .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
     assert_eq!(
         mempool
@@ -172,7 +172,7 @@ async fn test_insert_and_process_published_block() {
             .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
 
     assert_eq!(
@@ -180,14 +180,14 @@ async fn test_insert_and_process_published_block() {
             .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
 
     let snapshot_txs = mempool.snapshot().await.unwrap();
@@ -219,7 +219,7 @@ async fn test_insert_and_process_published_block() {
             .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
     assert_eq!(
         mempool
@@ -233,21 +233,21 @@ async fn test_insert_and_process_published_block() {
             .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.clone())
             .await
             .unwrap(),
-        TxStorageResponse::NotStored
+        TxStorageResponse::NotStored(None)
     );
 
     let snapshot_txs = mempool.snapshot().await.unwrap();
@@ -1095,7 +1095,7 @@ async fn receive_and_propagate_transaction() {
             .has_tx_with_excess_sig(tx_excess_sig.clone())
             .await
             .unwrap(),
-        expect = TxStorageResponse::NotStored,
+        expect = TxStorageResponse::NotStored(None),
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
@@ -1105,7 +1105,7 @@ async fn receive_and_propagate_transaction() {
             .has_tx_with_excess_sig(tx_excess_sig.clone())
             .await
             .unwrap(),
-        expect = TxStorageResponse::NotStored,
+        expect = TxStorageResponse::NotStored(None),
         max_attempts = 10,
         interval = Duration::from_millis(1000)
     );
@@ -1116,7 +1116,7 @@ async fn receive_and_propagate_transaction() {
             .has_tx_with_excess_sig(orphan_excess_sig.clone())
             .await
             .unwrap(),
-        expect = TxStorageResponse::NotStored,
+        expect = TxStorageResponse::NotStored(None),
         max_attempts = 10,
         interval = Duration::from_millis(1000)
     );
@@ -1128,7 +1128,7 @@ async fn receive_and_propagate_transaction() {
             .has_tx_with_excess_sig(orphan_excess_sig.clone())
             .await
             .unwrap(),
-        expect = TxStorageResponse::NotStored,
+        expect = TxStorageResponse::NotStored(None),
     );
 }
 
@@ -1302,7 +1302,7 @@ async fn consensus_validation_large_tx() {
 
     let response = mempool.insert(Arc::new(tx)).await.unwrap();
     // make sure the tx was not accepted into the mempool
-    assert!(matches!(response, TxStorageResponse::NotStored));
+    assert!(matches!(response, TxStorageResponse::NotStored(_)));
 }
 
 #[tokio::test]
