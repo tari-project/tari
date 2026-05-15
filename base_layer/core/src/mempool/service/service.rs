@@ -99,9 +99,12 @@ impl MempoolService {
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
                 Some((txn, excluded_peers)) = outbound_tx_stream.recv() => {
-                    let _res = self.handle_outbound_tx(txn, excluded_peers).await.map_err(|e|
-                        error!(target: LOG_TARGET, "Error sending outbound tx message: {e}")
-                    );
+                    let outbound_message_service = self.outbound_message_service.clone();
+                    task::spawn(async move {
+                        if let Err(e) = Self::handle_outbound_tx(outbound_message_service, txn, excluded_peers).await {
+                            error!(target: LOG_TARGET, "Error sending outbound tx message: {e}");
+                        }
+                    });
                 },
 
                 // Incoming transaction messages from the Comms layer
@@ -195,12 +198,11 @@ impl MempoolService {
     }
 
     async fn handle_outbound_tx(
-        &mut self,
+        mut outbound_message_service: OutboundMessageRequester,
         tx: Arc<Transaction>,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), MempoolServiceError> {
-        let result = self
-            .outbound_message_service
+        let result = outbound_message_service
             .flood(
                 NodeDestination::Unknown,
                 OutboundEncryption::ClearText,
