@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.3.1-pre.2"
+version = "5.3.1-pre.3"
 edition = "2024"
 rust-version = "1.93.0"
 authors = ["The Tari Development Community"]
@@ -51,44 +51,44 @@ resolver = "2"
 
 
 [workspace.dependencies]
-tari_jellyfish = { path = "infrastructure/jellyfish", version = "5.3.1-pre.2" }
-tari_common = { path = "common", version = "5.3.1-pre.2" }
-tari_common_sqlite = { path = "common_sqlite", version = "5.3.1-pre.2" }
-tari_common_types = { path = "base_layer/common_types", version = "5.3.1-pre.2" }
-tari_comms = { path = "comms/core", version = "5.3.1-pre.2" }
-tari_comms_dht = { path = "comms/dht", default-features = false, version = "5.3.1-pre.2" }
-tari_comms_rpc_macros = { path = "comms/rpc_macros", version = "5.3.1-pre.2" }
-tari_core = { path = "base_layer/core", default-features = false, version = "5.3.1-pre.2" }
-tari_features = { path = "common/tari_features", version = "5.3.1-pre.2" }
-tari_hashing = { path = "hashing", version = "5.3.1-pre.2" }
-tari_libtor = { path = "infrastructure/libtor", version = "5.3.1-pre.2" }
-tari_node_components = { path = "base_layer/node_components", version = "5.3.1-pre.2" }
-tari_metrics = { path = "infrastructure/metrics", version = "5.3.1-pre.2" }
-tari_mmr = { path = "base_layer/mmr", version = "5.3.1-pre.2" }
-tari_max_size = { path = "infrastructure/max_size", version = "5.3.1-pre.2" }
-tari_p2p = { path = "base_layer/p2p", version = "5.3.1-pre.2" }
-tari_script = { path = "infrastructure/tari_script", version = "5.3.1-pre.2" }
-tari_service_framework = { path = "base_layer/service_framework", version = "5.3.1-pre.2" }
-tari_shutdown = { path = "infrastructure/shutdown", version = "5.3.1-pre.2" }
-tari_sidechain = { path = "base_layer/sidechain", version = "5.3.1-pre.2" }
-tari_storage = { path = "infrastructure/storage", version = "5.3.1-pre.2" }
-tari_transaction_components = { path = "base_layer/transaction_components", version = "5.3.1-pre.2" }
-tari_transaction_key_manager = { path = "base_layer/transaction_key_manager", version = "5.3.1-pre.2" }
-tari_test_utils = { path = "infrastructure/test_utils", version = "5.3.1-pre.2" }
-minotari_app_grpc = { path = "applications/minotari_app_grpc", version = "5.3.1-pre.2" }
-minotari_app_utilities = { path = "applications/minotari_app_utilities", version = "5.3.1-pre.2" }
-minotari_wallet = { path = "base_layer/wallet", version = "5.3.1-pre.2" }
-minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client", version = "5.3.1-pre.2" }
-minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client", version = "5.3.1-pre.2" }
-minotari_console_wallet = { path = "applications/minotari_console_wallet", version = "5.3.1-pre.2" }
-minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy", version = "5.3.1-pre.2" }
-minotari_miner = { path = "applications/minotari_miner", version = "5.3.1-pre.2" }
-minotari_node = { path = "applications/minotari_node", version = "5.3.1-pre.2" }
-minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "5.3.1-pre.2" }
+tari_jellyfish = { path = "infrastructure/jellyfish", version = "5.3.1-pre.3" }
+tari_common = { path = "common", version = "5.3.1-pre.3" }
+tari_common_sqlite = { path = "common_sqlite", version = "5.3.1-pre.3" }
+tari_common_types = { path = "base_layer/common_types", version = "5.3.1-pre.3" }
+tari_comms = { path = "comms/core", version = "5.3.1-pre.3" }
+tari_comms_dht = { path = "comms/dht", default-features = false, version = "5.3.1-pre.3" }
+tari_comms_rpc_macros = { path = "comms/rpc_macros", version = "5.3.1-pre.3" }
+tari_core = { path = "base_layer/core", default-features = false, version = "5.3.1-pre.3" }
+tari_features = { path = "common/tari_features", version = "5.3.1-pre.3" }
+tari_hashing = { path = "hashing", version = "5.3.1-pre.3" }
+tari_libtor = { path = "infrastructure/libtor", version = "5.3.1-pre.3" }
+tari_node_components = { path = "base_layer/node_components", version = "5.3.1-pre.3" }
+tari_metrics = { path = "infrastructure/metrics", version = "5.3.1-pre.3" }
+tari_mmr = { path = "base_layer/mmr", version = "5.3.1-pre.3" }
+tari_max_size = { path = "infrastructure/max_size", version = "5.3.1-pre.3" }
+tari_p2p = { path = "base_layer/p2p", version = "5.3.1-pre.3" }
+tari_script = { path = "infrastructure/tari_script", version = "5.3.1-pre.3" }
+tari_service_framework = { path = "base_layer/service_framework", version = "5.3.1-pre.3" }
+tari_shutdown = { path = "infrastructure/shutdown", version = "5.3.1-pre.3" }
+tari_sidechain = { path = "base_layer/sidechain", version = "5.3.1-pre.3" }
+tari_storage = { path = "infrastructure/storage", version = "5.3.1-pre.3" }
+tari_transaction_components = { path = "base_layer/transaction_components", version = "5.3.1-pre.3" }
+tari_transaction_key_manager = { path = "base_layer/transaction_key_manager", version = "5.3.1-pre.3" }
+tari_test_utils = { path = "infrastructure/test_utils", version = "5.3.1-pre.3" }
+minotari_app_grpc = { path = "applications/minotari_app_grpc", version = "5.3.1-pre.3" }
+minotari_app_utilities = { path = "applications/minotari_app_utilities", version = "5.3.1-pre.3" }
+minotari_wallet = { path = "base_layer/wallet", version = "5.3.1-pre.3" }
+minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client", version = "5.3.1-pre.3" }
+minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client", version = "5.3.1-pre.3" }
+minotari_console_wallet = { path = "applications/minotari_console_wallet", version = "5.3.1-pre.3" }
+minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy", version = "5.3.1-pre.3" }
+minotari_miner = { path = "applications/minotari_miner", version = "5.3.1-pre.3" }
+minotari_node = { path = "applications/minotari_node", version = "5.3.1-pre.3" }
+minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "5.3.1-pre.3" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
-minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "5.3.1-pre.2" }
-minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "5.3.1-pre.2" }
-minotari_mcp_common = { path = "applications/minotari_mcp_common", version = "5.3.1-pre.2" }
+minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "5.3.1-pre.3" }
+minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "5.3.1-pre.3" }
+minotari_mcp_common = { path = "applications/minotari_mcp_common", version = "5.3.1-pre.3" }
 
 tari_utilities = { version = "0.10" }
 tari_crypto = { version = "0.23" }
