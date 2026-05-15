@@ -2716,7 +2716,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(match key {
             DbKey::HeaderHeight(k) => {
                 let exist = lmdb_exists(&txn, &self.headers_db, k)?;
-                exist & (tip_height <= *k)
+                exist & (tip_height >= *k)
             },
             DbKey::HeaderHash(h) => {
                 let height: u64 = match lmdb_get(&txn, &self.block_hashes_db, h.deref())? {
