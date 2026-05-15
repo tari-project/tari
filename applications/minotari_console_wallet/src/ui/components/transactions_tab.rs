@@ -306,8 +306,8 @@ impl TransactionsTab {
 
             let status_display = if matches!(tx.cancelled, Some(TxCancellationReason::UserCancelled)) {
                 "Cancelled".to_string()
-            } else if tx.cancelled.is_some() {
-                "Rejected".to_string()
+            } else if let Some(reason) = tx.cancelled {
+                format!("Rejected: {reason}")
             } else {
                 transaction_status.to_string()
             };
