@@ -157,7 +157,7 @@ fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<()
     if block.header.prev_hash != *metadata.best_block_hash() {
         return Err(ValidationError::IncorrectPreviousHash {
             expected: metadata.best_block_hash().to_hex(),
-            block_hash: block.hash().to_hex(),
+            block_hash: block.header.prev_hash.to_hex(),
         });
     }
     if block.header.height != metadata.best_block_height() + 1 {
