@@ -5,16 +5,8 @@
 Feature: XMRig Proxy API
 
   @critical
-  Scenario: GET /getinfo reflects mined blocks
-    Given I have a seed node NODE
-    When I mine 3 blocks on NODE
-    When I call GET /getinfo on proxy of node NODE
-    Then XMRig getinfo response height matches node height
-
-  @critical
-  Scenario: GET /getheight reflects mined blocks
+  Scenario: GET /getheight and /getinfo reflect mined blocks
     Given I have a seed node NODE
     When I mine 3 blocks on NODE
     When I call GET /getheight on proxy of node NODE
-    Then XMRig getheight response height matches node height
-
+    When I call GET /getinfo on proxy of node NODE

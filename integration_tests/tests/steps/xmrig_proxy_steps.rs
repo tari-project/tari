@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2026. The Tari Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -20,10 +20,10 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde_json::{Value, json};
+use serde_json::{Value};
 
 use tari_integration_tests::TariWorld;
-use cucumber::{then, when};
+use cucumber::{when};
 
 // Helper to resolve the XMRig proxy port for a given base node
 fn get_xmrig_proxy_port(world: &TariWorld, base_node_name: &String) -> u16 {
@@ -31,52 +31,6 @@ fn get_xmrig_proxy_port(world: &TariWorld, base_node_name: &String) -> u16 {
         .get_node(base_node_name)
         .expect("Base node not found for XMRig proxy")
         .xmrig_proxy_port
-}
-
-// ---------------------------------------------------------------------------
-// JSON-RPC steps — POST /json_rpc
-// ---------------------------------------------------------------------------
-
-#[when(expr = "I call JSON-RPC getheight on proxy of node {word}")]
-async fn xmrig_proxy_jsonrpc_getheight(world: &mut TariWorld, base_node_name: String) {
-    let port = get_xmrig_proxy_port(world, &base_node_name);
-    let client = reqwest::Client::new();
-    let body = json!({
-        "jsonrpc": "2.0",
-        "method": "getheight",
-        "params": {},
-        "id": 1
-    });
-    world.last_merge_miner_response = client
-        .post(format!("http://127.0.0.1:{port}/json_rpc"))
-        .json(&body)
-        .send()
-        .await
-        .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
-}
-
-#[when(expr = "I call JSON-RPC getinfo on proxy of node {word}")]
-async fn xmrig_proxy_jsonrpc_getinfo(world: &mut TariWorld, base_node_name: String) {
-    let port = get_xmrig_proxy_port(world, &base_node_name);
-    let client = reqwest::Client::new();
-    let body = json!({
-        "jsonrpc": "2.0",
-        "method": "getinfo",
-        "params": {},
-        "id": 1
-    });
-    world.last_merge_miner_response = client
-        .post(format!("http://127.0.0.1:{port}/json_rpc"))
-        .json(&body)
-        .send()
-        .await
-        .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -92,26 +46,11 @@ async fn xmrig_proxy_get_getheight(world: &mut TariWorld, base_node_name: String
         .json::<Value>()
         .await
         .unwrap();
-}
 
-#[when(expr = r"I call GET \/getinfo on proxy of node {word}")]
-async fn xmrig_proxy_get_getinfo(world: &mut TariWorld, base_node_name: String) {
-    let port = get_xmrig_proxy_port(world, &base_node_name);
-    world.last_merge_miner_response = reqwest::get(format!("http://127.0.0.1:{port}/getinfo"))
-        .await
-        .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
-}
+    // ---------------------------------------------------------------------------
+    // Compare heights to validate
+    // ---------------------------------------------------------------------------
 
-
-// ---------------------------------------------------------------------------
-// Height-aware validation — verify getheight reflects mined blocks
-// ---------------------------------------------------------------------------
-
-#[then(expr = "XMRig getheight response height matches node height")]
-async fn xmrig_getheight_matches_node_height(world: &mut TariWorld) {
     let resp = &world.last_merge_miner_response;
 
     // Extract height from either JSON-RPC or flat response
@@ -120,7 +59,7 @@ async fn xmrig_getheight_matches_node_height(world: &mut TariWorld) {
     } else {
         resp.get("height").unwrap().as_u64().unwrap()
     };
-
+     
     // Compare against the first base node's height
     let node_name = world
         .base_nodes
@@ -135,21 +74,30 @@ async fn xmrig_getheight_matches_node_height(world: &mut TariWorld) {
         .get_tip_info(minotari_node_grpc_client::grpc::Empty {})
         .await
         .expect("Failed to get tip info")
-        .into_inner();
+        .into_inner(); 
     let best_height = tip_info.metadata.unwrap().best_block_height;
+    println!("Height: {} node height: {}", height, best_height);
     assert_eq!(
         height,
         best_height,
         "XMRig getheight height {height} does not match node height {best_height}"
-    );
+    ); 
 }
 
-// ---------------------------------------------------------------------------
-// Height-aware validation — verify getinfo reflects mined blocks
-// ---------------------------------------------------------------------------
+#[when(expr = r"I call GET \/getinfo on proxy of node {word}")]
+async fn xmrig_proxy_get_getinfo(world: &mut TariWorld, base_node_name: String) {
+    let port = get_xmrig_proxy_port(world, &base_node_name);
+    world.last_merge_miner_response = reqwest::get(format!("http://127.0.0.1:{port}/getinfo"))
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
 
-#[then(expr = "XMRig getinfo response height matches node height")]
-async fn xmrig_getinfo_matches_node_height(world: &mut TariWorld) {
+    // ---------------------------------------------------------------------------
+    // Compare heights to validate
+    // ---------------------------------------------------------------------------
+
     let resp = &world.last_merge_miner_response;
 
     // Extract height from either JSON-RPC or flat response
