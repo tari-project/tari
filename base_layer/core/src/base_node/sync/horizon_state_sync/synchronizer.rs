@@ -349,7 +349,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         let stored_checkpoint = stored_checkpoint.expect("Already checked");
         debug!(target: LOG_TARGET, "We have a stored checkpoint, with height {} and hash {}", stored_checkpoint.checkpoint_height, stored_checkpoint.checkpoint_hash.to_hex());
-        let checkpoint_sync_to_header = if let Some(header) = self.db.fetch_header(stored_checkpoint.sync_target_height).await? {
+        let checkpoint_sync_to_header = if let Some(header) =
+            self.db.fetch_header(stored_checkpoint.sync_target_height).await?
+        {
             header
         } else {
             warn!(target: LOG_TARGET, "Horizon sync target at height {} is no longer on the canonical chain (reorg detected). Discarding checkpoint and restarting output sync from scratch.", stored_checkpoint.sync_target_height);
@@ -362,7 +364,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         };
         if stored_checkpoint.sync_target_hash == sync_to_header.hash() {
             info!(target: LOG_TARGET, "Resuming output sync from checkpoint at height {}, target unchanged", stored_checkpoint.checkpoint_height);
-            return Ok((stored_checkpoint.checkpoint_height+1, sync_to_header.clone()));
+            return Ok((stored_checkpoint.checkpoint_height + 1, sync_to_header.clone()));
         }
         // we have a checkpoint, its target is not the syncing target, so we have two choices, delete it and start over,
         // or sync to a lower height.
@@ -383,7 +385,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         {
             // we can sync to the checkpoint height first, and then do block sync from there
             debug!(target: LOG_TARGET, "New target is greater than stored checkpoint, but within 50_000 blocks, resuming output sync from checkpoint");
-            return Ok((stored_checkpoint.checkpoint_height+1, checkpoint_sync_to_header));
+            return Ok((stored_checkpoint.checkpoint_height + 1, checkpoint_sync_to_header));
         }
         debug!(target: LOG_TARGET, "New target is too far away, starting over");
         self.db
@@ -504,13 +506,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 continue;
             }
             let spent = self.db.fetch_inputs_mined_info(vec![output.hash()]).await?;
-            if !spent.is_empty() {
-                if let Some(spent_status) = &spent[0] {
-                    if spent_status.spent_height == 0 {
-                        debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state, it was spent in block {}", output.hash(), output.commitment.to_hex(), spent_status.spent_height);
-                        continue;
-                    }
-                }
+            if let Some(Some(spent_status)) = spent.first() &&
+                spent_status.spent_height == 0
+            {
+                debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state, it was spent in block {}", output.hash(), output.commitment.to_hex(), spent_status.spent_height);
+                continue;
             }
             let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
             let smt_key = FixedHash::from(key_bytes);
@@ -519,11 +519,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             // first make sure its deleted everywhere so we can cleanly reinsert it.
             debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
 
-            txn.prune_output_from_all_dbs(
-                output.hash(),
-                output.commitment.clone(),
-                output.features.output_type,
-            );
+            txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
             txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
         }
 
@@ -780,8 +776,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // Process the full block range in tranches
         while tranche_start_height <= to_header.height {
             let tranche_end_height = cmp::min(
-                tranche_start_height
-                    .saturating_add(HORIZON_SYNC_TRANCHE_SIZE),
+                tranche_start_height.saturating_add(HORIZON_SYNC_TRANCHE_SIZE),
                 to_header.height,
             );
 
@@ -1345,8 +1340,7 @@ mod tests {
         // Pick an output from a block above start_height (we'll clean from height 1)
         let block2 = chain.get("2").unwrap();
         let outputs = db.fetch_outputs_in_block(*block2.hash()).unwrap();
-        assert!(!outputs.is_empty(), "block 2 must have outputs");
-        let output_hash = outputs[0].hash();
+        let output_hash = outputs.first().expect("block 2 must have outputs").hash();
         assert!(
             db.fetch_output(output_hash).unwrap().is_some(),
             "output must exist before cleanup"

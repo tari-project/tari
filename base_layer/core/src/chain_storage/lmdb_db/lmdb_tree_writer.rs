@@ -59,34 +59,9 @@ impl<'a> LmdbTreeWriter<'a> {
         }
     }
 
-    pub fn put_node(&self, node_key: &jmt::storage::NodeKey, node: &jmt::storage::Node) -> anyhow::Result<()> {
-        let mut lmdb_key: Vec<u8> = vec![];
-        // lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
-        borsh::BorshSerialize::serialize(node_key, &mut lmdb_key)?;
-        match node {
-            jmt::storage::Node::Null => {
-                trace!(target: LOG_TARGET, "Deleting node with key {}", lmdb_key.to_hex());
-                lmdb_delete(self.txn, &self.node_db, &lmdb_key, "jmt_node_table").optional()?;
-            },
-            _ => {
-                lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, "jmt_node_table")?;
-            },
-        }
-        let k = MetadataKey::JMTVersion;
-        lmdb_replace(
-            self.txn,
-            &self.metabase_db,
-            &k.as_u32(),
-            &MetadataValue::JMTVersion(node_key.version()),
-            None,
-        )?;
-        Ok(())
-    }
-
     pub fn cleanup_stale(&self, stale: &StaleNodeIndexBatch) -> anyhow::Result<()> {
         for index in stale {
             let mut lmdb_key: Vec<u8> = vec![];
-            // lmdb_key.extend_from_slice(&index.node_key.version().to_be_bytes());
             borsh::BorshSerialize::serialize(&index.node_key, &mut lmdb_key)?;
             lmdb_delete(self.txn, &self.node_db, &lmdb_key, "jmt_node_table").optional()?;
         }
@@ -98,7 +73,6 @@ impl TreeWriter for LmdbTreeWriter<'_> {
     fn write_node_batch(&self, node_batch: &jmt::storage::NodeBatch) -> anyhow::Result<()> {
         for (node_key, node) in node_batch.nodes() {
             let mut lmdb_key: Vec<u8> = vec![];
-            // lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
             borsh::BorshSerialize::serialize(node_key, &mut lmdb_key)?;
             match node {
                 jmt::storage::Node::Null => {
@@ -111,10 +85,8 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 },
             }
         }
-        // let mut duplicates = HashMap::new();
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
-            // lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
             lmdb_key.extend_from_slice(&value_key.1.0);
             match value {
                 Some(_v) => {

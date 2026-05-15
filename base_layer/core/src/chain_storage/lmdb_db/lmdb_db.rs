@@ -284,6 +284,7 @@ const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
+#[allow(dead_code)] // Retained for upcoming JMT data migration.
 const LMDB_DB_JMT_NODE_OLD_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_NODE_NEW_DATA: &str = "jmt_nodes_data";
 
